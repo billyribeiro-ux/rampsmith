@@ -792,13 +792,13 @@ Requested in `shopify.app.toml`, each one justified in the App Store submission 
 
 1. The app uses Shopify-managed installation: scopes come from `shopify.app.toml`, so there is no OAuth redirect dance at install.
 2. Every request from the embedded UI carries a fresh session token from App Bridge, which lasts one minute. SvelteKit's server forwards it to `api` in the `Authorization` header.
-3. `api` verifies the token with HS256 and the app's client secret, then checks: `aud` equals the client id; `exp` and `nbf` hold with at most 5 seconds of clock leeway; `dest` is a valid `*.myshopify.com` host; `iss` is that host's `/admin`.
-4. With no valid offline token on file, `api` performs token exchange with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token_type=urn:ietf:params:oauth:token-type:id_token`, and `expiring=1`.
+3. `api` verifies the token with HS256 and the app's client secret, then checks: `aud` equals the client id; `exp` and `nbf` hold with at most 5 seconds of clock leeway; `dest` is a valid `*.myshopify.com` host; the hostnames of `iss` and `dest` match (shopify.dev's rule, ADR-022). Any failure answers 401 with `X-Shopify-Retry-Invalid-Session-Request: 1`.
+4. With no valid offline token on file, `api` performs token exchange with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token_type=urn:ietf:params:oauth:token-type:id_token`, `requested_token_type=urn:shopify:params:oauth:token-type:offline-access-token` and `expiring=1`. Exchange and refresh for one shop never run concurrently (each retires the other's result), so both hold a per-shop advisory lock (ADR-022).
 5. Access and refresh tokens are encrypted with a per-row data key (AES-256-GCM) wrapped by a master key held only in the environment.
 6. Background jobs refresh any access token within 10 minutes of expiry. Refresh tokens rotate on every use, so the update is a compare-and-swap on the row's `version` column; a lost race re-reads instead of overwriting.
 7. A refresh token unused for 90 days expires and forces re-authentication, so every installed shop gets at least a weekly scheduled job that keeps its token fresh.
 
-**Spike S-4:** confirm how the initial document request carries the ID token (search parameter or header) for a non-Remix app, before building the SvelteKit hook around it.
+**Spike S-4:** confirm how the initial document request carries the ID token (search parameter or header) for a non-Remix app, before building the SvelteKit hook around it. Answered from the documentation on 2026-10-17 (`docs/spikes/S-4-initial-document-token.md`): the document request is unauthenticated and carries no data; data requests carry the token as a Bearer header. Live observation waits for a development store.
 
 ### Admin GraphQL client
 

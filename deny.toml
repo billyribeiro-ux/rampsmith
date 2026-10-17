@@ -65,6 +65,7 @@ skip = [
   { crate = "hashbrown@0.16", reason = "hashlink 0.11 (sqlx-core) depends on hashbrown 0.16" },
   { crate = "syn@2", reason = "most proc-macro crates have not moved to syn 3 yet" },
   { crate = "tower-http@0.6", reason = "reqwest 0.13 (OTLP exporter) depends on tower-http 0.6; the api uses 0.7 (PLAN §7)" },
+  { crate = "untrusted@0.7", reason = "jsonwebtoken 11 enables aws-lc-rs default features, whose ring-compatible API uses untrusted 0.7; rustls-webpki uses 0.9" },
 ]
 skip-tree = []
 
