@@ -92,7 +92,7 @@ first wave:
 | WS-8 Runbooks, nightly backup, restore drill (PLAN §22, LAUNCH B) | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Started |
 | WS-9 Deployment as configuration (PLAN §22, §24, LAUNCH B) | `ws/deploy` | `infra/railway/`, `infra/collector/`, `.github/workflows/release.yml`, `.github/workflows/deploy.yml` | 181–189 | Started |
 | WS-10 Email templates (LAUNCH B) | `ws/email` | `packages/email/` | 191–199 | Started |
-| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/` | 201–209 | Started |
+| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/`, `packages/corpus-tools/` | 201–209 | Started |
 | WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Started |
 | WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Started |
 
