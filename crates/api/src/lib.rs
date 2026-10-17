@@ -6,6 +6,7 @@
 
 pub mod config;
 mod health;
+pub mod shopify;
 
 use axum::Router;
 use db::Db;
@@ -19,6 +20,7 @@ use utoipa_axum::routes;
 pub struct AppState {
     db: Db,
     expected_schema: i64,
+    shopify: Option<shopify_auth::ShopifyAuth>,
 }
 
 impl AppState {
@@ -28,7 +30,15 @@ impl AppState {
         Self {
             db,
             expected_schema: db::expected_schema_version(),
+            shopify: None,
         }
+    }
+
+    /// Enables Shopify session authentication. Without it, Shopify routes answer 503.
+    #[must_use]
+    pub fn with_shopify(mut self, auth: shopify_auth::ShopifyAuth) -> Self {
+        self.shopify = Some(auth);
+        self
     }
 
     /// Overrides the schema version readiness waits for.
@@ -47,14 +57,34 @@ impl AppState {
         license(name = "Proprietary")
     ),
     components(schemas(Problem, ProblemCode)),
-    tags((name = "operations", description = "Liveness and readiness for the platform"))
+    modifiers(&SecuritySchemes),
+    tags(
+        (name = "operations", description = "Liveness and readiness for the platform"),
+        (name = "shopify", description = "The embedded Shopify app's session")
+    )
 )]
 struct ApiDoc;
+
+struct SecuritySchemes;
+
+impl utoipa::Modify for SecuritySchemes {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
+        let components = openapi.components.get_or_insert_with(Default::default);
+        let mut scheme = Http::new(HttpAuthScheme::Bearer);
+        scheme.bearer_format = Some("JWT".to_owned());
+        scheme.description = Some(
+            "The App Bridge session (ID) token, forwarded by the web app (ADR-022).".to_owned(),
+        );
+        components.add_security_scheme("shopify_session", SecurityScheme::Http(scheme));
+    }
+}
 
 fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(health::healthz))
         .routes(routes!(health::readyz))
+        .routes(routes!(shopify::create_session))
 }
 
 /// The OpenAPI document, generated from the handlers.

@@ -60,6 +60,62 @@
           }
         }
       }
+    },
+    "/v1/shopify/session": {
+      "post": {
+        "tags": [
+          "shopify"
+        ],
+        "summary": "Starts an embedded-app session: verifies the Shopify session token and, on first use,\ninstalls the app by token exchange.",
+        "operationId": "createShopifySession",
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or stale session token; the response carries `X-Shopify-Retry-Invalid-Session-Request: 1`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Shopify did not answer token exchange",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shopify authentication is not configured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -194,6 +250,32 @@
             "description": "Always `ready`."
           }
         }
+      },
+      "SessionInfo": {
+        "type": "object",
+        "description": "The shop a session belongs to.",
+        "required": [
+          "shop",
+          "installed"
+        ],
+        "properties": {
+          "installed": {
+            "type": "boolean",
+            "description": "Whether this request installed (or reinstalled) the app."
+          },
+          "shop": {
+            "type": "string",
+            "description": "The shop's `*.myshopify.com` domain."
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "shopify_session": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "The App Bridge session (ID) token, forwarded by the web app (ADR-022)."
       }
     }
   },
@@ -201,6 +283,10 @@
     {
       "name": "operations",
       "description": "Liveness and readiness for the platform"
+    },
+    {
+      "name": "shopify",
+      "description": "The embedded Shopify app's session"
     }
   ]
 }

@@ -175,8 +175,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
       - name: Smoke test (liveness up, readiness refuses without a database)
         run: |
+          # Throwaway credentials and a fresh random key: the process must start, not
+          # reach Shopify.
           docker run -d --name api -p 8080:8080 \
-            -e DATABASE_URL=postgres://nobody@127.0.0.1:9/none rampsmith-api:ci
+            -e DATABASE_URL=postgres://nobody@127.0.0.1:9/none \
+            -e SHOPIFY_CLIENT_ID=ci-smoke \
+            -e SHOPIFY_CLIENT_SECRET=ci-smoke \
+            -e RAMPSMITH_MASTER_KEYS="ci:$(head -c 32 /dev/urandom | base64 -w0)" \
+            rampsmith-api:ci
           for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
           curl -fsS http://127.0.0.1:8080/healthz | grep -q '"ok"'
           code=$(curl -s -o readyz.json -w '%{http_code}' http://127.0.0.1:8080/readyz)

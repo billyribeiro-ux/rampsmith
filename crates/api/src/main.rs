@@ -30,8 +30,23 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("bind {}", config.bind))?;
+    let shopify = shopify_auth::ShopifyAuth::new(
+        db.clone(),
+        config.master_keys.clone(),
+        shopify::SessionTokenVerifier::new(
+            &config.shopify_client_id,
+            &config.shopify_client_secret,
+        ),
+        shopify::TokenClient::new(
+            &config.shopify_client_id,
+            config.shopify_client_secret.clone(),
+            shopify::TokenEndpoint::Shopify,
+            std::time::Duration::from_secs(10),
+        )
+        .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
+    );
     info!(address = %config.bind, version = %config.service_version, "api listening");
-    axum::serve(listener, api::app(AppState::new(db)))
+    axum::serve(listener, api::app(AppState::new(db).with_shopify(shopify)))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("server")?;
