@@ -19,7 +19,7 @@ use db::repo::{audit, findings, fixes, occurrences, scans, sites, tenants};
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
-use support::{Graph, app_pool, owner_pool, seed};
+use support::{Graph, app_pool, assert_empty, owner_pool, seed};
 
 async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool, Graph, Graph) {
     let pool = app_pool(opts, conn).await;
@@ -118,12 +118,7 @@ async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
     );
 
     assert!(scans::get(&mut tx, b.scan).await.unwrap().is_none());
-    assert!(
-        scans::list_for_site(&mut tx, b.site, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert_empty(&scans::list_for_site(&mut tx, b.site, 10).await.unwrap());
     assert!(
         scans::mark_started(&mut tx, b.scan, 5)
             .await
@@ -132,11 +127,10 @@ async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
     );
 
     assert!(findings::get(&mut tx, b.finding).await.unwrap().is_none());
-    assert!(
-        findings::list_for_site(&mut tx, b.site, None)
+    assert_empty(
+        &findings::list_for_site(&mut tx, b.site, None)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
     assert!(
         findings::set_status(&mut tx, b.finding, FindingStatus::FalsePositive)
@@ -145,20 +139,14 @@ async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
             .is_none()
     );
 
-    assert!(
-        occurrences::list_for_finding(&mut tx, b.finding, 10)
+    assert_empty(
+        &occurrences::list_for_finding(&mut tx, b.finding, 10)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
 
     assert!(fixes::get(&mut tx, b.fix).await.unwrap().is_none());
-    assert!(
-        fixes::list_for_finding(&mut tx, b.finding)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert_empty(&fixes::list_for_finding(&mut tx, b.finding).await.unwrap());
     assert!(
         fixes::approve(&mut tx, b.fix, UserId::new())
             .await

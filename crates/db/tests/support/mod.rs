@@ -136,3 +136,9 @@ pub async fn seed(db: &Db, label: u8) -> Graph {
         fix: fix.id,
     }
 }
+
+/// Asserts that a listing is empty, printing what it held otherwise.
+#[track_caller]
+pub fn assert_empty<T: std::fmt::Debug>(items: &[T]) {
+    assert!(items.is_empty(), "expected nothing, got {items:?}");
+}

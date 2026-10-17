@@ -17,7 +17,7 @@ use domain::{
     ScanStatus, ScanTrigger, TenantKind, UserId,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use support::{app_pool, owner_pool, seed};
+use support::{app_pool, assert_empty, owner_pool, seed};
 
 async fn app_db(opts: PgPoolOptions, conn: PgConnectOptions) -> Db {
     Db::from_pool(app_pool(opts, conn).await)
@@ -154,11 +154,10 @@ async fn findings_filter_by_status(opts: PgPoolOptions, conn: PgConnectOptions) 
             .len(),
         1
     );
-    assert!(
-        findings::list_for_site(&mut tx, g.site, Some(FindingStatus::Fixed))
+    assert_empty(
+        &findings::list_for_site(&mut tx, g.site, Some(FindingStatus::Fixed))
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
 }
 

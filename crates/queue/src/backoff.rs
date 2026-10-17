@@ -53,7 +53,7 @@ mod tests {
     fn matches_the_shared_vectors() {
         let vectors: Vectors =
             serde_json::from_str(include_str!("../testdata/backoff.json")).unwrap();
-        assert!(!vectors.cases.is_empty());
+        assert!(!vectors.cases.is_empty(), "no backoff vectors");
         for case in vectors.cases {
             assert_eq!(
                 retry_delay(case.attempt, case.jitter).as_millis(),

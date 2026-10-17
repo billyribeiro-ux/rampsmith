@@ -18,7 +18,7 @@ use queue::{Enqueued, FailOutcome, Failure, NewJob, QueueError};
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgListener, PgPoolOptions};
-use support::{app_pool, expire_leases, owner_pool, tenant, worker_pool};
+use support::{app_pool, assert_empty, expire_leases, owner_pool, tenant, worker_pool};
 
 const LEASE: Duration = Duration::from_secs(30);
 
@@ -58,11 +58,10 @@ async fn a_claimed_job_carries_a_lease_and_its_payload(
     assert_eq!(j.lease.attempt, 1);
     assert_eq!(j.payload, json!({ "key": "a" }));
     assert_eq!(j.payload_schema, "test.effect@1");
-    assert!(
-        queue::claim(&pool, "test.effect", 10, "w2", LEASE)
+    assert_empty(
+        &queue::claim(&pool, "test.effect", 10, "w2", LEASE)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
 }
 
@@ -137,11 +136,10 @@ async fn claims_follow_priority_then_run_at_and_skip_future_jobs(
 async fn claims_are_per_queue(opts: PgPoolOptions, conn: PgConnectOptions) {
     let pool = worker_pool(opts, conn).await;
     enqueue(&pool, &NewJob::new("scan.page", "scan.page@1", json!({}))).await;
-    assert!(
-        queue::claim(&pool, "test.effect", 10, "w", LEASE)
+    assert_empty(
+        &queue::claim(&pool, "test.effect", 10, "w", LEASE)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
     assert_eq!(
         queue::claim(&pool, "scan.page", 10, "w", LEASE)
@@ -360,11 +358,10 @@ async fn a_dead_job_is_retried_only_on_request(opts: PgPoolOptions, conn: PgConn
     queue::fail(&pool, &j.lease, &Failure::Permanent(error("x")), 0.0)
         .await
         .unwrap();
-    assert!(
-        queue::claim(&pool, "test.effect", 1, "w", LEASE)
+    assert_empty(
+        &queue::claim(&pool, "test.effect", 1, "w", LEASE)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
     assert!(queue::retry_dead(&pool, id).await.unwrap());
     assert!(
