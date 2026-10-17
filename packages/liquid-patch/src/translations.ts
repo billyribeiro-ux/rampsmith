@@ -156,8 +156,10 @@ function insertionFor(
 ): Edit {
   const open = object.offset;
   const close = object.offset + object.length - 1;
-  const multiline = source.slice(open, close).includes('\n') || object.parent === undefined;
   const last = object.children?.at(-1);
+  // An empty file object (`{}`) is expanded; any other object keeps its own layout.
+  const multiline =
+    source.slice(open, close).includes('\n') || (object.parent === undefined && last === undefined);
   if (last === undefined) {
     const ownIndent = /^[ \t]*/u.exec(source.slice(lineStart(source, open), open))?.[0] ?? '';
     const inner = ownIndent + layout.unit;

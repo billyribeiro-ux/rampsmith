@@ -96,6 +96,19 @@ describe('localeEdits', () => {
     );
   });
 
+  it('writes a key requested twice with the same text once', () => {
+    const result = localeEdits(
+      [EN],
+      [
+        { key: 'accessibility.open', text: 'Open' },
+        { key: 'accessibility.open', text: 'Open' },
+      ],
+    );
+    expect(result.ok && result.edits).toEqual([
+      expect.objectContaining({ replacement: ',\n    "open": "Open"' }),
+    ]);
+  });
+
   it('combines several keys under one object into one insertion', () => {
     const result = localeEdits(
       [EN],
@@ -138,6 +151,8 @@ describe('localeEdits', () => {
     const inline = { path: 'locales/en.default.json', source: '{ "a": { "b": "c" } }' };
     const [i] = edited([inline], [{ key: 'a.d', text: 'D' }]);
     expect(i?.source).toBe('{ "a": { "b": "c", "d": "D" } }');
+    const [top] = edited([inline], [{ key: 'x.y', text: 'Y' }]);
+    expect(top?.source).toBe('{ "a": { "b": "c" }, "x": { "y": "Y" } }');
   });
 
   it('fills an empty object and an empty file object', () => {
