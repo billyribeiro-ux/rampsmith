@@ -1,0 +1,24 @@
+{
+  "name": "@rampsmith/liquid-patch",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Span patches for Liquid theme files (PLAN §12, ADR-007): parse, edit spans, never reformat, diff.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@rampsmith/tsconfig": "workspace:*",
+    "fast-check": "4.10.2",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@shopify/liquid-html-parser": "2.10.2",
+    "diff": "9.0.0",
+    "jsonc-parser": "3.3.1"
+  }
+}
