@@ -180,6 +180,15 @@ fn a_free_plan_subscription_is_free() {
         [BillingEvent::Subscribed { plan: Plan::Free }]
     );
     assert_eq!(result.action, Action::Continue);
+
+    let gone = run(&result.state, None, ApiAnswer::NoActiveSubscription);
+    assert_eq!(gone.state.standing, Standing::Free(FreeSource::Selected));
+    assert_eq!(
+        gone.action,
+        Action::Continue,
+        "a vanished free subscription stays Free"
+    );
+    assert!(gone.events.is_empty());
 }
 
 #[test]

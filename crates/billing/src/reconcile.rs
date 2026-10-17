@@ -370,7 +370,8 @@ pub fn reconcile(
                 Standing::Free(FreeSource::Selected)
             } else {
                 match &stored.standing {
-                    Standing::Free(source) => Standing::Free(*source),
+                    // Free stays Free; with no subscription active, it is now a selection.
+                    Standing::Free(_) => Standing::Free(FreeSource::Selected),
                     Standing::Paid(paid) if ended_by_choosing_free(paid) => {
                         Standing::Free(FreeSource::Selected)
                     }
