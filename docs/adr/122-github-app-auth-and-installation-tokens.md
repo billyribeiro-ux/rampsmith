@@ -64,6 +64,10 @@ Checked on docs.github.com on 2026-10-17:
   LAUNCH.md). `GITHUB_APP_ID` still works as the issuer.
 - `GitHub::app()` (`GET /app` with the JWT) is the live check LAUNCH C row 4 describes; it is
   tested only against the fake, as tests never call github.com.
+- The cache mutex is held while a token is minted, so a slow mint (bounded by the 30-second
+  timeout) also delays cache hits for other installations in the same process. Mints happen
+  about once an hour per scope; if `ctl` ever runs enough installations for this to matter, the
+  fix is a per-key single flight, with the same tests.
 
 ## Plan correction
 
