@@ -5,7 +5,10 @@
 // scope checks walk the stack of open elements, so deeply nested input costs time quadratic in
 // the depth (200,000 nested <div>s took 287 s in a local measurement, ADR-111). A wrapping tree
 // adapter refuses any insertion deeper than `maxDepth`, which bounds that stack, and checks a
-// time budget as elements and text arrive. Failures are typed results, never exceptions.
+// time budget as elements and text arrive. Its duplicate-attribute check is quadratic in a
+// tag's attribute count (40,000 attributes took 6.6 s), so a linear pre-scan that follows the
+// tokenizer's attribute states refuses tags with more than `maxAttributes`. Failures are typed
+// results, never exceptions.
 import {
   defaultTreeAdapter,
   parseFragment,
@@ -27,6 +30,8 @@ export interface ParseLimits {
   readonly maxDepth: number;
   /** Most elements accepted in one input. */
   readonly maxElements: number;
+  /** Most attributes accepted on one tag. */
+  readonly maxAttributes: number;
   /** Wall-clock budget for parsing one input, a backstop for inputs the other limits miss. */
   readonly timeBudgetMs: number;
 }
@@ -35,12 +40,18 @@ export const DEFAULT_PARSE_LIMITS: ParseLimits = {
   maxLength: 1_000_000,
   maxDepth: 512,
   maxElements: 100_000,
+  maxAttributes: 256,
   timeBudgetMs: 3_000,
 };
 
 /** Why an input was not audited. */
 export type ParseFailure =
-  'too_large' | 'too_deep' | 'too_many_elements' | 'time_limit' | 'parser_error';
+  | 'too_large'
+  | 'too_deep'
+  | 'too_many_elements'
+  | 'too_many_attributes'
+  | 'time_limit'
+  | 'parser_error';
 
 export type ParseResult =
   | { readonly ok: true; readonly fragment: ParsedFragment }
@@ -56,6 +67,80 @@ class LimitExceeded extends Error {
   }
 }
 
+const isSpace = (c: number): boolean =>
+  c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0c || c === 0x0d;
+const isAlpha = (c: number): boolean => (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a);
+
+/**
+ * Whether any start or end tag in `html` has more than `cap` attributes, counted with the
+ * attribute states of the WHATWG tokenizer
+ * (https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-name-state): quotes
+ * delimit a value only after `=`, and a `"` elsewhere is part of a name. Tag-like text inside
+ * comments or raw-text elements is counted too, which can only refuse more, never less.
+ * Linear in the input.
+ */
+function tooManyAttributes(html: string, cap: number): boolean {
+  const n = html.length;
+  let i = 0;
+  while (i < n) {
+    const lt = html.indexOf('<', i);
+    if (lt === -1) return false;
+    let j = lt + 1;
+    if (html.charCodeAt(j) === 0x2f) j += 1; // `</`: end tags carry attributes too
+    if (!isAlpha(html.charCodeAt(j))) {
+      i = lt + 1;
+      continue;
+    }
+    // Tag name, then attributes until `>`.
+    while (j < n) {
+      const c = html.charCodeAt(j);
+      if (isSpace(c) || c === 0x2f || c === 0x3e) break;
+      j += 1;
+    }
+    let count = 0;
+    let state: 'before' | 'name' | 'afterName' | 'beforeValue' | 'unquoted' = 'before';
+    while (j < n) {
+      const c = html.charCodeAt(j);
+      if (state === 'before') {
+        if (c === 0x3e) break;
+        if (!isSpace(c) && c !== 0x2f) {
+          count += 1;
+          if (count > cap) return true;
+          state = 'name';
+        }
+      } else if (state === 'name') {
+        if (c === 0x3e) break;
+        if (c === 0x3d) state = 'beforeValue';
+        else if (isSpace(c)) state = 'afterName';
+        else if (c === 0x2f) state = 'before';
+      } else if (state === 'afterName') {
+        if (c === 0x3e) break;
+        if (c === 0x3d) state = 'beforeValue';
+        else if (c === 0x2f) state = 'before';
+        else if (!isSpace(c)) {
+          count += 1;
+          if (count > cap) return true;
+          state = 'name';
+        }
+      } else if (state === 'beforeValue') {
+        if (c === 0x3e) break;
+        if (c === 0x22 || c === 0x27) {
+          const close = html.indexOf(c === 0x22 ? '"' : "'", j + 1);
+          if (close === -1) return false; // the rest of the input is one value
+          j = close;
+          state = 'before';
+        } else if (!isSpace(c)) state = 'unquoted';
+      } else {
+        if (c === 0x3e) break;
+        if (isSpace(c)) state = 'before';
+      }
+      j += 1;
+    }
+    i = j + 1;
+  }
+  return false;
+}
+
 /** How often, in adapter calls, the clock is read. */
 const CLOCK_EVERY = 256;
 
@@ -69,6 +154,9 @@ export function parseRichText(
   clock: () => number = () => performance.now(),
 ): ParseResult {
   if (html.length > limits.maxLength) return { ok: false, reason: 'too_large' };
+  if (tooManyAttributes(html, limits.maxAttributes)) {
+    return { ok: false, reason: 'too_many_attributes' };
+  }
 
   const deadline = clock() + limits.timeBudgetMs;
   const templateOwner = new WeakMap<ParentNode, Template>();

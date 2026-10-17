@@ -153,3 +153,18 @@ all passing; `pnpm --filter @rampsmith/a11y-rules run test` → `Test Files 8 pa
 Commit 4 (`fix(a11y-rules): judge a clipped focus stop by its containing block`): the same
 gate, all passing; `test` → 77 passed; `test:browser` → `Tests 23 passed (23)`, 8.47 s,
 including the clean page at 390 × 844.
+
+## 6. Attribute count (ADR-111)
+
+```console
+$ node attr-tmp.mjs        # scratch script, not committed; one <div> with n distinct attributes
+5000 23680 112 ms
+20000 98680 1229 ms
+40000 198680 6626 ms
+dup 20000 80013 18 ms      # the same attribute repeated: parse5 drops duplicates cheaply here
+dup 80000 320013 26 ms
+```
+
+After the pre-scan: the 40,000-attribute tag, the same behind a `"` in a name, and an end tag
+with 40,000 attributes are each refused as `too_many_attributes` in under 2 s (6 ms measured),
+and a megabyte of tags with 256 attributes each parses in 390 ms (`test/rich-text.test.ts`).

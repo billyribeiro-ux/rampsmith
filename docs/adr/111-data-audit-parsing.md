@@ -21,6 +21,10 @@ the storefront never renders.
 - parse5's scope checks walk the stack of open elements, so cost grows with the square of the
   nesting depth: 200,000 nested `<div>` tags took 287 s to parse on this machine. That input is
   1 MB, well within what an attacker can put into a product description.
+- parse5's duplicate-attribute check compares each new attribute with every earlier one on the
+  same tag, so cost grows with the square of a tag's attribute count: 40,000 distinct
+  attributes on one tag (199 KB) took 6.6 s, and no tree-adapter hook runs while one tag is
+  tokenized.
 
 ## Decision
 
@@ -28,13 +32,18 @@ the storefront never renders.
   `<body>` context, where `treeAdapter` wraps parse5's default adapter (a public interface,
   `TreeAdapter`) and enforces, per input:
   - length at most 1,000,000 code units, checked before parsing;
+  - at most 256 attributes on any start or end tag, checked before parsing by a linear scan
+    that follows the tokenizer's attribute states (quotes delimit only values after `=`), so
+    a `"` inside a name cannot hide attributes from the count; tag-like text in comments or
+    raw-text elements is counted too, which can only refuse more input, never less. A
+    megabyte of tags at the limit parses in about 0.4 s;
   - element nesting at most 512 deep: each insertion walks up at most 513 ancestors (linking
     `<template>` contents back to their template), so the stack parse5 scans stays bounded and
     the whole parse is linear in input size times a constant;
   - at most 100,000 elements;
   - a 3-second wall-clock budget, read every 256 adapter calls, as a backstop.
-- A breach returns `{ status: 'not_audited', reason }` with reason `too_large`, `too_deep`,
-  `too_many_elements`, `time_limit` or `parser_error`. Nothing throws to the caller. A field
+- A breach returns `{ status: 'not_audited', reason }` with reason `too_large`,
+  `too_many_attributes`, `too_deep`, `too_many_elements`, `time_limit` or `parser_error`. Nothing throws to the caller. A field
   that is not audited is reported as such, never as clean.
 - Locations are half-open UTF-16 offsets into the field's value: `value.slice(start, end)` is
   the offending element, start tag through end tag. When the parser created an element

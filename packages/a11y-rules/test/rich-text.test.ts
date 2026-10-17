@@ -303,6 +303,43 @@ describe('limits', () => {
     expect(result).toMatchObject({ status: 'not_audited', reason: 'too_deep' });
   });
 
+  it('refuses a tag with more attributes than the attribute limit, quickly', () => {
+    // parse5's duplicate-attribute check is quadratic in a tag's attribute count.
+    const names = Array.from({ length: 40_000 }, (_, i) => `a${i.toString(36)}`).join(' ');
+    for (const html of [`<div ${names}>x</div>`, `<div x"y ${names}>`, `</p ${names}>`]) {
+      const started = performance.now();
+      expect(audit(html)).toMatchObject({ status: 'not_audited', reason: 'too_many_attributes' });
+      expect(performance.now() - started).toBeLessThan(2_000);
+    }
+  });
+
+  it('stays fast at the limit: a megabyte of tags with the most attributes allowed', () => {
+    const tag = `<i ${Array.from({ length: 256 }, (_, i) => `a${i.toString(36)}`).join(' ')}></i>`;
+    const html = tag.repeat(Math.floor(1_000_000 / tag.length));
+    const started = performance.now();
+    const result = audit(html);
+    expect(['audited', 'not_audited']).toContain(result.status);
+    expect(performance.now() - started).toBeLessThan(5_000);
+  });
+
+  it('counts attributes the way the HTML tokenizer does', () => {
+    const many = (n: number, sep: string): string =>
+      Array.from({ length: n }, (_, i) => `a${String(i)}${sep}`).join(' ');
+    // Quoted values may hold anything, including spaces and '>'.
+    expect(
+      audit(`<p ${many(10, '="x > y z"')}>t</p>`, { limits: { maxAttributes: 10 } }).status,
+    ).toBe('audited');
+    expect(audit(`<p ${many(11, '=1')}>t</p>`, { limits: { maxAttributes: 10 } })).toMatchObject({
+      reason: 'too_many_attributes',
+    });
+    // Repeated names still cost a comparison each, so they count too.
+    expect(audit(`<p ${'a=1 '.repeat(11)}>t</p>`, { limits: { maxAttributes: 10 } })).toMatchObject(
+      {
+        reason: 'too_many_attributes',
+      },
+    );
+  });
+
   it('refuses more elements than the element limit', () => {
     const result = audit('<br>'.repeat(50), { limits: { maxElements: 10 } });
     expect(result).toMatchObject({ status: 'not_audited', reason: 'too_many_elements' });
