@@ -23,6 +23,17 @@ const PAGES: Record<string, { status: number; html: string }> = {
     status: 200,
     html: LAYOUT('Clean page', '<p>Nothing to fix here.</p>'),
   },
+  // Two 16-pixel buttons side by side: each fails 2.5.8 Target Size (Minimum).
+  '/targets': {
+    status: 200,
+    html: LAYOUT(
+      'Small targets',
+      `<div style="display:flex;gap:0">
+         <button type="button" style="width:16px;height:16px;padding:0;border:0" aria-label="Previous"></button>
+         <button type="button" style="width:16px;height:16px;padding:0;border:0" aria-label="Next"></button>
+       </div>`,
+    ),
+  },
   '/challenge': {
     status: 403,
     html: `<!doctype html><html lang="en"><head><title>Just a moment...</title></head>

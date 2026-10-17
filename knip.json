@@ -7,7 +7,7 @@
       "entry": ["test/**/*.test-d.ts"]
     },
     "packages/engine": {
-      "entry": ["test/**/*.e2e.ts"]
+      "entry": ["test/**/*.e2e.ts", "spikes/s*-*.ts"]
     },
     "apps/web": {
       "entry": ["src/env.ts", "tests/**/*.spec.ts"],

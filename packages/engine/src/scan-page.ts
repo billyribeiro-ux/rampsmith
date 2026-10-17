@@ -56,7 +56,7 @@ export interface ScanOptions {
 const IMPACTS = new Set<string>(['minor', 'moderate', 'serious', 'critical']);
 
 /** Waits until the DOM has been quiet for `quietMs`, at most `capMs`. */
-async function settle(page: Page, quietMs: number, capMs: number): Promise<void> {
+export async function settle(page: Page, quietMs: number, capMs: number): Promise<void> {
   await page.evaluate(
     ([quiet, cap]) =>
       new Promise<void>((resolve) => {

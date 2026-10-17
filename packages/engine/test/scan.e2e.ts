@@ -61,6 +61,12 @@ describe('scanPage', () => {
     expect(scan.violations).toEqual([]);
   });
 
+  it('runs target-size (2.5.8), which axe-core disables by default, through the tag set (S-1)', async () => {
+    const scan = await scanPage(browser, { url: `${site.origin}/targets`, userAgent: UA });
+    const targets = scan.violations.filter((v) => v.ruleId === 'target-size');
+    expect(targets.map((v) => v.criteria)).toEqual([['2.5.8'], ['2.5.8']]);
+  });
+
   it('reports a bot challenge as blocked and does not scan it', async () => {
     const scan = await scanPage(browser, { url: `${site.origin}/challenge`, userAgent: UA });
     expect(scan.blocked).toBe('cloudflare');
