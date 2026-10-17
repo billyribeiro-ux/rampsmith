@@ -211,6 +211,9 @@ importers:
       '@rampsmith/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
+      '@rampsmith/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
     devDependencies:
       '@axe-core/playwright':
         specifier: 4.14.0
