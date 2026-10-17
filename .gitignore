@@ -1,0 +1,19 @@
+# Dependencies and build output
+node_modules/
+target/
+dist/
+build/
+.svelte-kit/
+coverage/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Claude Code personal overrides
+.claude/settings.local.json
+
+# OS and editor noise
+.DS_Store
+*.log
