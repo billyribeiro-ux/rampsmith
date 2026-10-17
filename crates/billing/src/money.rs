@@ -49,7 +49,7 @@ impl Currency {
     /// The upper-case code, such as `USD`.
     #[must_use]
     pub fn code(&self) -> &str {
-        // Construction guarantees three ASCII letters, so this never falls back.
+        // Construction ensures three ASCII letters, so this never falls back.
         std::str::from_utf8(&self.0).unwrap_or("XXX")
     }
 

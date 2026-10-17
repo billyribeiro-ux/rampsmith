@@ -38,6 +38,9 @@ fn is_handle(text: &str) -> bool {
 
 /// A shop's permanent `*.myshopify.com` domain, lower-cased. The accepted shape is the
 /// `shopify_shops.shop_domain` check constraint: `^[a-z0-9][a-z0-9-]*\.myshopify\.com$`.
+///
+/// `crates/shopify` on `r0-foundations` gained an equivalent `shopify::ShopDomain` after this
+/// stream branched; at integration, billing should depend on it and drop this type (ADR-131).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShopDomain(String);
 
