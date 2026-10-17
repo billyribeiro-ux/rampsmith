@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 20:45 UTC by the architect session (parallel streams opened).
+Last updated: 2026-10-17 by the architect chat (stream coordination, founder setup guide).
 
 ## Active builder
 
@@ -30,6 +30,21 @@ the ADR index and any PLAN corrections when the streams are integrated after R0 
 Builders do not create or edit an owned path, and R0's remaining steps (Shopify auth, `crypto`,
 `web`, `egress`, `engine`, `ui`) stay with the main builder. Main-line builders keep using
 ADR numbers from 021 upward, below 100.
+
+## Coordination (founder decision, 17 Oct 2026)
+
+- The founder confirmed the streams above. The session that opened them
+  (`session_01VmdvAZ8qrHQ1rJJSj12mUg`) runs the streams and integrates the `ws/` branches. The
+  architect chat (`session_01Xo2TExfkKEuqRyHUMqc1YC`) keeps plan and ADR decisions on `main`,
+  LAUNCH.md, release verification and the founder's check-ins. Neither can message the other;
+  this file is the channel.
+- Every `ws/` branch starts from `e43f546`, which has none of `main`'s rules after `3eac5be`:
+  LAUNCH.md (including section E), the Node 26 LTS rule (ADR-016), the pre-approvals and the
+  current release-verifier. Before a `ws/` branch or `r0-foundations` merges, merge `main` into
+  it, apply "Required corrections" below, and get a release-verifier PASS.
+- `docs/FOUNDER_SETUP.md` is already on `main`, checked against the vendors' documentation on
+  17 Oct 2026. WS-5 adds to it; at integration, `main`'s version is the base.
+- Edit only your own section of this file, and rebase on `origin/main` before every push.
 
 ## Lock rule (apply before building)
 
