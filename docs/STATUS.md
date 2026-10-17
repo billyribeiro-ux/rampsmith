@@ -60,6 +60,10 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
   4. Record the CI log's `node --version` and `process.release.lts` in `docs/evidence/`.
 
   The release-verifier fails R0 until all four are done.
+- **Log retention.** PLAN §21 keeps logs 30 days; Grafana Cloud Free keeps 14 and Pro keeps 30
+  at a cost ([pricing](https://grafana.com/pricing/), read 17 Oct 2026). Keep Grafana Free and
+  archive logs to R2 for 30 days through the collector, after verifying its S3-compatible
+  exporter against R2, and record it in an ADR. The founder can choose Pro at the end instead.
 
 ## Founder approvals
 
