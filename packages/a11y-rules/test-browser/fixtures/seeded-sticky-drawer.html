@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seeded focus obscured by a sticky header and a drawer</title>
+    <!--
+      Seeded: an open, non-modal drawer (#side-drawer) that does not take focus covers
+      #under-drawer, which is already on screen when tabbing reaches it; and a sticky header
+      (#site-header) covers #late-link once the page has scrolled to its end, which tabbing
+      backward reaches without scrolling. Must NOT be reported: #bottom-link and the drawer's
+      own close button.
+    -->
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+      }
+      #site-header {
+        position: sticky;
+        top: 0;
+        height: 120px;
+        background: #fff;
+        border-bottom: 1px solid #ccc;
+        z-index: 3;
+      }
+      .page {
+        position: relative;
+        height: 3000px;
+      }
+      .page a {
+        position: absolute;
+        left: 16px;
+      }
+      #under-drawer {
+        top: 180px;
+        left: auto;
+        right: 40px;
+      }
+      #late-link {
+        top: 2260px;
+      }
+      #bottom-link {
+        top: 2960px;
+      }
+      #side-drawer {
+        position: fixed;
+        top: 120px;
+        right: 0;
+        bottom: 0;
+        width: 300px;
+        background: #f4f4f4;
+        border-left: 1px solid #999;
+        z-index: 4;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      :focus-visible {
+        outline: 3px solid #b3005e;
+      }
+    </style>
+  </head>
+  <body>
+    <header id="site-header"><a href="/">Home</a></header>
+    <div class="page">
+      <a id="under-drawer" href="#offer">Offer details</a>
+      <a id="late-link" href="#late">Late link</a>
+      <a id="bottom-link" href="#bottom">Bottom link</a>
+    </div>
+    <aside id="side-drawer" aria-label="Recently viewed">
+      <button type="button">Close</button>
+    </aside>
+  </body>
+</html>

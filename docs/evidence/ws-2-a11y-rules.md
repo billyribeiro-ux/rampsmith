@@ -168,3 +168,7 @@ dup 80000 320013 26 ms
 After the pre-scan: the 40,000-attribute tag, the same behind a `"` in a name, and an end tag
 with 40,000 attributes are each refused as `too_many_attributes` in under 2 s (6 ms measured),
 and a megabyte of tags with 256 attributes each parses in 390 ms (`test/rich-text.test.ts`).
+
+Commit 6 (`test(a11y-rules): seed focus hidden by a sticky header and by a drawer`): the same
+gate, all passing; `test` → 80 passed; `test:browser` → `Tests 24 passed (24)`, 8.34 s. The
+sticky-header case is found only by the backward pass, as ADR-114 expects.

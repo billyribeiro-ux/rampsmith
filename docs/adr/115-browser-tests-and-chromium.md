@@ -27,7 +27,8 @@ Playwright runs headless on the headless shell unless the `chromium` channel is 
   recorded, and each test asserts the list is empty. The 5-second WAV tone is generated in
   the harness, so no binary fixture is committed.
 - Fixtures: `clean.html`, a Dawn-like product page with no seeded failure on which every check
-  returns nothing and every state opens; one `seeded-*.html` per browser check; and
+  returns nothing (at 1280 × 800 and at 390 × 844) and every state opens; one `seeded-*.html`
+  per browser check, plus `seeded-sticky-drawer.html` for a sticky header and a drawer; and
   `no-states.html`, `sold-out.html`, `guard-checkout.html`, `guard-redirect.html` and
   `guard-pii.html` for the state scripts and their guards.
 - The test launcher reads two optional variables, never read by package code:

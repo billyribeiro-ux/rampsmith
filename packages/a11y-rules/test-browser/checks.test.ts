@@ -161,6 +161,24 @@ describe('checkFocusNotObscured', () => {
   });
 });
 
+describe('checkFocusNotObscured with a sticky header and a drawer', () => {
+  it('finds focus under the drawer going forward and under the header going backward', async () => {
+    const { page } = await load('/seeded-sticky-drawer.html');
+    const result = await checkFocusNotObscured(page);
+    expect(result.status).toBe('complete');
+    const byTarget = new Map(result.findings.map((f) => [f.target.join(''), f.data]));
+    expect([...byTarget.keys()].sort()).toEqual(['#late-link', '#under-drawer']);
+    expect(byTarget.get('#under-drawer')).toEqual({
+      obscuredBy: '#side-drawer',
+      direction: 'forward',
+    });
+    expect(byTarget.get('#late-link')).toEqual({
+      obscuredBy: '#site-header',
+      direction: 'backward',
+    });
+  });
+});
+
 describe('checkReflow', () => {
   it('reports only the fixed-width element and restores the viewport', async () => {
     const { page } = await load('/seeded-reflow.html');
