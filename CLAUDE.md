@@ -1,46 +1,53 @@
-# Rampsmith — project instructions for Claude Code
+# Rampsmith — instructions for every Claude Code session
 
-Rampsmith is a self-serve Shopify app (WordPress in phase 2, any Git-hosted site in phase 3)
-that finds WCAG 2.2 AA failures and fixes them at the source. The full plan is
-`docs/PLAN.md`: read the sections your task touches before writing code. §27 is the
-execution protocol; §5 defines each release's exit criteria.
+**Mission:** deliver a launch-ready Rampsmith (the self-serve Shopify app that finds WCAG 2.2 AA
+failures and fixes them at the source), built end to end and proven by test evidence.
+"Launch-ready" is defined in `docs/LAUNCH.md`. The only things left to the founder are the
+accounts, credentials and decisions listed there.
 
-Current release: **R0 Foundations**, in the order listed in PLAN §27.
+**Read first, every session:** `docs/STATUS.md` (where the build stands, who is working),
+`docs/LAUNCH.md` (scope and founder inputs), `docs/ENVIRONMENT.md` (what this environment can
+run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the execution protocol.
+
+## One builder at a time
+- Before building, apply the lock rule in `docs/STATUS.md`. If another builder is active, do not build.
+- Register your session in STATUS.md when you start. Push real progress at least every 45 minutes,
+  with STATUS.md updated in the same commit.
+- Release branches are `r<N>-<name>` from `main`. A release merges to `main` only when GitHub
+  Actions is green on the pinned toolchains and the `release-verifier` subagent returns PASS.
 
 ## Evidence rules
-- Check every dependency's current version and peer ranges on the live registry
-  (`npm view <pkg> version peerDependencies`, the crates.io API) before adding it. Never
-  use a version from memory. TypeScript stays on 6.x until SvelteKit's peer range allows 7.
-- Check every Shopify (Admin API 2026-10), GitHub and Claude API detail in the official docs
-  at implementation time. If docs and PLAN.md disagree, docs win: write an ADR, fix the plan.
-- Run spikes S-1 to S-5 (PLAN §11, §14) once their prerequisites exist; record the evidence
-  before building anything that depends on them.
+- Check every dependency's current version and peer ranges on the live registry before adding it.
+  Never use a version from memory. TypeScript stays on 6.x until SvelteKit's peer range allows 7.
+- Check every Shopify (Admin API 2026-10), GitHub, Stripe and Claude API detail in official docs
+  at implementation time. Docs beat PLAN.md: write an ADR in `docs/adr/` and correct the plan.
+- "Done" needs evidence: the command, its output, or a CI run link, recorded in `docs/evidence/`.
+- A skipped test is not a pass. A test that needs a founder input stays listed in STATUS.md
+  under "Waiting on founder" until the input exists and the test passes.
+
+## Effort
+- Sessions run at `xhigh` (`.claude/settings.json`). The `release-verifier` and `security-auditor`
+  subagents run at `max`: use them for every release gate and every change to auth, tokens,
+  webhooks, `egress`, encryption or row-level security.
 
 ## Engineering standards (PLAN §8)
-- TypeScript `strict` plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
-  `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `verbatimModuleSyntax`.
-- Zero warnings from `tsc`, `svelte-check`, ESLint and Clippy (`-D warnings`).
-- Svelte 5 runes only; SvelteKit 3 `#lib` alias; Kit config lives in `vite.config.ts`.
-- Rust edition 2024; `unsafe` forbidden; no `unwrap`/`expect` outside tests; `thiserror`
-  in libraries, `anyhow` only in a binary's `main`.
-- pnpm only, installed through mise; Node 26; Rust 1.99.1 via `rust-toolchain.toml`;
-  PostgreSQL 18.
-- Every tenant-owned table goes through `TenantTx` plus row-level security; the isolation
-  suite must pass.
-- Tests first for pure logic. `mise run verify` passes before every commit. Conventional
-  Commits, one logical change per commit.
+- TypeScript `strict` plus the extra flags in PLAN §8. Zero warnings from `tsc`, `svelte-check`,
+  ESLint and Clippy (`-D warnings`). Svelte 5 runes only; SvelteKit 3 `#lib` alias.
+- Rust edition 2024; `unsafe` forbidden; no `unwrap`/`expect` outside tests; `thiserror` in
+  libraries, `anyhow` only in a binary's `main`.
+- Every tenant-owned table goes through `TenantTx` plus row-level security; the isolation suite passes.
+- Tests first for pure logic. `mise run verify` passes before every commit. Conventional Commits.
 
 ## Never
 - Write merchant theme files through any API (ADR-004), or add an overlay or toolbar widget.
 - Use a banned claim from PLAN §3 (compliant, lawsuit-proof, guaranteed, certified) anywhere.
 - Disable, skip or loosen a gate to make it pass.
-- Commit a secret, or log a token, storefront password or personal data.
+- Commit a secret, ask for one in chat, or log a token, storefront password or personal data.
 - Scan an unverified site outside the free-scanner limits, or solve or evade a bot challenge.
 - Use floating tags such as `latest` for images, actions or CDN scripts.
 
-## Working style
-- Drive the build yourself. Decide from evidence and record each decision as
-  `docs/adr/NNN-title.md`. Do not ask the founder questions that research can answer.
-- Stop and ask the founder only for: spending money, production deploys, App Store or
-  WordPress.org submission, legal text, pricing, scope changes, destructive data operations.
-- After each milestone, report in 10 lines or fewer: what shipped, gate results, decisions needed.
+## Founder boundary
+- Stop and ask only for: spending money, production deploys, store submissions, legal text,
+  pricing, scope changes, destructive data operations, and the founder inputs in LAUNCH.md.
+- Write each request under "Waiting on founder" in STATUS.md, then keep working on everything else.
+- Secrets reach the code only through GitHub Actions secrets and Railway variables that the founder sets.
