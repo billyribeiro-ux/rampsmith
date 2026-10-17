@@ -1,0 +1,44 @@
+{
+  "data": {
+    "activeSubscription": {
+      "shop": {
+        "id": "gid://shopify/Shop/5678"
+      },
+      "billingPeriod": "EVERY_30_DAYS",
+      "cancelAtEndOfCycle": false,
+      "trialEndsAt": null,
+      "currentBillingCycle": {
+        "startTime": "2026-10-01T00:00:00Z",
+        "endTime": "2026-10-31T00:00:00Z"
+      },
+      "items": [
+        {
+          "handle": "starter",
+          "price": {
+            "__typename": "FlatRatePrice",
+            "active": true,
+            "currency": "USD",
+            "amount": 79.0
+          }
+        },
+        {
+          "handle": "extra_scans",
+          "price": {
+            "__typename": "TieredPrice",
+            "active": true,
+            "currency": "USD",
+            "tiersMode": "GRADUATED",
+            "tiers": [
+              {
+                "upTo": 100,
+                "amountPerUnit": "0.10",
+                "amount": null
+              }
+            ]
+          }
+        }
+      ],
+      "pendingUpdate": null
+    }
+  }
+}

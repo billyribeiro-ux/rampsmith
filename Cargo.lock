@@ -1434,6 +1434,9 @@ name = "rampsmith-billing"
 version = "0.0.0"
 dependencies = [
  "proptest",
+ "secrecy",
+ "serde",
+ "serde_json",
  "thiserror",
  "time",
 ]

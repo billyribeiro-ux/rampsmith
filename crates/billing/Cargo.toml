@@ -11,8 +11,11 @@ repository.workspace = true
 name = "billing"
 
 [dependencies]
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
-time.workspace = true
+time = { workspace = true, features = ["parsing"] }
 
 [dev-dependencies]
 # move to [workspace.dependencies] at integration (ADR-134; 1.12.0 read from crates.io 2026-10-17)

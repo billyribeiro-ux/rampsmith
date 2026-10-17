@@ -6,6 +6,7 @@
 
 pub mod entitlements;
 pub mod money;
+pub mod partner_api;
 pub mod plan;
 pub mod shopify;
 pub mod usage;
