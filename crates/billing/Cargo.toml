@@ -1,0 +1,21 @@
+[package]
+name = "rampsmith-billing"
+version = "0.0.0"
+description = "Plans, entitlements and Shopify App Pricing plan state for Rampsmith: pure logic, no I/O."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "billing"
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+# move to [workspace.dependencies] at integration (ADR-134; 1.12.0 read from crates.io 2026-10-17)
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+
+[lints]
+workspace = true
