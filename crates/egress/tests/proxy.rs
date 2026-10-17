@@ -26,11 +26,17 @@ const SECRET: &[u8] = b"proxy-tests-secret-0123456789abcdef";
 struct Names(Arc<HashMap<String, Vec<IpAddr>>>);
 
 impl Resolve for Names {
-    async fn resolve(&self, host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
-        self.0
-            .get(host)
-            .map(|ips| ips.iter().map(|ip| SocketAddr::new(*ip, port)).collect())
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "unknown name"))
+    fn resolve(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> impl Future<Output = io::Result<Vec<SocketAddr>>> + Send {
+        std::future::ready(
+            self.0
+                .get(host)
+                .map(|ips| ips.iter().map(|ip| SocketAddr::new(*ip, port)).collect())
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "unknown name")),
+        )
     }
 }
 
