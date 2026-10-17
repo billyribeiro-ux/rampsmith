@@ -8,5 +8,6 @@ pub mod fixes;
 pub mod jobs;
 pub mod occurrences;
 pub mod scans;
+pub mod shopify;
 pub mod sites;
 pub mod tenants;

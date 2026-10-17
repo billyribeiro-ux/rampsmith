@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_tokens\n              set access_ct = $4, refresh_ct = $5, key_id = $6,\n                  access_expires_at = $7, refresh_expires_at = $8,\n                  version = version + 1\n            where tenant_id = $1 and shop_id = $2 and version = $3\n        returning version",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Bytea",
+        "Bytea",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "11777737bca09e3d63f7258cafeda6abe353b5071845e8f0bffcb0936c9de8e7"
+}

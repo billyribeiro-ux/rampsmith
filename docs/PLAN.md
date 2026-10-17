@@ -358,7 +358,7 @@ One PostgreSQL 18 database holds every tenant in a shared schema, isolated twice
 
 - Every tenant-owned table has `tenant_id uuid not null` and a policy `USING (tenant_id = current_setting('app.tenant_id')::uuid)`.
 - The application role has no `BYPASSRLS`. A Rust `TenantTx` type opens each transaction with `SET LOCAL app.tenant_id`, and repository functions accept only `&mut TenantTx`, so unscoped access does not compile.
-- System jobs run as a separate role that must still set the tenant per job. Cross-tenant reads exist only in `rsctl`, and each one is audited.
+- System jobs run as a separate role that must still set the tenant per job. Cross-tenant reads exist only in `rsctl`, and each one is audited. The one exception is `app_shop_by_domain`, which maps a shop domain to its tenant and shop ids after a session token or webhook signature for that domain has been verified (ADR-022).
 - An isolation test suite creates two tenants and asserts that every repository function returns nothing across the boundary.
 - References between tenant-owned rows are composite foreign keys on `(id, tenant_id)`, so a row can never point at another tenant's row, even when written by the owner (ADR-017). The SQL below shows columns; `crates/db/migrations/` holds the full constraints.
 
