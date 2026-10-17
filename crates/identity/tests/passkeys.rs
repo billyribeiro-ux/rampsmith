@@ -50,6 +50,17 @@ async fn identity(opts: PgPoolOptions, conn: PgConnectOptions) -> (Identity, sql
     (id, owner)
 }
 
+/// The software key cannot store resident credentials, so it is shown options that do not ask
+/// for one. The server's options (and its verification) are unchanged.
+fn soft(
+    options: webauthn_authenticator_rs::prelude::CreationChallengeResponse,
+) -> webauthn_authenticator_rs::prelude::CreationChallengeResponse {
+    let mut value = serde_json::to_value(options).unwrap();
+    value["publicKey"]["authenticatorSelection"]["residentKey"] = json!("discouraged");
+    value["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+    serde_json::from_value(value).unwrap()
+}
+
 fn authenticator() -> WebauthnAuthenticator<SoftPasskey> {
     // The software key cannot do user verification; it asserts it, as a platform passkey would.
     WebauthnAuthenticator::new(SoftPasskey::new(true))
@@ -82,7 +93,7 @@ async fn register(
 ) -> (identity::NewSession, String) {
     let (ceremony, options) = id.start_registration(email, "Ada", now()).await.unwrap();
     let credential = key
-        .do_registration(Url::parse(ORIGIN).unwrap(), options)
+        .do_registration(Url::parse(ORIGIN).unwrap(), soft(options))
         .unwrap();
     let credential_id = serde_json::to_value(&credential).unwrap()["id"]
         .as_str()
@@ -158,7 +169,7 @@ async fn a_ceremony_completes_at_most_once(opts: PgPoolOptions, conn: PgConnectO
         .await
         .unwrap();
     let credential = key
-        .do_registration(Url::parse(ORIGIN).unwrap(), options)
+        .do_registration(Url::parse(ORIGIN).unwrap(), soft(options))
         .unwrap();
     id.finish_registration(ceremony, &credential, now())
         .await
@@ -182,7 +193,7 @@ async fn an_expired_ceremony_is_refused(opts: PgPoolOptions, conn: PgConnectOpti
         .await
         .unwrap();
     let credential = key
-        .do_registration(Url::parse(ORIGIN).unwrap(), options)
+        .do_registration(Url::parse(ORIGIN).unwrap(), soft(options))
         .unwrap();
     let late = now() + Duration::minutes(6);
     let err = id
@@ -206,7 +217,7 @@ async fn a_response_for_another_origin_is_rejected_and_consumes_the_ceremony(
     // A browser on another origin reports that origin in clientDataJSON; with no attestation it
     // is not signed, so the server's own origin check is what stops it.
     let honest = key
-        .do_registration(Url::parse(ORIGIN).unwrap(), options)
+        .do_registration(Url::parse(ORIGIN).unwrap(), soft(options))
         .unwrap();
     let mut value = serde_json::to_value(honest).unwrap();
     let client_data = value["response"]["clientDataJSON"]

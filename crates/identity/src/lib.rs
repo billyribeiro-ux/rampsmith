@@ -100,6 +100,24 @@ fn normalise_name(name: &str) -> Result<String, IdentityError> {
     }
 }
 
+/// Asks for a discoverable credential. `webauthn-rs` leaves `residentKey` at "discouraged",
+/// which security keys and Chromium's authenticator honour, and sign-in here is discoverable
+/// (ADR-024), so a non-resident credential could never sign in. The challenge is unchanged and
+/// registration verification does not depend on this field.
+fn require_discoverable(
+    options: CreationChallengeResponse,
+) -> Result<CreationChallengeResponse, IdentityError> {
+    let mut value = serde_json::to_value(options).map_err(|_| IdentityError::Corrupt)?;
+    let selection = value
+        .get_mut("publicKey")
+        .and_then(|pk| pk.get_mut("authenticatorSelection"))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or(IdentityError::Corrupt)?;
+    selection.insert("residentKey".to_owned(), "required".into());
+    selection.insert("requireResidentKey".to_owned(), true.into());
+    serde_json::from_value(value).map_err(|_| IdentityError::Corrupt)
+}
+
 /// The SHA-256 of a session token, which is all the database ever sees.
 fn token_hash(token: &str) -> [u8; 32] {
     Sha256::digest(token.as_bytes()).into()
@@ -140,6 +158,7 @@ impl Identity {
             .webauthn
             .start_passkey_registration(user_id.as_uuid(), &email, &display_name, None)
             .map_err(|e| IdentityError::Config(e.to_string()))?;
+        let options = require_discoverable(options)?;
         let state = serde_json::to_value(&state).map_err(|_| IdentityError::Corrupt)?;
         let pending = PendingUser {
             id: user_id,
@@ -370,6 +389,25 @@ mod tests {
         assert!(normalise_name("   ").is_err());
         assert!(normalise_name(&"x".repeat(101)).is_err());
         assert!(normalise_name("bad\u{0007}name").is_err());
+    }
+
+    #[test]
+    fn registration_asks_for_a_discoverable_credential() {
+        let webauthn = WebauthnBuilder::new(
+            "app.rampsmith.test",
+            &Url::parse("https://app.rampsmith.test").unwrap(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let (options, _) = webauthn
+            .start_passkey_registration(Uuid::nil(), "ada@example.com", "Ada", None)
+            .unwrap();
+        let options = serde_json::to_value(require_discoverable(options).unwrap()).unwrap();
+        let selection = &options["publicKey"]["authenticatorSelection"];
+        assert_eq!(selection["residentKey"], "required");
+        assert_eq!(selection["requireResidentKey"], true);
+        assert_eq!(selection["userVerification"], "required");
     }
 
     #[test]

@@ -71,6 +71,15 @@ async fn call(
     )
 }
 
+/// The software key cannot store resident credentials, so it is shown options that do not ask
+/// for one. The server's options (and its verification) are unchanged.
+fn soft(options: CreationChallengeResponse) -> CreationChallengeResponse {
+    let mut value = serde_json::to_value(options).unwrap();
+    value["publicKey"]["authenticatorSelection"]["residentKey"] = json!("discouraged");
+    value["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+    serde_json::from_value(value).unwrap()
+}
+
 fn key() -> WebauthnAuthenticator<SoftPasskey> {
     WebauthnAuthenticator::new(SoftPasskey::new(true))
 }
@@ -93,7 +102,7 @@ async fn register(
     let options: CreationChallengeResponse =
         serde_json::from_value(started["options"].clone()).unwrap();
     let credential = key
-        .do_registration(Url::parse(ORIGIN).unwrap(), options)
+        .do_registration(Url::parse(ORIGIN).unwrap(), soft(options))
         .unwrap();
     let credential = serde_json::to_value(credential).unwrap();
     let id = credential["id"].as_str().unwrap().to_owned();

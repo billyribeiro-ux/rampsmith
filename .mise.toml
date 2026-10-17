@@ -127,9 +127,13 @@ description = "Vitest in every package"
 depends = ["setup", "web:sync"]
 run = "pnpm run test"
 
+[tasks."build:api"]
+description = "Debug build of the api, which the browser tests run against a real database"
+run = "cargo build --locked -p rampsmith-api --bin api"
+
 [tasks."test:e2e"]
-description = "Playwright: the web app's pages in Chromium, with axe (WCAG 2.2 AA) and keyboard checks"
-depends = ["setup", "web:sync"]
+description = "Playwright: the web app in Chromium against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks"
+depends = ["setup", "web:sync", "build:api"]
 run = "pnpm --filter @rampsmith/web run test:e2e"
 
 [tasks.verify]

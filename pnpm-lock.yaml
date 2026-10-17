@@ -245,6 +245,9 @@ importers:
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
+      postgres:
+        specifier: 3.4.9
+        version: 3.4.9
       svelte:
         specifier: 5.57.2
         version: 5.57.2(@typescript-eslint/types@8.71.2)

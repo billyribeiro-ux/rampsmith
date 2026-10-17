@@ -132,13 +132,36 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
+    services:
+      postgres:
+        # Same image and digest as the rust job: the dashboard tests run the real api.
+        image: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rampsmith
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rampsmith"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rampsmith
+      PGHOST: 127.0.0.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: e2e
       - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           version: ${{ env.MISE_VERSION }}
@@ -155,7 +178,7 @@ jobs:
         run: mise run setup
       - name: Install Playwright's pinned Chromium
         run: pnpm --filter @rampsmith/web exec playwright install --with-deps chromium
-      - name: Browser tests (axe, keyboard)
+      - name: Browser tests (axe, keyboard; real api and database for the dashboard)
         run: mise run test:e2e
       - name: Keep the Playwright report on failure
         if: failure()

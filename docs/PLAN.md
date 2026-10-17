@@ -1440,7 +1440,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 5. [x] Telemetry in all three runtimes (section 21); the web runtime's tracing is configured with its skeleton in step 8 (ADR-019).
 6. [x] `api` skeleton: health and readiness, problem+json errors, OpenAPI generation (ADR-020).
 7. [x] Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here. Built and tested against a mock Shopify (ADR-021, ADR-022); the live development-store run waits for the founder's Partner account (`docs/runbooks/shopify-dev-store.md`).
-8. `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys.
+8. [x] `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys (ADR-023, ADR-024). The emailed sign-in link waits for an email provider account.
 9. `egress` and an `engine` skeleton that scans one page through it. Spikes S-1 and S-2 run here.
 10. `packages/ui` primitives with their axe and keyboard tests.
 
