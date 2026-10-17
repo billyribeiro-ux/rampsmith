@@ -9,6 +9,6 @@ pub mod job;
 pub mod problem;
 mod registry;
 
-pub use job::JobError;
+pub use job::{JobError, ShopifyTokenRefresh};
 pub use problem::{FieldError, Problem, ProblemCode};
 pub use registry::{NamedSchema, schemas};

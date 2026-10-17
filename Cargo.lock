@@ -1711,6 +1711,7 @@ dependencies = [
  "serde",
  "serde_json",
  "utoipa",
+ "uuid",
 ]
 
 [[package]]
@@ -1798,6 +1799,29 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "wiremock",
+]
+
+[[package]]
+name = "rampsmith-shopify-auth"
+version = "0.0.0"
+dependencies = [
+ "jsonwebtoken",
+ "rampsmith-contracts",
+ "rampsmith-crypto",
+ "rampsmith-db",
+ "rampsmith-domain",
+ "rampsmith-queue",
+ "rampsmith-shopify",
+ "secrecy",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
  "wiremock",
 ]
 
@@ -3123,6 +3147,7 @@ checksum = "7cc1186384beb7dd8eedea376413fd654937285ea6c9cfbb928dc3043ea4b606"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

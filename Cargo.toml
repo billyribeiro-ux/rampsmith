@@ -34,6 +34,7 @@ secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 shopify = { package = "rampsmith-shopify", path = "crates/shopify" }
+shopify-auth = { package = "rampsmith-shopify-auth", path = "crates/shopify-auth" }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros", "migrate", "uuid", "time", "json"] }
 telemetry = { package = "rampsmith-telemetry", path = "crates/telemetry" }
 thiserror = "2.0.21"
