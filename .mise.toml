@@ -55,6 +55,10 @@ run = "pnpm run typecheck"
 description = "Unused files, exports and dependencies"
 run = "pnpm run knip"
 
+[tasks."check:claims"]
+description = "Banned claims (PLAN §3) in UI strings, emails, listing and marketing copy"
+run = "node packages/claims-lint/src/main.ts"
+
 [tasks."test:rust"]
 description = "Rust tests through cargo-nextest"
 run = "cargo nextest run --workspace --all-features --locked"

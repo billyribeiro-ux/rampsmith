@@ -1,0 +1,18 @@
+{
+  "name": "@rampsmith/claims-lint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fails the build when a banned claim from PLAN \u00a73 appears in user-facing copy.",
+  "type": "module",
+  "bin": {
+    "claims-lint": "./src/main.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@rampsmith/tsconfig": "workspace:*",
+    "vitest": "5.0.5"
+  }
+}

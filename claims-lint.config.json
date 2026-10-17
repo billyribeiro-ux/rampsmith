@@ -1,0 +1,15 @@
+{
+  "include": [
+    "README.md",
+    "**/messages/**/*.json",
+    "apps/web/src/**/*.{svelte,html}",
+    "apps/web/static/**/*.{html,txt,json}",
+    "**/emails/**/*",
+    "listing/**/*",
+    "extensions/**/locales/**/*.json",
+    "extensions/**/*.liquid",
+    "plugins/wordpress/**/*.{txt,php,pot,po}"
+  ],
+  "exclude": ["packages/claims-lint/**", "docs/**", "CLAUDE.md"],
+  "allowlist": "claims-lint.allow.json"
+}
