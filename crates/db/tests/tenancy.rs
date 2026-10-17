@@ -274,7 +274,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 10] = [
+const TENANT_TABLES: [&str; 11] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -285,6 +285,7 @@ const TENANT_TABLES: [&str; 10] = [
     "fixes",
     "fix_findings",
     "audit_log",
+    "scan_pages",
 ];
 
 #[sqlx::test]
