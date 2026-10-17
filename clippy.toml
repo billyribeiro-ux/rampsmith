@@ -5,3 +5,6 @@ allow-panic-in-tests = true
 allow-print-in-tests = true
 allow-dbg-in-tests = true
 allow-indexing-slicing-in-tests = true
+
+# Product and protocol names that are not code identifiers (".." keeps Clippy's defaults).
+doc-valid-idents = ["PostgreSQL", "UUIDv7", "SvelteKit", "OpenTelemetry", "OpenAPI", "WCAG", "WordPress", "GraphQL", "GitHub", ".."]
