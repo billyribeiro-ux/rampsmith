@@ -1,10 +1,15 @@
 // The in-page probe of the browser checks and interactive-state scripts.
 //
-// `installProbe` is serialized by Playwright (`page.evaluate(installProbe, PROBE_KEY)`) and
-// runs inside the page, so it must be self-contained: every helper is declared inside it and
-// nothing from module scope is referenced. It stores its API under a global symbol
-// (`Symbol.for(PROBE_KEY)`), not a named global, and returns only plain JSON data. It reads
-// the page and moves focus; it never submits forms or follows links itself.
+// `installProbe` is serialized by Playwright and runs inside the page, so it must be
+// self-contained: every helper is declared inside it and nothing from module scope is
+// referenced. src/browser/call.ts installs it with `page.addInitScript` (so it runs before the
+// page's own scripts in every later document) and with `page.evaluate` for the current one,
+// under a random key per page: the page cannot plant a fake probe at a key it does not know.
+// The API is frozen and stored in a non-writable, non-configurable global symbol property, and
+// returns only plain JSON data. It reads the page and moves focus; it never submits forms or
+// follows links itself. It runs in the page's main world, so a hostile page can still mislead
+// it about its own DOM; the network layer (src/states/network-guard.ts) is what enforces the
+// checkout and personal-data guards (ADR-116).
 import type {
   CartForm,
   ClipRect,
@@ -23,8 +28,6 @@ import type {
   Trigger,
   VariantPicker,
 } from './protocol.ts';
-
-export const PROBE_KEY = 'rampsmith.a11y-rules.probe.v1';
 
 export interface ProbeApi {
   prepareTraversal(start: 'top' | 'current'): void;
@@ -53,14 +56,18 @@ export interface ProbeApi {
   variantSignature(): string;
   modalTriggers(exclude: readonly number[]): Trigger[];
   focusElement(id: number): boolean;
+  isFocused(id: number): boolean;
   targetOf(id: number): Target | null;
   quiet(quietMs: number, capMs: number): Promise<void>;
 }
 
 export function installProbe(key: string): void {
+  // Captured first: from an init script these are the browser's own, before page scripts run.
+  const defineProperty = Object.defineProperty;
+  const freeze = Object.freeze;
+  const hasOwn = Object.hasOwn;
   const slot = Symbol.for(key);
-  const host = globalThis as unknown as Record<symbol, unknown>;
-  if (host[slot] !== undefined) return;
+  if (hasOwn(globalThis, slot)) return;
 
   // ---- element identity -------------------------------------------------------------------
   const registry = new Map<number, Element>();
@@ -719,11 +726,26 @@ export function installProbe(key: string): void {
     }
     return null;
   }
+  // A link used as a button is a trigger only when it stays on this document.
+  function staysOnPage(el: Element): boolean {
+    if (!(el instanceof HTMLAnchorElement) || !el.hasAttribute('href')) return true;
+    try {
+      const target = new URL(el.href);
+      const here = new URL(location.href);
+      return (
+        target.origin === here.origin &&
+        target.pathname === here.pathname &&
+        target.search === here.search
+      );
+    } catch {
+      return false;
+    }
+  }
   function navTriggers(): Trigger[] {
     const inNav: Element[] = [];
     const inHeader: Element[] = [];
     for (const el of Array.from(document.querySelectorAll(TOGGLE))) {
-      if (!isMenuToggle(el)) continue;
+      if (!isMenuToggle(el) || !staysOnPage(el)) continue;
       const region = el.localName === 'summary' ? el.parentElement : controlled(el);
       if (el.closest('nav,[role="navigation"]') !== null) inNav.push(el);
       else if (
@@ -800,7 +822,8 @@ export function installProbe(key: string): void {
   function cartForm(): CartForm {
     const forms = Array.from(document.querySelectorAll('form')).filter((form) => {
       try {
-        return /\/cart\/add(?:\.js)?$/.test(new URL(form.action, location.href).pathname);
+        const action = new URL(form.action, document.baseURI);
+        return action.origin === location.origin && /\/cart\/add(?:\.js)?$/.test(action.pathname);
       } catch {
         return false;
       }
@@ -832,44 +855,59 @@ export function installProbe(key: string): void {
     return { found: false, reason: sawButton ? 'sold_out' : 'no_product_form' };
   }
   function describeField(el: Element): FieldDescription {
-    const input = el as HTMLInputElement;
+    const value = (el as Partial<HTMLInputElement>).value;
     return {
       tag: el.localName,
-      type: (el.getAttribute('type') ?? '').toLowerCase(),
+      type: el.localName === 'input' ? (el.getAttribute('type') ?? 'text').toLowerCase() : '',
       name: el.getAttribute('name') ?? '',
       id: el.id,
       autocomplete: (el.getAttribute('autocomplete') ?? '').toLowerCase(),
-      hasValue: typeof input.value === 'string' && input.value !== '',
+      hasValue: typeof value === 'string' && value !== '',
     };
   }
   function describeControl(id: number): ControlDescription | null {
     const el = byId(id);
     if (el === null) return null;
     const anchor = el.closest('a[href]');
-    const submitter = el as HTMLButtonElement;
-    const form: HTMLFormElement | null =
-      el instanceof HTMLButtonElement || el instanceof HTMLInputElement ? submitter.form : null;
+    const submitter = el instanceof HTMLButtonElement || el instanceof HTMLInputElement ? el : null;
+    const form = submitter?.form ?? null;
+    // Every listed element of the form, form-associated custom elements included.
     const fields: FieldDescription[] = [];
     if (form !== null) {
       for (const field of Array.from(form.elements)) {
-        if ((field as HTMLInputElement).disabled) continue;
-        if (!field.matches('input,select,textarea')) continue;
+        if (field.matches(':disabled')) continue;
         fields.push(describeField(field));
       }
     }
-    const formActionAttr = el.getAttribute('formaction');
+    // The reflecting getters resolve against the document's base URL. `formAction` returns the
+    // document URL when the attribute is absent, so the form's own action applies then.
+    const formAction =
+      submitter === null || form === null
+        ? null
+        : submitter.hasAttribute('formaction')
+          ? submitter.formAction
+          : form.action;
+    const formMethod =
+      submitter === null || form === null
+        ? null
+        : submitter.hasAttribute('formmethod')
+          ? submitter.formMethod
+          : form.method;
+    const baseTarget = document.querySelector('base[target]')?.getAttribute('target') ?? '';
+    const ownTarget =
+      anchor !== null
+        ? (anchor as HTMLAnchorElement).target
+        : submitter?.hasAttribute('formtarget') === true
+          ? submitter.formTarget
+          : (form?.target ?? '');
     return {
       tag: el.localName,
       type: (el.getAttribute('type') ?? '').toLowerCase(),
       name: el.getAttribute('name') ?? '',
       href: anchor === null ? null : (anchor as HTMLAnchorElement).href,
-      formAction:
-        formActionAttr !== null
-          ? new URL(formActionAttr, location.href).href
-          : form === null
-            ? null
-            : form.action,
-      formMethod: form === null ? null : form.method,
+      formAction,
+      formMethod,
+      target: ownTarget !== '' ? ownTarget : baseTarget,
       inPaymentWidget:
         el.closest(
           '.shopify-payment-button,shopify-accelerated-checkout,shopify-buy-it-now-button,[data-shopify="payment-button"]',
@@ -930,13 +968,8 @@ export function installProbe(key: string): void {
       ),
     );
     for (const el of candidates) {
-      if (skip.has(el) || !isVisible(el) || !isEnabled(el)) continue;
-      if (
-        !el.matches(TOGGLE) &&
-        !(el.localName === 'a' && (el.getAttribute('href') ?? '#').startsWith('#'))
-      ) {
-        continue;
-      }
+      if (skip.has(el) || !isVisible(el) || !isEnabled(el) || !staysOnPage(el)) continue;
+      if (!el.matches(TOGGLE) && el.localName !== 'a') continue;
       const target = controlled(el);
       const opensDialog =
         el.getAttribute('aria-haspopup')?.toLowerCase() === 'dialog' ||
@@ -955,6 +988,10 @@ export function installProbe(key: string): void {
     if (!(el instanceof HTMLElement || el instanceof SVGElement)) return false;
     el.focus();
     return deepActive() === el;
+  }
+  function isFocused(id: number): boolean {
+    const el = byId(id);
+    return el !== null && deepActive() === el;
   }
   function targetById(id: number): Target | null {
     const el = byId(id);
@@ -1005,12 +1042,13 @@ export function installProbe(key: string): void {
     variantSignature,
     modalTriggers,
     focusElement,
+    isFocused,
     targetOf: targetById,
     quiet,
   };
-  Object.defineProperty(globalThis, slot, {
-    value: api,
-    configurable: true,
+  defineProperty(globalThis, slot, {
+    value: freeze(api),
+    configurable: false,
     enumerable: false,
     writable: false,
   });

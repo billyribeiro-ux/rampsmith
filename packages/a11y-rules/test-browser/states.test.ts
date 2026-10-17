@@ -7,20 +7,28 @@ import {
   openMainNavigation,
   openState,
 } from '../src/index.ts';
-import { launch, openFixture, type FixturePage } from './harness.ts';
+import {
+  launch,
+  openFixture,
+  startFixtureServer,
+  stopFixtureServer,
+  type FixturePage,
+} from './harness.ts';
 
 let browser: Browser;
 let open: FixturePage | null = null;
 
 beforeAll(async () => {
+  await startFixtureServer();
   browser = await launch();
 });
 afterAll(async () => {
   await browser.close();
+  await stopFixtureServer();
 });
 afterEach(async () => {
   if (open !== null) {
-    expect(open.traffic.blocked).toEqual([]);
+    expect(open.blocked).toEqual([]);
     await open.context.close();
     open = null;
   }
@@ -32,7 +40,7 @@ async function load(path: string): Promise<FixturePage> {
 }
 
 function paths(fixture: FixturePage): string[] {
-  return fixture.traffic.served.map((r) => `${r.method} ${r.path}`);
+  return fixture.served().map((r) => `${r.method} ${r.path}`);
 }
 
 describe('on the Dawn-like product page', () => {
@@ -162,8 +170,13 @@ describe('guards', () => {
     const fixture = await load('/guard-redirect.html');
     const outcome = await openCartDrawer(fixture.page);
     expect(outcome).toMatchObject({ status: 'blocked', state: 'cart_drawer', guard: 'checkout' });
-    expect(paths(fixture)).toEqual(['GET /guard-redirect.html', 'POST /cart/add.js']);
-    expect(fixture.page.url()).not.toMatch(/checkout/);
+    // The aborted navigation leaves an error page, so the script reloads where it started.
+    expect(paths(fixture)).toEqual([
+      'GET /guard-redirect.html',
+      'POST /cart/add.js',
+      'GET /guard-redirect.html',
+    ]);
+    expect(fixture.page.url()).toBe(`${fixture.origin}/guard-redirect.html`);
   });
 
   it('keeps the checkout guard on the page after the script returns', async () => {

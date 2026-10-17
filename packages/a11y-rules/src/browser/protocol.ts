@@ -105,9 +105,12 @@ export interface ControlDescription {
   /** Resolved action of the form the control submits, or `null`. */
   readonly formAction: string | null;
   readonly formMethod: string | null;
+  /** The browsing context it would load into: the link's `target`, or the submitter's
+   * `formtarget`, else the form's `target`; empty for the same window. */
+  readonly target: string;
   /** Inside an accelerated-checkout widget such as a "Buy it now" button. */
   readonly inPaymentWidget: boolean;
-  /** Enabled fields of the form the control submits. */
+  /** Enabled listed elements of the form the control submits, custom elements included. */
   readonly fields: readonly FieldDescription[];
   readonly pageUrl: string;
 }
@@ -124,4 +127,8 @@ export type VariantPicker =
 /** Whether activating a control could enter checkout or submit personal data. */
 export type GuardVerdict =
   | { readonly safe: true }
-  | { readonly safe: false; readonly guard: 'checkout' | 'personal_data'; readonly detail: string };
+  | {
+      readonly safe: false;
+      readonly guard: 'checkout' | 'personal_data' | 'navigation';
+      readonly detail: string;
+    };

@@ -18,7 +18,14 @@ export {
   type SkippedRule,
 } from './data/rich-text.ts';
 export { RULES, type RuleMeta } from './rules.ts';
-export { guardCheckout, type CheckoutGuard } from './states/network-guard.ts';
+export {
+  GuardSetupError,
+  guardCheckout,
+  scanContextOptions,
+  type CheckoutGuard,
+  type GuardKind,
+  type GuardTrip,
+} from './states/network-guard.ts';
 export {
   changeVariant,
   openCartDrawer,

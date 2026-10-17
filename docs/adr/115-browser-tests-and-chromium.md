@@ -1,7 +1,7 @@
 # ADR-115: Browser tests on local fixtures; Playwright's Chromium in CI
 
 - Status: Accepted
-- Date: 2026-10-17
+- Date: 2026-10-17 (fixture server revised after the security audit of `5bd9f99`, H1)
 - Stream: WS-2 (custom checks and interactive states)
 
 ## Context
@@ -22,15 +22,21 @@ Playwright runs headless on the headless shell unless the `chromium` channel is 
   engine supplies the `Page`; an exact peer keeps the engine on the Playwright the rules were
   tested against) and as a dev dependency for its tests.
 - `pnpm --filter @rampsmith/a11y-rules run test:browser` runs `test-browser/**/*.test.ts` in one
-  worker, one file at a time, one Chromium per file. Fixtures are local HTML files served
-  through `context.route` on `http://shop.fixture.test`; every other request is aborted and
-  recorded, and each test asserts the list is empty. The 5-second WAV tone is generated in
-  the harness, so no binary fixture is committed.
+  worker, one file at a time, one Chromium per file. Fixtures are local HTML files served by a
+  Node HTTP server on the loopback interface (`127.0.0.1`, a random port), because the checkout
+  guard fetches same-store requests itself (`route.fetch`, ADR-116) and request interception
+  alone cannot answer it; the server also plays the hostile store (redirects into checkout) and
+  logs every request, which is the witness for the guard tests. A context route aborts and
+  records every request to any other origin, and each test asserts the list is empty: nothing
+  leaves the machine. Every fixture context is created with `scanContextOptions()`, except the
+  one test that proves the guard refuses a context allowing Service Workers (loopback is a
+  secure context, so pages there can register them). The 5-second WAV tone is generated in the
+  harness, so no binary fixture is committed.
 - Fixtures: `clean.html`, a Dawn-like product page with no seeded failure on which every check
   returns nothing (at 1280 × 800 and at 390 × 844) and every state opens; one `seeded-*.html`
   per browser check, plus `seeded-sticky-drawer.html` for a sticky header and a drawer; and
-  `no-states.html`, `sold-out.html`, `guard-checkout.html`, `guard-redirect.html` and
-  `guard-pii.html` for the state scripts and their guards.
+  `no-states.html`, `sold-out.html`, `nav-navigates.html` and the `guard-*.html` fixtures for
+  the state scripts and their guards (ADR-116).
 - The test launcher reads two optional variables, never read by package code:
   `CHROMIUM_EXECUTABLE_PATH` and `CHROMIUM_ARGS` (a JSON array). Without them it launches
   Playwright's own Chromium.

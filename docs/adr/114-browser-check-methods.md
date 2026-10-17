@@ -1,7 +1,7 @@
 # ADR-114: How the browser checks decide
 
 - Status: Accepted
-- Date: 2026-10-17
+- Date: 2026-10-17 (probe installation revised after the security audit of `5bd9f99`, M4)
 - Stream: WS-2 (custom checks and interactive states)
 
 ## Context
@@ -29,10 +29,15 @@ documents read on 2026-10-17 set what fails:
 
 ## Decision
 
-- **Probe.** One self-contained function, `installProbe`, is serialized into the page with
-  `page.evaluate` and stores its API under `Symbol.for('rampsmith.a11y-rules.probe.v1')`. It
-  returns JSON only and is reinstalled after a navigation. Targets use axe-core's format (one
-  selector per shadow-root boundary) so the engine merges them with axe-core results.
+- **Probe.** One self-contained function, `installProbe`, is serialized into the page under a
+  random key per page: as an init script (`page.addInitScript`, so it runs before the page's own
+  scripts in every later document) and with `page.evaluate` in the current document. Its API is
+  frozen in a non-writable, non-configurable global symbol property, so a page can neither
+  plant a fake probe nor replace the real one. It returns JSON only. It runs in the page's main
+  world, so a hostile page can mislead the checks about its own markup; that changes only that
+  page's findings, and the state guards do not rely on it (ADR-116). Targets use axe-core's
+  format (one selector per shadow-root boundary) so the engine merges them with axe-core
+  results.
 - **Time cap.** Every check runs under `runCapped(timeoutMs)`: loops stop at the deadline, and
   the result returns within the cap plus at most 1 s for in-flight work and 2 s for cleanup,
   with `status` `complete`, `timed_out` (with what was found) or `error` (first line only).

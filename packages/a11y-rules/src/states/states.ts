@@ -1,15 +1,16 @@
 // Interactive-state scripts (PLAN §5 R1, §11 step 5): open the main navigation by keyboard,
 // add an in-stock item and open the cart drawer, change a variant, open the first modal or
 // popup. Each returns the changed region's selector for a scoped re-check, or a typed reason.
-// Every control is described and guarded before it is activated, and a network guard,
-// installed before the first action and kept for the page's life, stops any request into
-// checkout (ADR-116).
-import type { Page } from 'playwright-core';
+// Every control is described and guarded before it is activated, and the network guard,
+// installed on the context before the first action and kept for its life, stops checkout,
+// personal-data posts, off-store navigation and new windows (ADR-116). A script that
+// navigated the page away brings it back to where it started.
+import type { JSHandle, Page } from 'playwright-core';
 import { probe } from '../browser/call.ts';
 import type { Target, Trigger } from '../browser/protocol.ts';
 import type { PageState } from '../types.ts';
-import { guardControl, isCartAddUrl } from './guards.ts';
-import { guardCheckout } from './network-guard.ts';
+import { guardControl, isCartAddUrl, readControlDescription } from './guards.ts';
+import { GuardSetupError, guardCheckout, type CheckoutGuard } from './network-guard.ts';
 
 export type InteractiveState = Exclude<PageState, 'default'>;
 
@@ -39,7 +40,7 @@ export type StateOutcome =
   | {
       readonly status: 'blocked';
       readonly state: InteractiveState;
-      readonly guard: 'checkout' | 'personal_data';
+      readonly guard: 'checkout' | 'personal_data' | 'navigation';
       readonly detail: string;
     }
   | { readonly status: 'timed_out'; readonly state: InteractiveState }
@@ -55,11 +56,22 @@ interface Session {
   readonly page: Page;
   readonly state: InteractiveState;
   cancelled(): boolean;
+  /** Waits for the DOM to go quiet, and for any navigation the script started to commit. */
+  settle(capMs?: number): Promise<void>;
 }
 
 type Body = (session: Session) => Promise<StateOutcome>;
 
 const GRACE_MS = 1_000;
+
+/** The probe returned a description the guards cannot read; refuse rather than guess. */
+const UNREADABLE = (state: InteractiveState): StateOutcome => ({
+  status: 'blocked',
+  state,
+  guard: 'checkout',
+  detail: 'unreadable control description',
+});
+const RESTORE_MS = 10_000;
 
 function withoutHash(url: string): string {
   const hash = url.indexOf('#');
@@ -78,11 +90,39 @@ async function run(
   options: StateOptions,
   body: Body,
 ): Promise<StateOutcome> {
-  const guard = await guardCheckout(page);
-  const blockedBefore = guard.blocked.length;
+  let guard: CheckoutGuard;
+  try {
+    guard = await guardCheckout(page);
+  } catch (error: unknown) {
+    if (error instanceof GuardSetupError) {
+      return { status: 'blocked', state, guard: 'checkout', detail: error.message };
+    }
+    return { status: 'error', state, error: firstLine(error) };
+  }
+  const tripsBefore = guard.trips.length;
+  const navigationsBefore = guard.navigations;
+  const startUrl = page.url();
+  const awaitNavigation = async (timeoutMs: number): Promise<void> => {
+    if (guard.navigations === navigationsBefore) return;
+    await guard.idle(timeoutMs);
+    await page
+      .waitForURL((u) => withoutHash(u.href) !== withoutHash(startUrl), {
+        waitUntil: 'commit',
+        timeout: timeoutMs,
+      })
+      .catch(() => undefined);
+  };
+  const settleSession = async (capMs = 2_000): Promise<void> => {
+    await probe(page, 'quiet', 200, capMs).catch(() => undefined);
+    await awaitNavigation(capMs);
+    await page.waitForLoadState('load', { timeout: capMs }).catch(() => undefined);
+  };
+  const startDocument: JSHandle<Document> | null = await page
+    .evaluateHandle(() => document)
+    .catch(() => null);
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const work = body({ page, state, cancelled: () => cancelled }).catch(
+  const work = body({ page, state, cancelled: () => cancelled, settle: settleSession }).catch(
     (error: unknown): StateOutcome => ({ status: 'error', state, error: firstLine(error) }),
   );
   const capped = new Promise<StateOutcome>((resolve) => {
@@ -94,11 +134,27 @@ async function run(
     cancelled = true;
     await Promise.race([work, new Promise((resolve) => setTimeout(resolve, GRACE_MS))]);
   }
-  const stopped = guard.blocked[blockedBefore];
-  if (stopped !== undefined) {
-    return { status: 'blocked', state, guard: 'checkout', detail: `request to ${stopped} stopped` };
+  await guard.idle(RESTORE_MS);
+  await awaitNavigation(RESTORE_MS);
+  await restore(page, startUrl, startDocument);
+  const trip = guard.trips[tripsBefore];
+  if (trip !== undefined) {
+    return { status: 'blocked', state, guard: trip.guard, detail: trip.detail };
   }
   return outcome;
+}
+
+/**
+ * Reloads the starting URL when the script replaced the page's document, including with the
+ * error page an aborted navigation leaves.
+ */
+async function restore(page: Page, url: string, start: JSHandle<Document> | null): Promise<void> {
+  await page.waitForLoadState('load', { timeout: RESTORE_MS }).catch(() => undefined);
+  const sameDocument =
+    start !== null && (await start.evaluate((doc) => doc === document).catch(() => false));
+  await start?.dispose().catch(() => undefined);
+  if (sameDocument && withoutHash(page.url()) === withoutHash(url)) return;
+  await page.goto(url, { waitUntil: 'load', timeout: RESTORE_MS }).catch(() => undefined);
 }
 
 /** Focuses the trigger and presses `key`, after the guards approve it and before the cap. */
@@ -108,20 +164,19 @@ async function activate(
   key: string,
 ): Promise<StateOutcome | 'activated' | 'skipped'> {
   const { page, state } = session;
-  const description = await probe(page, 'describeControl', trigger.id);
-  if (description === null) return 'skipped';
+  const raw: unknown = await probe(page, 'describeControl', trigger.id);
+  if (raw === null) return 'skipped';
+  const description = readControlDescription(raw);
+  if (description === null) return UNREADABLE(state);
   const verdict = guardControl(description);
   if (!verdict.safe) {
     return { status: 'blocked', state, guard: verdict.guard, detail: verdict.detail };
   }
   if (session.cancelled() || !(await probe(page, 'focusElement', trigger.id))) return 'skipped';
-  if (session.cancelled()) return 'skipped';
+  // The page may move focus between the guard's check and the key press; look again.
+  if (session.cancelled() || !(await probe(page, 'isFocused', trigger.id))) return 'skipped';
   await page.keyboard.press(key);
   return 'activated';
-}
-
-async function settle(page: Page, capMs = 2_000): Promise<void> {
-  await probe(page, 'quiet', 200, capMs);
 }
 
 /** Opens the main navigation with the keyboard (Enter on its toggle). */
@@ -138,7 +193,7 @@ export async function openMainNavigation(
       const step = await activate(session, trigger, 'Enter');
       if (step === 'skipped') continue;
       if (step !== 'activated') return step;
-      await settle(page, 1_500);
+      await session.settle(1_500);
       if (withoutHash(page.url()) !== url)
         return { status: 'not_found', state, reason: 'navigated_away' };
       if (await probe(page, 'isExpanded', trigger.id)) {
@@ -159,8 +214,10 @@ export async function openCartDrawer(
   return run(page, state, options, async (session) => {
     const form = await probe(page, 'cartForm');
     if (!form.found) return { status: 'not_found', state, reason: form.reason };
-    const description = await probe(page, 'describeControl', form.button);
-    if (description === null) return { status: 'not_found', state, reason: 'no_product_form' };
+    const raw: unknown = await probe(page, 'describeControl', form.button);
+    if (raw === null) return { status: 'not_found', state, reason: 'no_product_form' };
+    const description = readControlDescription(raw);
+    if (description === null) return UNREADABLE(state);
     const verdict = guardControl(description);
     if (!verdict.safe) {
       return { status: 'blocked', state, guard: verdict.guard, detail: verdict.detail };
@@ -174,7 +231,7 @@ export async function openCartDrawer(
     if (step === 'skipped') return { status: 'not_found', state, reason: 'no_product_form' };
     if (step !== 'activated') return step;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      await settle(page, 1_500);
+      await session.settle(1_500);
       if (withoutHash(page.url()) !== url) {
         return { status: 'not_found', state, reason: 'navigated_away' };
       }
@@ -200,7 +257,7 @@ export async function changeVariant(page: Page, options: StateOptions = {}): Pro
     const step = await activate(session, { id: picker.focus, target: trigger }, key);
     if (step === 'skipped') return { status: 'not_found', state, reason: 'no_variant_picker' };
     if (step !== 'activated') return step;
-    await settle(page);
+    await session.settle();
     // Themes record the variant in the query string; only a new path is a navigation.
     if (withoutHash(page.url().split('?')[0] ?? '') !== url) {
       return { status: 'not_found', state, reason: 'navigated_away' };
@@ -231,7 +288,7 @@ export async function openFirstModal(
       const step = await activate(session, trigger, 'Enter');
       if (step === 'skipped') continue;
       if (step !== 'activated') return step;
-      await settle(page, 1_500);
+      await session.settle(1_500);
       if (withoutHash(page.url()) !== url)
         return { status: 'not_found', state, reason: 'navigated_away' };
       const fresh = (await probe(page, 'overlays')).filter((id) => !known.has(id));

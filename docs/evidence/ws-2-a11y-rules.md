@@ -208,3 +208,50 @@ aria-labelledby target once", "checks hostile alt text in linear time"),
 `test/media-alt.test.ts` ("filenamePattern on hostile alt text"), `test/menu.test.ts`
 ("compares destinations in linear time"), and `test/property.test.ts` ("builds the same tree
 and offsets whatever the chunk size").
+
+## 8. Security audit of `5bd9f99`: guard findings (H1, M4, M5, L8, L9)
+
+The auditor's `a11y-probe/guards.mjs`, run against the new guards (with `target: ''` added to
+its control shape, a field the probe now always reports):
+
+```console
+guardControl: /cart/add form with return_to=/checkout    {"safe":false,"guard":"checkout","detail":"field return_to"}
+isCheckoutRequest POST /cart/add body return_to=%2Fcheckout              true    # audit: false
+isCheckoutRequest POST /cart/update body checkout=                       true    # audit: false
+isCheckoutRequest POST /cart body check%6Fut=                            true    # audit: false
+isCheckoutUrl /check%6Fut                                                true    # audit: false
+isCheckoutUrl /%63heckouts/cn/x                                          true    # audit: false
+isCheckoutUrl /discount/SAVE?redirect=/checkout                          true    # audit: false
+isCheckoutUrl /cart/add?id=1&return_to=/checkout                         true    # audit: false
+guardControl link to off-store https://evil.example/     {"safe":false,"guard":"navigation","detail":"link leaves the store"}
+guardControl link javascript:window.open(...)            {"safe":false,"guard":"navigation","detail":"link is not http(s)"}
+guardControl form-associated custom element              {"safe":false,"guard":"personal_data","detail":"custom form control gift-email"}
+guardControl pay.shopify.com link                        {"safe":false,"guard":"navigation","detail":"link leaves the store"}
+```
+
+Measured while building the redirect guard: with the first design (fulfil the 302 and let the
+browser follow), the two-hop fixture `guard-chain.html` returned `not_found` with no trip,
+because Chromium followed `/hop` without the context route seeing it; the guard now follows each
+hop itself and the test passes. The Playwright facts quoted in ADR-116 were read from
+`node_modules/playwright-core/types/types.d.ts` ("The handler will only be called for the first
+url if the response is a redirect") and its server bundle (the `serviceWorkers: 'block'` init
+script and `BrowserContextAPIRequestContext._defaultOptions`, which uses the context or launch
+proxy). The Shop Pay URL shapes come from
+https://shopify.dev/docs/api/hydrogen/latest/shop-pay/get-shop-pay-button-url.
+
+Regression tests: `test/guards.test.ts` (every probe line, `readControlDescription`,
+`screenRequest`), and `test-browser/guards.test.ts`: "stops a form post the server redirects into
+checkout", "meets every hop of a redirect chain", "closes a popup the theme opens and stops its
+checkout request", "refuses a form or button that targets a new window", "stops a cart post that
+carries return_to", "blocks service worker registration in a scan context", "refuses to run in a
+context that lets pages register service workers", "ignores a fake probe planted by the page",
+"refuses a form that holds a form-associated custom element", "blocks a page post to a non-cart
+endpoint while guarded", "never triggers an off-store link and stops a scripted off-store
+navigation", "brings the page back after a script navigated it away".
+
+Gate for this commit (`fix(a11y-rules): guard the whole context ...`): `pnpm install`, `lint`,
+`format:check`, `typecheck`, `knip` all pass; `pnpm --filter @rampsmith/a11y-rules run test` →
+`Test Files 8 passed (8)`, `Tests 102 passed (102)`; `test:browser` (same variables as
+section 5) → `Test Files 3 passed (3)`, `Tests 36 passed (36)`, 13.11 s; claims-lint → no banned
+claims; `pnpm install --frozen-lockfile` passes. The workspace-wide `pnpm run test` still fails
+only in `packages/queue` for want of `DATABASE_URL`.

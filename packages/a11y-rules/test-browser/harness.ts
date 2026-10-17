@@ -1,22 +1,18 @@
-// Browser test harness: launches one Chromium and serves the local fixtures through request
-// interception, so no request ever leaves the process (ADR-115).
+// Browser test harness: one Chromium, and the fixtures served by a loopback HTTP server so the
+// checkout guard's `route.fetch` reaches them as it reaches a store (ADR-115). Requests to any
+// other origin are aborted and recorded; each test asserts there were none.
 //
 // CI uses the Chromium bundled with the locked playwright-core (installed by
 // `playwright-core install --with-deps --only-shell chromium`). Environments that cannot
 // download it point CHROMIUM_EXECUTABLE_PATH at another build and may pass CHROMIUM_ARGS,
 // a JSON array of extra switches; only this test launcher reads either variable.
 import { readFile } from 'node:fs/promises';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { extname, join, normalize } from 'node:path';
-import {
-  chromium,
-  type Browser,
-  type BrowserContext,
-  type Page,
-  type Request,
-  type Route,
-} from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import { scanContextOptions } from '../src/index.ts';
 
-const ORIGIN = 'http://shop.fixture.test';
 const FIXTURES = join(import.meta.dirname, 'fixtures');
 
 function extraArgs(): string[] {
@@ -38,11 +34,15 @@ export async function launch(): Promise<Browser> {
   });
 }
 
-/** Every request the fixture site saw, for assertions about what a script did. */
-interface Traffic {
-  readonly served: { readonly method: string; readonly path: string; readonly body: string }[];
-  readonly blocked: string[];
+interface Served {
+  readonly method: string;
+  readonly path: string;
+  readonly body: string;
 }
+
+const log: Served[] = [];
+let server: Server | null = null;
+let origin = '';
 
 const TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
@@ -73,64 +73,125 @@ function toneWav(seconds = 5): Buffer {
   return buffer;
 }
 
-async function serve(route: Route, request: Request, traffic: Traffic): Promise<void> {
-  const url = new URL(request.url());
-  if (url.origin !== ORIGIN) {
-    traffic.blocked.push(request.url());
-    await route.abort('blockedbyclient');
-    return;
-  }
-  traffic.served.push({
-    method: request.method(),
-    path: url.pathname,
-    body: request.postData() ?? '',
-  });
-  if (url.pathname === '/media/tone.wav') {
-    await route.fulfill({ status: 200, contentType: 'audio/wav', body: toneWav() });
-    return;
-  }
-  if (url.pathname === '/cart/add.js' || url.pathname === '/cart/add') {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"items":[]}' });
-    return;
-  }
-  if (/^\/(?:checkouts?|cart\/checkout)(?:\/|$)/.test(url.pathname)) {
-    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>checkout</p>' });
-    return;
-  }
-  const relative = normalize(url.pathname).replace(/^(\.\.(\/|\\|$))+/, '');
+const SERVICE_WORKER = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (event) => event.respondWith(fetch(event.request)));
+`;
+
+function send(res: ServerResponse, status: number, type: string, body: string | Buffer): void {
+  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
+  res.end(body);
+}
+
+function redirect(res: ServerResponse, location: string): void {
+  res.writeHead(302, { location, 'cache-control': 'no-store' });
+  res.end();
+}
+
+async function respond(req: IncomingMessage, res: ServerResponse, body: string): Promise<void> {
+  const url = new URL(req.url ?? '/', origin);
+  log.push({ method: req.method ?? 'GET', path: url.pathname, body });
+  const path = url.pathname;
+  // Shopify answers a form post with a redirect; the `fixture` parameter makes it hostile.
+  const fixture = url.searchParams.get('fixture');
+  if (path === '/media/tone.wav') send(res, 200, 'audio/wav', toneWav());
+  else if (path === '/sw.js') send(res, 200, 'text/javascript', SERVICE_WORKER);
+  else if (path === '/cart/add.js') send(res, 200, 'application/json', '{"items":[]}');
+  else if (path === '/cart/add' && fixture === 'to-checkout') {
+    redirect(res, '/checkouts/cn/fixture-token');
+  } else if (path === '/cart/add' && fixture === 'chain') redirect(res, '/hop');
+  else if (path === '/cart/add') redirect(res, '/cart');
+  else if (path === '/hop') redirect(res, '/checkouts/cn/fixture-token');
+  else if (/^\/(?:checkouts?|cart\/checkout)(?:\/|$)/.test(path)) {
+    send(res, 200, 'text/html', '<p>checkout</p>');
+  } else if (path === '/cart') send(res, 200, 'text/html', '<!doctype html><title>Cart</title>');
+  else if (req.method !== 'GET') send(res, 200, 'application/json', '{}');
+  else await serveFile(res, path);
+}
+
+async function serveFile(res: ServerResponse, path: string): Promise<void> {
+  const relative = normalize(path).replace(/^(\.\.(\/|\\|$))+/, '');
   const file = join(FIXTURES, relative);
   if (!file.startsWith(FIXTURES)) {
-    await route.fulfill({ status: 404, body: 'not found' });
+    send(res, 404, 'text/plain', 'not found');
     return;
   }
   try {
-    const body = await readFile(file);
-    await route.fulfill({
-      status: 200,
-      contentType: TYPES[extname(file)] ?? 'application/octet-stream',
-      body,
-    });
+    send(res, 200, TYPES[extname(file)] ?? 'application/octet-stream', await readFile(file));
   } catch {
-    await route.fulfill({ status: 404, body: 'not found' });
+    send(res, 404, 'text/plain', 'not found');
+  }
+}
+
+/** Starts the loopback fixture server for this test file. */
+export async function startFixtureServer(): Promise<void> {
+  if (server !== null) return;
+  const s = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      respond(req, res, Buffer.concat(chunks).toString('utf8')).catch(() => {
+        send(res, 500, 'text/plain', 'error');
+      });
+    });
+  });
+  await new Promise<void>((resolve) => s.listen(0, '127.0.0.1', resolve));
+  origin = `http://127.0.0.1:${String((s.address() as AddressInfo).port)}`;
+  server = s;
+}
+
+export async function stopFixtureServer(): Promise<void> {
+  const s = server;
+  server = null;
+  if (s !== null) {
+    await new Promise<void>((resolve) => {
+      s.close(() => {
+        resolve();
+      });
+    });
   }
 }
 
 export interface FixturePage {
   readonly context: BrowserContext;
   readonly page: Page;
-  readonly traffic: Traffic;
+  /** Requests the fixture server received since this fixture opened. */
+  served(): readonly Served[];
+  /** Requests to any other origin, all aborted. */
+  readonly blocked: string[];
+  readonly origin: string;
 }
 
-/** A fresh context at `viewport`, with the fixture site mounted at ORIGIN. */
+export interface FixtureOptions {
+  readonly viewport?: { width: number; height: number };
+  /** Leave Service Workers allowed, to prove the guard refuses such a context. */
+  readonly allowServiceWorkers?: boolean;
+}
+
+/** A fresh scan context with the fixture site at `path`. */
 export async function openFixture(
   browser: Browser,
   path: string,
-  viewport = { width: 1280, height: 800 },
+  options: FixtureOptions = {},
 ): Promise<FixturePage> {
-  const context = await browser.newContext({ viewport, locale: 'en-US', timezoneId: 'UTC' });
-  const traffic: Traffic = { served: [], blocked: [] };
-  await context.route('**/*', (route, request) => serve(route, request, traffic));
+  if (server === null) throw new Error('call startFixtureServer() in beforeAll');
+  const context = await browser.newContext({
+    ...(options.allowServiceWorkers === true ? {} : scanContextOptions()),
+    viewport: options.viewport ?? { width: 1280, height: 800 },
+    locale: 'en-US',
+    timezoneId: 'UTC',
+  });
+  const blocked: string[] = [];
+  await context.route('**/*', async (route, request) => {
+    if (new URL(request.url()).origin === origin) {
+      await route.continue();
+      return;
+    }
+    blocked.push(request.url());
+    await route.abort('blockedbyclient');
+  });
+  const start = log.length;
   const page = await context.newPage();
-  await page.goto(`${ORIGIN}${path}`, { waitUntil: 'load' });
-  return { context, page, traffic };
+  await page.goto(`${origin}${path}`, { waitUntil: 'load' });
+  return { context, page, served: () => log.slice(start), blocked, origin };
 }

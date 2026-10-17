@@ -8,21 +8,29 @@ import {
   checkTextSpacing,
   type CheckResult,
 } from '../src/index.ts';
-import { launch, openFixture, type FixturePage } from './harness.ts';
+import {
+  launch,
+  openFixture,
+  startFixtureServer,
+  stopFixtureServer,
+  type FixturePage,
+} from './harness.ts';
 
 let browser: Browser;
 let open: FixturePage | null = null;
 
 beforeAll(async () => {
+  await startFixtureServer();
   browser = await launch();
 });
 afterAll(async () => {
   await browser.close();
+  await stopFixtureServer();
 });
 afterEach(async () => {
   if (open !== null) {
     // No fixture may reach the network: every request stays on the fixture origin.
-    expect(open.traffic.blocked).toEqual([]);
+    expect(open.blocked).toEqual([]);
     await open.context.close();
     open = null;
   }
@@ -32,7 +40,7 @@ async function load(
   path: string,
   viewport?: { width: number; height: number },
 ): Promise<FixturePage> {
-  open = await openFixture(browser, path, viewport);
+  open = await openFixture(browser, path, viewport === undefined ? {} : { viewport });
   return open;
 }
 
