@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 by the architect session (initial version).
+Last updated: 2026-10-17 by the architect session (Node.js 24.22.0 requirement, ADR-016).
 
 ## Active builder
 
@@ -20,6 +20,23 @@ A builder is active, and you must not build, if either is true:
    (`gh api repos/billyribeiro-ux/rampsmith/branches`, then each branch's latest commit date).
 
 A PENDING run older than 10 hours whose branch has had no push for 3 hours is stale; ignore it.
+
+## Required corrections (apply before the affected work merges)
+
+- **Node.js 24.22.0, a founder requirement (17 Oct 2026; ADR-016).** The R0 session started from
+  `3eac5be`, whose plan pinned Node 26, and `r0-foundations` at `f8c712c` pins it: `.mise.toml`
+  has `node = "26.12.0"`; the root `package.json` has `engines.node` `>=26.12.0 <27` and
+  `@types/node` `26.6.5`; ADR-014 cites `node-linux-x64@26.12.0`. Before `r0-foundations`
+  merges, merge `main` into it, then:
+  1. Set every Node pin listed in ADR-016 to 24.22.0, including any CI workflow or Dockerfile
+     added after `f8c712c`; regenerate `pnpm-lock.yaml`; switch ADR-014's sandbox binary to
+     `node-linux-x64@24.22.0` (on npm since 2026-10-15).
+  2. Add the `verify` check that fails when any Node pin disagrees with `.mise.toml`.
+  3. Add ADR-016 to `docs/adr/README.md`. ADR numbers on `main` are fixed: if the branch has
+     its own 016 by then, renumber the branch's.
+  4. Record `node --version` from the CI log in `docs/evidence/`.
+
+  The release-verifier fails R0 until all four are done.
 
 ## Progress (scope and evidence rules: docs/LAUNCH.md)
 

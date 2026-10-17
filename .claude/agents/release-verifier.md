@@ -20,7 +20,10 @@ For the release you are given:
    - dependency versions against the live registry and their peer ranges;
    - banned claims from PLAN section 3 anywhere in strings, templates, listing copy or pages;
    - every tenant-owned table covered by row-level security and by the isolation suite;
-   - tests that pass only because a founder input is missing.
+   - tests that pass only because a founder input is missing;
+   - any Node.js pin that differs from ADR-016: 24.22.0 in `.mise.toml`, `engines.node` with
+     `engineStrict: true`, both Node Dockerfiles, `node --version` in the CI logs, and
+     `@types/node` on 24.x.
 4. Return one line per criterion: PASS or FAIL, then the evidence (command and output excerpt,
    or the CI run link). Anything not proven is FAIL. End with an overall PASS only if every
    criterion passed.
