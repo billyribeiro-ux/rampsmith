@@ -26,6 +26,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [018](018-job-queue-protocol.md) | Job queue protocol details | Accepted |
 | [019](019-telemetry.md) | Telemetry wiring | Accepted |
 | [020](020-api-skeleton.md) | api skeleton, OpenAPI pipeline and images | Accepted |
+| [021](021-envelope-encryption.md) | Envelope encryption of secrets at rest | Accepted |
 
 ## Template
 
