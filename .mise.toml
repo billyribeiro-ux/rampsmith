@@ -27,6 +27,8 @@ SQLX_OFFLINE = "true"
 # ---------------------------------------------------------------------------
 
 [tasks.setup]
+# Every JavaScript task depends on this, so the gate fails on a lockfile or build-script
+# drift that an already-populated node_modules would hide.
 description = "Install JavaScript dependencies exactly as locked"
 run = "pnpm install --frozen-lockfile"
 
@@ -62,22 +64,27 @@ run = "cargo sqlx prepare --workspace --check -- --all-targets --all-features"
 
 [tasks."check:eslint"]
 description = "ESLint with zero warnings allowed"
+depends = ["setup"]
 run = "pnpm run lint"
 
 [tasks."check:prettier"]
 description = "Prettier, check only"
+depends = ["setup"]
 run = "pnpm run format:check"
 
 [tasks."check:types"]
 description = "tsc --noEmit and svelte-check --fail-on-warnings in every package"
+depends = ["setup"]
 run = "pnpm run typecheck"
 
 [tasks."check:knip"]
 description = "Unused files, exports and dependencies"
+depends = ["setup"]
 run = "pnpm run knip"
 
 [tasks."check:claims"]
 description = "Banned claims (PLAN §3) in UI strings, emails, listing and marketing copy"
+depends = ["setup"]
 run = "node packages/claims-lint/src/main.ts"
 
 [tasks."contracts:generate"]
@@ -91,6 +98,7 @@ run = [
 
 [tasks."check:contracts"]
 description = "Contract drift: regenerate into a temporary directory and diff against the committed files"
+depends = ["setup"]
 run = """
 set -eu
 tmp=$(mktemp -d)
@@ -111,6 +119,7 @@ run = "cargo nextest run --workspace --all-features --locked"
 
 [tasks."test:ts"]
 description = "Vitest in every package"
+depends = ["setup"]
 run = "pnpm run test"
 
 [tasks.verify]

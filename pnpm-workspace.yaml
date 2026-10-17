@@ -12,3 +12,8 @@ strictPeerDependencies: true
 peerDependencyRules:
   allowedVersions:
     openapi-typescript>typescript: '6'
+
+# Dependency lifecycle scripts are denied unless listed here (pnpm 12 fails the install on
+# any script left undecided). protobufjs's postinstall only prints version hints.
+allowBuilds:
+  protobufjs: false
