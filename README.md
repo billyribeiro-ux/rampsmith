@@ -18,7 +18,11 @@ side by side, as laid out in PLAN §8.
 | `crates/domain` | Pure domain types: no I/O, no async, no database |
 | `crates/db` | Migrations, the tenant-scoped transaction, repositories and the isolation suite |
 | `crates/queue` | The job protocol (enqueue, claim, heartbeat, complete, fail) and the worker loop |
-| `crates/api` | The control-plane HTTP API (Axum): health, readiness, OpenAPI |
+| `crates/api` | The control-plane HTTP API (Axum): health, readiness, the Shopify session, OpenAPI |
+| `crates/ctl` | The Rust worker: Shopify token refresh, the leader's lease reaper and partition maintenance |
+| `crates/crypto` | Envelope encryption of secrets at rest (ADR-021) |
+| `crates/shopify` | Shopify protocol: shop domains, session token verification, token exchange and refresh |
+| `crates/shopify-auth` | The offline-token lifecycle: install by token exchange, sealed storage, rotation (ADR-022) |
 | `crates/http-kit` | problem+json errors and the shared middleware stack |
 | `crates/telemetry` | OpenTelemetry setup, JSON logs and W3C trace context for the Rust services |
 | `crates/contracts` | Types that cross a language boundary, with generated JSON Schema |
@@ -29,6 +33,8 @@ side by side, as laid out in PLAN §8.
 | `packages/claims-lint` | Fails the build on banned claims (PLAN §3) |
 | `infra/` | Container images |
 | `docs/adr` | One file per architecture decision |
+| `docs/spikes`, `docs/runbooks` | Spike evidence (PLAN §11, §14) and operator procedures |
+| `shopify.app.toml` | Shopify app configuration: scopes, App Home, webhook API version |
 
 ## Toolchain
 
