@@ -14,104 +14,17 @@ mod support;
 use std::time::Duration as StdDuration;
 
 use github::{
-    Access, Batch, BatchId, BranchName, BranchRejection, ClientConfig, FileMode, FilePatch, Fix,
-    FixId, GitHubError, InstallationId, Permission, PrLimits, RateLimitKind, RefUpdate, RepoRef,
-    RepositoryId, Sha, ThemePath, ThemeRequirement, TokenScope, Verification, WcagCriterion,
+    Access, BatchId, BranchName, BranchRejection, ClientConfig, GitHubError, Permission, PrLimits,
+    RateLimitKind, RefUpdate, RepositoryId, Sha, ThemeRequirement, TokenScope, Verification,
     plan_pull_requests, verification_check_run,
 };
-use secrecy::ExposeSecret;
 use serde_json::json;
-use support::{CLIENT_ID, Captured, Fake, INSTALLATION, Injected, OWNER, REPO, key, pem};
+use support::{
+    CLIENT_ID, Fake, HEADER, HEADER_FIXED, HEADER_FIXED_2, Injected, LOCALE_FIXED, OWNER, REPO,
+    batch, installation, repo_ref, scope, seed,
+};
 use time::Duration;
-use tracing_subscriber::layer::SubscriberExt;
 use url::Url;
-
-const HEADER: &str =
-    "{% comment %}header{% endcomment %}\n<a href=\"/cart\">{% render 'icon-cart' %}</a>\n";
-const HEADER_FIXED: &str = "{% comment %}header{% endcomment %}\n<a href=\"/cart\">{% render 'icon-cart' %}<span class=\"visually-hidden\">{{ 'general.cart' | t }}</span></a>\n";
-const HEADER_FIXED_2: &str = "{% comment %}header{% endcomment %}\n<a href=\"/cart\" class=\"FILE-CONTENT-MARKER\">{% render 'icon-cart' %}<span class=\"visually-hidden\">{{ 'general.cart' | t }}</span></a>\n";
-const LOCALE: &str = "{\n  \"general\": {}\n}\n";
-const LOCALE_FIXED: &str = "{\n  \"general\": { \"cart\": \"Cart\" }\n}\n";
-
-fn installation() -> InstallationId {
-    InstallationId::new(INSTALLATION)
-}
-
-fn repo_ref() -> RepoRef {
-    RepoRef::new(OWNER, REPO).unwrap()
-}
-
-fn scope() -> TokenScope {
-    TokenScope::fix_pull_requests(RepositoryId::new(42))
-}
-
-fn theme_files() -> Vec<(&'static str, &'static str)> {
-    vec![
-        (
-            "layout/theme.liquid",
-            "<html>{{ content_for_layout }}</html>\n",
-        ),
-        ("sections/header.liquid", HEADER),
-        ("templates/index.json", "{}\n"),
-        ("config/settings_data.json", "{}\n"),
-        ("locales/en.default.json", LOCALE),
-        ("README.md", "# theme\n"),
-        (".env", "SHOPIFY_PASSWORD=hunter2\n"),
-    ]
-}
-
-fn seed(fake: &Fake) -> Sha {
-    let commit = fake.state().seed(
-        &theme_files(),
-        &[("snippets/leak.liquid", "120000", "../.env")],
-    );
-    Sha::parse(&commit).unwrap()
-}
-
-fn fix(id: &str, summary: &str, files: Vec<FilePatch>) -> Fix {
-    Fix {
-        id: FixId::parse(id).unwrap(),
-        summary: summary.to_owned(),
-        finding: "Links must have discernible text".to_owned(),
-        criterion: WcagCriterion::parse("2.4.4").unwrap(),
-        evidence_url: Url::parse(&format!("https://app.rampsmith.example/fixes/{id}")).unwrap(),
-        files,
-    }
-}
-
-fn patch(path: &str, before: &str, after: &str) -> FilePatch {
-    FilePatch {
-        path: ThemePath::parse(path).unwrap(),
-        mode: FileMode::Regular,
-        before: before.to_owned(),
-        after: after.to_owned(),
-    }
-}
-
-fn batch() -> Batch {
-    Batch {
-        id: BatchId::parse("b1").unwrap(),
-        fixes: vec![
-            fix(
-                "fx-1",
-                "add accessible name to cart icon link",
-                vec![
-                    patch("sections/header.liquid", HEADER, HEADER_FIXED),
-                    patch("locales/en.default.json", LOCALE, LOCALE_FIXED),
-                ],
-            ),
-            fix(
-                "fx-2",
-                "mark cart link for styling",
-                vec![patch(
-                    "sections/header.liquid",
-                    HEADER_FIXED,
-                    HEADER_FIXED_2,
-                )],
-            ),
-        ],
-    }
-}
 
 #[tokio::test]
 async fn get_app_authenticates_with_a_valid_jwt() {
@@ -723,99 +636,4 @@ async fn the_client_refuses_plain_http_to_a_remote_host() {
         fake.clock.clone(),
     );
     assert!(matches!(result, Err(GitHubError::Config(_))));
-}
-
-#[tokio::test]
-async fn spans_and_debug_output_never_contain_secrets_or_content() {
-    let captured = Captured::default();
-    let subscriber = tracing_subscriber::registry().with(captured.clone());
-    let _guard = tracing::subscriber::set_default(subscriber);
-
-    let fake = Fake::start().await;
-    let base = seed(&fake);
-    let plan = plan_pull_requests(&batch(), "main", PrLimits::default())
-        .unwrap()
-        .remove(0);
-    let client = fake.client();
-    client.app().await.unwrap();
-    let repo = client.repository(installation(), repo_ref(), scope());
-    let tree = repo.theme_tree(&base).await.unwrap();
-    for file in &tree.theme_files {
-        repo.read_theme_file(file).await.unwrap();
-    }
-    repo.push(&plan, &base, RefUpdate::FastForward)
-        .await
-        .unwrap();
-    repo.open_or_update_pull_request(&plan, &BranchName::parse("main").unwrap())
-        .await
-        .unwrap();
-    fake.inject(Injected::json(403, json!({"message": "nope"})));
-    let _ = repo.commit_tree(&base).await;
-
-    let text = captured.text();
-    assert!(text.contains("span github.request"));
-    for op in [
-        "github.app.get",
-        "github.app.create_installation_token",
-        "github.git.get_tree",
-        "github.git.get_blob",
-        "github.git.create_blob",
-        "github.git.create_tree",
-        "github.git.create_commit",
-        "github.git.create_ref",
-        "github.pulls.create",
-    ] {
-        assert!(text.contains(op), "missing span for {op}");
-    }
-    assert!(text.contains("otel.kind=\"client\"") || text.contains("otel.kind=client"));
-    assert!(text.contains("http.response.status_code=201"));
-    assert!(text.contains("error.type=\"forbidden\"") || text.contains("error.type=forbidden"));
-
-    let (minted, jwts) = {
-        let state = fake.state();
-        (state.minted.clone(), state.jwts.clone())
-    };
-    let mut secrets: Vec<String> = minted.clone();
-    secrets.extend(jwts.iter().cloned());
-    secrets.extend(
-        jwts.iter()
-            .map(|j| j.rsplit_once('.').unwrap().1.to_owned()),
-    );
-    let key_body = pem("RSA PRIVATE KEY", &key().pkcs1);
-    secrets.push(key_body.lines().nth(3).unwrap().to_owned());
-    for marker in [
-        "FILE-CONTENT-MARKER",
-        "visually-hidden",
-        "hunter2",
-        "content_for_layout",
-        "Rampsmith-Fix",
-        "Links must have discernible text",
-        OWNER,
-        REPO,
-        "sections/header.liquid",
-    ] {
-        secrets.push(marker.to_owned());
-    }
-    let debug = format!("{client:?} {repo:?} {tree:?}");
-    for secret in &secrets {
-        assert!(
-            !text.contains(secret.as_str()),
-            "span or event leaked {secret}"
-        );
-    }
-    for secret in minted.iter().chain(jwts.iter()) {
-        assert!(
-            !debug.contains(secret.as_str()),
-            "Debug leaked a credential"
-        );
-    }
-    let token = client
-        .installation_token(installation(), &scope())
-        .await
-        .unwrap();
-    assert!(!format!("{token:?}").contains("ghs_"));
-    let jwt = support::credentials()
-        .jwt(fake.clock.now_for_test())
-        .unwrap();
-    assert!(!format!("{jwt:?}").contains(jwt.expose_secret()));
 }

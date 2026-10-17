@@ -26,7 +26,11 @@ use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::Response;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use github::{AppCredentials, AppIssuer, AppPrivateKey, ClientConfig, Clock, GitHub};
+use github::{
+    AppCredentials, AppIssuer, AppPrivateKey, Batch, BatchId, ClientConfig, Clock, FileMode,
+    FilePatch, Fix, FixId, GitHub, InstallationId, RepoRef, RepositoryId, Sha, ThemePath,
+    TokenScope, WcagCriterion,
+};
 use secrecy::SecretString;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -35,11 +39,102 @@ use time::{Duration, OffsetDateTime};
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
 use tracing_subscriber::layer::{Context, Layer};
+use url::Url;
 
 pub const CLIENT_ID: &str = "Iv23liTestClient";
 pub const OWNER: &str = "octo-shop";
 pub const REPO: &str = "dawn-theme";
 pub const INSTALLATION: u64 = 4242;
+
+pub const HEADER: &str =
+    "{% comment %}header{% endcomment %}\n<a href=\"/cart\">{% render 'icon-cart' %}</a>\n";
+pub const HEADER_FIXED: &str = "{% comment %}header{% endcomment %}\n<a href=\"/cart\">{% render 'icon-cart' %}<span class=\"visually-hidden\">{{ 'general.cart' | t }}</span></a>\n";
+pub const HEADER_FIXED_2: &str = "{% comment %}header{% endcomment %}\n<a href=\"/cart\" class=\"FILE-CONTENT-MARKER\">{% render 'icon-cart' %}<span class=\"visually-hidden\">{{ 'general.cart' | t }}</span></a>\n";
+pub const LOCALE: &str = "{\n  \"general\": {}\n}\n";
+pub const LOCALE_FIXED: &str = "{\n  \"general\": { \"cart\": \"Cart\" }\n}\n";
+
+pub fn installation() -> InstallationId {
+    InstallationId::new(INSTALLATION)
+}
+
+pub fn repo_ref() -> RepoRef {
+    RepoRef::new(OWNER, REPO).unwrap()
+}
+
+pub fn scope() -> TokenScope {
+    TokenScope::fix_pull_requests(RepositoryId::new(42))
+}
+
+/// A Dawn-like theme plus a README, an `.env` and (in `seed`) a symlink to it.
+pub fn theme_files() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "layout/theme.liquid",
+            "<html>{{ content_for_layout }}</html>\n",
+        ),
+        ("sections/header.liquid", HEADER),
+        ("templates/index.json", "{}\n"),
+        ("config/settings_data.json", "{}\n"),
+        ("locales/en.default.json", LOCALE),
+        ("README.md", "# theme\n"),
+        (".env", "SHOPIFY_PASSWORD=hunter2\n"),
+    ]
+}
+
+/// Seeds `main` and returns its commit.
+pub fn seed(fake: &Fake) -> Sha {
+    let commit = fake.state().seed(
+        &theme_files(),
+        &[("snippets/leak.liquid", "120000", "../.env")],
+    );
+    Sha::parse(&commit).unwrap()
+}
+
+pub fn fix(id: &str, summary: &str, files: Vec<FilePatch>) -> Fix {
+    Fix {
+        id: FixId::parse(id).unwrap(),
+        summary: summary.to_owned(),
+        finding: "Links must have discernible text".to_owned(),
+        criterion: WcagCriterion::parse("2.4.4").unwrap(),
+        evidence_url: Url::parse(&format!("https://app.rampsmith.example/fixes/{id}")).unwrap(),
+        files,
+    }
+}
+
+pub fn patch(path: &str, before: &str, after: &str) -> FilePatch {
+    FilePatch {
+        path: ThemePath::parse(path).unwrap(),
+        mode: FileMode::Regular,
+        before: before.to_owned(),
+        after: after.to_owned(),
+    }
+}
+
+/// Two fixes: the first edits the header and the locale, the second edits the header again.
+pub fn batch() -> Batch {
+    Batch {
+        id: BatchId::parse("b1").unwrap(),
+        fixes: vec![
+            fix(
+                "fx-1",
+                "add accessible name to cart icon link",
+                vec![
+                    patch("sections/header.liquid", HEADER, HEADER_FIXED),
+                    patch("locales/en.default.json", LOCALE, LOCALE_FIXED),
+                ],
+            ),
+            fix(
+                "fx-2",
+                "mark cart link for styling",
+                vec![patch(
+                    "sections/header.liquid",
+                    HEADER_FIXED,
+                    HEADER_FIXED_2,
+                )],
+            ),
+        ],
+    }
+}
 
 /// A test-only RSA key, generated once per test binary. Never a real credential.
 pub struct TestKey {
