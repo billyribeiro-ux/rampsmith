@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { detectChallenge } from '../src/challenge.ts';
 import { signScanToken } from '../src/egress-token.ts';
 import { fingerprint, normalizeSelector, templateOrigin } from '../src/fingerprint.ts';
+import { parseRobots } from '../src/robots.ts';
+import { BOT_TOKEN, userAgent } from '../src/user-agent.ts';
 import { criteriaFromTags } from '../src/wcag.ts';
 
 describe('criteriaFromTags', () => {
@@ -101,5 +103,15 @@ describe('signScanToken', () => {
     expect(first).toBeDefined();
     if (first === undefined) return;
     expect(() => signScanToken('short', first.payload)).toThrow();
+  });
+});
+
+describe('userAgent', () => {
+  it('names Rampsmith with a product token robots.txt can match, and links to the bot page', () => {
+    const ua = userAgent('1.2.3', 'https://example.com/bot');
+    expect(ua).toBe('RampsmithBot/1.2.3 (+https://example.com/bot; accessibility scanner)');
+    expect(ua.startsWith(`${BOT_TOKEN}/`)).toBe(true);
+    expect(userAgent('1.2.3')).toContain('docs/bot.md');
+    expect(parseRobots(`User-agent: ${BOT_TOKEN}\nDisallow: /`).allows(BOT_TOKEN, '/')).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ import { startTelemetry } from '@rampsmith/telemetry';
 import { runWorker } from '@rampsmith/queue';
 import postgres from 'postgres';
 import { chromium } from 'playwright';
+import { userAgent } from './user-agent.ts';
 import { scanPageHandler } from './worker.ts';
 
 function required(name: string): string {
@@ -41,7 +42,7 @@ await runWorker({
       proxyUrl: required('EGRESS_PROXY_URL'),
       tokenSecret: required('EGRESS_TOKEN_SECRET'),
     },
-    userAgent: `RampsmithBot/${version} (accessibility scanner)`,
+    userAgent: userAgent(version, process.env['BOT_INFO_URL']),
   }),
 });
 await browser.close();
