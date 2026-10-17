@@ -45,8 +45,18 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
+    let identity = identity::Identity::new(
+        db.clone(),
+        &config.webauthn_rp_id,
+        &config.webauthn_rp_origin,
+        "Rampsmith",
+    )
+    .map_err(|e| anyhow::anyhow!("WebAuthn: {e}"))?;
     info!(address = %config.bind, version = %config.service_version, "api listening");
-    axum::serve(listener, api::app(AppState::new(db).with_shopify(shopify)))
+    let state = AppState::new(db)
+        .with_shopify(shopify)
+        .with_identity(identity);
+    axum::serve(listener, api::app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("server")?;

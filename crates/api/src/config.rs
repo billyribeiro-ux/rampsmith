@@ -24,6 +24,10 @@ pub struct Config {
     pub shopify_client_secret: SecretString,
     /// Master keys for envelope encryption (`RAMPSMITH_MASTER_KEYS`, ADR-021).
     pub master_keys: KeyRing,
+    /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).
+    pub webauthn_rp_id: String,
+    /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
+    pub webauthn_rp_origin: String,
 }
 
 /// A configuration value is missing or malformed.
@@ -88,7 +92,29 @@ impl Config {
             name: "RAMPSMITH_MASTER_KEYS",
             reason: e.to_string(),
         })?;
+        let webauthn_rp_id = get("WEBAUTHN_RP_ID").ok_or(ConfigError::Missing("WEBAUTHN_RP_ID"))?;
+        let webauthn_rp_origin =
+            get("WEBAUTHN_RP_ORIGIN").ok_or(ConfigError::Missing("WEBAUTHN_RP_ORIGIN"))?;
+        let origin_host = webauthn_rp_origin
+            .strip_prefix("https://")
+            .or_else(|| webauthn_rp_origin.strip_prefix("http://localhost"))
+            .map(|rest| rest.split([':', '/']).next().unwrap_or_default().to_owned());
+        let rp_id = webauthn_rp_id.trim().to_owned();
+        let origin_ok = match origin_host.as_deref() {
+            Some("") => webauthn_rp_origin.starts_with("http://localhost") && rp_id == "localhost",
+            Some(host) => host == rp_id || host.ends_with(&format!(".{rp_id}")),
+            None => false,
+        };
+        if !origin_ok {
+            return Err(ConfigError::Invalid {
+                name: "WEBAUTHN_RP_ORIGIN",
+                reason: "must be https:// (or http://localhost) on WEBAUTHN_RP_ID or a subdomain"
+                    .to_owned(),
+            });
+        }
         Ok(Self {
+            webauthn_rp_id: rp_id,
+            webauthn_rp_origin: webauthn_rp_origin.trim().to_owned(),
             shopify_client_id: shopify_client_id.trim().to_owned(),
             shopify_client_secret: SecretString::from(shopify_client_secret),
             master_keys,
@@ -117,6 +143,8 @@ mod tests {
             ("SHOPIFY_CLIENT_ID", "0123456789abcdef"),
             ("SHOPIFY_CLIENT_SECRET", "shpss_hunter3"),
             ("RAMPSMITH_MASTER_KEYS", &format!("k1:{KEY}") as &str),
+            ("WEBAUTHN_RP_ID", "app.rampsmith.test"),
+            ("WEBAUTHN_RP_ORIGIN", "https://app.rampsmith.test"),
         ]
         .iter()
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
@@ -172,6 +200,43 @@ mod tests {
         assert!(!debug.contains("hunter2"));
         assert!(!debug.contains("hunter3"));
         assert!(!debug.contains(KEY));
+    }
+
+    #[test]
+    fn the_webauthn_origin_must_belong_to_the_relying_party() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        for (id, origin) in [
+            ("app.rampsmith.test", "https://app.rampsmith.test"),
+            ("rampsmith.test", "https://app.rampsmith.test:8443"),
+            ("localhost", "http://localhost:5173"),
+        ] {
+            let c =
+                config(&[base, ("WEBAUTHN_RP_ID", id), ("WEBAUTHN_RP_ORIGIN", origin)]).unwrap();
+            assert_eq!(c.webauthn_rp_id, id);
+        }
+        for (id, origin) in [
+            ("app.rampsmith.test", "http://app.rampsmith.test"),
+            ("app.rampsmith.test", "https://evil.test"),
+            ("app.rampsmith.test", "https://notapp.rampsmith.test"),
+            ("rampsmith.test", "http://localhost:5173"),
+        ] {
+            assert!(
+                matches!(
+                    config(&[base, ("WEBAUTHN_RP_ID", id), ("WEBAUTHN_RP_ORIGIN", origin)]),
+                    Err(ConfigError::Invalid {
+                        name: "WEBAUTHN_RP_ORIGIN",
+                        ..
+                    })
+                ),
+                "{id} {origin}"
+            );
+        }
+        for name in ["WEBAUTHN_RP_ID", "WEBAUTHN_RP_ORIGIN"] {
+            assert_eq!(
+                config(&[base, (name, "")]).unwrap_err(),
+                ConfigError::Missing(name)
+            );
+        }
     }
 
     #[test]

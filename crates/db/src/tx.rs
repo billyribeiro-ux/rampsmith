@@ -59,6 +59,14 @@ impl Db {
         Ok(())
     }
 
+    /// Opens a transaction for standalone-dashboard identity (ADR-024). Identity rows are not
+    /// tenant-owned; only the functions in `repo::identity` accept this transaction.
+    pub async fn identity(&self) -> Result<IdentityTx, DbError> {
+        Ok(IdentityTx {
+            tx: self.pool.begin().await?,
+        })
+    }
+
     /// The tenant and shop for a shop domain, across tenants (ADR-022). Call it only after
     /// verifying a Shopify session token or webhook signature for that domain.
     pub async fn shop_by_domain(&self, shop_domain: &str) -> Result<Option<ShopRef>, DbError> {
@@ -128,6 +136,36 @@ impl ShopLock {
     pub async fn release(self) -> Result<(), DbError> {
         self.tx.commit().await?;
         Ok(())
+    }
+}
+
+/// A transaction over identity rows only (ADR-024); see [`Db::identity`].
+pub struct IdentityTx {
+    tx: Transaction<'static, Postgres>,
+}
+
+impl fmt::Debug for IdentityTx {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IdentityTx").finish_non_exhaustive()
+    }
+}
+
+impl IdentityTx {
+    /// Commits the transaction.
+    pub async fn commit(self) -> Result<(), DbError> {
+        self.tx.commit().await?;
+        Ok(())
+    }
+
+    /// Rolls the transaction back.
+    pub async fn rollback(self) -> Result<(), DbError> {
+        self.tx.rollback().await?;
+        Ok(())
+    }
+
+    /// The connection, for the identity repository only.
+    pub(crate) fn conn(&mut self) -> &mut PgConnection {
+        &mut self.tx
     }
 }
 

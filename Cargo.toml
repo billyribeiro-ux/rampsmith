@@ -21,6 +21,7 @@ db = { package = "rampsmith-db", path = "crates/db" }
 domain = { package = "rampsmith-domain", path = "crates/domain" }
 http-body-util = "0.1.5"
 http-kit = { package = "rampsmith-http-kit", path = "crates/http-kit" }
+identity = { package = "rampsmith-identity", path = "crates/identity" }
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
 opentelemetry = "0.33.1"
 opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
@@ -33,6 +34,7 @@ schemars = "1.2.3"
 secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 shopify = { package = "rampsmith-shopify", path = "crates/shopify" }
 shopify-auth = { package = "rampsmith-shopify-auth", path = "crates/shopify-auth" }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros", "migrate", "uuid", "time", "json"] }
@@ -46,9 +48,11 @@ tracing = "0.1.44"
 tracing-opentelemetry = "0.34.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 url = "2.5.8"
-utoipa = { version = "6.0.0", features = ["macros"] }
+utoipa = { version = "6.0.0", features = ["macros", "uuid"] }
 utoipa-axum = "0.3.0"
 uuid = "1.28.0"
+webauthn-authenticator-rs = { version = "0.5.5", default-features = false, features = ["softpasskey"] }
+webauthn-rs = { version = "0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
 wiremock = "0.6.5"
 zeroize = "1.9.1"
 

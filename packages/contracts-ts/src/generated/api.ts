@@ -37,6 +37,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/register/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Completes a registration and signs the new user in. */
+        post: operations["finishRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/register/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts registering an account and its first passkey. */
+        post: operations["startRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in user; also extends the session's idle expiry. */
+        get: operations["getSession"];
+        put?: never;
+        post?: never;
+        /** Signs out: the session token stops working. */
+        delete: operations["deleteSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sign-in/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Completes a passkey sign-in. */
+        post: operations["finishSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sign-in/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts a passkey sign-in. No email: the browser offers the passkeys it holds for this site. */
+        post: operations["startSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/shopify/session": {
         parameters: {
             query?: never;
@@ -61,6 +147,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Completes a ceremony with the browser's answer. */
+        CeremonyResponse: {
+            /**
+             * Format: uuid
+             * @description From the matching `start` call.
+             */
+            ceremony_id: string;
+            /** @description `PublicKeyCredential.toJSON()` from the browser. */
+            credential: Record<string, never>;
+        };
+        /** @description Options for `navigator.credentials`, and the ceremony they belong to. */
+        CeremonyStarted: {
+            /**
+             * Format: uuid
+             * @description Echo this in the matching `finish` call.
+             */
+            ceremony_id: string;
+            /** @description WebAuthn options in their JSON form (`publicKey` and, for sign-in, `mediation`). */
+            options: Record<string, never>;
+        };
         /** @description One invalid field of a request. */
         FieldError: {
             /** @description JSON path of the field, such as `shop` or `items.0.alt`. */
@@ -121,12 +227,41 @@ export interface components {
             /** @description Always `ready`. */
             status: string;
         };
-        /** @description The shop a session belongs to. */
+        /** @description Starts a registration. */
+        RegistrationRequest: {
+            /** @description The name to show in the dashboard. */
+            display_name: string;
+            /** @description The account's email address. */
+            email: string;
+        };
+        /** @description A new session. The token is shown once; store it in an `HttpOnly` cookie. */
+        SessionCreated: {
+            /**
+             * Format: date-time
+             * @description When the session ends regardless of use.
+             */
+            expires_at: string;
+            /** @description The session token. */
+            token: string;
+            /** @description Who signed in. */
+            user: components["schemas"]["UserInfo"];
+        };
+        /** @description Wraps the signed-in user. */
         SessionInfo: {
-            /** @description Whether this request installed (or reinstalled) the app. */
-            installed: boolean;
-            /** @description The shop's `*.myshopify.com` domain. */
-            shop: string;
+            /** @description Who is signed in. */
+            user: components["schemas"]["UserInfo"];
+        };
+        /** @description A dashboard user, as the web app shows them. */
+        UserInfo: {
+            /** @description Their display name. */
+            display_name: string;
+            /** @description Their email address. */
+            email: string;
+            /**
+             * Format: uuid
+             * @description The user's id.
+             */
+            id: string;
         };
     };
     responses: never;
@@ -182,6 +317,191 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    finishRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CeremonyResponse"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCreated"];
+                };
+            };
+            /** @description The passkey did not verify */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The email was taken meanwhile */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CeremonyStarted"];
+                };
+            };
+            /** @description The email is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    finishSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CeremonyResponse"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCreated"];
+                };
+            };
+            /** @description The passkey did not verify */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CeremonyStarted"];
                 };
             };
         };

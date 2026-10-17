@@ -61,6 +61,225 @@
         }
       }
     },
+    "/v1/auth/register/finish": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Completes a registration and signs the new user in.",
+        "operationId": "finishRegistration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CeremonyResponse"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The passkey did not verify",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The email was taken meanwhile",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/register/start": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Starts registering an account and its first passkey.",
+        "operationId": "startRegistration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CeremonyStarted"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The email is taken",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/session": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The signed-in user; also extends the session's idle expiry.",
+        "operationId": "getSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Signs out: the session token stops working.",
+        "operationId": "deleteSession",
+        "responses": {
+          "204": {
+            "description": "Signed out"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      }
+    },
+    "/v1/auth/sign-in/finish": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Completes a passkey sign-in.",
+        "operationId": "finishSignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CeremonyResponse"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The passkey did not verify",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/sign-in/start": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Starts a passkey sign-in. No email: the browser offers the passkeys it holds for this site.",
+        "operationId": "startSignIn",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CeremonyStarted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/shopify/session": {
       "post": {
         "tags": [
@@ -120,6 +339,45 @@
   },
   "components": {
     "schemas": {
+      "CeremonyResponse": {
+        "type": "object",
+        "description": "Completes a ceremony with the browser's answer.",
+        "required": [
+          "ceremony_id",
+          "credential"
+        ],
+        "properties": {
+          "ceremony_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "From the matching `start` call."
+          },
+          "credential": {
+            "type": "object",
+            "description": "`PublicKeyCredential.toJSON()` from the browser."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CeremonyStarted": {
+        "type": "object",
+        "description": "Options for `navigator.credentials`, and the ceremony they belong to.",
+        "required": [
+          "ceremony_id",
+          "options"
+        ],
+        "properties": {
+          "ceremony_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Echo this in the matching `finish` call."
+          },
+          "options": {
+            "type": "object",
+            "description": "WebAuthn options in their JSON form (`publicKey` and, for sign-in, `mediation`)."
+          }
+        }
+      },
       "FieldError": {
         "type": "object",
         "description": "One invalid field of a request.",
@@ -251,26 +509,94 @@
           }
         }
       },
-      "SessionInfo": {
+      "RegistrationRequest": {
         "type": "object",
-        "description": "The shop a session belongs to.",
+        "description": "Starts a registration.",
         "required": [
-          "shop",
-          "installed"
+          "email",
+          "display_name"
         ],
         "properties": {
-          "installed": {
-            "type": "boolean",
-            "description": "Whether this request installed (or reinstalled) the app."
-          },
-          "shop": {
+          "display_name": {
             "type": "string",
-            "description": "The shop's `*.myshopify.com` domain."
+            "description": "The name to show in the dashboard."
+          },
+          "email": {
+            "type": "string",
+            "description": "The account's email address."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SessionCreated": {
+        "type": "object",
+        "description": "A new session. The token is shown once; store it in an `HttpOnly` cookie.",
+        "required": [
+          "token",
+          "expires_at",
+          "user"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session ends regardless of use."
+          },
+          "token": {
+            "type": "string",
+            "description": "The session token."
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserInfo",
+            "description": "Who signed in."
+          }
+        }
+      },
+      "SessionInfo": {
+        "type": "object",
+        "description": "Wraps the signed-in user.",
+        "required": [
+          "user"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserInfo",
+            "description": "Who is signed in."
+          }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "description": "A dashboard user, as the web app shows them.",
+        "required": [
+          "id",
+          "email",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Their display name."
+          },
+          "email": {
+            "type": "string",
+            "description": "Their email address."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The user's id."
           }
         }
       }
     },
     "securitySchemes": {
+      "dashboard_session": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "`Session <token>`: the dashboard session token, forwarded by the web app (ADR-024)."
+      },
       "shopify_session": {
         "type": "http",
         "scheme": "bearer",
@@ -287,6 +613,10 @@
     {
       "name": "shopify",
       "description": "The embedded Shopify app's session"
+    },
+    {
+      "name": "auth",
+      "description": "Standalone dashboard sign-in with passkeys"
     }
   ]
 }

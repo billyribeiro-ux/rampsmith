@@ -9,6 +9,10 @@ WORKDIR /src
 ENV RUSTUP_TOOLCHAIN=1.99.1 \
     SQLX_OFFLINE=true \
     CARGO_TERM_COLOR=always
+# OpenSSL headers for webauthn-rs-core (ADR-024); TLS itself stays on rustls.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
@@ -21,7 +25,7 @@ FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee
 # fixed CVE never waits for Renovate to bump the digest (the grype gate fails on those).
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3t64 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin rampsmith
 COPY --from=build /usr/local/bin/api /usr/local/bin/ctl /usr/local/bin/

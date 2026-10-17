@@ -25,12 +25,10 @@ export async function forwardSession(
   if (authorization === null || !/^bearer\s+\S+$/i.test(authorization.trim())) {
     return problem(401, 'unauthenticated', 'Authentication required', true);
   }
-  let result: Awaited<ReturnType<ApiClient['POST']>>;
-  try {
-    result = await client.POST('/v1/shopify/session', {
-      headers: { authorization: authorization.trim() },
-    });
-  } catch {
+  const result = await client
+    .POST('/v1/shopify/session', { headers: { authorization: authorization.trim() } })
+    .catch(() => undefined);
+  if (result === undefined) {
     return problem(503, 'unavailable', 'Service unavailable');
   }
   const { data, error, response } = result;
