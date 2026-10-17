@@ -1,0 +1,21 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "app_name": "Rampsmith",
+  "skip_to_content": "Skip to main content",
+  "home_title": "Rampsmith",
+  "home_heading": "Accessibility fixed at the source",
+  "home_lede": "Rampsmith finds WCAG 2.2 AA failures in your Shopify store and fixes them in your own data and theme code, with a dated record of every change.",
+  "home_note": "Automated checks find many accessibility issues, not all of them. Rampsmith tells you what it checked and what still needs a person.",
+  "embedded_title": "Rampsmith",
+  "embedded_heading": "Overview",
+  "embedded_connecting": "Connecting to your store…",
+  "embedded_installed": "Rampsmith is installed on {shop}.",
+  "embedded_connected": "Connected to {shop}.",
+  "embedded_failed": "Rampsmith could not reach your store. Reload the app to try again.",
+  "embedded_next_title": "What happens next",
+  "embedded_next_body": "Scans, findings and fixes arrive in the next release. Your store's access is set up and kept current.",
+  "not_found_title": "Page not found",
+  "error_title": "Something went wrong",
+  "error_body": "Try again in a moment. If it keeps happening, contact support and quote reference {reference}.",
+  "error_body_plain": "Try again in a moment."
+}

@@ -3,6 +3,7 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import { defineConfig, globalIgnores } from 'eslint/config';
+import svelte from 'eslint-plugin-svelte';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -15,6 +16,9 @@ export default defineConfig(
     '**/.svelte-kit/',
     'target/',
     'packages/contracts-ts/src/generated/',
+    'apps/web/src/lib/paraglide/',
+    'apps/web/test-results/',
+    'apps/web/playwright-report/',
   ]),
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
@@ -42,5 +46,26 @@ export default defineConfig(
       'no-console': 'error',
     },
   },
+  ...svelte.configs.recommended,
+  {
+    files: ['**/*.svelte', '**/*.svelte.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        extraFileExtensions: ['.svelte'],
+        parser: tseslint.parser,
+      },
+    },
+  },
+  {
+    // Code that runs in the browser.
+    files: ['apps/web/src/**/*.{ts,svelte}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: {
+      // PLAN §8: {@html} is banned outside the one sanitized report component.
+      'svelte/no-at-html-tags': 'error',
+    },
+  },
   prettier,
+  ...svelte.configs.prettier,
 );

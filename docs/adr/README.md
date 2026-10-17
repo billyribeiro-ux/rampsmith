@@ -28,6 +28,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [020](020-api-skeleton.md) | api skeleton, OpenAPI pipeline and images | Accepted |
 | [021](021-envelope-encryption.md) | Envelope encryption of secrets at rest | Accepted |
 | [022](022-shopify-authentication.md) | Shopify authentication and offline-token lifecycle | Accepted |
+| [023](023-web-skeleton.md) | Web skeleton, the embedded App Home and its security headers | Accepted |
 
 ## Template
 

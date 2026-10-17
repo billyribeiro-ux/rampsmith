@@ -32,6 +32,11 @@ SQLX_OFFLINE = "true"
 description = "Install JavaScript dependencies exactly as locked"
 run = "pnpm install --frozen-lockfile"
 
+[tasks."web:sync"]
+description = "Compile the web app's messages (Paraglide) and generate SvelteKit's types"
+depends = ["setup"]
+run = "pnpm --filter @rampsmith/web run sync"
+
 [tasks."db:migrate"]
 description = "Create the database in DATABASE_URL if needed and apply every migration"
 run = ["sqlx database create", "sqlx migrate run --source crates/db/migrations"]
@@ -64,7 +69,7 @@ run = "cargo sqlx prepare --workspace --check -- --all-targets --all-features"
 
 [tasks."check:eslint"]
 description = "ESLint with zero warnings allowed"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run lint"
 
 [tasks."check:prettier"]
@@ -74,12 +79,12 @@ run = "pnpm run format:check"
 
 [tasks."check:types"]
 description = "tsc --noEmit and svelte-check --fail-on-warnings in every package"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run typecheck"
 
 [tasks."check:knip"]
 description = "Unused files, exports and dependencies"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run knip"
 
 [tasks."check:claims"]
@@ -119,8 +124,13 @@ run = "cargo nextest run --workspace --all-features --locked"
 
 [tasks."test:ts"]
 description = "Vitest in every package"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run test"
+
+[tasks."test:e2e"]
+description = "Playwright: the web app's pages in Chromium, with axe (WCAG 2.2 AA) and keyboard checks"
+depends = ["setup", "web:sync"]
+run = "pnpm --filter @rampsmith/web run test:e2e"
 
 [tasks.verify]
 description = "Full gate: every static check, then every test suite"

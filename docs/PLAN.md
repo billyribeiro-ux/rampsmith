@@ -275,7 +275,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | --- | --- |
 | Shopify Admin GraphQL API | 2026-10 |
 | Shopify CLI | 4.9.4, for app configuration and the theme app extension |
-| App Bridge and Polaris | Shopify CDN script tags; Polaris pinned to a versioned release, not the floating tag |
+| App Bridge and Polaris | Shopify CDN script tags; Polaris pinned to `polaris-1.1.js`; App Bridge is only published as Shopify's evergreen `app-bridge.js`, which App Review requires (ADR-023) |
 | Claude models | `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` ([models overview](https://platform.claude.com/docs/en/models/overview)) |
 
 Upgrade policy: exact versions in `pnpm-lock.yaml` and `Cargo.lock`; Renovate opens grouped weekly pull requests; nothing merges without the full gate in section 24.
@@ -899,7 +899,7 @@ The `push` webhook on the connected branch starts a job that reads the live them
 
 ## 16. Web dashboard and public free scanner
 
-One SvelteKit app serves three surfaces: the Shopify embedded admin, a standalone dashboard for agencies and non-Shopify sites, and the public marketing site with its free scanner. All three render on the server and work before JavaScript loads.
+One SvelteKit app serves three surfaces: the Shopify embedded admin, a standalone dashboard for agencies and non-Shopify sites, and the public marketing site with its free scanner. All three render on the server; the marketing site and the dashboard work before JavaScript loads, while the embedded admin's data arrives after App Bridge supplies a session token (ADR-023).
 
 ### Standalone dashboard
 
