@@ -56,6 +56,21 @@ describe('the clean control page', () => {
     }
   });
 
+  it('also passes at the 390 x 844 mobile viewport the scanner uses', async () => {
+    const { page } = await load('/clean.html', { width: 390, height: 844 });
+    for (const check of [
+      checkKeyboard,
+      checkFocusNotObscured,
+      checkReflow,
+      checkTextSpacing,
+      checkMediaAutoplay,
+    ]) {
+      const result = await check(page);
+      expect(result.status, result.check).toBe('complete');
+      expect(summary(result), result.check).toEqual([]);
+    }
+  });
+
   it('runs every check under its hard time cap', async () => {
     const { page } = await load('/clean.html');
     for (const check of [
@@ -83,6 +98,7 @@ describe('checkKeyboard', () => {
     expect(summary(result).sort()).toEqual(
       [
         'rs-focus-indicator-missing violation #no-ring',
+        'rs-focus-stop-hidden violation #clipped-link',
         'rs-focus-stop-hidden violation #offscreen-link',
         'rs-keyboard-trap violation #trap-a',
       ].sort(),
@@ -93,8 +109,10 @@ describe('checkKeyboard', () => {
       impact: 'critical',
       data: { cycleLength: 2 },
     });
-    const hidden = result.findings.find((f) => f.ruleId === 'rs-focus-stop-hidden');
-    expect(hidden?.data).toEqual({ reason: 'offscreen' });
+    const reasons = result.findings
+      .filter((f) => f.ruleId === 'rs-focus-stop-hidden')
+      .map((f) => `${f.target.join('')} ${String(f.data?.['reason'])}`);
+    expect(reasons.sort()).toEqual(['#clipped-link clipped', '#offscreen-link offscreen']);
   });
 
   it('leaves the page as it found it', async () => {

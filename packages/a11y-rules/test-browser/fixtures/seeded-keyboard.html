@@ -5,9 +5,11 @@
     <title>Seeded keyboard failures</title>
     <!--
       Seeded: one stop with no focus indicator (#no-ring), one stop that stays off screen
-      (#offscreen-link), one keyboard trap (#trap-a / #trap-b). Controls that must NOT be
-      flagged: the default focus ring (#first), a :focus-visible ring (#ring), a visually
-      hidden radio whose label shows focus (#pill-a), and the native audio controls.
+      (#offscreen-link), one clipped by an ancestor that cannot scroll (#clipped-link), one
+      keyboard trap (#trap-a / #trap-b). Controls that must NOT be flagged: the default focus
+      ring (#first), a :focus-visible ring (#ring), a visually hidden radio whose label shows
+      focus (#pill-a), the native audio controls, and a fixed link inside a clipping box that
+      does not clip it (#to-top).
     -->
     <style>
       body {
@@ -74,6 +76,14 @@
     </fieldset>
     <audio controls src="/media/tone.wav" aria-label="Sample"></audio>
     <a id="offscreen-link" href="#nowhere">Off-screen link</a>
+    <div style="overflow: clip; width: 200px; height: 40px">
+      <div style="transform: translateX(300px)">
+        <a id="clipped-link" href="#slide-2">Slide 2</a>
+      </div>
+    </div>
+    <div style="overflow: hidden; height: 20px">
+      <a id="to-top" href="#top" style="position: fixed; right: 16px; bottom: 16px">Back to top</a>
+    </div>
     <div class="trap" id="trap">
       <p>A widget that keeps Tab inside it and ignores Escape.</p>
       <button id="trap-a" type="button">Trap A</button>

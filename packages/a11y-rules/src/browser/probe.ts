@@ -222,15 +222,25 @@ export function installProbe(key: string): void {
     if (r.right <= 0 || r.bottom <= 0 || r.left >= vp.width || r.top >= vp.height) {
       return 'offscreen';
     }
+    // An ancestor's overflow clips only descendants whose containing block lies inside it:
+    // fixed boxes escape every ancestor, absolute boxes every ancestor below their nearest
+    // positioned one.
+    const own = getComputedStyle(subject).position;
+    if (own === 'fixed') return null;
+    let skip = own === 'absolute';
     let ancestor = subject.parentElement;
     for (let depth = 0; ancestor !== null && depth < 64; depth += 1) {
       const cs = getComputedStyle(ancestor);
-      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+      const positioned = cs.position !== 'static';
+      if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && (!skip || positioned)) {
         const a = ancestor.getBoundingClientRect();
         if (r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom) {
           return 'clipped';
         }
       }
+      if (cs.position === 'fixed') break;
+      if (skip && positioned) skip = false;
+      if (cs.position === 'absolute') skip = true;
       ancestor = ancestor.parentElement;
     }
     return null;

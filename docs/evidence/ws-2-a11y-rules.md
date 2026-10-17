@@ -149,3 +149,7 @@ Commit 3 (`fix(a11y-rules): keep the checkout guard for the page's life ...`): t
 all passing; `pnpm --filter @rampsmith/a11y-rules run test` → `Test Files 8 passed (8)`,
 `Tests 77 passed (77)`; `test:browser` (same variables) → `Test Files 2 passed (2)`,
 `Tests 22 passed (22)`, 7.87 s.
+
+Commit 4 (`fix(a11y-rules): judge a clipped focus stop by its containing block`): the same
+gate, all passing; `test` → 77 passed; `test:browser` → `Tests 23 passed (23)`, 8.47 s,
+including the clean page at 390 × 844.
