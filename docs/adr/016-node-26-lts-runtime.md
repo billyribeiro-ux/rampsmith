@@ -1,0 +1,78 @@
+# ADR-016: Node.js 26 LTS for every Node service
+
+- Status: Accepted
+- Date: 2026-10-17
+- Decided by: the founder. The first version of this ADR, earlier the same day, pinned 24.22.0,
+  the newest LTS release at the time; the founder approved the move to the 26 LTS line after
+  reviewing the support windows below.
+- Evidence: [`node-26-lts-2026-10-17.md`](../evidence/node-26-lts-2026-10-17.md) and
+  [`node-24-lts-2026-10-17.md`](../evidence/node-24-lts-2026-10-17.md)
+
+## Context
+
+| Line | Newest release on 17 Oct 2026 | Status | LTS from | Maintenance from | End of life |
+| --- | --- | --- | --- | --- | --- |
+| 24 "Krypton" | 24.22.0 | Active LTS | 28 Oct 2025 | 20 Oct 2026 | 30 Apr 2028 |
+| 26 | 26.12.0 | Current | 28 Oct 2026 | 20 Oct 2027 | 30 Apr 2029 |
+
+Source: `schedule.json` in [nodejs/Release](https://github.com/nodejs/Release/blob/main/schedule.json).
+
+- **Launch timing.** The public App Store listing is targeted for 22 March 2027 (PLAN §26). On
+  Node 24, Rampsmith would launch on a line that has had only critical and security fixes since
+  20 October 2026 and that reaches end of life 13 months after launch. Node 26 is in Active LTS
+  at launch and is supported until 30 April 2029.
+- **The switch to LTS changes metadata only.** The notes of 24.11.0 and 22.11.0, the releases
+  that moved those lines to LTS, both say: "Other than updating metadata, such as the
+  `process.release` object, to reflect that the release is LTS, no further changes from Node.js
+  [the previous Current release] are included." The code that becomes 26 LTS is the 26.x code
+  available now.
+- **The stack runs on 26.** Every npm package pinned in PLAN §7 accepts 26.12.0 in
+  `engines.node`; the `@types/node` peer ranges of Vite and Vitest accept 26.6.5; Chromium and
+  axe-core pass the seeded-page check on 26.12.0; and the R0 branch's CI passed on its 26.12.0
+  pin ([run 39060459727](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39060459727)).
+- **Images.** Microsoft's Playwright 1.64.1 image installs Node from a NodeSource channel at
+  build time, so its patch level floats. The official `node` images publish
+  `26.12.0-trixie-slim`, and Playwright 1.64.1 ships its system-dependency list for Debian 13.
+
+## Decision
+
+Node.js 26 LTS is the runtime for `web`, `engine` and all repository tooling.
+
+- **The pin** is the first 26.x release tagged LTS (scheduled for 28 October 2026), then later
+  26.x LTS releases. A release counts as LTS when its heading in `doc/changelogs/CHANGELOG_V26.md`
+  at its tag ends in "(LTS)" and `node -p process.release.lts` prints a codename.
+- **Until that release exists**, branches run 26.12.0. No release merges to `main`, and nothing
+  deploys, until every pin below is the LTS release.
+
+| Where | Pin |
+| --- | --- |
+| `.mise.toml` | `node = "<26.x LTS version>"` |
+| Every `package.json` | `"engines": { "node": ">=<26.x LTS version> <27" }` |
+| `pnpm-workspace.yaml` | `engineStrict: true`. Without it, pnpm 12.14.0 installs on a wrong Node without an error. |
+| `web` and `engine` images | `FROM node:<26.x LTS version>-trixie-slim@sha256:<digest>` |
+| Chromium for `engine` | `pnpm exec playwright install --with-deps chromium` during the image build |
+| CI | mise installs Node from `.mise.toml`; each job logs `node --version` and `process.release.lts` |
+| Type definitions | `@types/node` on 26.x (26.6.5 on 17 Oct 2026) |
+| Cloud sessions | `npm i -g node@<version>` (`docs/ENVIRONMENT.md`), or the ADR-014 route with `node-linux-x64@<version>` |
+
+`mise run verify` fails when any of these pins disagrees with `.mise.toml`. Later 26.x releases
+arrive through Renovate under the full gate (PLAN §7 upgrade policy), and Renovate refreshes the
+image digests the same way. Changing the major line needs the founder.
+
+## Consequences
+
+- One Node line from the R0 bootstrap through launch and about two years of production.
+- R0 cannot merge before the 26.x LTS release; R0's target end is 13 November 2026 (PLAN §26).
+- `web` and `engine` share one base image, so one digest update patches both.
+- The `engine` image installs its browser libraries from Playwright's Debian 13 list instead of
+  inheriting Microsoft's Playwright image.
+
+## Rejected alternatives
+
+- Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028,
+  13 months after the planned launch.
+- Releasing on 26.12.0: a Current release; the LTS release, due 28 October 2026, carries the
+  same code.
+- Microsoft's Playwright image for `engine`: its Node version floats.
+- A `-slim` tag without the Debian name: the image maintainers choose which Debian release it
+  means (for 24.x it is Debian 12); `trixie-slim` makes the base an explicit choice.

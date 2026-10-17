@@ -151,7 +151,7 @@ Rampsmith is three deployables around one PostgreSQL database: a SvelteKit web a
 | `web` | SvelteKit 3.1, Svelte 5 | Shopify embedded admin (App Bridge and Polaris web components), standalone agency dashboard, marketing site, free scanner page | `api` over Railway private networking only |
 | `api` | Rust, Axum 0.8 | Auth, tenancy, Shopify OAuth and token exchange, webhook intake, fix approval workflow, billing state, report generation, job enqueueing, OpenAPI contract | PostgreSQL, Shopify, GitHub, Stripe, R2 |
 | `ctl` | Rust | Rust-side jobs: token refresh, webhook processing, Shopify data writes, GitHub pull requests, email, scheduled re-scans under a single leader | PostgreSQL queue, Shopify, GitHub, Amazon SES |
-| `engine` | TypeScript on Node 24 LTS | Scan (Playwright and axe-core), source mapping, Liquid patching, theme packaging, AI calls, verification scans | PostgreSQL queue, R2, Anthropic API, `egress` |
+| `engine` | TypeScript on Node 26 LTS | Scan (Playwright and axe-core), source mapping, Liquid patching, theme packaging, AI calls, verification scans | PostgreSQL queue, R2, Anthropic API, `egress` |
 | `egress` | Rust | Forward proxy that keeps the browser on the public internet (section 18) | Merchant storefronts |
 | PostgreSQL 18 | — | System of record, job queue, audit log | — |
 | Cloudflare R2 | — | Screenshots, DOM snapshots, theme snapshots, patch packages, PDF reports | — |
@@ -174,7 +174,7 @@ Each ADR is written to `docs/adr/` as its own file before the code it governs; A
 | 010 | Railway first, with a measured move of browser workers to dedicated hardware | Usage billing keeps idle cost near zero; you already deploy there; native PostgreSQL PITR | Kubernetes on day one: operations cost with no customer to justify it |
 | 011 | Claude Haiku 5.5 by default, escalate to Sonnet 5.5, Opus 5.5 for offline patch synthesis only | Cost per task ordered by difficulty (section 13) | One model for everything |
 | 012 | No Redis in R0 to R2 | Rate limits and caches fit in Postgres and in-process; one less stateful service | Redis "just in case" |
-| 016 | Node.js 24.22.0 LTS for `web`, `engine` and all tooling, on one base image, `node:24.22.0-trixie-slim` | Founder requirement: the latest LTS release on 17 October 2026; one runtime everywhere, pinned exactly | Node 26.12.0: a Current release until 28 October 2026; Microsoft's Playwright image for `engine`: its Node version floats within 24.x |
+| 016 | Node.js 26 LTS for `web`, `engine` and all tooling, on one `trixie-slim` base image | Founder decision: Active LTS at launch and supported until 30 April 2029; one runtime everywhere, pinned exactly | Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028, 13 months after launch; Microsoft's Playwright image for `engine`: its Node version floats |
 
 ### How the parts connect
 
@@ -201,7 +201,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 
 | Tool | Pinned | Note |
 | --- | --- | --- |
-| Node.js | 24.22.0 LTS (14 Oct 2026) | Founder requirement: the latest LTS release on 17 October 2026 (ADR-016). Active LTS until 20 October 2026, then security fixes until 30 April 2028 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json), [24.22.0 changelog](https://github.com/nodejs/node/blob/v24.22.0/doc/changelogs/CHANGELOG_V24.md)). 26.12.0 is a Current release until 26.x enters LTS on 28 October 2026; changing the major line needs the founder. `@types/node` 24.19.2. Every package below accepts 24.22.0 in `engines.node`. |
+| Node.js | 26 LTS: the first 26.x release tagged LTS, due 28 Oct 2026; 26.12.0 until then | Founder decision (ADR-016). Active LTS from 28 October 2026 to 20 October 2027, then security fixes until 30 April 2029 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)). Node's switch to LTS changes only metadata ([24.11.0 release notes](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)), so 26.12.0 is the code that becomes LTS. No release merges and nothing deploys before the LTS pin. `@types/node` 26.6.5. Every package below accepts 26.12.0 in `engines.node`. |
 | pnpm | 12.14.0 | Managed by mise, never Corepack |
 | Rust | 1.99.1 (15 Oct 2026), edition 2024 | [Rust releases](https://blog.rust-lang.org/releases); managed by rustup, pinned in `rust-toolchain.toml` |
 | PostgreSQL | 18.6 | 19 is at RC1 (15 Oct 2026); adopt it at 19.1 ([postgresql.org](https://www.postgresql.org/)) |
@@ -287,7 +287,7 @@ One repository holds a Cargo workspace and a pnpm workspace side by side. Pure l
 
 ```text
 rampsmith/
-├── .mise.toml                  # node 24.22.0, pnpm 12.14.0, postgres 18
+├── .mise.toml                  # node 26 LTS, pnpm 12.14.0, postgres 18
 ├── rust-toolchain.toml         # 1.99.1 + rustfmt + clippy
 ├── Cargo.toml                  # [workspace] resolver = "3", [workspace.lints]
 ├── pnpm-workspace.yaml
@@ -1202,10 +1202,10 @@ Everything runs on Railway in a US region at launch, as immutable images tagged 
 
 | Service | Image | Notes |
 | --- | --- | --- |
-| `web` | `node:24.22.0-trixie-slim` pinned by digest, multi-stage build, `adapter-node` | Health check on `/healthz` |
+| `web` | `node:<26 LTS version>-trixie-slim` pinned by digest, multi-stage build, `adapter-node` | Health check on `/healthz` |
 | `api` | Rust release binary on a distroless base | `/healthz` for liveness; `/readyz` checks the database and the migration version |
 | `ctl` | Same image as `api`, different command | Scheduler leadership through the advisory lock |
-| `engine` | `node:24.22.0-trixie-slim` pinned by digest; Chromium and its system libraries from `playwright install --with-deps chromium`, which supports Debian 13 in Playwright 1.64.1 | Non-root, seccomp profile, Chromium sandbox on |
+| `engine` | The same Node 26 LTS `trixie-slim` image, pinned by digest; Chromium and its system libraries from `playwright install --with-deps chromium`, which supports Debian 13 in Playwright 1.64.1 | Non-root, seccomp profile, Chromium sandbox on |
 | `egress` | Rust release binary | The request-forgery guard; reachable only by `engine` on the private network |
 | PostgreSQL 18 | Railway PostgreSQL with PITR enabled | Direct connections for `LISTEN`; a connection pool per service |
 
@@ -1531,7 +1531,8 @@ Every page below was opened while writing this plan on 17 October 2026. Package 
 
 - [endoflife.date: Node.js](https://endoflife.date/nodejs)
 - [Node.js release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)
-- [Node.js 24.22.0 changelog](https://github.com/nodejs/node/blob/v24.22.0/doc/changelogs/CHANGELOG_V24.md)
+- [Node.js 24.11.0 release notes: the switch to LTS](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)
+- [Node.js 26.12.0 changelog](https://github.com/nodejs/node/blob/v26.12.0/doc/changelogs/CHANGELOG_V26.md)
 - [Docker official images: node tags](https://github.com/docker-library/official-images/blob/master/library/node)
 - [Rust release announcements](https://blog.rust-lang.org/releases)
 - [PostgreSQL release news](https://www.postgresql.org/)
