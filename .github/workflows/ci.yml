@@ -81,6 +81,23 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    services:
+      postgres:
+        # Same image and digest as the rust job: the TypeScript queue tests need a database.
+        image: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rampsmith
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rampsmith"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rampsmith
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -109,7 +126,7 @@ jobs:
         run: mise run check:knip
       - name: claims-lint (PLAN §3)
         run: mise run check:claims
-      - name: Tests (Vitest)
+      - name: Tests (Vitest, PostgreSQL 18.6)
         run: mise run test:ts
 
   contracts:
