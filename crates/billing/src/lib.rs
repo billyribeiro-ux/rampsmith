@@ -3,17 +3,27 @@
 //! Pure logic only (PLAN §8): nothing here opens a socket, reads a clock or touches the
 //! database. Callers pass `now`, the stored state and whatever Shopify answered; the only
 //! boundary to the outside is the injectable Partner API transport trait.
+//!
+//! - [`plan`] and [`entitlements()`]: the PLAN §20 catalog and the single function every
+//!   limit comes from (ADR-132).
+//! - [`usage`]: remaining alt-text drafts per monthly window (ADR-133).
+//! - [`shopify`]: validated Shopify identifiers and the hosted plan page URL.
+//! - [`partner_api`]: the `activeSubscription` operation, its parser and transport trait.
+//! - [`mod@reconcile`] and [`sweep`]: the plan-state machine and when to ask Shopify (ADR-131).
 
 pub mod entitlements;
 pub mod money;
 pub mod partner_api;
 pub mod plan;
+pub mod reconcile;
 pub mod shopify;
+pub mod sweep;
 pub mod usage;
 
 pub use entitlements::{Entitlements, Feature, Gate, entitlements};
 pub use money::{Currency, Money, MoneyError};
 pub use plan::{BillingInterval, Plan, UnknownPlanHandle};
+pub use reconcile::{Action, BillingEvent, BillingState, RedirectParam, reconcile};
 pub use shopify::{
     AppGid, AppHandle, IdError, PartnerOrganizationId, ShopDomain, ShopGid, plan_selection_url,
 };
