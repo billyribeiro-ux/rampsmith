@@ -48,7 +48,7 @@ official page on 17 October 2026 with a web fetch; the page and what it says are
 | Stripe webhooks | Workbench → Webhooks → Create an event destination; signing secret `whsec_`; verify `Stripe-Signature` over the raw body | [Webhooks](https://docs.stripe.com/webhooks) |
 | Trademark search | USPTO Trademark Search system `https://tmsearch.uspto.gov/`; EUIPO recommends TMview `https://www.tmdn.org/tmview/` | [USPTO search](https://www.uspto.gov/trademarks/search), [EUIPO availability](https://www.euipo.europa.eu/en/trade-marks/before-applying/availability) |
 | GDPR Article 28 | 28(2) prior written authorisation for sub-processors, notice and objection; 28(3)(a)–(h) contract contents; 28(4) flow-down; 33(2) processor notifies "without undue delay"; 32(1) measures | [Regulation (EU) 2016/679](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02016R0679-20160504) |
-| Standard Contractual Clauses | Commission Implementing Decision (EU) 2021/914 of 4 June 2021; Modules One to Four; Annex I parties and transfer, Annex II measures, Annex III sub-processors; Clause 7 optional docking clause | [Decision (EU) 2021/914](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A32021D0914) |
+| Standard Contractual Clauses | Commission Implementing Decision (EU) 2021/914 of 4 June 2021; Modules One to Four; Annex I parties and transfer, Annex II measures, Annex III sub-processors; Clause 7 optional docking clause; Module Two Clause 9(a) "OPTION 2: GENERAL WRITTEN AUTHORISATION" with "at least [Specify time period] in advance"; Clause 11(a) optional independent dispute resolution body; Clause 13 depends on where the exporter is established; Clause 17 Option 1 or Option 2 ("for Modules Two and Three"); Clause 18(b) "the courts of _____ (specify Member State)" | [Decision (EU) 2021/914](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A32021D0914) |
 | WCAG 2.2 | W3C Recommendation, 12 December 2024 version; conformance claims are optional | [WCAG 2.2](https://www.w3.org/TR/WCAG22/) |
 | Accessibility statements | Minimum: commitment, standard applied, contact; advisable: known limitations, technical prerequisites, test environments, measures; statements are "not technical assessments or declarations of conformity" | [W3C WAI: statements](https://www.w3.org/WAI/planning/statements/) |
 
@@ -62,3 +62,121 @@ official page on 17 October 2026 with a web fetch; the page and what it says are
 - A first fetch of `https://shopify.dev/docs/apps/launch/app-requirements-checklist` was blocked
   by a permission prompt; the same page was read through `https://shopify.dev/apps/launch/app-requirements-checklist`,
   which redirects to the best-practices page.
+
+## Deliverables
+
+| LAUNCH item | Path | State |
+| --- | --- | --- |
+| B: privacy policy, terms, DPA (drafts, attorney review required) | `docs/legal/privacy-policy.md`, `docs/legal/terms-of-service.md`, `docs/legal/data-processing-addendum.md` | Drafted; placeholders and open questions listed at the top and end of each |
+| B: accessibility statement for Rampsmith itself | `docs/accessibility-statement.md` | Drafted as intent and method; results and limitations wait for the first UI release |
+| B: App Store listing package (copy, screencast script, reviewer instructions) | `listing/shopify-app-store-listing.md`, `listing/shopify-app-store-reviewer-instructions.md`, `listing/shopify-app-store-screencast-script.md` | Drafted; screenshots are out of this stream's scope |
+| D: founder checklist | `docs/FOUNDER_SETUP.md` | Done for rows 1 to 14 |
+| PLAN §18 threat model | `docs/threat-model.md` | Version 1 against `e43f546` |
+| Vendor facts that refine PLAN or LAUNCH | `docs/adr/141-app-store-theme-change-requirement.md`, `docs/adr/142-vendor-facts-for-launch-documents.md` | Proposed |
+
+## Gate results (final run, 17 October 2026, Node 26.12.0, pnpm 12.14.0)
+
+```text
+$ pnpm install
+Already up to date
+Done in 4ms using pnpm v12.14.0
+$ node packages/claims-lint/src/main.ts
+claims-lint: 4 files scanned, no banned claims
+exit=0
+$ pnpm run format:check
+Checking formatting...
+All matched files use Prettier code style!
+exit=0
+$ grep -rniE 'compliant|lawsuit|guarantee|certif' docs/legal docs/threat-model.md docs/accessibility-statement.md docs/FOUNDER_SETUP.md listing
+docs/legal/terms-of-service.md:22:- PLAN §25 asks for: "no compliance guarantee, the customer stays responsible for their site,
+docs/legal/terms-of-service.md:25:- The claims policy (PLAN §3) bans saying or implying that a site is compliant, certified or
+docs/legal/terms-of-service.md:26:  protected from lawsuits. These terms use those words only to disclaim them (section 11).
+docs/legal/terms-of-service.md:106:- describe the Service's results as a legal opinion, a certification or a promise of any outcome.
+docs/legal/terms-of-service.md:153:IN PARTICULAR, RAMPSMITH DOES NOT GUARANTEE, AND NOTHING IN THE SERVICE STATES OR IMPLIES, THAT
+docs/legal/terms-of-service.md:156:NOT CERTIFY ANY WEBSITE. USING THE SERVICE DOES NOT PREVENT COMPLAINTS, DEMAND LETTERS, LAWSUITS
+```
+
+Every grep hit was reviewed. Each one negates or explains a banned claim, so all are allowed:
+
+| Line | Why it is allowed |
+| --- | --- |
+| terms 22 | Quotes PLAN §25's requirement that the terms carry *no* compliance guarantee |
+| terms 25–26 | Explains the claims policy to the attorney |
+| terms 106 | Forbids customers from presenting results as a certification |
+| terms 153 | Disclaimer: Rampsmith does not guarantee any outcome |
+| terms 156 | Disclaimer: Rampsmith does not certify sites or prevent lawsuits |
+
+The same gate ran before each commit on this branch, with the same outcome for the files that
+existed at the time.
+
+## Listing field counts
+
+Counted with a script that reads each quoted field in `listing/shopify-app-store-listing.md`,
+counts Unicode code points, and compares the result with the stated count and the limit:
+
+```text
+OK   [App name] 9 chars (stated 9, limit 30)
+OK   [App card subtitle] 50 chars (stated 50, limit none stated)
+OK   [App introduction] 98 chars (stated 98, limit 100)
+OK   [App details] 489 chars (stated 489, limit 500)
+OK   [Feature list] 69, 61, 69, 75, 71, 74, 76, 75, 60 chars (limit 80 each)
+all fields within limits and counts match
+```
+
+## Finding: claims-lint stops on a folder under `listing/`
+
+`claims-lint.config.json` includes `listing/**/*`. Node's `fs.globSync` returns folders that
+match a pattern as well as files, and `packages/claims-lint/src/cli.ts` reads every match as a
+file, so the first folder under `listing/` (or under `**/emails/**`) stops the run:
+
+```text
+$ node -e "const {globSync}=require('node:fs'); console.log(globSync(['listing/**/*'],{cwd:process.cwd()}))"
+[ 'listing/shopify-app-store', 'listing/shopify-app-store/listing.md' ]
+$ node packages/claims-lint/src/main.ts
+Error: EISDIR: illegal operation on a directory, read
+```
+
+The listing files therefore sit directly in `listing/`, where the unchanged tool scans them.
+`packages/claims-lint` belongs to the main builder, so this stream does not change it. The
+proposed fix, tested on copies of the tool and of the three files in a
+`listing/shopify-app-store/` folder:
+
+```diff
+-import { globSync, readFileSync } from 'node:fs';
++import { globSync, readFileSync, statSync } from 'node:fs';
+@@ discoverFiles
+-    if (!excluded.some((glob) => matchesGlob(posix, glob))) {
++    if (!excluded.some((glob) => matchesGlob(posix, glob)) && statSync(join(cwd, path)).isFile()) {
+```
+
+```text
+--- current tool, folder layout:
+Error: EISDIR: illegal operation on a directory, read
+--- tool skipping folders, folder layout:
+claims-lint: 4 files scanned, no banned claims
+exit=0
+```
+
+Once the fix lands (with a test in `packages/claims-lint/test/cli.test.ts`), the three files can
+move to `listing/shopify-app-store/`.
+
+## Other checks
+
+- The threat model's data-flow diagram renders with mermaid-cli (`mmdc -i threat.mmd -o
+  threat.svg`, then a PNG at 1600 px checked by eye).
+- Variable name conflict found while writing FOUNDER_SETUP.md: LAUNCH.md section C row 12 names
+  `TOKEN_MASTER_KEY`; ADR-021 on `r0-foundations` (commit `b366419`, after `e43f546`) reads
+  `RAMPSMITH_MASTER_KEYS` as `id:base64key[,id:base64key…]`. Recorded in FOUNDER_SETUP.md step 13
+  as an open question.
+
+## Commits on `ws/launch-docs`
+
+| Commit | Change |
+| --- | --- |
+| `8c386dd` | ADR-141, ADR-142 and this evidence file |
+| `9c58032` | Threat model |
+| `3ec4e7b` | Privacy policy, terms of service, DPA |
+| `5ad233e` | Accessibility statement |
+| `487692a` | Founder setup checklist |
+| `d13fb95` | App Store listing package |
+| this commit | Final gate results and findings in this file |
