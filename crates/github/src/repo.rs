@@ -32,15 +32,33 @@ use crate::types::{CheckRunId, InstallationId, RepoRef, Sha};
 
 /// A file in a theme directory that is safe to read: its path passed the [`ThemePath`]
 /// allowlist and it is a regular blob, not a symlink or submodule, so reading it can never
-/// follow a link out of the theme.
+/// follow a link out of the theme. Only [`Repository::tree`] creates one, so its blob id always
+/// comes from GitHub's own listing of that path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeFile {
+    path: ThemePath,
+    sha: Sha,
+    mode: FileMode,
+}
+
+impl ThemeFile {
     /// The path.
-    pub path: ThemePath,
+    #[must_use]
+    pub fn path(&self) -> &ThemePath {
+        &self.path
+    }
+
     /// The blob.
-    pub sha: Sha,
+    #[must_use]
+    pub fn sha(&self) -> &Sha {
+        &self.sha
+    }
+
     /// Its mode.
-    pub mode: FileMode,
+    #[must_use]
+    pub fn mode(&self) -> FileMode {
+        self.mode
+    }
 }
 
 /// A recursive listing of one commit's tree.

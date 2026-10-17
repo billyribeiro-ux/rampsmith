@@ -277,7 +277,7 @@ async fn theme_tree_lists_only_regular_theme_files() {
     let tree = repo.theme_tree(&base).await.unwrap();
     assert!(tree.paths.contains(&".env".to_owned()));
     assert!(tree.paths.contains(&"snippets/leak.liquid".to_owned()));
-    let readable: Vec<&str> = tree.theme_files.iter().map(|f| f.path.as_str()).collect();
+    let readable: Vec<&str> = tree.theme_files.iter().map(|f| f.path().as_str()).collect();
     assert_eq!(
         readable,
         [
@@ -291,7 +291,7 @@ async fn theme_tree_lists_only_regular_theme_files() {
     let header = tree
         .theme_files
         .iter()
-        .find(|f| f.path.as_str() == "sections/header.liquid")
+        .find(|f| f.path().as_str() == "sections/header.liquid")
         .unwrap();
     assert_eq!(
         repo.read_theme_file(header).await.unwrap(),
@@ -309,7 +309,7 @@ async fn symlinks_in_theme_directories_are_never_read() {
     assert!(
         tree.theme_files
             .iter()
-            .all(|f| f.path.as_str() != "snippets/leak.liquid"),
+            .all(|f| f.path().as_str() != "snippets/leak.liquid"),
         "a symlink under snippets/ must not be readable"
     );
     let blob_reads = fake

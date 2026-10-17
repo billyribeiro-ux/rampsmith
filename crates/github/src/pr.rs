@@ -197,8 +197,8 @@ pub enum PlanError {
     /// The summary is empty or longer than [`MAX_SUMMARY_CHARS`] after collapsing whitespace.
     #[error("fix {0} has an empty or overlong summary")]
     Summary(FixId),
-    /// The evidence link is not `https`.
-    #[error("fix {0} has an evidence link that is not https")]
+    /// The evidence link is not `https`, or carries credentials that the body would publish.
+    #[error("fix {0} has an evidence link that is not https or carries credentials")]
     EvidenceUrl(FixId),
     /// The head branch was refused by the branch guard.
     #[error(transparent)]
@@ -238,7 +238,8 @@ fn validate(batch: &Batch) -> Result<(), PlanError> {
         if fix.files.is_empty() {
             return Err(PlanError::EmptyFix(fix.id.clone()));
         }
-        if fix.evidence_url.scheme() != "https" {
+        let url = &fix.evidence_url;
+        if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
             return Err(PlanError::EvidenceUrl(fix.id.clone()));
         }
         commit_message(fix)?;
@@ -921,6 +922,13 @@ mod tests {
         insecure.evidence_url = Url::parse("http://app.rampsmith.example/x").unwrap();
         assert!(matches!(
             plan_pull_requests(&batch(vec![insecure]), "main", limits),
+            Err(PlanError::EvidenceUrl(_))
+        ));
+        let mut with_credentials = fix("f1", vec![p()]);
+        with_credentials.evidence_url =
+            Url::parse("https://user:token@app.rampsmith.example/x").unwrap();
+        assert!(matches!(
+            plan_pull_requests(&batch(vec![with_credentials]), "main", limits),
             Err(PlanError::EvidenceUrl(_))
         ));
     }
