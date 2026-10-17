@@ -18,6 +18,7 @@ side by side, as laid out in PLAN §8.
 | `crates/domain` | Pure domain types: no I/O, no async, no database |
 | `crates/db` | Migrations, the tenant-scoped transaction, repositories and the isolation suite |
 | `crates/queue` | The job protocol (enqueue, claim, heartbeat, complete, fail) and the worker loop |
+| `crates/telemetry` | OpenTelemetry setup, JSON logs and W3C trace context for the Rust services |
 | `crates/contracts` | Types that cross a language boundary, with generated JSON Schema |
 | `packages/tsconfig` | Shared strict TypeScript configurations |
 | `packages/contracts-ts` | Generated TypeScript types and schemas; never hand-edited |

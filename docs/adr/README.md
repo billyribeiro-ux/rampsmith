@@ -24,6 +24,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [016](016-pull-request-gate-mechanics.md) | Pull-request gate mechanics | Accepted |
 | [017](017-composite-tenant-foreign-keys.md) | Composite tenant foreign keys | Accepted |
 | [018](018-job-queue-protocol.md) | Job queue protocol details | Accepted |
+| [019](019-telemetry.md) | Telemetry wiring | Accepted |
 
 ## Template
 

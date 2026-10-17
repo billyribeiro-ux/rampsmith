@@ -58,7 +58,10 @@ skip = [
   { crate = "block-buffer@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
   { crate = "crypto-common@0.1", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
   { crate = "cpufeatures@0.2", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
-  { crate = "getrandom@0.2", reason = "ring 0.17 (rustls) depends on getrandom 0.2" },
+  { crate = "getrandom@0.3", reason = "rand 0.9 (opentelemetry_sdk) depends on getrandom 0.3; sqlx and our code use rand 0.10" },
+  { crate = "rand@0.9", reason = "opentelemetry_sdk 0.33 depends on rand 0.9; sqlx-postgres 0.9 and our code use rand 0.10" },
+  { crate = "rand_core@0.9", reason = "comes with rand 0.9 (opentelemetry_sdk)" },
+  { crate = "base64@0.22", reason = "sqlx-core 0.9 depends on base64 0.22; hyper-util (reqwest) has moved to 0.23" },
   { crate = "hashbrown@0.16", reason = "hashlink 0.11 (sqlx-core) depends on hashbrown 0.16" },
   { crate = "syn@2", reason = "most proc-macro crates have not moved to syn 3 yet" },
 ]

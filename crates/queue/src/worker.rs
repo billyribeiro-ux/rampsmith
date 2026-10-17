@@ -1,18 +1,56 @@
 //! A worker loop: claim, run with heartbeats, then complete or fail (PLAN §10).
 
 use std::future::Future;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
+
+use opentelemetry::KeyValue;
+use opentelemetry::metrics::{Counter, Histogram};
 
 use sqlx::PgPool;
 use sqlx::postgres::PgListener;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
-use tracing::{debug, info, warn};
+use tracing::{Instrument, debug, info, warn};
 
 use crate::{
     CHANNEL, ClaimedJob, FailOutcome, Failure, Lease, QueueError, claim, complete, fail, heartbeat,
 };
+
+/// Queue instruments (PLAN §10 "Metrics", §21). Created on first use from the global meter
+/// provider that `telemetry::init` installs.
+struct Metrics {
+    attempts: Counter<u64>,
+    claim_seconds: Histogram<f64>,
+}
+
+fn metrics() -> &'static Metrics {
+    static METRICS: OnceLock<Metrics> = OnceLock::new();
+    METRICS.get_or_init(|| {
+        let meter = opentelemetry::global::meter("rampsmith.queue");
+        Metrics {
+            attempts: meter
+                .u64_counter("rampsmith.queue.attempts")
+                .with_description("Finished job attempts, by queue and outcome")
+                .build(),
+            claim_seconds: meter
+                .f64_histogram("rampsmith.queue.claim.duration")
+                .with_unit("s")
+                .with_description("Time to claim a batch of jobs")
+                .build(),
+        }
+    })
+}
+
+fn record_attempt(queue: &str, outcome: &'static str) {
+    metrics().attempts.add(
+        1,
+        &[
+            KeyValue::new("queue", queue.to_owned()),
+            KeyValue::new("outcome", outcome),
+        ],
+    );
+}
 
 /// How one worker claims and runs jobs of one queue.
 #[derive(Debug, Clone)]
@@ -71,7 +109,13 @@ where
         while tasks.try_join_next().is_some() {}
         let free = i64::try_from(slots.available_permits()).unwrap_or(0);
         if free > 0 {
-            match claim(&pool, &config.queue, free, &config.worker_id, config.lease).await {
+            let started = Instant::now();
+            let claimed = claim(&pool, &config.queue, free, &config.worker_id, config.lease).await;
+            metrics().claim_seconds.record(
+                started.elapsed().as_secs_f64(),
+                &[KeyValue::new("queue", config.queue.clone())],
+            );
+            match claimed {
                 Ok(jobs) if !jobs.is_empty() => {
                     for job in jobs {
                         let Ok(permit) = Arc::clone(&slots).acquire_owned().await else {
@@ -113,8 +157,32 @@ where
     Ok(())
 }
 
-/// Runs one attempt, heartbeating every third of the lease.
+/// Runs one attempt inside a `job` span that continues the enqueuer's trace, heartbeating
+/// every third of the lease.
 async fn attempt<H, F>(
+    pool: PgPool,
+    handler: Arc<H>,
+    job: ClaimedJob,
+    lease: Duration,
+    slot: OwnedSemaphorePermit,
+) where
+    H: Fn(ClaimedJob) -> F + Send + Sync + 'static,
+    F: Future<Output = Result<(), Failure>> + Send + 'static,
+{
+    let span = tracing::info_span!(
+        "job",
+        queue = %job.queue,
+        job_id = %job.lease.job_id,
+        attempt = job.lease.attempt,
+        otel.kind = "consumer",
+    );
+    telemetry::set_parent(&span, job.traceparent.as_deref());
+    run_attempt(pool, handler, job, lease, slot)
+        .instrument(span)
+        .await;
+}
+
+async fn run_attempt<H, F>(
     pool: PgPool,
     handler: Arc<H>,
     job: ClaimedJob,
@@ -140,6 +208,13 @@ async fn attempt<H, F>(
             },
         }
     };
+    let label = match &outcome {
+        None => "lease_lost",
+        Some(Ok(())) => "succeeded",
+        Some(Err(Failure::Retryable(_))) => "retryable",
+        Some(Err(Failure::Permanent(_))) => "permanent",
+    };
+    record_attempt(&queue, label);
     match outcome {
         None => {
             warn!(job = %held.job_id, %queue, attempt = held.attempt, "lease lost; attempt abandoned");

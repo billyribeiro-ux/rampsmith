@@ -442,3 +442,47 @@ async fn the_app_role_enqueues_only_for_its_own_tenant(
     let claim = queue::claim(&mut *tx, "test.effect", 1, "app", LEASE).await;
     assert!(claim.is_err(), "the app role must not claim jobs");
 }
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn depth_reports_waiting_running_and_dead_jobs_by_queue(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let pool = worker_pool(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts, conn).await;
+    for key in ["a", "b", "c"] {
+        enqueue(&pool, &job(key)).await;
+    }
+    enqueue(&pool, &NewJob::new("scan.page", "scan.page@1", json!({}))).await;
+    let j = queue::claim(&pool, "test.effect", 1, "w", LEASE)
+        .await
+        .unwrap()
+        .remove(0);
+    queue::fail(&pool, &j.lease, &Failure::Permanent(error("x")), 0.0)
+        .await
+        .unwrap();
+    queue::claim(&pool, "test.effect", 1, "w", LEASE)
+        .await
+        .unwrap();
+    sqlx::query("update jobs set run_at = now() - interval '90 seconds' where state = 'ready'")
+        .execute(&owner)
+        .await
+        .unwrap();
+
+    let rows = queue::depth(&pool).await.unwrap();
+    let get = |q: &str, s: &str| {
+        rows.iter()
+            .find(|d| d.queue == q && d.state == s)
+            .map(|d| d.count)
+    };
+    assert_eq!(get("test.effect", "ready"), Some(1));
+    assert_eq!(get("test.effect", "running"), Some(1));
+    assert_eq!(get("test.effect", "dead"), Some(1));
+    assert_eq!(get("scan.page", "ready"), Some(1));
+    let age = rows
+        .iter()
+        .find(|d| d.state == "ready")
+        .and_then(|d| d.oldest_ready_seconds)
+        .unwrap();
+    assert!(age >= 89.0, "{age}");
+}

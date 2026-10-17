@@ -169,8 +169,14 @@ pub enum FailOutcome {
 }
 
 /// Enqueues a job inside the caller's transaction, so it commits or rolls back with the
-/// domain write that caused it. Workers are notified when the transaction commits.
+/// domain write that caused it. Workers are notified when the transaction commits. Without
+/// an explicit `traceparent`, the current span's trace context is stored, so the worker's
+/// span continues the same trace (PLAN §10).
 pub async fn enqueue(conn: &mut PgConnection, job: &NewJob) -> Result<Enqueued, QueueError> {
+    let traceparent = job
+        .traceparent
+        .clone()
+        .or_else(|| telemetry::traceparent(&tracing::Span::current()));
     let id = sqlx::query_scalar!(
         r#"with inserted as (
              insert into jobs (id, queue, payload_schema, payload, tenant_id, priority, state,
@@ -190,7 +196,7 @@ pub async fn enqueue(conn: &mut PgConnection, job: &NewJob) -> Result<Enqueued, 
         job.run_at,
         job.idempotency_key,
         job.parent_id,
-        job.traceparent,
+        traceparent,
     )
     .fetch_optional(conn)
     .await?;
@@ -391,4 +397,42 @@ pub async fn cancel_tenant_jobs<'c>(
     .execute(executor)
     .await?;
     Ok(updated.rows_affected())
+}
+
+/// Jobs waiting, running or dead in one queue, for the depth and age metrics (PLAN §10, §21).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Depth {
+    /// The queue.
+    pub queue: String,
+    /// `ready`, `running` or `dead`.
+    pub state: String,
+    /// How many jobs are in that state.
+    pub count: i64,
+    /// For `ready`: seconds since the oldest due job became runnable.
+    pub oldest_ready_seconds: Option<f64>,
+}
+
+/// Depth by queue and state, and the age of the oldest due job. Finished states are left out:
+/// they only grow.
+pub async fn depth<'c>(executor: impl PgExecutor<'c>) -> Result<Vec<Depth>, QueueError> {
+    let rows = sqlx::query!(
+        r#"select queue, state, count(*) as "count!",
+                  extract(epoch from now() - min(run_at) filter (where state = 'ready' and run_at <= now()))::float8
+                    as oldest_ready_seconds
+             from jobs
+            where state in ('ready', 'running', 'dead')
+            group by queue, state
+            order by queue, state"#,
+    )
+    .fetch_all(executor)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| Depth {
+            queue: r.queue,
+            state: r.state,
+            count: r.count,
+            oldest_ready_seconds: r.oldest_ready_seconds,
+        })
+        .collect())
 }
