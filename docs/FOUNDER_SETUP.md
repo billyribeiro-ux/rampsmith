@@ -165,6 +165,7 @@ Values:
 - `SHOPIFY_PARTNER_ORG_ID` → Both
 - `SHOPIFY_PARTNER_API_TOKEN` → Both
 - `SHOPIFY_APP_AUTOMATION_TOKEN` → GH env `production` only (PLAN §24 deploys Shopify config after production approval). The CLI reads this variable automatically.
+- `SHOPIFY_APP_GID`, the app's `gid://shopify/App/<id>`, its Partner API app id (ADR-131) → Both. Builders can read it from the installed app; ask them for the value.
 
 Docs: [Partner API 2026-10](https://shopify.dev/docs/api/partner/2026-10) · [Partner API getting started](https://shopify.dev/docs/partner-api/getting-started?locale=en) · [App Automation Tokens](https://shopify.dev/docs/apps/build/dev-dashboard/app-automation-tokens) · [CI/CD](https://shopify.dev/docs/apps/tools/cli/ci-cd) · [App Pricing](https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing)
 
@@ -208,14 +209,14 @@ Values:
 
 Docs: [plans](https://docs.railway.com/pricing/plans.md) · [railway init](https://docs.railway.com/cli/init.md) · [environments](https://docs.railway.com/environments.md) · [tokens](https://docs.railway.com/integrations/api) · [deploying from CI](https://docs.railway.com/cli/deploying.md) · [CLI](https://docs.railway.com/guides/cli) · [projects](https://docs.railway.com/projects.md)
 
-### 8. TOKEN_MASTER_KEY (input 12)
+### 8. RAMPSMITH_MASTER_KEYS (input 12)
 
 1. Run `rsctl keys generate` on your own machine, once for `production` and once for `staging`. Builders provide the tool.
 2. Put each key in Railway as a service or shared variable in its own environment, then Seal it.
 3. Save copies in your offline encrypted vault (PLAN §22). If the key is lost, merchants re-authenticate the next time they open the app (PLAN §22).
 
 Values:
-- `TOKEN_MASTER_KEY` → RW, sealed, with a different key per environment.
+- `RAMPSMITH_MASTER_KEYS` → RW, sealed, with a different key ring per environment. Its format is `id:base64key[,id:base64key…]`, newest first, and a rotation adds the new key at the front (ADR-021).
 - GH only if builders ask, and then use a separate CI key, never production's.
 - Sealed values are not copied into PR environments, so builders need a non-sealed test value there.
 
@@ -307,6 +308,7 @@ Wait until the domain works, since it gives the webhook URL, and until builders 
 
 Values:
 - `GITHUB_APP_ID` → Both
+- `GITHUB_APP_CLIENT_ID` → Both (ADR-122). The manifest conversion returns it as `client_id`.
 - `GITHUB_APP_PRIVATE_KEY`, the whole PEM → Both. Use `gh secret set GITHUB_APP_PRIVATE_KEY < app.pem`, and in Railway use the Raw Editor or Cmd/Ctrl+Enter for the line breaks.
 - `GITHUB_APP_WEBHOOK_SECRET` → Both
 

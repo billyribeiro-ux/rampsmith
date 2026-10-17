@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 22:37 UTC by the continuation check (founder lifted the Node LTS merge hold).
+Last updated: 2026-10-17 by the architect chat (rulings on the stream findings; App Store decision queued).
 
 ## Active builder
 
@@ -82,6 +82,25 @@ ADR numbers from 021 upward, below 100. Each stream's evidence is in
   17 Oct 2026. WS-5 adds to it; at integration, `main`'s version is the base.
 - Edit only your own section of this file, and rebase on `origin/main` before every push.
 
+### Architect rulings on the stream findings (17 Oct 2026, evening check-in)
+
+- **Phosphor icons:** recorded in CLAUDE.md and PLAN §7. `phosphor-svelte` 3.1.1 verified on npm
+  (MIT; peers `svelte ^5`, `vite >=5`; its README recommends `phosphor-svelte/lib/<Name>Icon`
+  and deprecates the unsuffixed names).
+- **Dawn fixtures:** Dawn's `LICENSE.md` (Shopify/dawn at `258f00f`) allows use "only ... to
+  develop themes that integrate or interoperate with Shopify" and prohibits all other uses. Dawn
+  files stay out of this repository; the hand-written fixtures carry the recipes. ADR-105 is
+  accepted with that change at integration, and the question is on the attorney's list
+  (LAUNCH.md C, row 13).
+- **App Store requirements 1.1.3 and 5.1.1:** both quotes verified on shopify.dev on 17 Oct 2026.
+  The decision is under "Waiting on founder". Until he answers, both code channels are built
+  behind a flag that is off in the App Store build, and ADR-141's listing and reviewer approach
+  stands.
+- **LAUNCH.md section C:** now lists `SHOPIFY_APP_GID` (ADR-131), `GITHUB_APP_CLIENT_ID`
+  (ADR-122) and `RAMPSMITH_MASTER_KEYS` (ADR-021, replacing `TOKEN_MASTER_KEY`); section E has
+  ADR-131's plan-state row.
+- **claims-lint directory bug:** queued for the main builder under "Required corrections".
+
 ## Lock rule (apply before building)
 
 A builder is active, and you must not build, if either is true:
@@ -114,6 +133,9 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
   ADR-014's sandbox binary at `node-linux-x64@<that version>`; replace the "first 26.x release
   tagged LTS" wording in ADR-016, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the
   version; and record the CI log's `process.release.lts` in `docs/evidence/`.
+- **claims-lint directory bug (main builder).** `claims-lint` fails with `EISDIR` when a
+  directory matches `listing/**/*`. In `packages/claims-lint/src/cli.ts` `discoverFiles`, keep
+  only paths where `statSync(join(cwd, path)).isFile()`, with a test for a matching directory.
 - **Log retention.** PLAN §21 keeps logs 30 days; Grafana Cloud Free keeps 14 and Pro keeps 30
   at a cost ([pricing](https://grafana.com/pricing/), read 17 Oct 2026). Keep Grafana Free and
   archive logs to R2 for 30 days through the collector, after verifying its S3-compatible
@@ -148,6 +170,14 @@ All founder inputs in LAUNCH.md section C are open, and by the founder's decisio
 builders do not wait for them. Each check that needs one goes into LAUNCH.md section E. Builders
 keep this list to the inputs in the order the founder should add them at the end, each with the
 command to run after it; `docs/FOUNDER_SETUP.md` has the steps.
+
+Decision needed, not an input: Shopify App Store requirement 1.1.3 ("Your app must not allow
+merchants to download themes") and 5.1.1 ("You or merchants should not make any code changes to
+the theme") put the patched theme package and the GitHub pull-request channel at App Review
+risk. The architect recommends retiring the theme-package channel, keeping the pull-request
+channel behind its flag, and asking Shopify before the R2 submission whether a pull request the
+merchant's developer reviews and merges meets 5.1.1. Builders stop short of R2's package work
+until the founder answers.
 
 ## Founder notifications sent
 

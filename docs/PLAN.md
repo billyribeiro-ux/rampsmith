@@ -223,6 +223,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `@playwright/test` | 1.64.1 | End-to-end and accessibility tests of Rampsmith's own UI |
 | `@axe-core/playwright` | 4.14.0 | Rampsmith's own UI must pass its own scanner |
 | `eslint` / `prettier` / `prettier-plugin-svelte` | 10.13.0 / 3.9.10 / 4.1.1 |  |
+| `phosphor-svelte` | 3.1.1 | Every icon in the Svelte UI (founder instruction, 17 Oct 2026); import each from `phosphor-svelte/lib/<Name>Icon`; Polaris draws its own icons in the embedded admin |
 
 ### Control plane (`api`, `ctl`)
 

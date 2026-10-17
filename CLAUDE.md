@@ -38,6 +38,10 @@ run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the
   Changing the major line needs the founder.
 - TypeScript `strict` plus the extra flags in PLAN §8. Zero warnings from `tsc`, `svelte-check`,
   ESLint and Clippy (`-D warnings`). Svelte 5 runes only; SvelteKit 3 `#lib` alias.
+- Icons come from `phosphor-svelte` only (founder instruction, 17 Oct 2026), never hand-written
+  inline SVGs. Import `phosphor-svelte/lib/<Name>Icon`; decorative icons get `aria-hidden="true"`,
+  icon-only controls a translated accessible name, colour `currentColor`. Polaris keeps its own
+  icons inside the embedded admin, and the favicon stays a brand mark.
 - Rust edition 2024; `unsafe` forbidden; no `unwrap`/`expect` outside tests; `thiserror` in
   libraries, `anyhow` only in a binary's `main`.
 - Every tenant-owned table goes through `TenantTx` plus row-level security; the isolation suite passes.
