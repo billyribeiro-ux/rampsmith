@@ -10,7 +10,7 @@ import axe from 'axe-core';
 import { detectChallenge } from '../src/challenge.ts';
 import { WCAG_TAGS, settle } from '../src/scan-page.ts';
 import { scrubExcerpt } from '../src/scrub.ts';
-import { UA, checkRobots, launch, sleep } from './shared.ts';
+import { UA, checkRobots, keepOnSite, launch, sleep } from './shared.ts';
 
 const FALLBACK = 'https://theme-dawn-demo.myshopify.com/';
 const VIEWPORT = { width: 390, height: 844 };
@@ -74,6 +74,7 @@ if (robots.allowed) {
     timezoneId: 'UTC',
     serviceWorkers: 'block',
   });
+  await keepOnSite(context, new URL(store.url).hostname);
   const queue: string[] = [store.url];
   const visited = new Set<string>();
   while (queue.length > 0 && visited.size < 3) {
@@ -88,7 +89,9 @@ if (robots.allowed) {
     const blocked = detectChallenge({
       status,
       title: await page.title(),
-      html: (await page.content()).slice(0, 200_000),
+      html: await page.content(),
+      url: page.url(),
+      headers: response?.headers() ?? {},
     });
     if (visited.size === 1) {
       const links = await page.evaluate(() => {

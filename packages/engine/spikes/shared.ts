@@ -4,7 +4,7 @@
  * one page in flight, challenges recorded and never evaded.
  */
 import process from 'node:process';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { robotsAllows, type RobotsResponse } from '../src/robots.ts';
 import { BOT_TOKEN, userAgent } from '../src/user-agent.ts';
 
@@ -49,4 +49,29 @@ export function percentile(values: readonly number[], p: number): number {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Whether `host` is `site` or one of its subdomains (www., us. and the like). */
+function onSite(host: string, site: string): boolean {
+  return host === site || host.endsWith(`.${site}`) || site.endsWith(`.${host}`);
+}
+
+/**
+ * Aborts any top-level navigation that leaves `site`, as egress would refuse it in the product
+ * (ADR-025): a spike loads only the stores it names.
+ */
+export async function keepOnSite(context: BrowserContext, site: string): Promise<void> {
+  await context.route('**/*', async (route) => {
+    const request = route.request();
+    const host = new URL(request.url()).hostname;
+    if (
+      request.isNavigationRequest() &&
+      request.frame().parentFrame() === null &&
+      !onSite(host, site)
+    ) {
+      await route.abort('blockedbyclient');
+      return;
+    }
+    await route.continue();
+  });
 }

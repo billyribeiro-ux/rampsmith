@@ -1,7 +1,8 @@
-# Spikes and registry evidence (PLAN §11, §27). Runs only when the `run-spikes` label is added
-# to a pull request, or by hand once this file is on main. The spikes load third-party pages
-# inside the free scanner's limits (docs/bot.md); their JSON goes to the log and an artifact
-# for the record in docs/spikes. Nothing here gates a merge.
+# Spikes and registry evidence (PLAN §11, §27). Runs only when a label is added to a pull
+# request (`run-spikes` for all, or `run-spike-s1`, `run-spike-s2`, `run-digests`), or by hand
+# once this file is on main. The spikes load third-party pages inside the free scanner's limits,
+# so a store is loaded at most once a day (docs/bot.md); their JSON goes to the log and an
+# artifact for the record in docs/spikes. Nothing here gates a merge.
 name: spikes
 
 on:
@@ -19,7 +20,9 @@ env:
 jobs:
   digests:
     # Base images whose digests the sandbox registry mirror cannot serve (ADR-014, ADR-020).
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-spikes'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["run-spikes","run-digests"]'), github.event.label.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -41,7 +44,9 @@ jobs:
           docker run --rm "$image" sh -c 'node --version; ls /ms-playwright; id pwuser; cat /etc/os-release | head -n 2'
 
   s1:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-spikes'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["run-spikes","run-spike-s1"]'), github.event.label.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -65,7 +70,9 @@ jobs:
           retention-days: 30
 
   s2:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-spikes'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["run-spikes","run-spike-s2"]'), github.event.label.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:

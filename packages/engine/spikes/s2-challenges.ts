@@ -14,7 +14,7 @@ import process from 'node:process';
 import { AxeBuilder } from '@axe-core/playwright';
 import { detectChallenge } from '../src/challenge.ts';
 import { WCAG_TAGS, settle } from '../src/scan-page.ts';
-import { UA, checkRobots, launch, percentile, sleep } from './shared.ts';
+import { UA, checkRobots, keepOnSite, launch, percentile, sleep } from './shared.ts';
 
 const TARGET = Number(process.env['S2_STORES'] ?? '50');
 const candidates = readFileSync(new URL('./stores.txt', import.meta.url), 'utf8')
@@ -74,6 +74,7 @@ for (const domain of candidates) {
     timezoneId: 'UTC',
     serviceWorkers: 'block',
   });
+  await keepOnSite(context, domain);
   try {
     const page = await context.newPage();
     const started = performance.now();
@@ -81,12 +82,18 @@ for (const domain of candidates) {
     await settle(page, 500, 10_000);
     const status = response?.status() ?? 0;
     const title = await page.title();
-    const html = (await page.content()).slice(0, 400_000);
+    const html = await page.content();
     const lower = html.toLowerCase();
     const finalUrl = new URL(page.url());
     row.status = status;
     row.finalHost = finalUrl.host;
-    row.verdict = detectChallenge({ status, title, html: html.slice(0, 200_000) });
+    row.verdict = detectChallenge({
+      status,
+      title,
+      html,
+      url: page.url(),
+      headers: response?.headers() ?? {},
+    });
     row.signals = {
       cfMitigated: response?.headers()['cf-mitigated'] ?? '',
       cfChl: lower.includes('cf-chl'),
@@ -98,6 +105,7 @@ for (const domain of candidates) {
       passwordPage: finalUrl.pathname.startsWith('/password'),
       storefront: lower.includes('shopify.shop') || lower.includes('shopify-section'),
       status429: status === 429,
+      links: String(html.match(/<a\s[^>]*href=/gi)?.length ?? 0),
     };
     if (row.verdict === undefined && status < 400) {
       const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();

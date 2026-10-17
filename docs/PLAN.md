@@ -1441,7 +1441,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 6. [x] `api` skeleton: health and readiness, problem+json errors, OpenAPI generation (ADR-020).
 7. [x] Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here. Built and tested against a mock Shopify (ADR-021, ADR-022); the live development-store run waits for the founder's Partner account (`docs/runbooks/shopify-dev-store.md`).
 8. [x] `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys (ADR-023, ADR-024). The emailed sign-in link waits for an email provider account.
-9. `egress` and an `engine` skeleton that scans one page through it. Spikes S-1 and S-2 run here.
+9. [x] `egress` and an `engine` skeleton that scans one page through it (ADR-025). Spikes S-1 and S-2 run here: S-2 answered (0 of 50 stores challenged; detector recalibrated, ADR-027); S-1's tag set answered, its Dawn `target-size` measurement reruns 24 hours after the first load (`docs/spikes/`).
 10. [x] `packages/ui` primitives with their axe and keyboard tests (ADR-026), now used by the standalone web pages.
 
 Then R1 in the order of section 5, and so on.
