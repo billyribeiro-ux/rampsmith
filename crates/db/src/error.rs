@@ -22,6 +22,9 @@ pub enum DbError {
     /// Any other database failure.
     #[error("database error: {0}")]
     Sqlx(sqlx::Error),
+    /// The job protocol refused the operation.
+    #[error("queue error: {0}")]
+    Queue(String),
     /// Applying migrations failed.
     #[error("migration error: {0}")]
     Migrate(#[from] sqlx::migrate::MigrateError),

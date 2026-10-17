@@ -1,0 +1,18 @@
+{
+  "description": "Retry delays shared by the Rust and TypeScript queue implementations (PLAN §10). delay_ms = e/2 + floor(jitter * e/2), where e = min(3600000, 5000 * 2^(attempt - 1)).",
+  "cases": [
+    { "attempt": 1, "jitter": 0, "delay_ms": 2500 },
+    { "attempt": 1, "jitter": 0.5, "delay_ms": 3750 },
+    { "attempt": 1, "jitter": 0.999999, "delay_ms": 4999 },
+    { "attempt": 2, "jitter": 0, "delay_ms": 5000 },
+    { "attempt": 2, "jitter": 0.25, "delay_ms": 6250 },
+    { "attempt": 3, "jitter": 0.5, "delay_ms": 15000 },
+    { "attempt": 4, "jitter": 0.1, "delay_ms": 22000 },
+    { "attempt": 8, "jitter": 0.5, "delay_ms": 480000 },
+    { "attempt": 10, "jitter": 0, "delay_ms": 1280000 },
+    { "attempt": 11, "jitter": 0, "delay_ms": 1800000 },
+    { "attempt": 11, "jitter": 0.999999, "delay_ms": 3599998 },
+    { "attempt": 12, "jitter": 0.5, "delay_ms": 2700000 },
+    { "attempt": 40, "jitter": 0.5, "delay_ms": 2700000 }
+  ]
+}

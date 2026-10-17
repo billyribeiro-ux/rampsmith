@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update jobs set\n             state = case when attempts < max_attempts then 'ready' else 'dead' end,\n             run_at = now(),\n             finished_at = case when attempts < max_attempts then null else now() end,\n             locked_by = null,\n             locked_until = null,\n             last_error = jsonb_build_object(\n               'code', 'lease_expired',\n               'message', 'the worker lost its lease before finishing',\n               'retryable', attempts < max_attempts)\n           where state = 'running' and locked_until < now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "62a5c3be56cf06c9de73fe313f5ce2301046f7b9777d8a0e94ec1013b192bd34"
+}

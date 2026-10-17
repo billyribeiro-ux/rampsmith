@@ -39,7 +39,6 @@ async fn every_table_with_a_tenant_column_has_row_level_security_and_a_policy(po
            join pg_namespace n on n.oid = c.relnamespace
           where n.nspname = 'public'
             and c.relkind in ('r', 'p')
-            and c.relname <> 'jobs'
             and (exists (select 1 from pg_attribute a
                           where a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped)
                  or c.relname = 'tenants')

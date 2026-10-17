@@ -2,6 +2,7 @@
 
 use schemars::{Schema, schema_for};
 
+use crate::job::JobError;
 use crate::problem::Problem;
 
 /// A JSON Schema and the file stem it is written under.
@@ -16,10 +17,16 @@ pub struct NamedSchema {
 /// Every contract schema, sorted by name.
 #[must_use]
 pub fn schemas() -> Vec<NamedSchema> {
-    vec![NamedSchema {
-        name: "problem",
-        schema: schema_for!(Problem),
-    }]
+    vec![
+        NamedSchema {
+            name: "job-error",
+            schema: schema_for!(JobError),
+        },
+        NamedSchema {
+            name: "problem",
+            schema: schema_for!(Problem),
+        },
+    ]
 }
 
 #[cfg(test)]

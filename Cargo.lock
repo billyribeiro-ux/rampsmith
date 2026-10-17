@@ -785,6 +785,7 @@ name = "rampsmith-db"
 version = "0.0.0"
 dependencies = [
  "rampsmith-domain",
+ "rampsmith-queue",
  "serde_json",
  "sqlx",
  "thiserror",
@@ -797,6 +798,22 @@ dependencies = [
 name = "rampsmith-domain"
 version = "0.0.0"
 dependencies = [
+ "uuid",
+]
+
+[[package]]
+name = "rampsmith-queue"
+version = "0.0.0"
+dependencies = [
+ "rampsmith-contracts",
+ "rand",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 

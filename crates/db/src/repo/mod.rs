@@ -5,6 +5,7 @@
 pub mod audit;
 pub mod findings;
 pub mod fixes;
+pub mod jobs;
 pub mod occurrences;
 pub mod scans;
 pub mod sites;

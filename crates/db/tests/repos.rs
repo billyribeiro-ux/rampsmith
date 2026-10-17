@@ -546,3 +546,45 @@ async fn occurrence_partitions_exist_for_this_month_and_the_next_three(pool: sql
     .unwrap();
     assert_eq!(again, 4);
 }
+
+#[sqlx::test]
+async fn a_job_enqueued_in_a_tenant_transaction_commits_with_it(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts, conn).await;
+    let g = seed(&db, 21).await;
+    let job = || {
+        queue::NewJob::new(
+            "scan.plan",
+            "scan.plan@1",
+            serde_json::json!({ "scan": g.scan.to_string() }),
+        )
+    };
+
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    db::repo::jobs::enqueue(&mut tx, job()).await.unwrap();
+    tx.rollback().await.unwrap();
+    let count: i64 = sqlx::query_scalar("select count(*) from jobs")
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "a rolled-back transaction left a job behind");
+
+    let other_tenant = domain::TenantId::new();
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    db::repo::jobs::enqueue(&mut tx, job().for_tenant(other_tenant.as_uuid()))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let tenant: uuid::Uuid = sqlx::query_scalar("select tenant_id from jobs")
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+    assert_eq!(
+        tenant,
+        g.tenant.as_uuid(),
+        "the transaction's tenant always wins"
+    );
+}

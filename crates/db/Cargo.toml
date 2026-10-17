@@ -12,6 +12,7 @@ name = "db"
 
 [dependencies]
 domain.workspace = true
+queue.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true

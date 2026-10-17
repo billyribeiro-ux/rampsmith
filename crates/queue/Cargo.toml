@@ -1,0 +1,32 @@
+[package]
+name = "rampsmith-queue"
+version = "0.0.0"
+description = "The PostgreSQL job protocol shared with the TypeScript engine: enqueue, claim, heartbeat, complete, fail."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "queue"
+
+[[bin]]
+name = "queue-harness"
+path = "src/bin/queue_harness.rs"
+
+[dependencies]
+contracts.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tracing.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true

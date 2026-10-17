@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JobError",
+  "description": "Stored in `jobs.last_error` when an attempt fails.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "description": "Stable, `snake_case` reason, such as `shopify_throttled` or `payload_invalid`.",
+      "type": "string"
+    },
+    "message": {
+      "description": "What went wrong, for operators. Never contains tokens, theme source or personal data.",
+      "type": "string"
+    },
+    "retryable": {
+      "description": "Whether the job was scheduled for another attempt.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "message",
+    "retryable"
+  ]
+}
