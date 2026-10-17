@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 by the architect chat (rulings on the stream findings; App Store decision queued).
+Last updated: 2026-10-17 22:55 UTC by the continuation check (second stream wave), after the architect chat's rulings on the stream findings.
 
 ## Active builder
 
@@ -66,6 +66,35 @@ ADR numbers from 021 upward, below 100. Each stream's evidence is in
   `GITHUB_APP_CLIENT_ID`) are in ADR-131 and ADR-127; row 12's name differs between LAUNCH.md
   (`TOKEN_MASTER_KEY`) and ADR-021 (`RAMPSMITH_MASTER_KEYS`); `billing::ShopDomain` duplicates
   `shopify::ShopDomain` on `r0-foundations` and is replaced by it at integration.
+
+## Second stream wave (founder request, 17 Oct 2026, 22:55 UTC)
+
+The founder asked to "get everything done" except his two pending decisions (App Store rules
+vs the fix channels; Dawn fixtures) and his accounts. The continuation-check session
+(`session_01XvSyN8BfhHTRq3g9ngctuK`) opened eight more streams under the first wave's rules,
+each in its own scheduled session named `Rampsmith stream WS-<n> ...`. Differences from the
+first wave:
+- Each branches from `r0-foundations` at `16926b5` (it has `crypto`, `shopify`,
+  `shopify-auth`, `identity` and `apps/web`), and reads the rules from `main`, whose
+  CLAUDE.md, LAUNCH.md, ENVIRONMENT.md and this file override the branch's copies.
+- Each opens a draft pull request into `r0-foundations`, titled "WS-<n>: ... (do not merge;
+  stream CI)", only so `ci.yml` runs on the pinned toolchains. No stream merges it.
+- Each updates only its own row below on `main` when it ends; the evidence is in
+  `docs/evidence/ws-<n>-<name>.md` on its branch.
+- Nobody else creates or edits an owned path until the stream is integrated. The main builder
+  keeps `egress`, `engine`, `packages/ui`, `apps/web` (including the marketing site, pricing
+  page and free scanner) and every Dockerfile.
+
+| Stream | Branch | Owns | ADRs | Status |
+| --- | --- | --- | --- | --- |
+| WS-6 Operator CLI: `rsctl doctor`, `rsctl keys generate` (LAUNCH B, E) | `ws/rsctl` | `crates/rsctl/` | 151–159 | Started |
+| WS-7 Theme app extension (PLAN §14) | `ws/theme-app-ext` | `extensions/theme-app-ext/`, `packages/theme-app-ext-test/` | 161–169 | Started |
+| WS-8 Runbooks, nightly backup, restore drill (PLAN §22, LAUNCH B) | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Started |
+| WS-9 Deployment as configuration (PLAN §22, §24, LAUNCH B) | `ws/deploy` | `infra/railway/`, `infra/collector/`, `.github/workflows/release.yml`, `.github/workflows/deploy.yml` | 181–189 | Started |
+| WS-10 Email templates (LAUNCH B) | `ws/email` | `packages/email/` | 191–199 | Started |
+| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/` | 201–209 | Started |
+| WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Started |
+| WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Started |
 
 ## Coordination (founder decision, 17 Oct 2026)
 
