@@ -11,6 +11,9 @@ repository = "https://github.com/billyribeiro-ux/rampsmith"
 # Versions were read from crates.io on 2026-10-17 (docs/evidence/versions-2026-10-17.md).
 # Cargo.lock pins the exact resolution; add a crate here only when a member uses it.
 [workspace.dependencies]
+schemars = "1.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

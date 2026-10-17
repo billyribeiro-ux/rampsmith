@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Problem",
+  "description": "An RFC 9457 `application/problem+json` body with Rampsmith's extension members.\n\nUnknown members are ignored on input, as RFC 9457 requires of consumers.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "description": "Stable machine-readable code.",
+      "$ref": "#/$defs/ProblemCode"
+    },
+    "detail": {
+      "description": "Explanation specific to this occurrence. Never contains tokens or personal data.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "errors": {
+      "description": "Field-level errors when `code` is `validation_failed`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FieldError"
+      }
+    },
+    "instance": {
+      "description": "URI reference identifying this occurrence.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "description": "The HTTP status code.",
+      "type": "integer",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0
+    },
+    "title": {
+      "description": "Short summary of the problem type.",
+      "type": "string"
+    },
+    "trace_id": {
+      "description": "W3C trace id of the request, for support.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "type": {
+      "description": "URI reference identifying the problem type: `/problems/<code>`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code"
+  ],
+  "$defs": {
+    "FieldError": {
+      "description": "One invalid field of a request.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "description": "JSON path of the field, such as `shop` or `items.0.alt`.",
+          "type": "string"
+        },
+        "message": {
+          "description": "What is wrong, safe to show to the user.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "message"
+      ]
+    },
+    "ProblemCode": {
+      "description": "Stable, enumerated error code. Clients branch on this, never on `title` or `detail`.\n\nAdding a code is a contract change; renaming or removing one is a breaking change.",
+      "oneOf": [
+        {
+          "description": "The request could not be parsed.",
+          "type": "string",
+          "const": "bad_request"
+        },
+        {
+          "description": "The request parsed but a field is invalid; see `errors`.",
+          "type": "string",
+          "const": "validation_failed"
+        },
+        {
+          "description": "No valid credentials, such as a missing or expired session token.",
+          "type": "string",
+          "const": "unauthenticated"
+        },
+        {
+          "description": "Valid credentials without permission for this resource.",
+          "type": "string",
+          "const": "forbidden"
+        },
+        {
+          "description": "The resource does not exist or is not visible to this tenant.",
+          "type": "string",
+          "const": "not_found"
+        },
+        {
+          "description": "The resource changed since it was read (compare-before-write failed).",
+          "type": "string",
+          "const": "conflict"
+        },
+        {
+          "description": "The request body exceeds the endpoint's limit.",
+          "type": "string",
+          "const": "payload_too_large"
+        },
+        {
+          "description": "Too many requests; retry later.",
+          "type": "string",
+          "const": "rate_limited"
+        },
+        {
+          "description": "An unexpected failure inside Rampsmith.",
+          "type": "string",
+          "const": "internal"
+        },
+        {
+          "description": "A provider such as Shopify, GitHub or Anthropic failed.",
+          "type": "string",
+          "const": "upstream_failed"
+        },
+        {
+          "description": "Rampsmith is temporarily unable to serve the request.",
+          "type": "string",
+          "const": "unavailable"
+        }
+      ]
+    }
+  }
+}

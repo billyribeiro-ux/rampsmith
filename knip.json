@@ -3,6 +3,8 @@
   "treatConfigHintsAsErrors": true,
   "workspaces": {
     ".": {},
-    "packages/tsconfig": {}
+    "packages/contracts-ts": {
+      "entry": ["test/**/*.test-d.ts"]
+    }
   }
 }

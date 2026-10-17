@@ -7,6 +7,7 @@ target/
 **/dist/
 **/coverage/
 packages/contracts-ts/src/generated/
+packages/contracts-ts/schemas/
 **/.sqlx/
 
 # Prose is written by hand and exported from the planning doc; Prettier's table padding

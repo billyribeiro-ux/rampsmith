@@ -1,0 +1,21 @@
+{
+  "name": "@rampsmith/contracts-ts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generated TypeScript types and JSON Schemas for Rampsmith's contracts. Never hand-edited (ADR-009).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas/*.json": "./schemas/*.json"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.ts schemas src/generated",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@rampsmith/tsconfig": "workspace:*",
+    "json-schema-to-typescript": "16.0.0",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,23 @@
+[package]
+name = "rampsmith-contracts"
+version = "0.0.0"
+description = "Types that cross a language boundary: API errors and job payloads, with JSON Schema."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "contracts"
+
+[[bin]]
+name = "gen-schemas"
+path = "src/bin/gen_schemas.rs"
+
+[dependencies]
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
