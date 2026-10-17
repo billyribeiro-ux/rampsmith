@@ -37,6 +37,13 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 
   The release-verifier fails R0 until all four are done.
 
+## Founder approvals
+
+- 17 Oct 2026, pre-approved so builders proceed without asking: the PLAN §20 pricing as written;
+  drafting legal text marked "attorney review required"; evidence-backed scope tweaks that keep
+  every PLAN §5 exit criterion, each recorded in an ADR. Production deploys, spending, store
+  submission, publishing legal text and destructive operations still need the founder.
+
 ## Progress (scope and evidence rules: docs/LAUNCH.md)
 
 - [ ] R0 Foundations — in progress on `r0-foundations`

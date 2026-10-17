@@ -1416,7 +1416,9 @@ Claude Code drives the build as architect and implementer, deciding everything t
 
 ### Stop and ask the founder only for
 
-Spending money · production deploys · App Store or WordPress.org submission · legal text · pricing · scope changes · destructive data operations · anything published under your name.
+Spending money · production deploys · App Store or WordPress.org submission · publishing legal text · pricing changes · other scope changes · destructive data operations · anything published under your name.
+
+Pre-approved by the founder on 17 October 2026: the pricing in section 20 as written; drafting legal text marked "attorney review required"; and evidence-backed scope tweaks that keep every section 5 exit criterion, each recorded in an ADR.
 
 ### Never
 

@@ -50,7 +50,11 @@ run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the
 - Use floating tags such as `latest` for images, actions or CDN scripts.
 
 ## Founder boundary
-- Stop and ask only for: spending money, production deploys, store submissions, legal text,
-  pricing, scope changes, destructive data operations, and the founder inputs in LAUNCH.md.
+- Stop and ask only for: spending money, production deploys, store submissions, publishing legal
+  text, pricing changes, other scope changes, destructive data operations, and the founder inputs
+  in LAUNCH.md.
+- Pre-approved by the founder on 17 Oct 2026: the pricing in PLAN §20 as written; drafting legal
+  text, always marked "attorney review required"; and evidence-backed scope tweaks that keep every
+  PLAN §5 exit criterion, each recorded in an ADR.
 - Write each request under "Waiting on founder" in STATUS.md, then keep working on everything else.
 - Secrets reach the code only through GitHub Actions secrets and Railway variables that the founder sets.

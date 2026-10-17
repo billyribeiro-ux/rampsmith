@@ -48,7 +48,7 @@ variables** (for runtime). Never into the repository or a chat.
 | 10 | Domain registered, DNS on Cloudflare | App, marketing site, webhooks, email | none | DNS and TLS checks |
 | 11 | Stripe account (test mode first) | Billing for non-Shopify customers only, R3 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | Account retrieve; test subscription lifecycle |
 | 12 | Generated secrets, stored by the founder | Token encryption | `TOKEN_MASTER_KEY` (generated with `rsctl keys generate`) | Encrypt and decrypt round trip |
-| 13 | Decisions and legal | Launch | none | Trademark clearance, legal entity, attorney review, final pricing, App Store submission |
+| 13 | Decisions and legal | Launch | none | Trademark clearance, legal entity, attorney review, App Store submission. The PLAN §20 pricing is approved as written (17 Oct 2026). |
 
 Shopify merchants pay through Shopify App Pricing, so Stripe (row 11) is not needed for the
 Shopify App Store launch.
