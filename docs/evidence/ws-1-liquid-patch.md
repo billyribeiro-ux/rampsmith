@@ -59,6 +59,30 @@ license = 'MIT'  dependencies = { 'env-paths': '^2.2.1', 'node-fetch': '^2.6.11'
   files): `ms 136 checks 84`, offenses only `MissingAsset` / `MissingTemplate` for files not
   vendored. `OFFLINE_CHECKS.length` is 85, equal to `recommended.length`.
 
+## Shopify documentation read for the recipes (2026-10-17)
+
+| Page | Fact used |
+| --- | --- |
+| https://shopify.dev/docs/storefronts/themes/architecture/locales | Storefront `.json` vs schema `.schema.json` locale files; one `*.default.json`; merchants edit storefront translations in the Language Editor |
+| https://shopify.dev/docs/storefronts/themes/architecture/locales/storefront-locale-files | `locales/<IETF tag>.json`; nested keys; `t` filter with single-quoted keys; "Translated content is escaped by default", `_html` suffix disables it; regional locales inherit from the base language; 3,400 translations per file; no documented fallback for keys missing from a non-default locale |
+| https://shopify.dev/docs/api/liquid/objects/request#request-locale | `request.locale`: "The locale of the request", type `shop_locale` |
+| https://shopify.dev/docs/api/liquid/objects/shop_locale#shop_locale-iso_code | `iso_code`: "The ISO code of the locale in IETF language tag format" |
+| https://shopify.dev/docs/api/liquid/objects/image#image-alt | `alt`: "The alt text of the image" |
+| https://shopify.dev/docs/api/liquid/filters/image_url | Accepts article, collection, image, line_item, product, variant and country objects and their `src` property |
+
+## Recipe proof (ADR-102)
+
+- `test/recipes.test.ts`: every outcome of every recipe on hand-written failing markup, with
+  exact expected output for the edits.
+- `test/recipe-properties.test.ts`: fast-check over generated markup; first run returns edits
+  that re-parse and keep the bytes before the first and after the last edit; the run on the
+  output returns `already-fixed`.
+- `test/dawn-recipes.test.ts`: on pristine Dawn every recipe reports `already-fixed` (or the
+  documented refusal); with each fix removed by a span edit, the recipe restores it, the full
+  patch (file plus locale files, through `buildPatch`) passes `validateNoNewOffenses` with no
+  new offenses, and a second run reports `already-fixed`. `lang`, the Facebook link text and
+  the search reset button come back byte-identical to Dawn.
+
 ## Dawn fixtures (ADR-105)
 
 ```text
@@ -83,5 +107,5 @@ Run from the worktree root before each commit.
 | `pnpm run typecheck` | every package `Done`, including `packages/liquid-patch typecheck: Done` |
 | `pnpm run knip` | exits 0, no findings |
 | `node packages/claims-lint/src/main.ts` | `claims-lint: 1 file scanned, no banned claims` |
-| `pnpm --filter @rampsmith/liquid-patch test` | `Test Files  6 passed (6)`, `Tests  61 passed (61)` |
+| `pnpm --filter @rampsmith/liquid-patch test` | `Test Files  9 passed (9)`, `Tests  110 passed (110)` |
 | `pnpm run test` | fails in `packages/queue` only: `DATABASE_URL must name a PostgreSQL 18 superuser connection for the tests`. This sandbox has no PostgreSQL 18 running, and starting one was refused by the session's permission policy; CI's `node` job provides the service container. `packages/liquid-patch` has no database tests. |
