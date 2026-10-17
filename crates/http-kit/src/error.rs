@@ -11,7 +11,8 @@ pub const PROBLEM_JSON: &str = "application/problem+json";
 /// An error a handler returns; rendered as problem+json with the request's trace id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiError {
-    problem: Problem,
+    // Boxed so `Result<_, ApiError>` stays small (clippy::result_large_err).
+    problem: Box<Problem>,
 }
 
 impl ApiError {
@@ -19,7 +20,7 @@ impl ApiError {
     #[must_use]
     pub fn new(code: ProblemCode) -> Self {
         Self {
-            problem: Problem::new(code),
+            problem: Box::new(Problem::new(code)),
         }
     }
 
@@ -27,14 +28,14 @@ impl ApiError {
     /// theme source or personal data in it.
     #[must_use]
     pub fn detail(mut self, detail: impl Into<String>) -> Self {
-        self.problem = self.problem.with_detail(detail);
+        *self.problem = self.problem.with_detail(detail);
         self
     }
 
     /// Adds field-level validation errors.
     #[must_use]
     pub fn errors(mut self, errors: Vec<FieldError>) -> Self {
-        self.problem = self.problem.with_errors(errors);
+        *self.problem = self.problem.with_errors(errors);
         self
     }
 
@@ -46,7 +47,7 @@ impl ApiError {
 
     /// The problem body, without the trace id that rendering adds.
     #[must_use]
-    pub const fn problem(&self) -> &Problem {
+    pub fn problem(&self) -> &Problem {
         &self.problem
     }
 }
@@ -81,7 +82,7 @@ impl From<DbError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let mut problem = self.problem;
+        let mut problem = *self.problem;
         if problem.trace_id.is_none() {
             problem.trace_id = telemetry::trace_id(&tracing::Span::current());
         }
