@@ -44,6 +44,10 @@ generation. It is also the first deployable, so the image stage of the pull-requ
    The `images` CI job builds the image, smoke-tests liveness, readiness and the non-root
    user, writes a CycloneDX SBOM (syft v1.54.1) and fails on fixable high or critical
    vulnerabilities (grype v0.120.1). Tool versions are pinned like everything else.
+   The runtime stage runs `apt-get upgrade` before installing `ca-certificates`: the first
+   CI run found CVE-2026-103111 in `libpcre2-8-0` (fixed in `10.46-1~deb13u3`) inside the
+   pinned base, and a fixed Debian security update should not wait for a digest bump. The
+   gate stays at fixable high or critical; it was not loosened.
 
 ## Consequences
 

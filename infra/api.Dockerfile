@@ -16,7 +16,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 # debian:trixie-slim (ADR-020: distroless once its digest can be verified)
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+# `upgrade` pulls Debian security fixes published after the pinned base was built, so a
+# fixed CVE never waits for Renovate to bump the digest (the grype gate fails on those).
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin rampsmith
