@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select set_config('app.tenant_id', $1, true)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "set_config",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "395d2d1dcb2c9124e31a3c44dffcc969d304b6f799a182168470bae48d7808cf"
+}

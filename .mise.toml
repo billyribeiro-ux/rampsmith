@@ -15,8 +15,12 @@ cargo-binstall = "1.26.0"
 "cargo:sqlx-cli" = { version = "0.9.0", features = ["postgres", "rustls"], default-features = false }
 
 [env]
-# Local development database; CI and deploys set their own.
-DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:5432/rampsmith"
+# Local development database. An exported DATABASE_URL (CI's service container, a deploy)
+# always wins over this default.
+DATABASE_URL = "{{ get_env(name='DATABASE_URL', default='postgres://postgres:postgres@127.0.0.1:5432/rampsmith') }}"
+# sqlx::query! checks every query against the committed .sqlx data, so building never needs
+# a database. `mise run db:prepare` refreshes it; `check:sqlx` proves it is current.
+SQLX_OFFLINE = "true"
 
 # ---------------------------------------------------------------------------
 # Tasks. `mise run verify` is the full local gate and mirrors ci.yml (PLAN §24, §27).
@@ -25,6 +29,15 @@ DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:5432/rampsmith"
 [tasks.setup]
 description = "Install JavaScript dependencies exactly as locked"
 run = "pnpm install --frozen-lockfile"
+
+[tasks."db:migrate"]
+description = "Create the database in DATABASE_URL if needed and apply every migration"
+run = ["sqlx database create", "sqlx migrate run --source crates/db/migrations"]
+
+[tasks."db:prepare"]
+description = "Refresh the committed sqlx offline query data (.sqlx) after changing a query"
+depends = ["db:migrate"]
+run = "cargo sqlx prepare --workspace -- --all-targets --all-features"
 
 [tasks."check:rust-fmt"]
 description = "rustfmt, check only"
@@ -41,6 +54,11 @@ run = "cargo deny --locked check"
 [tasks."check:cargo-machete"]
 description = "Unused Rust dependencies"
 run = "cargo machete"
+
+[tasks."check:sqlx"]
+description = "The committed .sqlx data matches every query and the migrated schema"
+depends = ["db:migrate"]
+run = "cargo sqlx prepare --workspace --check -- --all-targets --all-features"
 
 [tasks."check:eslint"]
 description = "ESLint with zero warnings allowed"

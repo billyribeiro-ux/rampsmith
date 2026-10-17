@@ -1,0 +1,25 @@
+[package]
+name = "rampsmith-db"
+version = "0.0.0"
+description = "PostgreSQL access for Rampsmith: migrations, the tenant-scoped transaction and repositories."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "db"
+
+[dependencies]
+domain.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

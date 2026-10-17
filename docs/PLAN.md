@@ -360,6 +360,7 @@ One PostgreSQL 18 database holds every tenant in a shared schema, isolated twice
 - The application role has no `BYPASSRLS`. A Rust `TenantTx` type opens each transaction with `SET LOCAL app.tenant_id`, and repository functions accept only `&mut TenantTx`, so unscoped access does not compile.
 - System jobs run as a separate role that must still set the tenant per job. Cross-tenant reads exist only in `rsctl`, and each one is audited.
 - An isolation test suite creates two tenants and asserts that every repository function returns nothing across the boundary.
+- References between tenant-owned rows are composite foreign keys on `(id, tenant_id)`, so a row can never point at another tenant's row, even when written by the owner (ADR-017). The SQL below shows columns; `crates/db/migrations/` holds the full constraints.
 
 ### Core tables
 
@@ -467,8 +468,9 @@ create table fixes (
 );
 
 create table fix_findings (
-  fix_id uuid not null references fixes(id),
-  finding_id uuid not null references findings(id),
+  fix_id uuid not null,
+  finding_id uuid not null,
+  tenant_id uuid not null,                  -- ADR-017: every tenant-owned table carries it
   primary key (fix_id, finding_id)
 );
 
@@ -1433,7 +1435,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 
 1. [x] Monorepo bootstrap per section 8: `.mise.toml`, `rust-toolchain.toml`, workspaces, shared strict configs, `mise run verify`.
 2. [x] The pull-request gate in section 24, including `claims-lint` and contract-drift checks (images and preview stages follow their deployables, ADR-016).
-3. `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
+3. [x] `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
 4. The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.
 5. Telemetry in all three runtimes (section 21).
 6. `api` skeleton: health and readiness, problem+json errors, OpenAPI generation.

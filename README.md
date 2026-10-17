@@ -16,6 +16,7 @@ side by side, as laid out in PLAN §8.
 | Path | What lives there |
 | --- | --- |
 | `crates/domain` | Pure domain types: no I/O, no async, no database |
+| `crates/db` | Migrations, the tenant-scoped transaction, repositories and the isolation suite |
 | `crates/contracts` | Types that cross a language boundary, with generated JSON Schema |
 | `packages/tsconfig` | Shared strict TypeScript configurations |
 | `packages/contracts-ts` | Generated TypeScript types and schemas; never hand-edited |
@@ -37,6 +38,7 @@ side by side, as laid out in PLAN §8.
 ```sh
 mise install          # Node, pnpm, PostgreSQL and the cargo tools
 mise run setup        # pnpm install --frozen-lockfile
+mise run db:migrate   # create the local database and apply migrations
 mise run verify       # the full gate; must pass before every commit
 ```
 

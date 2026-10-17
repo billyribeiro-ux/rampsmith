@@ -11,6 +11,11 @@ repository = "https://github.com/billyribeiro-ux/rampsmith"
 # Versions were read from crates.io on 2026-10-17 (docs/evidence/versions-2026-10-17.md).
 # Cargo.lock pins the exact resolution; add a crate here only when a member uses it.
 [workspace.dependencies]
+domain = { package = "rampsmith-domain", path = "crates/domain" }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "time", "json"] }
+thiserror = "2.0.21"
+time = "0.3.55"
+tokio = "1.53.3"
 uuid = "1.28.0"
 schemars = "1.2.3"
 serde = { version = "1.0.229", features = ["derive"] }

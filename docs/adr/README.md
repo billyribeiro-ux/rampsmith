@@ -22,6 +22,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [014](014-sandbox-toolchain-gaps.md) | Local verification toolchain when pinned downloads are blocked | Accepted |
 | [015](015-database-tests-on-provided-postgres.md) | Database tests run on a provided PostgreSQL, not testcontainers | Accepted |
 | [016](016-pull-request-gate-mechanics.md) | Pull-request gate mechanics | Accepted |
+| [017](017-composite-tenant-foreign-keys.md) | Composite tenant foreign keys | Accepted |
 
 ## Template
 

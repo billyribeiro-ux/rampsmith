@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into fixes (id, tenant_id, site_id, kind, channel, status, origin, model,\n                              prompt_version, confidence, diff)\n           values ($1, $2, $3, $4, $5, 'proposed', $6, $7, $8, $9::float8::numeric(4, 3), $10)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float8",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c4d0749a7e3bad00352556bcaf9a166269d71833ab5719257a1e7c2698aef141"
+}

@@ -1,12 +1,19 @@
 # cargo-deny: licenses, advisories, duplicate versions and sources (PLAN §8).
 
 [graph]
+# Production runs on Linux; developers also use macOS. Windows-only crates are out of scope.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
 all-features = true
 
 [advisories]
 # Every RustSec advisory fails the gate unless listed here with a reason and an expiry.
 ignore = []
 unmaintained = "workspace"
+unsound = "all"
 yanked = "deny"
 
 [licenses]
@@ -37,8 +44,24 @@ multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
 highlight = "all"
-# Duplicates that cannot be removed yet are listed here, each with the reason.
-skip = []
+deny = [
+  { crate = "openssl", use-instead = "rustls" },
+  { crate = "openssl-sys", use-instead = "rustls" },
+]
+# Duplicates that cannot be removed yet, each with the reason. A version requirement keeps a
+# skip valid across patch releases; a new major generation needs a fresh decision.
+skip = [
+  # RustCrypto's 0.10 generation, still used by sqlx-core 0.9 for SCRAM; the 0.11 generation
+  # is the one PLAN §7 pins (sha2 0.11, hmac 0.13).
+  { crate = "sha2@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "digest@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "block-buffer@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "crypto-common@0.1", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "cpufeatures@0.2", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "getrandom@0.2", reason = "ring 0.17 (rustls) depends on getrandom 0.2" },
+  { crate = "hashbrown@0.16", reason = "hashlink 0.11 (sqlx-core) depends on hashbrown 0.16" },
+  { crate = "syn@2", reason = "most proc-macro crates have not moved to syn 3 yet" },
+]
 skip-tree = []
 
 [sources]

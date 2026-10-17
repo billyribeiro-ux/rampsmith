@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into finding_occurrences\n             (finding_id, scan_id, tenant_id, page_url, page_state, target, html_excerpt, captured_at)\n           select f, s, $1, u, st, t, e, c\n             from unnest($2::uuid[], $3::uuid[], $4::text[], $5::text[], $6::text[], $7::text[],\n                         $8::timestamptz[]) as x(f, s, u, st, t, e, c)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray",
+        "UuidArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TimestamptzArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "beb801d0cd558a01b23afd298d67a7099300e6abade62e885687d2d708df6da0"
+}
