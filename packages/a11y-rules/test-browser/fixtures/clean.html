@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Linen Dress – Fixture Store</title>
+    <!-- Clean control page: Dawn-like markup with no seeded failure. Fake data only. -->
+    <style>
+      html {
+        scroll-padding-top: 96px;
+        scroll-padding-bottom: 24px;
+      }
+      body {
+        margin: 0;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        color: #111;
+        background: #fff;
+      }
+      a {
+        color: #0b4f9c;
+      }
+      :focus-visible {
+        outline: 3px solid #b3005e;
+        outline-offset: 2px;
+      }
+      .skip-to-content-link {
+        position: absolute;
+        left: -9999px;
+      }
+      .skip-to-content-link:focus {
+        position: static;
+        left: auto;
+        display: inline-block;
+        padding: 8px;
+      }
+      .header-wrapper {
+        position: sticky;
+        top: 0;
+        background: #fff;
+        border-bottom: 1px solid #ddd;
+        z-index: 2;
+      }
+      .header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 16px;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .header__heading {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+      .list-menu {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .header__submenu {
+        position: absolute;
+        background: #fff;
+        border: 1px solid #ccc;
+        padding: 8px 16px;
+        list-style: none;
+        margin: 4px 0 0;
+      }
+      summary {
+        cursor: pointer;
+      }
+      .search-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        z-index: 5;
+      }
+      .search-modal__content {
+        background: #fff;
+        margin-top: 80px;
+        padding: 24px;
+        width: min(90vw, 480px);
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      .product {
+        display: grid;
+        gap: 24px;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 750px) {
+        .product {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .product__media {
+        background: #eadfce;
+        aspect-ratio: 1;
+        max-width: 100%;
+      }
+      fieldset {
+        border: 0;
+        padding: 0;
+        margin: 0 0 16px;
+      }
+      .visually-hidden {
+        position: absolute !important;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid #555;
+        border-radius: 20px;
+        padding: 4px 14px;
+        margin: 4px 4px 0 0;
+      }
+      input:checked + .pill {
+        background: #111;
+        color: #fff;
+      }
+      input:focus-visible + .pill {
+        outline: 3px solid #b3005e;
+        outline-offset: 2px;
+      }
+      .button {
+        display: inline-block;
+        padding: 10px 24px;
+        background: #111;
+        color: #fff;
+        border: 0;
+        font: inherit;
+      }
+      .shopify-payment-button {
+        margin-top: 8px;
+      }
+      .drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(100vw, 400px);
+        background: #fff;
+        border-left: 1px solid #ccc;
+        padding: 24px;
+        z-index: 6;
+        box-sizing: border-box;
+      }
+      footer {
+        border-top: 1px solid #ddd;
+        padding: 16px;
+        margin-top: 48px;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-to-content-link" href="#MainContent">Skip to content</a>
+    <div class="header-wrapper">
+      <header class="header">
+        <h1 class="header__heading"><a href="/">Fixture Store</a></h1>
+        <nav class="header__inline-menu" aria-label="Main">
+          <ul class="list-menu" role="list">
+            <li>
+              <details id="Details-HeaderMenu-1">
+                <summary id="HeaderMenu-shop">Shop</summary>
+                <ul id="HeaderMenu-MenuList-1" class="header__submenu" role="list">
+                  <li><a href="/collections/dresses">Dresses</a></li>
+                  <li><a href="/collections/shirts">Shirts</a></li>
+                </ul>
+              </details>
+            </li>
+            <li><a href="/pages/about">About</a></li>
+          </ul>
+        </nav>
+        <details-modal class="header__search">
+          <details>
+            <summary aria-haspopup="dialog" aria-label="Search">Search</summary>
+            <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search">
+              <div class="search-modal__content">
+                <label for="Search-In-Modal">Search the store</label>
+                <input id="Search-In-Modal" type="search" name="q" />
+                <button type="button" class="search-modal__close-button">Close</button>
+              </div>
+            </div>
+          </details>
+        </details-modal>
+        <a href="/cart" id="cart-icon-bubble">Cart</a>
+      </header>
+    </div>
+
+    <main id="MainContent" tabindex="-1">
+      <section id="MainProduct-template" class="product">
+        <div class="product__media" role="img" aria-label="Linen dress in sand, front view"></div>
+        <product-info class="product__info">
+          <h2>Linen Dress</h2>
+          <p class="price" id="price">$80.00</p>
+          <form id="product-form" action="/cart/add" method="post" class="form">
+            <input type="hidden" name="form_type" value="product" />
+            <input type="hidden" name="id" value="40000000001" />
+            <variant-radios>
+              <fieldset>
+                <legend>Size</legend>
+                <input
+                  type="radio"
+                  class="visually-hidden"
+                  id="size-s"
+                  name="Size"
+                  value="S"
+                  checked
+                />
+                <label class="pill" for="size-s">S</label>
+                <input type="radio" class="visually-hidden" id="size-m" name="Size" value="M" />
+                <label class="pill" for="size-m">M</label>
+                <input type="radio" class="visually-hidden" id="size-l" name="Size" value="L" />
+                <label class="pill" for="size-l">L</label>
+              </fieldset>
+            </variant-radios>
+            <label for="Quantity">Quantity</label>
+            <input id="Quantity" type="number" name="quantity" value="1" min="1" />
+            <div>
+              <button type="submit" name="add" class="button" id="add-to-cart">Add to cart</button>
+            </div>
+          </form>
+          <div class="shopify-payment-button">
+            <button type="button" class="button" id="buy-now">Buy it now</button>
+          </div>
+          <p>
+            Washed linen, relaxed fit. <a href="/pages/size-guide">Size guide for this dress</a>.
+          </p>
+          <audio controls autoplay src="/media/tone.wav" aria-label="Fabric sound sample"></audio>
+        </product-info>
+      </section>
+    </main>
+
+    <cart-drawer
+      class="drawer"
+      id="CartDrawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Your cart"
+      hidden
+    >
+      <h2>Your cart</h2>
+      <p>Linen Dress, size <span id="drawer-size">S</span></p>
+      <button type="button" id="close-drawer">Close cart</button>
+    </cart-drawer>
+
+    <footer>
+      <ul class="list-menu" role="list">
+        <li><a href="/policies/refund-policy">Refund policy</a></li>
+        <li><a href="/pages/contact">Contact</a></li>
+      </ul>
+    </footer>
+
+    <script>
+      const form = document.getElementById('product-form');
+      const drawer = document.getElementById('CartDrawer');
+      const sizes = { S: '40000000001', M: '40000000002', L: '40000000003' };
+      form.addEventListener('change', (event) => {
+        if (event.target.name !== 'Size') return;
+        form.elements.id.value = sizes[event.target.value];
+        document.getElementById('drawer-size').textContent = event.target.value;
+        document.getElementById('price').textContent =
+          event.target.value === 'L' ? '$85.00' : '$80.00';
+      });
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await fetch('/cart/add.js', { method: 'POST', body: new FormData(form) });
+        drawer.hidden = false;
+        drawer.classList.add('active');
+        document.getElementById('close-drawer').focus();
+      });
+      document.getElementById('close-drawer').addEventListener('click', () => {
+        drawer.hidden = true;
+      });
+      document.getElementById('buy-now').addEventListener('click', () => {
+        location.href = '/checkouts/cn/fixture-token';
+      });
+      document.querySelector('.search-modal__close-button').addEventListener('click', (event) => {
+        event.target.closest('details').open = false;
+      });
+    </script>
+  </body>
+</html>

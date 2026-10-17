@@ -34,6 +34,7 @@ $ npm view @sparticuz/chromium@153.0.0 version license engines --json
 | `fast-check` | 4.10.2 | devDependency | MIT | node >=12.17.0; depends on `pure-rand ^8.0.0` (locked 8.4.2, MIT) |
 | `vitest` | 5.0.5 | devDependency | MIT | the repository's pin (PLAN §7) |
 | `@rampsmith/tsconfig` | workspace | devDependency | — | — |
+| `playwright-core` | 1.64.1 | exact peerDependency and devDependency (ADR-115) | Apache-2.0 | node >=20; no lifecycle scripts; the PLAN §7 Playwright pin |
 | `@sparticuz/chromium` | 153.0.0 | not a dependency: installed outside the repository for local runs only (ADR-115) | MIT | node ^22.17.0 \|\| >=24.0.0 |
 
 ## 2. parse5 offsets and the cost of deep nesting (ADR-111)
@@ -85,3 +86,61 @@ claims-lint: 1 file scanned, no banned claims
 need `DATABASE_URL` naming a PostgreSQL 18 server. None runs in this session: starting one was
 refused by the session's permission policy. CI's node job provides it as a service container.
 `test:browser` arrives with the browser checks in the next commit; its runs are recorded there.
+
+## 4. Chromium for the browser tests (ADR-115)
+
+```console
+$ pnpm --filter @rampsmith/a11y-rules exec playwright-core install --dry-run --only-shell chromium
+Chrome Headless Shell 156.0.8078.4 (playwright chromium-headless-shell v1248)
+  Download url:        https://cdn.playwright.dev/builds/cft/156.0.8078.4/linux64/chrome-headless-shell-linux64.zip
+$ pnpm --filter @rampsmith/a11y-rules exec playwright-core install --help | grep shell
+  --only-shell   only install headless shell when installing chromium
+  --no-shell     do not install chromium headless shell
+```
+
+CI installs that build (`.github/workflows/a11y-rules.yml`). Here, its CDN is blocked, so
+`@sparticuz/chromium` 153.0.0 was installed in the session scratchpad (not the repository) and
+`await chromium.executablePath()` printed `/tmp/chromium`; `browser.version()` printed
+`153.0.8010.0`. Facts measured with it:
+
+- Tab after the last element puts focus on `body`, and the next Tab returns to the first
+  element: leaving the page is the end of a normal cycle.
+- `blur()` then `focus()` after keyboard navigation matches `:focus-visible`, so the screenshot
+  confirmation sees the keyboard focus style.
+- Unmuted `<audio autoplay>` stays `paused` (autoplay policy) while `duration` is known
+  (`5`, `readyState` 4), which is why the check uses the `autoplay` attribute, not playback.
+- With `CHROMIUM_ARGS='["--no-sandbox","--no-zygote","--single-process"]'` the first browser
+  test passed, the second timed out after 60 s and every later `browser.newContext` failed with
+  "Target page, context or browser has been closed". With `CHROMIUM_ARGS='["--no-sandbox"]'`
+  every test passes. `--no-sandbox` is needed only because the sandbox runs as root.
+
+## 5. Gate runs for the browser checks and state scripts
+
+Commit 2 (`feat(a11y-rules): add the browser checks, interactive-state scripts ...`), from the
+worktree root:
+
+```console
+$ pnpm install
+Done in 32ms using pnpm v12.14.0
+$ pnpm run lint
+$ eslint --max-warnings=0 .
+$ pnpm run format:check
+All matched files use Prettier code style!
+$ pnpm run typecheck
+packages/a11y-rules typecheck: Done
+$ pnpm run knip
+$ knip
+$ pnpm --filter @rampsmith/a11y-rules run test
+ Test Files  7 passed (7)
+      Tests  72 passed (72)
+$ CHROMIUM_EXECUTABLE_PATH=/tmp/chromium CHROMIUM_ARGS='["--no-sandbox"]' \
+    pnpm --filter @rampsmith/a11y-rules run test:browser
+ Test Files  2 passed (2)
+      Tests  19 passed (19)
+   Duration  6.74s
+$ node packages/claims-lint/src/main.ts
+claims-lint: 1 file scanned, no banned claims
+```
+
+`pnpm run test` across the workspace: as in section 3, only `packages/queue` fails, for want of
+`DATABASE_URL`.

@@ -1,4 +1,5 @@
-// Spec-compliant parsing of untrusted rich text, bounded in size, depth, element count and time.
+// Parsing of untrusted rich text by the WHATWG HTML algorithm, bounded in size, depth,
+// element count and time.
 //
 // parse5 implements the WHATWG tree-construction algorithm and never executes scripts. Its
 // scope checks walk the stack of open elements, so deeply nested input costs time quadratic in

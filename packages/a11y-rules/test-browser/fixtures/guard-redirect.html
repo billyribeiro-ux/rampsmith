@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout guard: the theme jumps to checkout after adding</title>
+    <!--
+      The add button looks safe, but the theme's script sends the shopper to checkout once the
+      item is added. The network guard must stop the checkout request.
+    -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form id="f" action="/cart/add" method="post">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+    <script>
+      document.getElementById('f').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await fetch('/cart/add.js', { method: 'POST', body: new FormData(event.target) });
+        await fetch('/checkouts/cn/fixture-token').catch(() => undefined);
+        location.href = '/checkouts/cn/fixture-token';
+      });
+    </script>
+  </body>
+</html>

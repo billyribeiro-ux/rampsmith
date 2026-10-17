@@ -1,0 +1,53 @@
+# Browser tests of packages/a11y-rules (ADR-115). ci.yml's node job runs the package's pure
+# tests; this workflow runs the browser checks and interactive-state scripts against the
+# package's local fixtures on the Chromium that the locked playwright-core bundles. The setup
+# steps and action pins are copied from ci.yml's node job; every action is pinned to a full
+# commit SHA (the tag is in the trailing comment).
+name: a11y-rules
+
+on:
+  pull_request:
+    paths:
+      - 'packages/a11y-rules/**'
+      - '.github/workflows/a11y-rules.yml'
+
+permissions: {}
+
+concurrency:
+  group: a11y-rules-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  MISE_DISABLE_TOOLS: postgres
+  MISE_TASK_RUN_AUTO_INSTALL: 'false'
+  MISE_VERSION: '2026.10.12'
+
+jobs:
+  browser:
+    name: browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node pnpm
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - name: Install dependencies (frozen lockfile)
+        run: mise run setup
+      - name: Install the Chromium headless shell for the locked playwright-core
+        run: pnpm --filter @rampsmith/a11y-rules exec playwright-core install --with-deps --only-shell chromium
+      - name: Browser tests (local fixtures, no network)
+        run: pnpm --filter @rampsmith/a11y-rules run test:browser
