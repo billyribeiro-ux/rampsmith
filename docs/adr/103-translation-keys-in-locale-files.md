@@ -66,6 +66,16 @@ see, search for and translate; the `untranslated` list makes the gap explicit.
   which cannot be told from the file alone. A recipe adds at most one key; the risk is noted.
 - A later stream (AI or a translation memory) can fill `byLocale` without changing this code.
 
+## Plan correction
+
+Shopify has two kinds of locale file, and only storefront ones hold storefront text. In PLAN
+§12, "Fix catalog, in build order", the "Missing form labels" row's Fix cell, replace
+"Visually hidden `<label for>` using a theme translation key, added to every locale file" with:
+
+```markdown
+Visually hidden `<label for>` using a theme translation key, added to every storefront locale file (`locales/*.json`, not `*.schema.json`; ADR-103)
+```
+
 ## Rejected alternatives
 
 - Adding the key only to the default locale: fails `MatchingTranslations` and relies on

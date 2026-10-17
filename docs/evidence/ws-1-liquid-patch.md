@@ -85,6 +85,16 @@ license = 'MIT'  dependencies = { 'env-paths': '^2.2.1', 'node-fetch': '^2.6.11'
   a second run reports `already-fixed`. `lang`, the Facebook link text and the search reset
   button come back byte-identical to Dawn.
 
+## Plain Node smoke run
+
+The engine will import the package through Node's own TypeScript support, not through Vitest.
+Importing `./src/index.ts` with `node --input-type=module` (Node 26.12.0), running
+`documentLanguage` on Dawn's `theme.liquid` with `lang` removed, `buildPatch`, `localeEdits` and
+`validateNoNewOffenses` printed the expected one-line diff
+(`-<html class="js">` / `+<html class="js" lang="{{ request.locale.iso_code }}">`),
+`true 1` and `theme-check ok: true`: the CommonJS parser and Theme Check, ESM `diff` and UMD
+`jsonc-parser` all load with named imports.
+
 ## Dawn fixtures (ADR-105)
 
 ```text
@@ -111,3 +121,18 @@ Run from the worktree root before each commit.
 | `node packages/claims-lint/src/main.ts` | `claims-lint: 1 file scanned, no banned claims` |
 | `pnpm --filter @rampsmith/liquid-patch test` (`vitest run --coverage`, threshold lines 95%) | `Test Files  10 passed (10)`, `Tests  117 passed (117)`; `Statements 97.16%`, `Branches 91.59%`, `Functions 98.41%`, `Lines 99.13% ( 691/697 )` |
 | `pnpm run test` | fails in `packages/queue` only: `DATABASE_URL must name a PostgreSQL 18 superuser connection for the tests`. This sandbox has no PostgreSQL 18 running, and starting one was refused by the session's permission policy; CI's `node` job provides the service container. `packages/liquid-patch` has no database tests. |
+
+## For the integrator
+
+Rows for `docs/adr/README.md` (this stream may not edit it):
+
+```markdown
+| [101](101-span-patch-engine.md) | Span patch engine: offsets, overlap rule, re-parse gate and diffs | Accepted |
+| [102](102-recipe-contract.md) | Recipe contract and the rules of the six markup recipes | Accepted |
+| [103](103-translation-keys-in-locale-files.md) | Translation keys for recipe labels, and what each locale file receives | Accepted |
+| [104](104-theme-check-in-memory.md) | Theme Check runs in memory through `@shopify/theme-check-common` | Accepted |
+| [105](105-dawn-fixtures-license.md) | Dawn test fixtures and Dawn's license | Accepted; license reading to confirm |
+```
+
+PLAN corrections to apply: ADR-103 (PLAN §12 form-label row) and ADR-104 (PLAN §7 engine
+table), each with its exact replacement text.
