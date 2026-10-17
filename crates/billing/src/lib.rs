@@ -7,9 +7,13 @@
 pub mod entitlements;
 pub mod money;
 pub mod plan;
+pub mod shopify;
 pub mod usage;
 
 pub use entitlements::{Entitlements, Feature, Gate, entitlements};
 pub use money::{Currency, Money, MoneyError};
 pub use plan::{BillingInterval, Plan, UnknownPlanHandle};
+pub use shopify::{
+    AppGid, AppHandle, IdError, PartnerOrganizationId, ShopDomain, ShopGid, plan_selection_url,
+};
 pub use usage::{DraftQuota, DraftUsage, UsageError, remaining_alt_text_drafts};
