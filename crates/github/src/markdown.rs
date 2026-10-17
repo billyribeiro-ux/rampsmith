@@ -69,7 +69,7 @@ pub(crate) fn code_span(text: &str) -> String {
 }
 
 /// Trusted prose (Rampsmith's own recipe summaries) as literal Markdown text: every ASCII
-/// punctuation character is backslash-escaped, which `CommonMark` guarantees renders literally,
+/// punctuation character is backslash-escaped, which the `CommonMark` spec renders literally,
 /// and `@` and `#` get a word joiner after them so they never become mentions or references.
 #[must_use]
 pub(crate) fn escape_text(text: &str) -> String {

@@ -2,7 +2,8 @@
 //! and parsing, the theme and branch guards, the fix pull-request builder, and the REST calls
 //! that push fix branches, open pull requests and report the verification check run.
 //!
-//! Security properties, each covered by named tests (ADR-121 to ADR-126):
+//! Security properties, each covered by named tests (ADR-121 to ADR-127; the list is in
+//! `docs/evidence/ws-3-github-app.md`):
 //! - The App private key, App JWTs, installation tokens and webhook secrets are held in
 //!   `secrecy` types or redacting wrappers: no `Display`, a placeholder `Debug`, no
 //!   `Serialize`, and never in an error message, span or metric.
