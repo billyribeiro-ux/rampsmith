@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 by the architect session (Node.js 26 LTS decision, ADR-016).
+Last updated: 2026-10-17 20:45 UTC by the architect session (parallel streams opened).
 
 ## Active builder
 
@@ -10,14 +10,36 @@ Last updated: 2026-10-17 by the architect session (Node.js 26 LTS decision, ADR-
   branch `r0-foundations`. It started before this file existed, with R0-only instructions, so it
   will not update this file. The next builder reconciles its work against R0's exit criteria.
 
+## Parallel streams (founder request, 17 Oct 2026, 20:40 UTC)
+
+The founder asked the architect to run tightly scoped parallel streams beside the main builder.
+Each stream branches from `r0-foundations` at `e43f546`, owns only the paths listed, adds no
+migrations, and does not edit shared files (root manifests, `ci.yml`, `PLAN.md`, `CLAUDE.md`,
+this file, `docs/adr/README.md`, existing crates or packages). Lockfiles change only through
+the tooling. Each stream gets an ADR number block so numbers never collide; the architect merges
+the ADR index and any PLAN corrections when the streams are integrated after R0 merges.
+
+| Stream | Branch | Owns (no one else creates or edits these until merged) | ADRs | Status |
+| --- | --- | --- | --- | --- |
+| WS-1 Span patch engine (PLAN §12) | `ws/liquid-patch` | `packages/liquid-patch/` | 101–109 | Running |
+| WS-2 Custom rules and states (PLAN §11) | `ws/a11y-rules` | `packages/a11y-rules/`, `.github/workflows/a11y-rules.yml` | 111–119 | Running |
+| WS-3 GitHub App (PLAN §15) | `ws/github-app` | `crates/github/`, `infra/github-app-manifest.json` | 121–129 | Running |
+| WS-4 Entitlements and App Pricing (PLAN §20) | `ws/billing` | `crates/billing/` | 131–139 | Running |
+| WS-5 Launch documents (LAUNCH B, D) | `ws/launch-docs` | `docs/legal/`, `docs/threat-model.md`, `docs/accessibility-statement.md`, `docs/FOUNDER_SETUP.md`, `listing/` | 141–149 | Running |
+
+Builders do not create or edit an owned path, and R0's remaining steps (Shopify auth, `crypto`,
+`web`, `egress`, `engine`, `ui`) stay with the main builder. Main-line builders keep using
+ADR numbers from 021 upward, below 100.
+
 ## Lock rule (apply before building)
 
 A builder is active, and you must not build, if either is true:
 1. `list_triggers` (include completed) shows a scheduled task named `Rampsmith R0 build`, or one
    whose name starts with `Rampsmith builder`, with `last_run.status` PENDING and fired less than
    10 hours ago, and it is not your own run.
-2. Any branch other than `main` received a push in the last 90 minutes
-   (`gh api repos/billyribeiro-ux/rampsmith/branches`, then each branch's latest commit date).
+2. Any branch other than `main`, ignoring the `ws/` stream branches above, received a push in the
+   last 90 minutes (`gh api repos/billyribeiro-ux/rampsmith/branches`, then each branch's latest
+   commit date).
 
 A PENDING run older than 10 hours whose branch has had no push for 3 hours is stale; ignore it.
 
