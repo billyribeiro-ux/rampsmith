@@ -21,6 +21,9 @@ For the release you are given:
    - banned claims from PLAN section 3 anywhere in strings, templates, listing copy or pages;
    - every tenant-owned table covered by row-level security and by the isolation suite;
    - tests that pass only because a founder input is missing;
+   - a criterion that needs a founder input is PASS only when the three conditions in
+     docs/LAUNCH.md section E hold: a substitute test passing in CI, a live test that skips with
+     a notice naming the input, and a row in section E;
    - any Node.js pin that differs from ADR-016: one 26.x LTS release in `.mise.toml`,
      `engines.node` (with `engineStrict: true`), both Node Dockerfiles and CI, proven by its
      changelog heading ending in "(LTS)" and a non-empty `process.release.lts` in the CI log;

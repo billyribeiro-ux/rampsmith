@@ -1,16 +1,21 @@
 # Launch-ready: scope, evidence and founder inputs
 
-Rampsmith is launch-ready when every item in A, B and D below is done with recorded evidence,
-and the only open items are the founder inputs in C. This file overrides "Current release" wording
-anywhere else: the target is the full product through R2 (PLAN §5), not one release.
+The build is complete when every item in A, B and D below is done with recorded evidence and the
+only open items are the founder inputs in C and the live checks in E. Rampsmith is launch-ready
+once the founder has added those inputs and every check in E passes. The founder's accounts come
+last (his decision, 17 Oct 2026), so builders never wait for them. This file overrides "Current
+release" wording anywhere else: the target is the full product through R2 (PLAN §5), not one release.
 
 ## A. Product scope (PLAN §5)
 
 - [ ] **R0 Foundations**, every exit criterion.
-- [ ] **R1 Private beta**, every exit criterion that does not need real merchants. "10 design-partner
-      stores" and "median install-to-first-fix" are measured on development stores once C exists.
+- [ ] **R1 Private beta**, every exit criterion. A criterion that needs a founder input passes on a
+      substitute now and moves its live check to E; "10 design-partner stores" and "median
+      install-to-first-fix" are measured on development stores in E.
 - [ ] **R2 Public launch**, every exit criterion except passing Shopify App Review, which is a
-      founder submission. Everything App Review checks (PLAN §14 checklist) must already pass.
+      founder submission in E. Everything App Review checks (PLAN §14 checklist) must already
+      pass, and a criterion that needs a founder input passes on a substitute now, with its live
+      check in E.
 
 ## B. Launch extras that are not features but block launch
 
@@ -49,6 +54,7 @@ variables** (for runtime). Never into the repository or a chat.
 | 11 | Stripe account (test mode first) | Billing for non-Shopify customers only, R3 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | Account retrieve; test subscription lifecycle |
 | 12 | Generated secrets, stored by the founder | Token encryption | `TOKEN_MASTER_KEY` (generated with `rsctl keys generate`) | Encrypt and decrypt round trip |
 | 13 | Decisions and legal | Launch | none | Trademark clearance, legal entity, attorney review, App Store submission. The PLAN §20 pricing is approved as written (17 Oct 2026). |
+| 14 | GitHub repository settings: branch protection on `main` and the Renovate GitHub App | Merge protection and dependency updates (raised in pull request #1) | none | Required checks `rust`, `node` and `contracts`, linear history and squash merges on `main`; Renovate opens its first pull request. Branch protection must still let the scheduled STATUS.md commits reach `main`. |
 
 Shopify merchants pay through Shopify App Pricing, so Stripe (row 11) is not needed for the
 Shopify App Store launch.
@@ -58,5 +64,22 @@ Shopify App Store launch.
 - [ ] `docs/evidence/LAUNCH-READINESS.md`: every item above with its evidence: CI run links on
       the pinned toolchains, test counts, coverage, performance budgets, the own-UI accessibility
       results, the `security-auditor` report, and the `release-verifier` sign-off for R0, R1 and R2.
-- [ ] A one-page founder checklist: the inputs in C still missing, in the order to provide them,
-      and the command to run after each one.
+- [ ] The founder checklist, `docs/FOUNDER_SETUP.md`: the inputs in C still missing, in the order
+      to provide them (longest approval waits first), and the command to run after each one.
+
+## E. Live checks, run once the founder adds the inputs in C
+
+A check that needs an input from C counts toward A or B only when all three hold:
+1. A substitute test passes in CI now: a fake, a recorded fixture of the vendor's documented
+   responses, or a local service container.
+2. The live test exists, runs whenever the input is present, and otherwise skips with a notice
+   naming the input's row in C. It never passes silently.
+3. It has a row in this table with the command that runs it live.
+
+| Live check | Inputs (C) | Substitute test now | Live command |
+| --- | --- | --- | --- |
+| `rsctl doctor`: every input validated against its live service | 1 to 12 | Each probe against a fake of its service | `rsctl doctor` |
+| Dev-store end to end: install, scan, fix, verify and undo on every fix channel | 1 to 5 | Admin GraphQL operations checked against the 2026-10 schema and recorded responses | Builders add it with the suite |
+| R1 measures: 10 design-partner stores, install-to-first-fix median under 10 minutes, at least 80% of alt-text drafts approved unedited | 1, 3, 5 | The install flow and the alt-text pipeline on fakes and recorded responses | Builders add it with R1 |
+| Staging deploy and the synthetic install-scan-fix journey | 8, 10 and the inputs the journey uses | The release images build, start and pass their smoke tests in CI | Builders add it with the deploy workflow |
+| Shopify App Review | 1, 13 | The PLAN §14 App Review checklist passes | The founder submits the app for review |

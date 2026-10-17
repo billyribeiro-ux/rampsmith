@@ -22,8 +22,9 @@ run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the
 - Check every Shopify (Admin API 2026-10), GitHub, Stripe and Claude API detail in official docs
   at implementation time. Docs beat PLAN.md: write an ADR in `docs/adr/` and correct the plan.
 - "Done" needs evidence: the command, its output, or a CI run link, recorded in `docs/evidence/`.
-- A skipped test is not a pass. A test that needs a founder input stays listed in STATUS.md
-  under "Waiting on founder" until the input exists and the test passes.
+- A skipped test is not a pass. A test that needs a founder input follows LAUNCH.md section E:
+  a substitute test that passes now, a live test that skips with a notice naming the input, and
+  a row in section E until it passes live.
 
 ## Effort
 - Sessions run at `xhigh` (`.claude/settings.json`). The `release-verifier` and `security-auditor`
@@ -56,5 +57,7 @@ run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the
 - Pre-approved by the founder on 17 Oct 2026: the pricing in PLAN §20 as written; drafting legal
   text, always marked "attorney review required"; and evidence-backed scope tweaks that keep every
   PLAN §5 exit criterion, each recorded in an ADR.
+- The founder's accounts come last (his decision, 17 Oct 2026): never wait for an input in
+  LAUNCH.md section C. Build everything, and track each live check in section E.
 - Write each request under "Waiting on founder" in STATUS.md, then keep working on everything else.
 - Secrets reach the code only through GitHub Actions secrets and Railway variables that the founder sets.

@@ -31,8 +31,10 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
      `node-linux-x64@<that version>`; and replace the "first 26.x release tagged LTS" wording in
      ADR-016, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the version.
   2. Add the `verify` check that fails when any Node pin disagrees with `.mise.toml`.
-  3. Merge `main` into the branch and add ADR-016 to `docs/adr/README.md`. ADR numbers on `main`
-     are fixed: if the branch has its own 016 by then, renumber the branch's.
+  3. Merge `main` into the branch. The branch already uses ADR-016 to ADR-018, so give main's
+     Node runtime ADR (`docs/adr/016-node-26-lts-runtime.md`) the next free number: rename the
+     file, update every reference to it (PLAN §6 and §7, CLAUDE.md, `docs/ENVIRONMENT.md`, this
+     file, the release-verifier, both Node evidence files) and add it to `docs/adr/README.md`.
   4. Record the CI log's `node --version` and `process.release.lts` in `docs/evidence/`.
 
   The release-verifier fails R0 until all four are done.
@@ -43,6 +45,9 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
   drafting legal text marked "attorney review required"; evidence-backed scope tweaks that keep
   every PLAN §5 exit criterion, each recorded in an ADR. Production deploys, spending, store
   submission, publishing legal text and destructive operations still need the founder.
+- 17 Oct 2026, 20:20 UTC: "Get everything done and just leave my account to be added at the
+  end." Builders never wait for an input in LAUNCH.md section C; every check that needs one is
+  built now and tracked in LAUNCH.md section E for the end.
 
 ## Progress (scope and evidence rules: docs/LAUNCH.md)
 
@@ -54,8 +59,10 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 
 ## Waiting on founder
 
-All founder inputs in LAUNCH.md section C are open. Builders list here, in order, the specific
-inputs and decisions that currently block a test or a gate, with the command to run after each.
+All founder inputs in LAUNCH.md section C are open, and by the founder's decision they come last:
+builders do not wait for them. Each check that needs one goes into LAUNCH.md section E. Builders
+keep this list to the inputs in the order the founder should add them at the end, each with the
+command to run after it; `docs/FOUNDER_SETUP.md` has the steps.
 
 ## Founder notifications sent
 

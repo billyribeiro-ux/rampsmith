@@ -1418,7 +1418,7 @@ Claude Code drives the build as architect and implementer, deciding everything t
 
 Spending money · production deploys · App Store or WordPress.org submission · publishing legal text · pricing changes · other scope changes · destructive data operations · anything published under your name.
 
-Pre-approved by the founder on 17 October 2026: the pricing in section 20 as written; drafting legal text marked "attorney review required"; and evidence-backed scope tweaks that keep every section 5 exit criterion, each recorded in an ADR.
+Pre-approved by the founder on 17 October 2026: the pricing in section 20 as written; drafting legal text marked "attorney review required"; and evidence-backed scope tweaks that keep every section 5 exit criterion, each recorded in an ADR. The founder's accounts come last (17 October 2026): builders never wait for them, and every check that needs one is tracked in `docs/LAUNCH.md` section E.
 
 ### Never
 
