@@ -150,3 +150,54 @@ jobs:
         run: mise run setup
       - name: Contract drift (regenerate and diff)
         run: mise run check:contracts
+
+  images:
+    name: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the api image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/api.Dockerfile
+          load: true
+          push: false
+          provenance: false
+          tags: rampsmith-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Smoke test (liveness up, readiness refuses without a database)
+        run: |
+          docker run -d --name api -p 8080:8080 \
+            -e DATABASE_URL=postgres://nobody@127.0.0.1:9/none rampsmith-api:ci
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/healthz | grep -q '"ok"'
+          code=$(curl -s -o readyz.json -w '%{http_code}' http://127.0.0.1:8080/readyz)
+          test "$code" = 503
+          grep -q '"code":"unavailable"' readyz.json
+          test "$(docker inspect --format '{{.Config.User}}' rampsmith-api:ci)" = "10001:10001"
+          docker rm -f api
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: rampsmith-api:ci
+          format: cyclonedx-json
+          output-file: api.cdx.json
+          artifact-name: api.cdx.json
+          syft-version: v1.54.1
+      - name: Vulnerabilities (fail on fixable high or critical)
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: rampsmith-api:ci
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+          grype-version: v0.120.1
