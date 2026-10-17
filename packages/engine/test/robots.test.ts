@@ -88,10 +88,12 @@ describe('robots.txt (RFC 9309)', () => {
     expect(allows(text, '/?preview_theme_id=1')).toBe(false);
   });
 
-  it('decides from the HTTP status first: 4xx allows, 5xx or no answer disallows', () => {
+  it('decides from the HTTP status first: 4xx allows; 429, 5xx or no answer disallows', () => {
     expect(robotsAllows({ status: 404, text: '' }, BOT, '/')).toBe(true);
     expect(robotsAllows({ status: 403, text: 'User-agent: *\nDisallow: /' }, BOT, '/')).toBe(true);
     expect(robotsAllows({ status: 503, text: '' }, BOT, '/')).toBe(false);
+    // Rate limiting is a server asking us to stay away, not a missing file (S-2 saw one).
+    expect(robotsAllows({ status: 429, text: '' }, BOT, '/')).toBe(false);
     expect(robotsAllows(undefined, BOT, '/')).toBe(false);
     expect(robotsAllows({ status: 200, text: 'User-agent: *\nDisallow: /' }, BOT, '/')).toBe(false);
   });

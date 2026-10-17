@@ -158,7 +158,9 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
     const blocked = detectChallenge({
       status,
       title: await page.title(),
-      html: (await page.content()).slice(0, 200_000),
+      html: await page.content(),
+      url: page.url(),
+      headers: response?.headers() ?? {},
     });
     const base = { url: options.url, finalUrl: page.url(), status, blocked };
     if (blocked !== undefined) {

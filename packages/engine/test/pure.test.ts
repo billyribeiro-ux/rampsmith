@@ -59,30 +59,65 @@ describe('fingerprints', () => {
 });
 
 describe('detectChallenge', () => {
-  it('recognises bot challenges without trying to pass them', () => {
-    expect(detectChallenge({ status: 403, title: 'Just a moment...', html: '' })).toBe(
+  const page = (over: Partial<Parameters<typeof detectChallenge>[0]>) => ({
+    status: 200,
+    title: 'Shop',
+    html: '',
+    url: 'https://shop.example/',
+    headers: {},
+    ...over,
+  });
+  // A storefront home page as S-2 saw it: dozens of links, Shopify sections, and the hCaptcha
+  // script Shopify loads for its newsletter and contact forms (docs/spikes/S-2).
+  const storefront = [
+    '<script src="https://js.hcaptcha.com/1/api.js"></script>',
+    '<div id="shopify-section-template--1__main">',
+    ...Array.from({ length: 40 }, (_, i) => `<a href="/products/p${i.toString()}">P</a>`),
+    '<form><div class="h-captcha" data-sitekey="1"></div></form></div>',
+  ].join('');
+
+  it('recognises Cloudflare challenges from the header, the title or the challenge markup', () => {
+    expect(detectChallenge(page({ status: 403, headers: { 'cf-mitigated': 'challenge' } }))).toBe(
       'cloudflare',
     );
-    expect(detectChallenge({ status: 200, title: 'Shop', html: '<div id="cf-chl-widget">' })).toBe(
+    expect(detectChallenge(page({ status: 403, title: 'Just a moment...' }))).toBe('cloudflare');
+    expect(detectChallenge(page({ html: '<script>window._cf_chl_opt={}</script>' }))).toBe(
       'cloudflare',
     );
+    expect(detectChallenge(page({ html: '<div id="cf-chl-widget">' }))).toBe('cloudflare');
+  });
+
+  it("recognises Shopify's own challenge page and a page that is only a CAPTCHA", () => {
+    expect(detectChallenge(page({ url: 'https://shop.example/challenge' }))).toBe('captcha');
     expect(
-      detectChallenge({
-        status: 200,
-        title: 'x',
-        html: '<iframe src="https://www.google.com/recaptcha/api2/anchor">',
-      }),
+      detectChallenge(
+        page({ html: '<iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe>' }),
+      ),
     ).toBe('captcha');
+    expect(detectChallenge(page({ html: '<div class="h-captcha" data-sitekey="1"></div>' }))).toBe(
+      'captcha',
+    );
     expect(
-      detectChallenge({
-        status: 200,
-        title: 'x',
-        html: '<div class="h-captcha" data-sitekey="1">',
-      }),
+      detectChallenge(
+        page({ html: '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js">' }),
+      ),
     ).toBe('captcha');
-    expect(detectChallenge({ status: 429, title: 'Too many', html: '' })).toBe('rate_limited');
+  });
+
+  it('does not mistake a storefront that loads a CAPTCHA for its forms for a challenge', () => {
+    expect(detectChallenge(page({ html: storefront }))).toBeUndefined();
     expect(
-      detectChallenge({ status: 200, title: 'Allbirds', html: '<main>shoes</main>' }),
+      detectChallenge(page({ html: storefront.replace('shopify-section', 'site-section') })),
+    ).toBeUndefined();
+  });
+
+  it('reports rate limiting and leaves ordinary pages alone', () => {
+    expect(detectChallenge(page({ status: 429, title: 'Too many' }))).toBe('rate_limited');
+    expect(
+      detectChallenge(page({ title: 'Allbirds', html: '<main>shoes</main>' })),
+    ).toBeUndefined();
+    expect(
+      detectChallenge(page({ url: 'https://shop.example/collections/challenge-kits' })),
     ).toBeUndefined();
   });
 });

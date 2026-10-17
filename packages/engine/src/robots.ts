@@ -87,14 +87,15 @@ export interface RobotsResponse {
 
 /**
  * RFC 9309 §2.3.1: a 4xx answer means no rules apply; a 5xx answer or no answer means
- * the whole site is disallowed until robots.txt can be read.
+ * the whole site is disallowed until robots.txt can be read. 429 is treated like a 5xx: the
+ * server is asking crawlers to stay away.
  */
 export function robotsAllows(
   response: RobotsResponse | undefined,
   token: string,
   path: string,
 ): boolean {
-  if (response === undefined || response.status >= 500) return false;
+  if (response === undefined || response.status >= 500 || response.status === 429) return false;
   if (response.status >= 400) return true;
   return parseRobots(response.text).allows(token, path);
 }
