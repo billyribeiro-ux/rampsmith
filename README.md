@@ -32,7 +32,7 @@ side by side, as laid out in PLAN §8.
 | Node.js | 26.12.0 | `.mise.toml`, `package.json` `engines` |
 | pnpm | 12.14.0 | `.mise.toml`, `package.json` `packageManager` (never Corepack) |
 | PostgreSQL | 18.6 | `.mise.toml` |
-| cargo-nextest, cargo-deny, cargo-machete, sqlx-cli | see `.mise.toml` | `.mise.toml` |
+| cargo-binstall, cargo-nextest, cargo-deny, cargo-machete, sqlx-cli | see `.mise.toml` | `.mise.toml` |
 
 ```sh
 mise install          # Node, pnpm, PostgreSQL and the cargo tools

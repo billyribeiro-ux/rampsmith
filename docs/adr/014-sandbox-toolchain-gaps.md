@@ -36,8 +36,9 @@ For verification inside the sandbox only, use the closest toolchain that can be 
 | PostgreSQL | 18.6 | 18.4 from `@embedded-postgres/linux-x64@18.4.0-beta.17` | Two patch releases older; same major, so catalog, RLS and SQL behaviour match. CI runs 18.6. |
 | Container images | digests | none | Tests use a provided PostgreSQL instead of `testcontainers` (ADR-015). |
 
-The sandbox exports `MISE_OFFLINE=1` and `MISE_DISABLE_TOOLS=postgres` so mise does not try
-to download what it cannot reach.
+The sandbox exports `MISE_OFFLINE=1` and `MISE_DISABLE_TOOLS=postgres,cargo-binstall` so mise
+does not try to download what it cannot reach; the cargo tools are built with `cargo install`
+at their pinned versions and registered with `mise link`.
 
 ## Consequences
 

@@ -20,6 +20,8 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [012](012-no-redis.md) | No Redis in R0 to R2 | Accepted |
 | 013 | Reserved: evaluate Shopify Next Gen Events in R3 (PLAN §14) | Reserved |
 | [014](014-sandbox-toolchain-gaps.md) | Local verification toolchain when pinned downloads are blocked | Accepted |
+| [015](015-database-tests-on-provided-postgres.md) | Database tests run on a provided PostgreSQL, not testcontainers | Accepted |
+| [016](016-pull-request-gate-mechanics.md) | Pull-request gate mechanics | Accepted |
 
 ## Template
 

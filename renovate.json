@@ -1,0 +1,39 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":semanticCommits"],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "rangeStrategy": "pin",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Weekly grouped updates per ecosystem (PLAN §7, §24)",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor and patch"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "cargo minor and patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "matchManagers": ["mise"],
+      "groupName": "toolchains"
+    },
+    {
+      "description": "TypeScript stays on 6.x until SvelteKit's peer range allows 7 (CLAUDE.md)",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    }
+  ]
+}

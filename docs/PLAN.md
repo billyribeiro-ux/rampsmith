@@ -251,7 +251,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `governor` | 0.10.4 | In-process rate limiting |
 | `hickory-resolver` / `ipnet` / `url` | 0.26.3 / 2.12.2 / 2.5.8 | Server-side request forgery guard (section 18) |
 | `clap` | 4.6.7 | Admin CLI |
-| `insta` / `proptest` / `testcontainers` / `wiremock` | 1.49.0 / 1.12.0 / 0.28.0 / 0.6.5 | Tests |
+| `insta` / `proptest` / `wiremock` | 1.49.0 / 1.12.0 / 0.6.5 | Tests; database tests use `#[sqlx::test]` on a provided PostgreSQL instead of `testcontainers` (ADR-015) |
 | `cargo-nextest` | 0.9.148 | Test runner |
 
 ### Engine (`engine`)
@@ -1248,7 +1248,7 @@ The two things that must never be wrong are a patch that breaks a merchant's the
 | Component | Tests | Tools |
 | --- | --- | --- |
 | Rust domain crates | Unit and property tests: fingerprint normalization, encryption round trips, entitlement limits, backoff schedules | `cargo-nextest`, `proptest`, `insta` |
-| Rust data layer | Migrations applied to a real PostgreSQL 18; the cross-tenant isolation suite; queue claim, lease expiry and fencing under concurrency | `testcontainers`, `sqlx` |
+| Rust data layer | Migrations applied to a real PostgreSQL 18; the cross-tenant isolation suite; queue claim, lease expiry and fencing under concurrency | `#[sqlx::test]` on the CI service container or local PostgreSQL (ADR-015) |
 | Rust integrations | Shopify, GitHub, Stripe and Anthropic faked at the HTTP layer, including 429s, 5xx responses, `userErrors` and malformed bodies | `wiremock` |
 | `liquid-patch` | One golden before-and-after pair per recipe per theme in the corpus; every recipe applied twice equals once; output re-parses and passes `theme-check` | Vitest |
 | Scanner rules | A fixture site with one seeded violation per rule and per state, and clean twins of each page; precision and recall reported per rule each release | Playwright, Vitest |
@@ -1432,7 +1432,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 ### Order of work for R0
 
 1. [x] Monorepo bootstrap per section 8: `.mise.toml`, `rust-toolchain.toml`, workspaces, shared strict configs, `mise run verify`.
-2. The pull-request gate in section 24, including `claims-lint` and contract-drift checks.
+2. [x] The pull-request gate in section 24, including `claims-lint` and contract-drift checks (images and preview stages follow their deployables, ADR-016).
 3. `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
 4. The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.
 5. Telemetry in all three runtimes (section 21).

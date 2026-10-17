@@ -1,0 +1,133 @@
+# Pull-request gate (PLAN §24). Every job is required; every action is pinned to a full
+# commit SHA (the tag is in the trailing comment); every image is pinned by digest.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions: read-all
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  NEXTEST_PROFILE: ci
+  # The PostgreSQL 18.6 service container replaces the mise-managed local server in CI.
+  MISE_DISABLE_TOOLS: postgres
+  # Each job installs exactly the tools it needs; nothing is installed implicitly.
+  MISE_TASK_RUN_AUTO_INSTALL: 'false'
+  MISE_VERSION: '2026.10.12'
+
+jobs:
+  rust:
+    name: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    services:
+      postgres:
+        # postgres:18.6-bookworm, index digest read from Docker Hub on 2026-10-17.
+        image: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rampsmith
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rampsmith"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rampsmith
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: cargo-binstall cargo:cargo-nextest cargo:cargo-deny cargo:cargo-machete
+      - name: rustfmt
+        run: mise run check:rust-fmt
+      - name: Clippy (-D warnings)
+        run: mise run check:clippy
+      - name: cargo-deny
+        run: mise run check:cargo-deny
+      - name: cargo-machete
+        run: mise run check:cargo-machete
+      - name: Tests (cargo-nextest, PostgreSQL 18.6)
+        run: mise run test:rust
+
+  node:
+    name: node
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node pnpm
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - name: Install dependencies (frozen lockfile)
+        run: mise run setup
+      - name: ESLint (zero warnings)
+        run: mise run check:eslint
+      - name: Prettier
+        run: mise run check:prettier
+      - name: tsc and svelte-check
+        run: mise run check:types
+      - name: knip
+        run: mise run check:knip
+      - name: claims-lint (PLAN §3)
+        run: mise run check:claims
+      - name: Tests (Vitest)
+        run: mise run test:ts
+
+  contracts:
+    name: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node pnpm
+      - name: Install dependencies (frozen lockfile)
+        run: mise run setup
+      - name: Contract drift (regenerate and diff)
+        run: mise run check:contracts
