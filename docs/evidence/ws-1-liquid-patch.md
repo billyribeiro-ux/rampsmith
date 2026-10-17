@@ -17,6 +17,7 @@ Read with `npm view <pkg>@<version> version license peerDependencies engines` an
 | `jsonc-parser` | 3.3.1 (latest) | MIT | none; no dependencies | 2024-06-24 | JSON offsets for locale edits and JSON validation (ADR-101, ADR-103) |
 | `fast-check` (dev) | 4.10.2 (latest) | MIT | engines node >=12.17.0; dependency `pure-rand` ^8.0.0 (MIT, 8.4.2) | 2026-09-19 | Property tests |
 | `vitest` (dev) | 5.0.5 (latest; same pin as `packages/queue`) | MIT | `@types/node` ^22.0.0 \|\| >=24.0.0 (root has 26.6.5); engines node ^22.12.0 \|\| ^24.0.0 \|\| >=26.0.0 | 2026-10-15 | Test runner |
+| `@vitest/coverage-v8` (dev) | 5.0.5 (latest) | MIT | `vitest` 5.0.5 (exact match); `@vitest/browser` 5.0.5, optional (`peerDependenciesMeta`); dependencies all MIT | 2026-10-15 | Enforces PLAN §23's 95% line coverage in `pnpm test` |
 
 BSD-3-Clause is on the project's license allowlist (`deny.toml`). pnpm 12 fails an install on
 any dependency build script left undecided; `pnpm install` succeeds without new `allowBuilds`
@@ -75,13 +76,14 @@ license = 'MIT'  dependencies = { 'env-paths': '^2.2.1', 'node-fetch': '^2.6.11'
 - `test/recipes.test.ts`: every outcome of every recipe on hand-written failing markup, with
   exact expected output for the edits.
 - `test/recipe-properties.test.ts`: fast-check over generated markup; first run returns edits
-  that re-parse and keep the bytes before the first and after the last edit; the run on the
-  output returns `already-fixed`.
+  that re-parse and keep every code unit outside the edited spans (checked offset by offset
+  through `mapOffset`); the run on the output returns `already-fixed`.
 - `test/dawn-recipes.test.ts`: on pristine Dawn every recipe reports `already-fixed` (or the
   documented refusal); with each fix removed by a span edit, the recipe restores it, the full
   patch (file plus locale files, through `buildPatch`) passes `validateNoNewOffenses` with no
-  new offenses, and a second run reports `already-fixed`. `lang`, the Facebook link text and
-  the search reset button come back byte-identical to Dawn.
+  new offenses, every code unit outside the edits is kept in the Liquid and locale files, and
+  a second run reports `already-fixed`. `lang`, the Facebook link text and the search reset
+  button come back byte-identical to Dawn.
 
 ## Dawn fixtures (ADR-105)
 
@@ -107,5 +109,5 @@ Run from the worktree root before each commit.
 | `pnpm run typecheck` | every package `Done`, including `packages/liquid-patch typecheck: Done` |
 | `pnpm run knip` | exits 0, no findings |
 | `node packages/claims-lint/src/main.ts` | `claims-lint: 1 file scanned, no banned claims` |
-| `pnpm --filter @rampsmith/liquid-patch test` | `Test Files  9 passed (9)`, `Tests  110 passed (110)` |
+| `pnpm --filter @rampsmith/liquid-patch test` (`vitest run --coverage`, threshold lines 95%) | `Test Files  10 passed (10)`, `Tests  117 passed (117)`; `Statements 97.16%`, `Branches 91.59%`, `Functions 98.41%`, `Lines 99.13% ( 691/697 )` |
 | `pnpm run test` | fails in `packages/queue` only: `DATABASE_URL must name a PostgreSQL 18 superuser connection for the tests`. This sandbox has no PostgreSQL 18 running, and starting one was refused by the session's permission policy; CI's `node` job provides the service container. `packages/liquid-patch` has no database tests. |

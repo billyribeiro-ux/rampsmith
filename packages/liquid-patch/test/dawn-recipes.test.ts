@@ -16,7 +16,7 @@ import type { Recipe, RecipeOutcome } from '../src/recipes/types.ts';
 import { validateNoNewOffenses } from '../src/theme-check.ts';
 import { localeEdits } from '../src/translations.ts';
 import { dawnTheme, readDawn } from './dawn.ts';
-import { fixTwice, run } from './helpers.ts';
+import { expectBytesKept, fixTwice, run } from './helpers.ts';
 
 const LAYOUT = 'layout/theme.liquid';
 const SOCIAL = 'snippets/social-icons.liquid';
@@ -56,7 +56,15 @@ async function patchTheme(
   const result = buildPatch(theme, [...outcome.edits, ...translations.edits]);
   if (!result.ok) throw new Error(result.error.message);
   const after = new Map(theme);
-  for (const p of result.patches) after.set(p.file, p.after);
+  const edits = [...outcome.edits, ...translations.edits];
+  for (const p of result.patches) {
+    expectBytesKept(
+      p.before,
+      edits.filter((e) => e.file === p.file),
+      p.after,
+    );
+    after.set(p.file, p.after);
+  }
   const gate = await validateNoNewOffenses(theme, after);
   expect(gate.newOffenses).toEqual([]);
   return after;

@@ -253,6 +253,9 @@ describe('empty-link', () => {
     expect(link('<a href="/">{% comment %}x{% endcomment %}{% assign a = 1 %}</a>')).toMatchObject({
       kind: 'edits',
     });
+    expect(link('<a href="/"><!-- icon --><script>var a;</script></a>')).toMatchObject({
+      kind: 'edits',
+    });
   });
 
   it('is already fixed by text, a translation, aria-label, title, an image alt or an svg title', () => {
@@ -262,6 +265,7 @@ describe('empty-link', () => {
       '<a href="/" aria-label="Cart"></a>',
       '<a href="/" aria-label="{{ \'a.b\' | t }}"></a>',
       '<a href="/" aria-labelledby="x"></a>',
+      '<a href="/" aria-labelledby="{{ heading_id }}"></a>',
       '<a href="/" title="Cart"></a>',
       '<a href="/"><img src="a.png" alt="Cart"></a>',
       '<a href="/"><svg><title>Cart</title></svg></a>',
@@ -279,6 +283,7 @@ describe('empty-link', () => {
       '<a href="/"><img src="a.png" alt="{{ image.alt }}"></a>',
       '<a href="/">{% raw %}x{% endraw %}</a>',
       '<a href="/">{{ x | | }}</a>',
+      '<a href="/">{% echo product.title %}</a>',
     ]) {
       expect(link(source), source).toMatchObject({ kind: 'refusal', code: 'dynamic-content' });
     }

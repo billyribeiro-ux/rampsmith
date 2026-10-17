@@ -243,6 +243,13 @@ describe('applyEdits', () => {
     });
   });
 
+  it('rejects edits to a JSON file that is already invalid', () => {
+    expect(applyEdits('{"a": ', [edit(0, 0, ' ', 'locales/en.default.json')])).toMatchObject({
+      ok: false,
+      error: { code: 'source-unparseable' },
+    });
+  });
+
   it('refuses file types it cannot validate', () => {
     expect(applyEdits('a{}', [edit(0, 0, 'x', 'assets/base.css')])).toMatchObject({
       ok: false,
