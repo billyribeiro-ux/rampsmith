@@ -933,7 +933,7 @@ Rampsmith's own interface has to survive Rampsmith's own scanner, so each primit
 - Dialog on native `<dialog>` with focus moved in and restored on close
 - Tabs, Combobox, Disclosure, Menu button
 - Data table with `aria-sort` on sortable headers
-- Toast with `role="status"`; errors never auto-dismiss
+- Toast with `role="status"`; errors go to a `role="alert"` region and never auto-dismiss (ADR-026)
 - Colour tokens at 4.5:1 for text and 3:1 for UI boundaries; a visible `:focus-visible` ring; `prefers-reduced-motion` honoured
 
 The embedded admin uses Polaris web components for consistency with Shopify. Only the diff viewer and the evidence viewer are custom there, styled with Polaris tokens.
@@ -1442,7 +1442,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 7. [x] Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here. Built and tested against a mock Shopify (ADR-021, ADR-022); the live development-store run waits for the founder's Partner account (`docs/runbooks/shopify-dev-store.md`).
 8. [x] `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys (ADR-023, ADR-024). The emailed sign-in link waits for an email provider account.
 9. `egress` and an `engine` skeleton that scans one page through it. Spikes S-1 and S-2 run here.
-10. `packages/ui` primitives with their axe and keyboard tests.
+10. [x] `packages/ui` primitives with their axe and keyboard tests (ADR-026), now used by the standalone web pages.
 
 Then R1 in the order of section 5, and so on.
 

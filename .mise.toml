@@ -136,9 +136,10 @@ description = "Debug build of the egress proxy, which the engine's browser tests
 run = "cargo build --locked -p rampsmith-egress --bin egress"
 
 [tasks."test:e2e"]
-description = "Browser tests: the web app against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks; the engine scanning through the real egress proxy into PostgreSQL"
+description = "Browser tests in Chromium: the ui primitives (axe and keyboard); the web app against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks; the engine scanning through the real egress proxy into PostgreSQL"
 depends = ["setup", "web:sync", "build:api", "build:egress"]
 run = [
+  "pnpm --filter @rampsmith/ui run test:browser",
   "pnpm --filter @rampsmith/web run test:e2e",
   "pnpm --filter @rampsmith/engine run test:e2e",
 ]
