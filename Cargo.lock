@@ -1733,6 +1733,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "rampsmith-ctl"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "jsonwebtoken",
+ "rampsmith-contracts",
+ "rampsmith-crypto",
+ "rampsmith-db",
+ "rampsmith-domain",
+ "rampsmith-queue",
+ "rampsmith-shopify",
+ "rampsmith-shopify-auth",
+ "rampsmith-telemetry",
+ "secrecy",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "rampsmith-db"
 version = "0.0.0"
 dependencies = [

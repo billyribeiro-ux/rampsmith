@@ -1,4 +1,5 @@
-# The api image (PLAN §22). `ctl` will ship in the same image with a different command.
+# The control-plane image (PLAN §22): `api` is the entrypoint; `ctl` runs from the same image
+# with `--entrypoint /usr/local/bin/ctl`.
 # Base images are pinned by digest (PLAN §27); tags are comments for humans and Renovate.
 
 # rust:1.99.1-slim-trixie
@@ -11,8 +12,8 @@ ENV RUSTUP_TOOLCHAIN=1.99.1 \
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release --locked -p rampsmith-api --bin api \
-    && install -m 0755 target/release/api /usr/local/bin/api
+    cargo build --release --locked -p rampsmith-api --bin api -p rampsmith-ctl --bin ctl \
+    && install -m 0755 target/release/api target/release/ctl /usr/local/bin/
 
 # debian:trixie-slim (ADR-020: distroless once its digest can be verified)
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
@@ -23,7 +24,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin rampsmith
-COPY --from=build /usr/local/bin/api /usr/local/bin/api
+COPY --from=build /usr/local/bin/api /usr/local/bin/ctl /usr/local/bin/
 USER 10001:10001
 ENV BIND_ADDR=0.0.0.0:8080
 EXPOSE 8080

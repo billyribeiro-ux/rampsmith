@@ -190,6 +190,11 @@ jobs:
           grep -q '"code":"unavailable"' readyz.json
           test "$(docker inspect --format '{{.Config.User}}' rampsmith-api:ci)" = "10001:10001"
           docker rm -f api
+          # ctl ships in the same image and refuses to start without its configuration.
+          if docker run --rm --entrypoint /usr/local/bin/ctl rampsmith-api:ci 2> ctl.err; then
+            echo "ctl started without configuration" >&2; exit 1
+          fi
+          grep -q 'DATABASE_URL must be set' ctl.err
       - name: SBOM (CycloneDX)
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
