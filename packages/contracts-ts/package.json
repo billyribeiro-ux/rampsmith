@@ -16,6 +16,10 @@
   "devDependencies": {
     "@rampsmith/tsconfig": "workspace:*",
     "json-schema-to-typescript": "16.0.0",
+    "openapi-typescript": "7.13.0",
     "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
   }
 }

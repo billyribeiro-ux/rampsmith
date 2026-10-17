@@ -587,3 +587,15 @@ async fn a_job_enqueued_in_a_tenant_transaction_commits_with_it(
         "the transaction's tenant always wins"
     );
 }
+
+#[sqlx::test]
+async fn the_app_role_reads_the_schema_version_this_build_expects(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    db.ping().await.unwrap();
+    let applied = db.schema_version().await.unwrap();
+    assert_eq!(applied, Some(db::expected_schema_version()));
+    assert!(db::expected_schema_version() >= 20_261_017_000_004);
+}

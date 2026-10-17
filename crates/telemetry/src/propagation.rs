@@ -23,6 +23,16 @@ pub fn traceparent(span: &tracing::Span) -> Option<String> {
     carrier.remove(HEADER)
 }
 
+/// The 32-hex-digit trace id of `span`, for problem responses and support. `None` when the
+/// span is not recorded by OpenTelemetry.
+#[must_use]
+pub fn trace_id(span: &tracing::Span) -> Option<String> {
+    let cx = span.context();
+    let span_ref = cx.span();
+    let context = span_ref.span_context();
+    context.is_valid().then(|| context.trace_id().to_string())
+}
+
 /// Whether `value` is a version-00 W3C `traceparent`: `00-<32 hex>-<16 hex>-<2 hex>`, lowercase,
 /// with non-zero trace and span ids. The propagator alone accepts shorter ids.
 fn is_well_formed(value: &str) -> bool {
@@ -105,6 +115,18 @@ mod tests {
     #[test]
     fn without_a_tracing_layer_there_is_no_traceparent() {
         assert_eq!(traceparent(&tracing::Span::none()), None);
+        assert_eq!(trace_id(&tracing::Span::none()), None);
+    }
+
+    #[test]
+    fn the_trace_id_matches_the_traceparent() {
+        let ((tp, id), _) = traced(|| {
+            let span = tracing::info_span!("request");
+            (traceparent(&span), trace_id(&span))
+        });
+        let (tp, id) = (tp.unwrap(), id.unwrap());
+        assert_eq!(id.len(), 32);
+        assert!(tp.contains(&id), "{tp} / {id}");
     }
 
     #[test]

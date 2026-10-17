@@ -1,0 +1,206 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Rampsmith API",
+    "description": "Control-plane API behind the Rampsmith web app. Errors are RFC 9457 problem+json.",
+    "license": {
+      "name": "Proprietary"
+    },
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Liveness: answers as long as the process runs. Never touches dependencies, so a slow\ndatabase cannot get a healthy process restarted.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "The process is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Readiness: the database answers and holds at least this build's newest migration.",
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "description": "Ready to serve",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FieldError": {
+        "type": "object",
+        "description": "One invalid field of a request.",
+        "required": [
+          "field",
+          "message"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "JSON path of the field, such as `shop` or `items.0.alt`."
+          },
+          "message": {
+            "type": "string",
+            "description": "What is wrong, safe to show to the user."
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "description": "The process is up.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Always `ok`."
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "description": "An RFC 9457 `application/problem+json` body with Rampsmith's extension members.\n\nUnknown members are ignored on input, as RFC 9457 requires of consumers.",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ProblemCode",
+            "description": "Stable machine-readable code."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Explanation specific to this occurrence. Never contains tokens or personal data."
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "description": "Field-level errors when `code` is `validation_failed`."
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URI reference identifying this occurrence."
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The HTTP status code.",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "Short summary of the problem type."
+          },
+          "trace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "W3C trace id of the request, for support."
+          },
+          "type": {
+            "type": "string",
+            "description": "URI reference identifying the problem type: `/problems/<code>`."
+          }
+        }
+      },
+      "ProblemCode": {
+        "type": "string",
+        "description": "Stable, enumerated error code. Clients branch on this, never on `title` or `detail`.\n\nAdding a code is a contract change; renaming or removing one is a breaking change.",
+        "enum": [
+          "bad_request",
+          "validation_failed",
+          "unauthenticated",
+          "forbidden",
+          "not_found",
+          "conflict",
+          "payload_too_large",
+          "rate_limited",
+          "internal",
+          "upstream_failed",
+          "unavailable"
+        ]
+      },
+      "Readiness": {
+        "type": "object",
+        "description": "The process can serve: the database answers and has this build's migrations.",
+        "required": [
+          "status",
+          "schema_version",
+          "expected_schema_version"
+        ],
+        "properties": {
+          "expected_schema_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The newest migration this build knows."
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The newest migration applied to the database."
+          },
+          "status": {
+            "type": "string",
+            "description": "Always `ready`."
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "operations",
+      "description": "Liveness and readiness for the platform"
+    }
+  ]
+}

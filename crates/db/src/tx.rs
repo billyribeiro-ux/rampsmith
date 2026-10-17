@@ -21,12 +21,14 @@ impl fmt::Debug for Db {
 }
 
 impl Db {
-    /// Connects a pool. The URL's role must be an application role, never the owner.
-    pub async fn connect(url: &str, max_connections: u32) -> Result<Self, DbError> {
+    /// A pool that connects on first use. The URL's role must be an application role, never
+    /// the owner. Connecting lazily lets a service start, answer liveness, and report
+    /// readiness only once the database is reachable (PLAN §22).
+    pub fn connect_lazy(url: &str, max_connections: u32) -> Result<Self, DbError> {
         let pool = PgPoolOptions::new()
             .max_connections(max_connections)
-            .connect(url)
-            .await?;
+            .acquire_timeout(std::time::Duration::from_secs(5))
+            .connect_lazy(url)?;
         Ok(Self { pool })
     }
 
@@ -55,6 +57,13 @@ impl Db {
             .fetch_one(&self.pool)
             .await?;
         Ok(())
+    }
+
+    /// The newest migration applied to this database, or `None` before any.
+    pub async fn schema_version(&self) -> Result<Option<i64>, DbError> {
+        Ok(sqlx::query_scalar!("select app_schema_version()")
+            .fetch_one(&self.pool)
+            .await?)
     }
 }
 

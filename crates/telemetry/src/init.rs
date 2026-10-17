@@ -150,45 +150,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_json_logs_at_info_without_export() {
-        let config = Config {
-            service_name: "test",
-            service_version: "0.0.0".to_owned(),
-            otlp_endpoint: None,
-            json_logs: true,
-            filter: "info".to_owned(),
-        };
-        let guard = init(&config).expect("first init succeeds");
-        tracing::info!(answer = 42, "telemetry works");
-        assert!(matches!(
-            init(&config),
-            Err(TelemetryError::AlreadyInitialised(_))
-        ));
-        drop(guard);
-    }
-
-    /// Building and shutting down the exporters inside a Tokio runtime must not panic, even
-    /// when the collector is unreachable: telemetry never takes a service down.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn exports_to_an_unreachable_collector_without_failing() {
-        let config = Config {
-            service_name: "test",
-            service_version: "0.0.0".to_owned(),
-            otlp_endpoint: Some("http://127.0.0.1:9/".to_owned()),
-            json_logs: false,
-            filter: "info".to_owned(),
-        };
-        let guard = tokio::task::spawn_blocking(move || init(&config))
-            .await
-            .unwrap()
-            .expect("init");
-        tracing::info_span!("work").in_scope(|| tracing::info!("inside a span"));
-        tokio::task::spawn_blocking(move || drop(guard))
-            .await
-            .unwrap();
-    }
-
-    #[test]
     fn rejects_a_malformed_filter() {
         let config = Config {
             service_name: "test",

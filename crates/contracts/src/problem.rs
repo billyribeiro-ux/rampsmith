@@ -2,11 +2,12 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Stable, enumerated error code. Clients branch on this, never on `title` or `detail`.
 ///
 /// Adding a code is a contract change; renaming or removing one is a breaking change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProblemCode {
     /// The request could not be parsed.
@@ -105,7 +106,7 @@ impl ProblemCode {
 }
 
 /// One invalid field of a request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 pub struct FieldError {
     /// JSON path of the field, such as `shop` or `items.0.alt`.
     pub field: String,
@@ -116,7 +117,7 @@ pub struct FieldError {
 /// An RFC 9457 `application/problem+json` body with Rampsmith's extension members.
 ///
 /// Unknown members are ignored on input, as RFC 9457 requires of consumers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 pub struct Problem {
     /// URI reference identifying the problem type: `/problems/<code>`.
     #[serde(rename = "type")]

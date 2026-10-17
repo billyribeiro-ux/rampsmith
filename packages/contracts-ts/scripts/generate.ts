@@ -25,8 +25,11 @@ const names = readdirSync(schemasDir)
   .map((file) => file.slice(0, -SUFFIX.length))
   .sort();
 
-rmSync(outDir, { recursive: true, force: true });
+// Replace this script's own files; leave api.ts, written by generate-api.ts, alone.
 mkdirSync(outDir, { recursive: true });
+for (const file of readdirSync(outDir)) {
+  if (file !== 'api.ts') rmSync(join(outDir, file));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

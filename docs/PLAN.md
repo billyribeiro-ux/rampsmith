@@ -232,7 +232,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `tower` / `tower-http` | 0.5.3 / 0.7.1 | Middleware: timeouts, compression, tracing, request IDs |
 | `sqlx` / `sqlx-cli` | 0.9.0 / 0.9.0 | Compile-time checked queries, migrations |
 | `serde` / `serde_json` | 1.0.229 / 1.0.154 |  |
-| `utoipa` | 6.0.0 | OpenAPI generation |
+| `utoipa` / `utoipa-axum` | 6.0.0 / 0.3.0 | OpenAPI generation; routes registered through `utoipa-axum` (ADR-020) |
 | `schemars` | 1.2.3 | JSON Schema for job payloads |
 | `validator` | 0.21.0 | Request validation |
 | `thiserror` / `anyhow` | 2.0.21 / 1.0.104 | Typed errors in libraries; `anyhow` only in binaries' `main` |
@@ -1438,7 +1438,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 3. [x] `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
 4. [x] The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.
 5. [x] Telemetry in all three runtimes (section 21); the web runtime's tracing is configured with its skeleton in step 8 (ADR-019).
-6. `api` skeleton: health and readiness, problem+json errors, OpenAPI generation.
+6. [x] `api` skeleton: health and readiness, problem+json errors, OpenAPI generation (ADR-020).
 7. Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here.
 8. `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys.
 9. `egress` and an `engine` skeleton that scans one page through it. Spikes S-1 and S-2 run here.

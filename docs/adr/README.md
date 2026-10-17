@@ -25,6 +25,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [017](017-composite-tenant-foreign-keys.md) | Composite tenant foreign keys | Accepted |
 | [018](018-job-queue-protocol.md) | Job queue protocol details | Accepted |
 | [019](019-telemetry.md) | Telemetry wiring | Accepted |
+| [020](020-api-skeleton.md) | api skeleton, OpenAPI pipeline and images | Accepted |
 
 ## Template
 

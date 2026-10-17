@@ -6,4 +6,4 @@ mod init;
 mod propagation;
 
 pub use init::{Config, Guard, TelemetryError, init};
-pub use propagation::{context_from_traceparent, set_parent, traceparent};
+pub use propagation::{context_from_traceparent, set_parent, trace_id, traceparent};

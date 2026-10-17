@@ -6,3 +6,9 @@ packages:
 saveExact: true
 engineStrict: true
 strictPeerDependencies: true
+
+# openapi-typescript 7.13.0 declares `typescript: ^5.x`; it runs on 6.0.3, proven by the
+# contract-drift check typechecking its output under the strict config (ADR-020).
+peerDependencyRules:
+  allowedVersions:
+    openapi-typescript>typescript: '6'

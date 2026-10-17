@@ -18,6 +18,8 @@ side by side, as laid out in PLAN §8.
 | `crates/domain` | Pure domain types: no I/O, no async, no database |
 | `crates/db` | Migrations, the tenant-scoped transaction, repositories and the isolation suite |
 | `crates/queue` | The job protocol (enqueue, claim, heartbeat, complete, fail) and the worker loop |
+| `crates/api` | The control-plane HTTP API (Axum): health, readiness, OpenAPI |
+| `crates/http-kit` | problem+json errors and the shared middleware stack |
 | `crates/telemetry` | OpenTelemetry setup, JSON logs and W3C trace context for the Rust services |
 | `crates/contracts` | Types that cross a language boundary, with generated JSON Schema |
 | `packages/tsconfig` | Shared strict TypeScript configurations |
@@ -25,6 +27,7 @@ side by side, as laid out in PLAN §8.
 | `packages/queue` | The same job protocol for the TypeScript engine, sharing SQL and retry vectors with `crates/queue` |
 | `packages/telemetry` | OpenTelemetry setup for the TypeScript engine |
 | `packages/claims-lint` | Fails the build on banned claims (PLAN §3) |
+| `infra/` | Container images |
 | `docs/adr` | One file per architecture decision |
 
 ## Toolchain

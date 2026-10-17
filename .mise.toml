@@ -81,10 +81,12 @@ description = "Banned claims (PLAN §3) in UI strings, emails, listing and marke
 run = "node packages/claims-lint/src/main.ts"
 
 [tasks."contracts:generate"]
-description = "Regenerate JSON Schemas and TypeScript types from crates/contracts (ADR-009)"
+description = "Regenerate JSON Schemas, the OpenAPI document and their TypeScript types (ADR-009)"
 run = [
   "cargo run --locked --quiet -p rampsmith-contracts --bin gen-schemas -- packages/contracts-ts/schemas",
   "node packages/contracts-ts/scripts/generate.ts packages/contracts-ts/schemas packages/contracts-ts/src/generated",
+  "cargo run --locked --quiet -p rampsmith-api --bin gen-openapi -- packages/contracts-ts/openapi/api.json",
+  "node packages/contracts-ts/scripts/generate-api.ts packages/contracts-ts/openapi/api.json packages/contracts-ts/src/generated/api.ts",
 ]
 
 [tasks."check:contracts"]
@@ -95,7 +97,10 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cargo run --locked --quiet -p rampsmith-contracts --bin gen-schemas -- "$tmp/schemas"
 node packages/contracts-ts/scripts/generate.ts "$tmp/schemas" "$tmp/generated"
+cargo run --locked --quiet -p rampsmith-api --bin gen-openapi -- "$tmp/openapi/api.json"
+node packages/contracts-ts/scripts/generate-api.ts "$tmp/openapi/api.json" "$tmp/generated/api.ts"
 diff -ru packages/contracts-ts/schemas "$tmp/schemas"
+diff -ru packages/contracts-ts/openapi "$tmp/openapi"
 diff -ru packages/contracts-ts/src/generated "$tmp/generated"
 echo "contracts: generated files match crates/contracts"
 """

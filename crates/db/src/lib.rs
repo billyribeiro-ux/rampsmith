@@ -16,3 +16,10 @@ pub use tx::{Db, TenantTx};
 /// The workspace migrations, embedded at compile time. Deploys run them before traffic
 /// switches (PLAN §22); tests get them applied by `#[sqlx::test]`.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+
+/// The newest migration this build knows. A service is ready only when the database has at
+/// least this version: migrations are expand-then-contract, so a newer database is fine.
+#[must_use]
+pub fn expected_schema_version() -> i64 {
+    MIGRATOR.iter().map(|m| m.version).max().unwrap_or(0)
+}
