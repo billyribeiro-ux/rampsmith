@@ -292,6 +292,43 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(jiti@2.7.0)(yaml@2.9.1))
 
+  packages/engine:
+    dependencies:
+      '@axe-core/playwright':
+        specifier: 4.14.0
+        version: 4.14.0(playwright-core@1.64.1)
+      '@opentelemetry/api':
+        specifier: 1.9.1
+        version: 1.9.1
+      '@rampsmith/contracts-ts':
+        specifier: workspace:*
+        version: link:../contracts-ts
+      '@rampsmith/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@rampsmith/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
+      axe-core:
+        specifier: 4.14.0
+        version: 4.14.0
+      playwright:
+        specifier: 1.64.1
+        version: 1.64.1
+      postgres:
+        specifier: 3.4.9
+        version: 3.4.9
+    devDependencies:
+      '@rampsmith/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(jiti@2.7.0)(yaml@2.9.1))
+
   packages/queue:
     dependencies:
       '@opentelemetry/api':

@@ -6,6 +6,9 @@
     "packages/contracts-ts": {
       "entry": ["test/**/*.test-d.ts"]
     },
+    "packages/engine": {
+      "entry": ["test/**/*.e2e.ts"]
+    },
     "apps/web": {
       "entry": ["src/env.ts", "tests/**/*.spec.ts"],
       "project": ["src/**/*.{ts,svelte}", "tests/**/*.ts"],

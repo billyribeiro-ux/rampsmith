@@ -249,7 +249,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `async-stripe` | 0.41.0 | Stripe Billing for non-Shopify customers |
 | `aws-sdk-s3` | 1.152.0 | Cloudflare R2 through the S3 API |
 | `governor` | 0.10.4 | In-process rate limiting |
-| `hickory-resolver` / `ipnet` / `url` | 0.26.3 / 2.12.2 / 2.5.8 | Server-side request forgery guard (section 18) |
+| `hyper` / `ipnet` / `url` | 1.12.0 / 2.12.2 / 2.5.8 | Server-side request forgery guard (section 18); names resolve through the system resolver, not `hickory-resolver` (ADR-025) |
 | `clap` | 4.6.7 | Admin CLI |
 | `insta` / `proptest` / `wiremock` | 1.49.0 / 1.12.0 / 0.6.5 | Tests; database tests use `#[sqlx::test]` on a provided PostgreSQL instead of `testcontainers` (ADR-015) |
 | `cargo-nextest` | 0.9.148 | Test runner |
@@ -493,7 +493,7 @@ create table audit_log (                    -- append-only; update and delete re
 | --- | --- |
 | `users`, `passkeys`, `organizations`, `memberships` | Standalone-dashboard identity; roles `owner`, `admin`, `member`, `viewer` |
 | `themes` | Shopify theme id, role, snapshot key in R2, SHA-256 of the snapshot |
-| `scan_pages` | Each page and state scanned: URL, page type, HTTP status, duration, screenshot key |
+| `scan_pages` | Each page and state scanned: URL, page state, HTTP status, duration, challenge if blocked, violation count; unique per scan, URL and state so a re-run job records nothing twice (ADR-025). Page type and screenshot key arrive with the full scan in R1 |
 | `data_fix_snapshots` | Before and after values per resource and field, which powers one-click undo |
 | `github_installations`, `repos`, `pull_requests` | GitHub App installs, connected theme repositories, pull-request state |
 | `theme_packages` | Patched theme archives, their SHA-256, the uploaded preview theme id, the verification scan |
@@ -1001,7 +1001,7 @@ The two threats unique to Rampsmith are a headless browser that loads hostile pa
 | Threat | Control |
 | --- | --- |
 | One tenant reads another's data | Row-level security plus compile-time tenant scoping; the isolation suite runs on every pull request (section 9) |
-| Server-side request forgery through scanned URLs | Chromium sends all traffic through `egress-guard`, a small Rust forward proxy deployed as the `egress` service and reachable only by the engine. It resolves DNS itself, refuses loopback, private, link-local (including cloud metadata), CGNAT, unique-local and IPv4-mapped addresses, re-checks on every redirect, and enforces a request budget per page. Resolving and connecting in one place also defeats DNS rebinding. |
+| Server-side request forgery through scanned URLs | Chromium sends all traffic through `egress-guard`, a small Rust forward proxy deployed as the `egress` service and reachable only by the engine. It resolves DNS itself, refuses loopback, private, link-local (including cloud metadata), CGNAT, unique-local and IPv4-mapped addresses, re-checks on every redirect, and enforces a connection budget per page. Each page job carries a signed, two-minute scan token naming the hosts it may reach (ADR-025). Resolving and connecting in one place also defeats DNS rebinding. |
 | A hostile page exploits the browser | Chromium's sandbox stays on; the container runs as non-root with a seccomp profile; one fresh context per page; hard time and memory limits; Playwright updated within 7 days of each release |
 | Prompt injection from page or product text | Claude gets no tools and no secrets. Untrusted text is passed as delimited data, outputs must match a JSON Schema, and nothing AI-written ships without human approval |
 | Theft of Shopify or GitHub tokens | Envelope encryption with per-row data keys; master key only in the environment; `secrecy` keeps values out of logs; minimal scopes; one-hour GitHub tokens held in memory |

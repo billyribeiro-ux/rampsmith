@@ -131,10 +131,17 @@ run = "pnpm run test"
 description = "Debug build of the api, which the browser tests run against a real database"
 run = "cargo build --locked -p rampsmith-api --bin api"
 
+[tasks."build:egress"]
+description = "Debug build of the egress proxy, which the engine's browser tests scan through"
+run = "cargo build --locked -p rampsmith-egress --bin egress"
+
 [tasks."test:e2e"]
-description = "Playwright: the web app in Chromium against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks"
-depends = ["setup", "web:sync", "build:api"]
-run = "pnpm --filter @rampsmith/web run test:e2e"
+description = "Browser tests: the web app against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks; the engine scanning through the real egress proxy into PostgreSQL"
+depends = ["setup", "web:sync", "build:api", "build:egress"]
+run = [
+  "pnpm --filter @rampsmith/web run test:e2e",
+  "pnpm --filter @rampsmith/engine run test:e2e",
+]
 
 [tasks.verify]
 description = "Full gate: every static check, then every test suite"
