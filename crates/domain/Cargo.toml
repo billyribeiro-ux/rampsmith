@@ -1,0 +1,16 @@
+[package]
+name = "rampsmith-domain"
+version = "0.0.0"
+description = "Pure domain types for Rampsmith: no I/O, no async, no database."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "domain"
+
+[dependencies]
+
+[lints]
+workspace = true

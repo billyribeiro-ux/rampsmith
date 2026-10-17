@@ -19,6 +19,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [011](011-model-routing.md) | Claude model routing by task difficulty | Accepted |
 | [012](012-no-redis.md) | No Redis in R0 to R2 | Accepted |
 | 013 | Reserved: evaluate Shopify Next Gen Events in R3 (PLAN §14) | Reserved |
+| [014](014-sandbox-toolchain-gaps.md) | Local verification toolchain when pinned downloads are blocked | Accepted |
 
 ## Template
 

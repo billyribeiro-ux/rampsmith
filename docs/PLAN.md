@@ -1431,7 +1431,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 
 ### Order of work for R0
 
-1. Monorepo bootstrap per section 8: `.mise.toml`, `rust-toolchain.toml`, workspaces, shared strict configs, `mise run verify`.
+1. [x] Monorepo bootstrap per section 8: `.mise.toml`, `rust-toolchain.toml`, workspaces, shared strict configs, `mise run verify`.
 2. The pull-request gate in section 24, including `claims-lint` and contract-drift checks.
 3. `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
 4. The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.

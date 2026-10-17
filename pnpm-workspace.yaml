@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Exact versions only; the lockfile is the source of truth (PLAN §7).
+saveExact: true
+engineStrict: true
+strictPeerDependencies: true

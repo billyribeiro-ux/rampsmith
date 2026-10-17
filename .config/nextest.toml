@@ -1,0 +1,11 @@
+# cargo-nextest configuration. Retries stay at zero: a flaky test is a bug to fix,
+# never something to re-run until green (PLAN §27).
+[profile.default]
+retries = 0
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+[profile.ci]
+retries = 0
+fail-fast = false
+failure-output = "immediate-final"
