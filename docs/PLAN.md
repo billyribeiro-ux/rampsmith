@@ -201,7 +201,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 
 | Tool | Pinned | Note |
 | --- | --- | --- |
-| Node.js | 26 LTS: the first 26.x release tagged LTS, due 28 Oct 2026; 26.12.0 until then | Founder decision (ADR-016). Active LTS from 28 October 2026 to 20 October 2027, then security fixes until 30 April 2029 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)). Node's switch to LTS changes only metadata ([24.11.0 release notes](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)), so 26.12.0 is the code that becomes LTS. No release merges and nothing deploys before the LTS pin. `@types/node` 26.6.5. Every package below accepts 26.12.0 in `engines.node`. |
+| Node.js | 26 LTS: the first 26.x release tagged LTS, due 28 Oct 2026; 26.12.0 until then | Founder decision (ADR-016). Active LTS from 28 October 2026 to 20 October 2027, then security fixes until 30 April 2029 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)). Node's switch to LTS changes only metadata ([24.11.0 release notes](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)), so 26.12.0 is the code that becomes LTS. Releases may merge on 26.12.0 (founder decision, 17 Oct 2026; ADR-016 amendment); nothing deploys before the LTS pin. `@types/node` 26.6.5. Every package below accepts 26.12.0 in `engines.node`. |
 | pnpm | 12.14.0 | Managed by mise, never Corepack |
 | Rust | 1.99.1 (15 Oct 2026), edition 2024 | [Rust releases](https://blog.rust-lang.org/releases); managed by rustup, pinned in `rust-toolchain.toml` |
 | PostgreSQL | 18.6 | 19 is at RC1 (15 Oct 2026); adopt it at 19.1 ([postgresql.org](https://www.postgresql.org/)) |

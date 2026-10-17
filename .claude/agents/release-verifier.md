@@ -24,10 +24,13 @@ For the release you are given:
    - a criterion that needs a founder input is PASS only when the three conditions in
      docs/LAUNCH.md section E hold: a substitute test passing in CI, a live test that skips with
      a notice naming the input, and a row in section E;
-   - any Node.js pin that differs from ADR-016: one 26.x LTS release in `.mise.toml`,
-     `engines.node` (with `engineStrict: true`), both Node Dockerfiles and CI, proven by its
-     changelog heading ending in "(LTS)" and a non-empty `process.release.lts` in the CI log;
-     `@types/node` on 26.x.
+   - any Node.js pin that differs from ADR-016: one 26.x version in `.mise.toml`,
+     `engines.node` (with `engineStrict: true`), both Node Dockerfiles and CI, matching the
+     `node --version` in the CI log; `@types/node` on 26.x. Before the first 26.x LTS release
+     exists, that version is 26.12.0 and a merge is allowed (founder decision, ADR-016
+     amendment). Once it exists, it must be that LTS release or later, proven by its changelog
+     heading ending in "(LTS)" and a non-empty `process.release.lts` in the CI log. Any deploy
+     needs the LTS pin.
 4. Return one line per criterion: PASS or FAIL, then the evidence (command and output excerpt,
    or the CI run link). Anything not proven is FAIL. End with an overall PASS only if every
    criterion passed.

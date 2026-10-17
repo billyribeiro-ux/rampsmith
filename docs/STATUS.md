@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 by the architect chat (stream coordination, founder setup guide).
+Last updated: 2026-10-17 22:37 UTC by the continuation check (founder lifted the Node LTS merge hold).
 
 ## Active builder
 
@@ -98,19 +98,22 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 
 - **Node.js 26 LTS, a founder decision (17 Oct 2026; ADR-016).** It replaces the 24.22.0
   requirement recorded earlier that day. `r0-foundations` already runs 26.12.0, and its CI passed
-  on it (run 39060459727): keep it until the LTS release exists. Before R0 merges:
-  1. Once the first 26.x release tagged LTS exists (due 2026-10-28), pin it everywhere ADR-016
-     lists; regenerate `pnpm-lock.yaml`; point ADR-014's sandbox binary at
-     `node-linux-x64@<that version>`; and replace the "first 26.x release tagged LTS" wording in
-     ADR-016, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the version.
-  2. Add the `verify` check that fails when any Node pin disagrees with `.mise.toml`.
-  3. Merge `main` into the branch. The branch already uses ADR-016 to ADR-018, so give main's
+  on it (run 39060459727). Since 17 Oct 2026, 22:37 UTC, releases may merge on 26.12.0 (founder
+  decision; ADR-016 amendment, CLAUDE.md, PLAN §7 and the release-verifier updated on `main`),
+  so the LTS release no longer blocks R0 or the streams. Before R0 merges:
+  1. Add the `verify` check that fails when any Node pin disagrees with `.mise.toml`.
+  2. Merge `main` into the branch. The branch already uses ADR-016 to ADR-018, so give main's
      Node runtime ADR (`docs/adr/016-node-26-lts-runtime.md`) the next free number: rename the
      file, update every reference to it (PLAN §6 and §7, CLAUDE.md, `docs/ENVIRONMENT.md`, this
      file, the release-verifier, both Node evidence files) and add it to `docs/adr/README.md`.
-  4. Record the CI log's `node --version` and `process.release.lts` in `docs/evidence/`.
+  3. Record the CI log's `node --version` in `docs/evidence/`.
 
-  The release-verifier fails R0 until all four are done.
+  The release-verifier fails R0 until all three are done. Follow-up, required before anything
+  deploys and not before any merge: once the first 26.x release tagged LTS exists (due
+  2026-10-28), pin it everywhere ADR-016 lists in one change; regenerate `pnpm-lock.yaml`; point
+  ADR-014's sandbox binary at `node-linux-x64@<that version>`; replace the "first 26.x release
+  tagged LTS" wording in ADR-016, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the
+  version; and record the CI log's `process.release.lts` in `docs/evidence/`.
 - **Log retention.** PLAN §21 keeps logs 30 days; Grafana Cloud Free keeps 14 and Pro keeps 30
   at a cost ([pricing](https://grafana.com/pricing/), read 17 Oct 2026). Keep Grafana Free and
   archive logs to R2 for 30 days through the collector, after verifying its S3-compatible
@@ -125,6 +128,11 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 - 17 Oct 2026, 20:20 UTC: "Get everything done and just leave my account to be added at the
   end." Builders never wait for an input in LAUNCH.md section C; every check that needs one is
   built now and tracked in LAUNCH.md section E for the end.
+- 17 Oct 2026, 22:37 UTC: "It can merge so we get things moving and tested", confirmed as "Yes,
+  merge on 26.12.0". Releases merge on Node 26.12.0 as soon as their gates pass (green CI on the
+  pinned toolchains, release-verifier PASS), without waiting for the 26.x LTS release; R0 and the
+  `ws/` streams integrate to `main` that way. Deploys still wait for the LTS pin, and production
+  deploys for the founder.
 
 ## Progress (scope and evidence rules: docs/LAUNCH.md)
 

@@ -41,8 +41,9 @@ Node.js 26 LTS is the runtime for `web`, `engine` and all repository tooling.
 - **The pin** is the first 26.x release tagged LTS (scheduled for 28 October 2026), then later
   26.x LTS releases. A release counts as LTS when its heading in `doc/changelogs/CHANGELOG_V26.md`
   at its tag ends in "(LTS)" and `node -p process.release.lts` prints a codename.
-- **Until that release exists**, branches run 26.12.0. No release merges to `main`, and nothing
-  deploys, until every pin below is the LTS release.
+- **Until that release exists**, everything runs 26.12.0, and releases may merge to `main` on
+  26.12.0 once their gates pass (founder decision, 17 Oct 2026, 22:37 UTC; see "Amendment" below).
+  Nothing deploys until every pin below is the LTS release.
 
 | Where | Pin |
 | --- | --- |
@@ -62,7 +63,8 @@ image digests the same way. Changing the major line needs the founder.
 ## Consequences
 
 - One Node line from the R0 bootstrap through launch and about two years of production.
-- R0 cannot merge before the 26.x LTS release; R0's target end is 13 November 2026 (PLAN §26).
+- R0 and later releases may merge on 26.12.0; the move to the LTS pin is a follow-up change
+  under the full gate once the LTS release exists, and it must land before anything deploys.
 - `web` and `engine` share one base image, so one digest update patches both.
 - The `engine` image installs its browser libraries from Playwright's Debian 13 list instead of
   inheriting Microsoft's Playwright image.
@@ -74,5 +76,15 @@ image digests the same way. Changing the major line needs the founder.
 - Releasing on 26.12.0: a Current release; the LTS release, due 28 October 2026, carries the
   same code.
 - Microsoft's Playwright image for `engine`: its Node version floats.
+
+## Amendment (17 Oct 2026, 22:37 UTC)
+
+The founder lifted the merge hold so that work reaches `main` and is integrated and tested
+sooner: "It can merge so we get things moving and tested", confirmed as "Yes, merge on 26.12.0".
+Releases merge on 26.12.0 when every other gate passes. The pins must still agree: 26.12.0 in
+`.mise.toml`, `engines.node`, both Node images and CI, with `@types/node` on 26.x, until the
+LTS change replaces 26.12.0 everywhere at once. Deploying still waits for the LTS pin and,
+for production, for the founder. "Releasing on 26.12.0" below is no longer rejected for merging;
+it stays rejected for deploying.
 - A `-slim` tag without the Debian name: the image maintainers choose which Debian release it
   means (for 24.x it is Debian 12); `trixie-slim` makes the base an explicit choice.

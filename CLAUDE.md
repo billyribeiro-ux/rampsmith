@@ -33,8 +33,9 @@ run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the
 
 ## Engineering standards (PLAN §8)
 - Node.js 26 LTS everywhere, a founder decision; ADR-016 lists every pin. Pin the first 26.x
-  release tagged LTS (due 28 October 2026). Until it exists, branches run 26.12.0, and no release
-  merges and nothing deploys. Changing the major line needs the founder.
+  release tagged LTS (due 28 October 2026). Until it exists, everything runs 26.12.0, and releases
+  may merge on it (founder decision, 17 Oct 2026, 22:37 UTC); nothing deploys before the LTS pin.
+  Changing the major line needs the founder.
 - TypeScript `strict` plus the extra flags in PLAN §8. Zero warnings from `tsc`, `svelte-check`,
   ESLint and Clippy (`-D warnings`). Svelte 5 runes only; SvelteKit 3 `#lib` alias.
 - Rust edition 2024; `unsafe` forbidden; no `unwrap`/`expect` outside tests; `thiserror` in
