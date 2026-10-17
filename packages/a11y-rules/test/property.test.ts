@@ -2,6 +2,7 @@
 // well-formed findings whose offsets point into the input.
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_PARSE_LIMITS, parseRichText } from '../src/data/html.ts';
 import { auditMediaAlt } from '../src/data/media-alt.ts';
 import { auditMenu, type MenuItemInput } from '../src/data/menu.ts';
 import { auditRichText, type RichTextAudit } from '../src/data/rich-text.ts';
@@ -230,6 +231,36 @@ describe('auditRichText on generated input', () => {
         },
       ),
       { numRuns: 25 },
+    );
+  });
+});
+
+describe('incremental parsing (audit H2)', () => {
+  type Node = Parameters<typeof dump>[0];
+  function dump(node: {
+    nodeName: string;
+    childNodes?: readonly unknown[];
+    sourceCodeLocation?: { startOffset: number; endOffset: number } | null;
+    value?: string;
+    attrs?: readonly { name: string; value: string }[];
+  }): string {
+    const loc = node.sourceCodeLocation;
+    const own = `${node.nodeName}${loc ? `@${String(loc.startOffset)}-${String(loc.endOffset)}` : ''}${
+      node.value === undefined ? '' : JSON.stringify(node.value)
+    }${node.attrs === undefined ? '' : JSON.stringify(node.attrs)}`;
+    const children = (node.childNodes ?? []) as Node[];
+    return `${own}(${children.map(dump).join(',')})`;
+  }
+
+  it('builds the same tree and offsets whatever the chunk size', () => {
+    fc.assert(
+      fc.property(htmlish, fc.integer({ min: 1, max: 9 }), (html, chunk) => {
+        const whole = parseRichText(html, DEFAULT_PARSE_LIMITS, undefined, 1_000_000);
+        const pieces = parseRichText(html, DEFAULT_PARSE_LIMITS, undefined, chunk);
+        expect(pieces.ok).toBe(whole.ok);
+        if (whole.ok && pieces.ok) expect(dump(pieces.fragment)).toBe(dump(whole.fragment));
+      }),
+      { numRuns: 400 },
     );
   });
 });

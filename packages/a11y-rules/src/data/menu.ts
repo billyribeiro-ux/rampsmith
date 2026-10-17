@@ -29,7 +29,11 @@ function normalizeLabel(title: string): string {
 }
 
 function normalizeUrl(url: string | null): string {
-  return (url ?? '').trim().replace(/\/+$/, '').toLowerCase();
+  const value = (url ?? '').trim();
+  // Trailing slashes trimmed with a loop: /\/+$/ backtracks quadratically on long slash runs.
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 0x2f) end -= 1;
+  return value.slice(0, end).toLowerCase();
 }
 
 export function auditMenu(menu: MenuInput): readonly DataFinding[] {

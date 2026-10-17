@@ -36,6 +36,8 @@ export interface RichTextOptions {
    */
   readonly baseHeadingLevel?: number;
   readonly limits?: Partial<ParseLimits>;
+  /** Most findings kept for one field; the rest are counted out by `truncated`. Default 1,000. */
+  readonly maxFindings?: number;
 }
 
 /** A rule that did not run on this input, and why; reported for coverage disclosure. */
@@ -48,6 +50,8 @@ export type RichTextAudit =
   | {
       readonly status: 'audited';
       readonly findings: readonly DataFinding[];
+      /** True when the field had more findings than `maxFindings`; a rescan finds the rest. */
+      readonly truncated: boolean;
       readonly skippedRules: readonly SkippedRule[];
     }
   | {
@@ -140,8 +144,11 @@ const DISTINCT_ELEMENTS = new Set([
 const WRAPPER_LOOKUP = 32;
 /** Longest link name collected; vague phrases are a few words. */
 const NAME_CAP = 300;
-/** Most nodes read when resolving one aria-labelledby reference. */
-const LABEL_NODE_BUDGET = 5_000;
+/** Most nodes read resolving aria-labelledby references, for the whole field. */
+const LABEL_NODE_BUDGET = 100_000;
+/** Most aria-labelledby references read on one link. */
+const LABEL_REFERENCES = 10;
+const DEFAULT_MAX_FINDINGS = 1_000;
 
 interface Rec {
   readonly el: HtmlElement;
@@ -337,48 +344,80 @@ function build(root: ParentNodeLike): Built {
 type ParentNodeLike = Parameters<typeof renderedChildren>[0];
 type ChildLike = ReturnType<typeof renderedChildren>[number];
 
-/** Text of the element with id `id`, read with a node budget, for aria-labelledby. */
-function textOfId(built: Built, id: string): string {
-  const index = built.ids.get(id);
-  const rec = index === undefined ? undefined : built.recs[index];
-  if (rec === undefined) return '';
-  let text = '';
+/**
+ * Resolves aria-labelledby references. Each id is read once and remembered, and one node
+ * budget covers the whole field, so many links pointing at one large element cost no more
+ * than reading it once (security audit M6). `null` means the budget ran out.
+ */
+function labelResolver(built: Built): (id: string) => string | null {
+  const memo = new Map<string, string | null>();
   let budget = LABEL_NODE_BUDGET;
-  const stack: ChildLike[] = [...renderedChildren(rec.el)].reverse();
-  for (let node = stack.pop(); node !== undefined && budget > 0; node = stack.pop()) {
-    budget -= 1;
-    if (node.nodeName === '#text' && 'value' in node) text = appendCapped(text, node.value);
-    else if ('tagName' in node) {
-      if (UNRENDERED_TEXT.has(node.tagName)) continue;
-      const children = renderedChildren(node);
-      for (let i = children.length - 1; i >= 0; i -= 1) {
-        const child = children[i];
-        if (child !== undefined) stack.push(child);
+  return (id) => {
+    const known = memo.get(id);
+    if (known !== undefined || memo.has(id)) return known ?? null;
+    const index = built.ids.get(id);
+    const rec = index === undefined ? undefined : built.recs[index];
+    let text: string | null = '';
+    if (rec !== undefined) {
+      const stack: ChildLike[] = [...renderedChildren(rec.el)].reverse();
+      for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+        if (budget <= 0) {
+          text = null;
+          break;
+        }
+        budget -= 1;
+        if (node.nodeName === '#text' && 'value' in node) text = appendCapped(text, node.value);
+        else if ('tagName' in node) {
+          if (UNRENDERED_TEXT.has(node.tagName)) continue;
+          const children = renderedChildren(node);
+          for (let i = children.length - 1; i >= 0; i -= 1) {
+            const child = children[i];
+            if (child !== undefined) stack.push(child);
+          }
+        }
+        if (text.length >= NAME_CAP) break;
       }
     }
-    if (text.length >= NAME_CAP) break;
-  }
-  return text;
+    memo.set(id, text);
+    return text;
+  };
 }
 
-/** The accessible name of a link: aria-labelledby, aria-label, content, then title. */
-function linkName(built: Built, rec: Rec): string {
+/** The first `max` distinct whitespace-separated tokens of `value`, read without splitting it all. */
+function firstTokens(value: string, max: number): string[] {
+  const tokens = new Set<string>();
+  const pattern = /\S+/g;
+  for (let m = pattern.exec(value); m !== null && tokens.size < max; m = pattern.exec(value)) {
+    tokens.add(m[0]);
+  }
+  return [...tokens];
+}
+
+/**
+ * The accessible name of a link: aria-labelledby, aria-label, content, then title.
+ * `unresolved` is true when a labelledby reference could not be read within the budget.
+ */
+function linkName(
+  rec: Rec,
+  resolve: (id: string) => string | null,
+): { name: string; unresolved: boolean } {
   const labelledBy = attr(rec.el, 'aria-labelledby');
+  let unresolved = false;
   if (labelledBy !== undefined) {
-    const fromRefs = labelledBy
-      .trim()
-      .split(/\s+/)
-      .slice(0, 10)
-      .map((id) => textOfId(built, id))
-      .join(' ')
-      .trim();
-    if (fromRefs !== '') return fromRefs;
+    const parts: string[] = [];
+    for (const id of firstTokens(labelledBy, LABEL_REFERENCES)) {
+      const text = resolve(id);
+      if (text === null) unresolved = true;
+      else parts.push(text);
+    }
+    const fromRefs = parts.join(' ').trim();
+    if (fromRefs !== '') return { name: fromRefs, unresolved: false };
   }
   const label = attr(rec.el, 'aria-label')?.trim() ?? '';
-  if (label !== '') return label;
+  if (label !== '') return { name: label, unresolved: false };
   const content = rec.name.trim();
-  if (content !== '') return content;
-  return attr(rec.el, 'title')?.trim() ?? '';
+  if (content !== '') return { name: content, unresolved: false };
+  return { name: attr(rec.el, 'title')?.trim() ?? '', unresolved };
 }
 
 export function auditRichText(input: RichTextInput, options: RichTextOptions = {}): RichTextAudit {
@@ -393,7 +432,10 @@ export function auditRichText(input: RichTextInput, options: RichTextOptions = {
 
   const built = build(parsed.fragment);
   const { recs } = built;
+  const resolveLabel = labelResolver(built);
   const findings: DataFinding[] = [];
+  const maxFindings = Math.max(0, options.maxFindings ?? DEFAULT_MAX_FINDINGS);
+  let truncated = false;
 
   const locate = (index: number): { start: number; end: number; approximate: boolean } => {
     for (let i = index, steps = 0; i !== -1 && steps <= limits.maxDepth; steps += 1) {
@@ -409,6 +451,10 @@ export function auditRichText(input: RichTextInput, options: RichTextOptions = {
   };
 
   const report = (ruleId: RuleId, outcome: Outcome, index: number, data?: FindingData): void => {
+    if (findings.length >= maxFindings) {
+      truncated = true;
+      return;
+    }
     const { start, end, approximate } = locate(index);
     const merged: FindingData | undefined = approximate
       ? { ...data, approximateLocation: true }
@@ -443,9 +489,12 @@ export function auditRichText(input: RichTextInput, options: RichTextOptions = {
     }
 
     if (rec.exposed && rec.link === index) {
-      const name = linkName(built, rec);
-      if (name === '') report('rs-rich-text-link-empty', 'violation', index);
-      else if (phrases !== null) {
+      const { name, unresolved } = linkName(rec, resolveLabel);
+      if (name === '') {
+        // A reference the budget could not read may hold the name: review, not violation.
+        if (unresolved) report('rs-rich-text-link-empty', 'incomplete', index, { unresolved });
+        else report('rs-rich-text-link-empty', 'violation', index);
+      } else if (phrases !== null) {
         const text = normalizeLinkText(name);
         if (phrases.has(text)) {
           const block = rec.block === -1 ? undefined : recs[rec.block];
@@ -538,5 +587,5 @@ export function auditRichText(input: RichTextInput, options: RichTextOptions = {
       b.location.end - a.location.end ||
       a.ruleId.localeCompare(b.ruleId),
   );
-  return { status: 'audited', findings, skippedRules };
+  return { status: 'audited', findings, truncated, skippedRules };
 }

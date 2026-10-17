@@ -68,6 +68,17 @@ describe('auditMenu', () => {
     expect(findings).toHaveLength(1);
   });
 
+  it('compares destinations in linear time, whatever the URL (security audit L7)', () => {
+    const url = `${'/'.repeat(200_000)}x`;
+    const started = performance.now();
+    const findings = auditMenu({ resource: 'm', items: [item('Shop', url), item('Shop', url)] });
+    expect(performance.now() - started).toBeLessThan(200);
+    expect(findings).toEqual([]);
+    expect(
+      auditMenu({ resource: 'm', items: [item('Shop', '/shop///'), item('Shop', '/shop')] }),
+    ).toEqual([]);
+  });
+
   it('stays bounded on very wide menus', () => {
     const wide = Array.from({ length: 20_000 }, () => item(''));
     expect(auditMenu({ resource: 'm', items: wide })).toHaveLength(10_000);

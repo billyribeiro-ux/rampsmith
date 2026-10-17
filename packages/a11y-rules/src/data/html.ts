@@ -6,12 +6,17 @@
 // the depth (200,000 nested <div>s took 287 s in a local measurement, ADR-111). A wrapping tree
 // adapter refuses any insertion deeper than `maxDepth`, which bounds that stack, and checks a
 // time budget as elements and text arrive. Its duplicate-attribute check is quadratic in a
-// tag's attribute count (40,000 attributes took 6.6 s), so a linear pre-scan that follows the
-// tokenizer's attribute states refuses tags with more than `maxAttributes`. Failures are typed
-// results, never exceptions.
+// tag's attribute count (40,000 attributes took 6.6 s) and runs with no adapter call, so the
+// input is fed to parse5's fragment parser in chunks and the deadline is checked between
+// chunks: the budget holds whatever the tokenizer does inside a tag. A linear pre-scan that
+// follows the tokenizer's attribute states refuses plain attribute floods early; it is a fast
+// path only, since text in comments or raw-text elements can mislead it (security audit H2).
+// Moving a parent's children (the fragment root at the end, a misnested block in the adoption
+// agency) detaches each first child, which the default adapter does with an O(n) splice; the
+// adapter here does it in O(1). Failures are typed results, never exceptions.
 import {
+  Parser,
   defaultTreeAdapter,
-  parseFragment,
   type DefaultTreeAdapterMap,
   type DefaultTreeAdapterTypes,
   type TreeAdapter,
@@ -144,6 +149,9 @@ function tooManyAttributes(html: string, cap: number): boolean {
 /** How often, in adapter calls, the clock is read. */
 const CLOCK_EVERY = 256;
 
+/** Characters handed to the tokenizer between deadline checks. */
+const CHUNK_SIZE = 1_024;
+
 /**
  * Parses `html` as a fragment in the `<body>` context, with source offsets on every element.
  * `clock` returns milliseconds; tests inject one to prove the time budget.
@@ -152,6 +160,7 @@ export function parseRichText(
   html: string,
   limits: ParseLimits = DEFAULT_PARSE_LIMITS,
   clock: () => number = () => performance.now(),
+  chunkSize: number = CHUNK_SIZE,
 ): ParseResult {
   if (html.length > limits.maxLength) return { ok: false, reason: 'too_large' };
   if (tooManyAttributes(html, limits.maxAttributes)) {
@@ -166,6 +175,17 @@ export function parseRichText(
   const tick = (): void => {
     calls += 1;
     if (calls % CLOCK_EVERY === 0 && clock() > deadline) throw new LimitExceeded('time_limit');
+  };
+
+  // Children already detached from the front of a parent, not yet spliced out. Detaching a
+  // first child advances it; any other access to that parent compacts it first, and every
+  // parent still pending is compacted before the tree is returned.
+  const detachedHead = new Map<ParentNode, number>();
+  const compact = (parent: ParentNode): void => {
+    const head = detachedHead.get(parent);
+    if (head === undefined) return;
+    parent.childNodes.splice(0, head);
+    detachedHead.delete(parent);
   };
 
   // Depth of the node a child is being inserted into, counted by walking up at most
@@ -204,19 +224,48 @@ export function parseRichText(
     },
     appendChild(parent, child) {
       guardInsert(parent, child);
+      compact(parent);
       defaultTreeAdapter.appendChild(parent, child);
     },
     insertBefore(parent, child, reference) {
       guardInsert(parent, child);
+      compact(parent);
       defaultTreeAdapter.insertBefore(parent, child, reference);
     },
     insertText(parent, text) {
       tick();
+      compact(parent);
       defaultTreeAdapter.insertText(parent, text);
     },
     insertTextBefore(parent, text, reference) {
       tick();
+      compact(parent);
       defaultTreeAdapter.insertTextBefore(parent, text, reference);
+    },
+    getChildNodes(node) {
+      compact(node);
+      return defaultTreeAdapter.getChildNodes(node);
+    },
+    getFirstChild(node) {
+      return node.childNodes[detachedHead.get(node) ?? 0] ?? null;
+    },
+    detachNode(node) {
+      tick();
+      const parent = node.parentNode;
+      if (parent === null) return;
+      const head = detachedHead.get(parent) ?? 0;
+      if (parent.childNodes[head] === node) {
+        node.parentNode = null;
+        if (head + 1 >= parent.childNodes.length) {
+          parent.childNodes.length = 0;
+          detachedHead.delete(parent);
+        } else {
+          detachedHead.set(parent, head + 1);
+        }
+        return;
+      }
+      compact(parent);
+      defaultTreeAdapter.detachNode(node);
     },
     setTemplateContent(template, content) {
       templateOwner.set(content, template);
@@ -225,7 +274,24 @@ export function parseRichText(
   };
 
   try {
-    const fragment = parseFragment(html, { sourceCodeLocationInfo: true, treeAdapter: adapter });
+    // What parse5's own parseFragment does, one chunk at a time: the streaming tokenizer
+    // carries state, offsets, CR LF pairs and surrogate pairs across chunk boundaries
+    // (test/property.test.ts compares the trees for every chunk size from 1 to 9).
+    const parser = Parser.getFragmentParser<DefaultTreeAdapterMap>(null, {
+      sourceCodeLocationInfo: true,
+      treeAdapter: adapter,
+    });
+    const step = Math.max(1, Math.floor(chunkSize));
+    let offset = 0;
+    do {
+      if (clock() > deadline) throw new LimitExceeded('time_limit');
+      const end = Math.min(html.length, offset + step);
+      parser.tokenizer.write(html.slice(offset, end), end === html.length);
+      offset = end;
+    } while (offset < html.length);
+    if (clock() > deadline) throw new LimitExceeded('time_limit');
+    const fragment = parser.getFragment();
+    for (const parent of [...detachedHead.keys()]) compact(parent);
     return { ok: true, fragment };
   } catch (error: unknown) {
     if (error instanceof LimitExceeded) return { ok: false, reason: error.reason };

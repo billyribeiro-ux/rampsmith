@@ -184,6 +184,13 @@ describe('rs-rich-text-img-alt-missing and rs-rich-text-img-alt-filename', () =>
     expect(findings('<img src="/a.jpg" title="Logo">')).toEqual([]);
   });
 
+  it('checks hostile alt text in linear time (security audit H3)', () => {
+    const started = performance.now();
+    const result = audit(`<img src="/a.jpg" alt="${'1'.repeat(20_000)}z">`);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(result.findings).toEqual([]);
+  });
+
   it('flags alt text that is a file name', () => {
     const f = only('<img src="/files/IMG_1234.jpg" alt="IMG_1234.jpg">');
     expect(f.ruleId).toBe('rs-rich-text-img-alt-filename');
@@ -311,6 +318,60 @@ describe('limits', () => {
       expect(audit(html)).toMatchObject({ status: 'not_audited', reason: 'too_many_attributes' });
       expect(performance.now() - started).toBeLessThan(2_000);
     }
+  });
+
+  it('stops attribute floods hidden behind a comment, script or CDATA prefix (audit H2)', () => {
+    const names = Array.from({ length: 60_000 }, (_, i) => `a${i.toString(36)}`).join(' ');
+    const tag = `<div ${names}>`;
+    for (const prefix of [
+      '<!-- <a x=" -->',
+      '<script><a x="</script>',
+      '<svg><![CDATA[<a x="]]></svg>',
+    ]) {
+      const started = performance.now();
+      const result = audit(`${prefix}${tag}"`, { limits: { timeBudgetMs: 500 } });
+      const elapsed = performance.now() - started;
+      expect(result.status, prefix).toBe('not_audited');
+      expect(['time_limit', 'too_many_attributes'], prefix).toContain(
+        result.status === 'not_audited' ? result.reason : '',
+      );
+      expect(elapsed, prefix).toBeLessThan(2_500);
+    }
+  });
+
+  it('parses many sibling elements in linear time (audit memory probe)', () => {
+    for (const html of ['<img>'.repeat(99_000), 'x<i></i>'.repeat(99_000)]) {
+      const started = performance.now();
+      const result = audit(html, { limits: { timeBudgetMs: 30_000 } });
+      expect(result.status).toBe('audited');
+      expect(performance.now() - started).toBeLessThan(6_000);
+    }
+  });
+
+  it('moves the children of a misnested block in linear time', () => {
+    const html = `<b><div>${'<img alt="">'.repeat(50_000)}</b>`;
+    const started = performance.now();
+    expect(audit(html, { limits: { timeBudgetMs: 30_000 } }).status).toBe('audited');
+    expect(performance.now() - started).toBeLessThan(6_000);
+  });
+
+  it('caps the findings of one field and says so (audit memory probe)', () => {
+    const result = audit('<img>'.repeat(99_000), { limits: { timeBudgetMs: 30_000 } });
+    expect(result.status).toBe('audited');
+    expect(result.findings.length).toBe(1_000);
+    expect(result.status === 'audited' && result.truncated).toBe(true);
+    const small = audit('<img>');
+    expect(small).toMatchObject({ status: 'audited', truncated: false });
+  });
+
+  it('resolves a shared aria-labelledby target once (audit M6)', () => {
+    const html =
+      `<div id=x>${'<b></b>'.repeat(5_000)}</div>` +
+      '<a href aria-labelledby="x x x x x x x x x x">'.repeat(20_900);
+    const started = performance.now();
+    const result = audit(html, { limits: { timeBudgetMs: 30_000 } });
+    expect(result.status).toBe('audited');
+    expect(performance.now() - started).toBeLessThan(6_000);
   });
 
   it('stays fast at the limit: a megabyte of tags with the most attributes allowed', () => {

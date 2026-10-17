@@ -172,3 +172,39 @@ and a megabyte of tags with 256 attributes each parses in 390 ms (`test/rich-tex
 Commit 6 (`test(a11y-rules): seed focus hidden by a sticky header and by a drawer`): the same
 gate, all passing; `test` → 80 passed; `test:browser` → `Tests 24 passed (24)`, 8.34 s. The
 sticky-header case is found only by the backward pass, as ADR-114 expects.
+
+## 7. Security audit of `5bd9f99`: data-audit findings (H2, H3, M6, L7)
+
+The auditor's probes (`a11y-probe/*.mjs` in the session scratchpad), rerun after the fix, from
+`packages/a11y-rules`:
+
+```console
+$ node a11y-probe/prescan.mjs 60000
+input chars 312017
+plain tag (should be refused fast): 1 ms "too_many_attributes"
+same tag after <!-- <a x=" --> : 3017 ms "time_limit"          # audit: 10.5 s, "audited"
+same tag after <script><a x="</script>: 3002 ms "time_limit"
+auditRichText via comment: 3037 ms "not_audited"
+$ node a11y-probe/labelledby.mjs 20900
+links=20900 chars=996416 status=audited  findings=1000 342 ms   # audit: 10.8 s
+$ node --expose-gc a11y-probe/memory.mjs
+chars=495000 status=audited findings=1000 heapDelta=89 MB rss=210 MB 274 ms   # before: 3011 ms, time_limit
+$ node a11y-probe/regex.mjs dim 20000
+filenamePattern digits+z: n=20000 0 ms null                   # audit: 1.17 s
+auditRichText <img alt=digits+z>: n=20000 13 ms "audited"
+$ node a11y-probe/regex.mjs ext 20000
+filenamePattern (.png?)*+\nx: n=20000 0 ms null
+$ node a11y-probe/regex.mjs menu 200000
+auditMenu two duplicate items with slash-run url: n=200000 1 ms 0   # before: 89 s in the test
+```
+
+Measured before the fix while writing the regression tests: 100,000 `<img>` siblings took
+8.4 s in plain parse5 (`parseFragment`, the O(n) first-child splice when the fragment root's
+children move); `x<i></i>` × 100,000 took 18.4 s. Each probe is now a regression test:
+`test/rich-text.test.ts` ("stops attribute floods hidden behind a comment, script or CDATA
+prefix", "parses many sibling elements in linear time", "moves the children of a misnested
+block in linear time", "caps the findings of one field and says so", "resolves a shared
+aria-labelledby target once", "checks hostile alt text in linear time"),
+`test/media-alt.test.ts` ("filenamePattern on hostile alt text"), `test/menu.test.ts`
+("compares destinations in linear time"), and `test/property.test.ts` ("builds the same tree
+and offsets whatever the chunk size").

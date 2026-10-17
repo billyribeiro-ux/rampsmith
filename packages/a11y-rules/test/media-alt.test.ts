@@ -66,6 +66,45 @@ describe('filenamePattern', () => {
   });
 });
 
+describe('filenamePattern on hostile alt text (security audit H3)', () => {
+  const fast = (label: string, run: () => unknown): void => {
+    const started = performance.now();
+    run();
+    expect(performance.now() - started, label).toBeLessThan(100);
+  };
+
+  it('stays linear on long digit runs that end in a letter', () => {
+    fast('20k digits', () => filenamePattern(`${'1'.repeat(20_000)}z`));
+    fast('250 digits', () => filenamePattern(`${'1'.repeat(250)}z`));
+    expect(filenamePattern(`${'1'.repeat(20_000)}z`)).toBeNull();
+  });
+
+  it('stays linear on repeated extensions followed by a newline', () => {
+    fast('4k repeats', () => filenamePattern(`${'.png?'.repeat(4_000)}\nx`));
+    fast('50 repeats', () => filenamePattern(`${'.png?'.repeat(50)}\nx`));
+  });
+
+  it('treats alt text longer than 256 characters as text, not a file name', () => {
+    expect(filenamePattern(`${'a'.repeat(300)}.jpg`)).toBeNull();
+    expect(filenamePattern(`${'a'.repeat(200)}.jpg`)).toBe('extension');
+  });
+
+  it('keeps every pattern after the rewrite', () => {
+    expect(filenamePattern('photo.JPG?v=3')).toBe('extension');
+    expect(filenamePattern('banner-1200x600')).toBe('dimensions');
+    expect(filenamePattern('hero 1200 × 600')).toBeNull();
+    expect(filenamePattern('1200×600')).toBe('dimensions');
+    expect(filenamePattern('x12')).toBeNull();
+  });
+
+  it('bounds media and rich-text audits that reach it', () => {
+    fast('auditMediaAlt', () => auditMediaAlt({ resource, alt: `${'1'.repeat(20_000)}z` }));
+    fast('auditMediaAlt file name', () =>
+      auditMediaAlt({ resource, alt: 'x', fileName: `${'/'.repeat(50_000)}a.jpg` }),
+    );
+  });
+});
+
 describe('fileStem', () => {
   it('strips directories, query strings and the extension', () => {
     expect(fileStem('https://cdn.example.test/a/b/c.d.jpg?v=2#x')).toBe('c.d');
