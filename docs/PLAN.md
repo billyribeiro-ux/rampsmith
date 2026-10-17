@@ -1437,7 +1437,7 @@ Spending money · production deploys · App Store or WordPress.org submission ·
 2. [x] The pull-request gate in section 24, including `claims-lint` and contract-drift checks (images and preview stages follow their deployables, ADR-016).
 3. [x] `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
 4. [x] The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.
-5. Telemetry in all three runtimes (section 21).
+5. [x] Telemetry in all three runtimes (section 21); the web runtime's tracing is configured with its skeleton in step 8 (ADR-019).
 6. `api` skeleton: health and readiness, problem+json errors, OpenAPI generation.
 7. Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here.
 8. `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys.

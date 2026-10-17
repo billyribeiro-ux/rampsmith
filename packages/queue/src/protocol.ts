@@ -3,6 +3,7 @@
  * the same, so a job enqueued by either language can be claimed, fenced and retried by the
  * other.
  */
+import { context, propagation } from '@opentelemetry/api';
 import type { JobError } from '@rampsmith/contracts-ts';
 import type postgres from 'postgres';
 import { retryDelayMs } from './backoff.ts';
@@ -70,8 +71,20 @@ export class LeaseLostError extends Error {
   }
 }
 
-/** Enqueues inside the caller's transaction; listeners are notified when it commits. */
+/** The W3C `traceparent` of the active span, when telemetry records one. */
+function activeTraceparent(): string | undefined {
+  const carrier: Record<string, string> = {};
+  propagation.inject(context.active(), carrier);
+  return carrier['traceparent'];
+}
+
+/**
+ * Enqueues inside the caller's transaction; listeners are notified when it commits. Without
+ * an explicit `traceparent`, the active span's trace context is stored, so the worker's span
+ * continues the same trace (PLAN §10).
+ */
 export async function enqueue(sql: Executor, job: NewJob): Promise<Enqueued> {
+  const traceparent = job.traceparent ?? activeTraceparent() ?? null;
   const rows = await sql<{ id: string }[]>`
     with inserted as (
       insert into jobs (id, queue, payload_schema, payload, tenant_id, priority, state,
@@ -79,7 +92,7 @@ export async function enqueue(sql: Executor, job: NewJob): Promise<Enqueued> {
       values (${uuidv7()}, ${job.queue}, ${job.payloadSchema}, ${sql.json(job.payload)},
               ${job.tenantId ?? null}, ${job.priority ?? 0}, 'ready', ${job.maxAttempts ?? 8},
               coalesce(${job.runAt ?? null}::timestamptz, now()), ${job.idempotencyKey ?? null},
-              ${job.parentId ?? null}, ${job.traceparent ?? null})
+              ${job.parentId ?? null}, ${traceparent})
       on conflict (idempotency_key) do nothing
       returning id, queue
     )

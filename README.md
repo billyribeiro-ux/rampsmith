@@ -23,6 +23,7 @@ side by side, as laid out in PLAN §8.
 | `packages/tsconfig` | Shared strict TypeScript configurations |
 | `packages/contracts-ts` | Generated TypeScript types and schemas; never hand-edited |
 | `packages/queue` | The same job protocol for the TypeScript engine, sharing SQL and retry vectors with `crates/queue` |
+| `packages/telemetry` | OpenTelemetry setup for the TypeScript engine |
 | `packages/claims-lint` | Fails the build on banned claims (PLAN §3) |
 | `docs/adr` | One file per architecture decision |
 

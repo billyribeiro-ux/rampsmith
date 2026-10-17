@@ -2,6 +2,14 @@
  * The worker loop of PLAN §10, the twin of crates/queue's `run`: claim, run with
  * heartbeats every third of the lease, then complete or fail.
  */
+import {
+  ROOT_CONTEXT,
+  SpanKind,
+  SpanStatusCode,
+  metrics,
+  propagation,
+  trace,
+} from '@opentelemetry/api';
 import type { JobError } from '@rampsmith/contracts-ts';
 import type postgres from 'postgres';
 import {
@@ -59,6 +67,17 @@ export interface WorkerOptions {
 
 const MAX_MESSAGE = 300;
 
+/** Instruments mirror crates/queue so dashboards cover both languages (PLAN §21). */
+const meter = metrics.getMeter('rampsmith.queue');
+const attemptsCounter = meter.createCounter('rampsmith.queue.attempts', {
+  description: 'Finished job attempts, by queue and outcome',
+});
+const claimDuration = meter.createHistogram('rampsmith.queue.claim.duration', {
+  unit: 's',
+  description: 'Time to claim a batch of jobs',
+});
+const tracer = trace.getTracer('rampsmith.queue');
+
 function toFailure(error: unknown): Failure {
   if (error instanceof JobFailure) return error.failure;
   const message =
@@ -69,7 +88,39 @@ function toFailure(error: unknown): Failure {
   };
 }
 
-async function attempt(options: WorkerOptions, job: ClaimedJob, leaseMs: number): Promise<void> {
+/** Runs one attempt in a `job` span that continues the enqueuer's trace. */
+function attempt(options: WorkerOptions, job: ClaimedJob, leaseMs: number): Promise<void> {
+  const parent =
+    job.traceparent === null
+      ? ROOT_CONTEXT
+      : propagation.extract(ROOT_CONTEXT, { traceparent: job.traceparent });
+  return tracer.startActiveSpan(
+    'job',
+    {
+      kind: SpanKind.CONSUMER,
+      attributes: { queue: job.queue, job_id: job.lease.jobId, attempt: job.lease.attempt },
+    },
+    parent,
+    async (span) => {
+      try {
+        const outcome = await runAttempt(options, job, leaseMs);
+        attemptsCounter.add(1, { queue: job.queue, outcome });
+        if (outcome !== 'succeeded')
+          span.setStatus({ code: SpanStatusCode.ERROR, message: outcome });
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+type Outcome = 'succeeded' | 'retryable' | 'permanent' | 'lease_lost' | 'record_failed';
+
+async function runAttempt(
+  options: WorkerOptions,
+  job: ClaimedJob,
+  leaseMs: number,
+): Promise<Outcome> {
   const emit = options.onEvent ?? (() => undefined);
   const lost = new AbortController();
   const beat = setInterval(() => {
@@ -96,21 +147,21 @@ async function attempt(options: WorkerOptions, job: ClaimedJob, leaseMs: number)
     ]);
     if (outcome === 'lost' || lost.signal.aborted) {
       emit({ type: 'lease_lost', jobId: job.lease.jobId });
-      return;
+      return 'lease_lost';
     }
     if (outcome.ok) {
       await complete(options.sql, job.lease);
       emit({ type: 'completed', jobId: job.lease.jobId });
-    } else {
-      const result = await fail(options.sql, job.lease, toFailure(outcome.error));
-      emit({ type: result.state, jobId: job.lease.jobId });
+      return 'succeeded';
     }
+    const failure = toFailure(outcome.error);
+    const result = await fail(options.sql, job.lease, failure);
+    emit({ type: result.state, jobId: job.lease.jobId });
+    return failure.kind;
   } catch (error: unknown) {
-    emit({
-      type: error instanceof LeaseLostError ? 'lease_lost' : 'record_failed',
-      jobId: job.lease.jobId,
-      error,
-    });
+    const leaseLost = error instanceof LeaseLostError;
+    emit({ type: leaseLost ? 'lease_lost' : 'record_failed', jobId: job.lease.jobId, error });
+    return leaseLost ? 'lease_lost' : 'record_failed';
   } finally {
     clearInterval(beat);
   }
@@ -137,7 +188,9 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
       const free = concurrency - inFlight.size;
       if (free > 0) {
         try {
+          const started = performance.now();
           const jobs = await claim(options.sql, options.queue, free, options.workerId, leaseMs);
+          claimDuration.record((performance.now() - started) / 1000, { queue: options.queue });
           for (const job of jobs) {
             const running = attempt(options, job, leaseMs).finally(() => {
               inFlight.delete(running);
