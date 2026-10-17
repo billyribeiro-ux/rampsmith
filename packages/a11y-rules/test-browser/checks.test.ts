@@ -55,6 +55,24 @@ describe('the clean control page', () => {
       expect(summary(result), result.check).toEqual([]);
     }
   });
+
+  it('runs every check under its hard time cap', async () => {
+    const { page } = await load('/clean.html');
+    for (const check of [
+      checkKeyboard,
+      checkFocusNotObscured,
+      checkReflow,
+      checkTextSpacing,
+      checkMediaAutoplay,
+    ]) {
+      const started = performance.now();
+      const result = await check(page, { timeoutMs: 1 });
+      expect(result.status, result.check).toBe('timed_out');
+      // The cap, plus at most 1 s of grace and 2 s of cleanup.
+      expect(performance.now() - started, result.check).toBeLessThan(3_500);
+    }
+    expect(page.viewportSize()).toEqual({ width: 1280, height: 800 });
+  });
 });
 
 describe('checkKeyboard', () => {

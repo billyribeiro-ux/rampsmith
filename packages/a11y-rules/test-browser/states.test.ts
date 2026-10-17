@@ -92,6 +92,18 @@ describe('on the Dawn-like product page', () => {
     expect(role).toBe('dialog');
   });
 
+  it('stops each script at its hard time cap', async () => {
+    const fixture = await load('/clean.html');
+    for (const state of ['nav_open', 'cart_drawer', 'variant_changed', 'modal'] as const) {
+      const started = performance.now();
+      expect(await openState(fixture.page, state, { timeoutMs: 1 })).toEqual({
+        status: 'timed_out',
+        state,
+      });
+      expect(performance.now() - started).toBeLessThan(3_000);
+    }
+  });
+
   it('dispatches by state name', async () => {
     const fixture = await load('/clean.html');
     expect((await openState(fixture.page, 'nav_open')).status).toBe('opened');
@@ -152,6 +164,18 @@ describe('guards', () => {
     expect(outcome).toMatchObject({ status: 'blocked', state: 'cart_drawer', guard: 'checkout' });
     expect(paths(fixture)).toEqual(['GET /guard-redirect.html', 'POST /cart/add.js']);
     expect(fixture.page.url()).not.toMatch(/checkout/);
+  });
+
+  it('keeps the checkout guard on the page after the script returns', async () => {
+    const fixture = await load('/clean.html');
+    expect((await openMainNavigation(fixture.page)).status).toBe('opened');
+    // A late theme script, or a cart form posted with `checkout`, is still stopped.
+    await fixture.page.evaluate(async () => {
+      await fetch('/checkouts/cn/late').catch(() => undefined);
+      const body = new URLSearchParams({ checkout: '' });
+      await fetch('/cart', { method: 'POST', body }).catch(() => undefined);
+    });
+    expect(paths(fixture).filter((p) => p.includes('checkout') || p === 'POST /cart')).toEqual([]);
   });
 
   it('never submits a form that carries personal data', async () => {

@@ -44,11 +44,15 @@ entered and no form with personal data is ever submitted." The domain spells the
      `.shopify-payment-button`, `shopify-accelerated-checkout` or a buy-it-now button, or whose
      link or form action is a checkout URL: any `checkout`/`checkouts` path segment, a cart
      permalink `/cart/<variant>:<qty>`, or `/cart?checkout`.
-  2. While a script runs, a page route aborts every checkout request, including a cart form
+  2. Before a script's first action, `guardCheckout(page)` installs a page route, once per page
+     and kept for the page's life, that aborts every checkout request, including a cart form
      posted with a `checkout` field (a route sees only the first URL of a redirect chain, so
      the post is stopped before its redirect, https://playwright.dev/docs/api/class-page#page-route).
-     Non-matching requests fall through to the engine's own routes. Any stopped request turns
-     the outcome into `blocked`, and only the origin and path are kept.
+     Keeping it means a theme script that jumps to checkout after the script has returned is
+     stopped too. Non-matching requests fall through to the engine's own routes. A request
+     stopped during a script turns its outcome into `blocked`; only the origin and path are
+     kept. The engine may call `guardCheckout` itself when it opens a page.
+  3. After the time cap, a script presses no further key: activation checks the cap first.
 - **Personal-data guard:** a form is never submitted when any enabled field is of type
   `email`, `tel` or `password`, has a personal-data autofill token
   (https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#autofill), is named
@@ -60,8 +64,9 @@ entered and no form with personal data is ever submitted." The domain spells the
 - Browser tests prove both guards against fixtures, with the fixture server's request log as
   the witness: a submit button named `checkout` is refused with no request sent; a theme script
   that jumps to `/checkouts/...` after adding is stopped before the request reaches the
-  server; a gift-card form with a filled recipient email is refused with no request sent; and
-  on the product page, running all four scripts never activates "Buy it now".
+  server; a gift-card form with a filled recipient email is refused with no request sent; a
+  checkout fetch and a cart post with `checkout` made after a script returned never reach the
+  server; and on the product page, running all four scripts never activates "Buy it now".
 
 ## Consequences
 

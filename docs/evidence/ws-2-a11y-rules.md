@@ -144,3 +144,8 @@ claims-lint: 1 file scanned, no banned claims
 
 `pnpm run test` across the workspace: as in section 3, only `packages/queue` fails, for want of
 `DATABASE_URL`.
+
+Commit 3 (`fix(a11y-rules): keep the checkout guard for the page's life ...`): the same gate,
+all passing; `pnpm --filter @rampsmith/a11y-rules run test` → `Test Files 8 passed (8)`,
+`Tests 77 passed (77)`; `test:browser` (same variables) → `Test Files 2 passed (2)`,
+`Tests 22 passed (22)`, 7.87 s.

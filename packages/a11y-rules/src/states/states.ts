@@ -1,14 +1,15 @@
 // Interactive-state scripts (PLAN §5 R1, §11 step 5): open the main navigation by keyboard,
 // add an in-stock item and open the cart drawer, change a variant, open the first modal or
 // popup. Each returns the changed region's selector for a scoped re-check, or a typed reason.
-// Every control is described and guarded before it is activated, and a network guard stops
-// any request into checkout while the script runs (ADR-116).
+// Every control is described and guarded before it is activated, and a network guard,
+// installed before the first action and kept for the page's life, stops any request into
+// checkout (ADR-116).
 import type { Page } from 'playwright-core';
 import { probe } from '../browser/call.ts';
 import type { Target, Trigger } from '../browser/protocol.ts';
 import type { PageState } from '../types.ts';
 import { guardControl, isCartAddUrl } from './guards.ts';
-import { blockCheckout } from './network-guard.ts';
+import { guardCheckout } from './network-guard.ts';
 
 export type InteractiveState = Exclude<PageState, 'default'>;
 
@@ -49,7 +50,14 @@ export interface StateOptions {
   readonly timeoutMs?: number;
 }
 
-type Body = (page: Page) => Promise<StateOutcome>;
+/** What a script body may consult: after the cap, it must not press another key. */
+interface Session {
+  readonly page: Page;
+  readonly state: InteractiveState;
+  cancelled(): boolean;
+}
+
+type Body = (session: Session) => Promise<StateOutcome>;
 
 const GRACE_MS = 1_000;
 
@@ -70,51 +78,44 @@ async function run(
   options: StateOptions,
   body: Body,
 ): Promise<StateOutcome> {
-  const block = await blockCheckout(page);
+  const guard = await guardCheckout(page);
+  const blockedBefore = guard.blocked.length;
+  let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const work = body(page).catch((error: unknown): StateOutcome => ({
-      status: 'error',
-      state,
-      error: firstLine(error),
-    }));
-    const capped = new Promise<StateOutcome>((resolve) => {
-      timer = setTimeout(resolve, options.timeoutMs ?? 10_000, { status: 'timed_out', state });
-    });
-    const outcome = await Promise.race([work, capped]);
-    if (outcome.status === 'timed_out') {
-      await Promise.race([work, new Promise((resolve) => setTimeout(resolve, GRACE_MS))]);
-    }
-    const stopped = block.blocked[0];
-    if (stopped !== undefined) {
-      return {
-        status: 'blocked',
-        state,
-        guard: 'checkout',
-        detail: `request to ${stopped} stopped`,
-      };
-    }
-    return outcome;
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-    await block.dispose();
+  const work = body({ page, state, cancelled: () => cancelled }).catch(
+    (error: unknown): StateOutcome => ({ status: 'error', state, error: firstLine(error) }),
+  );
+  const capped = new Promise<StateOutcome>((resolve) => {
+    timer = setTimeout(resolve, options.timeoutMs ?? 10_000, { status: 'timed_out', state });
+  });
+  const outcome = await Promise.race([work, capped]);
+  if (timer !== undefined) clearTimeout(timer);
+  if (outcome.status === 'timed_out') {
+    cancelled = true;
+    await Promise.race([work, new Promise((resolve) => setTimeout(resolve, GRACE_MS))]);
   }
+  const stopped = guard.blocked[blockedBefore];
+  if (stopped !== undefined) {
+    return { status: 'blocked', state, guard: 'checkout', detail: `request to ${stopped} stopped` };
+  }
+  return outcome;
 }
 
-/** Focuses the trigger and presses `key`, after the guards approve it. */
+/** Focuses the trigger and presses `key`, after the guards approve it and before the cap. */
 async function activate(
-  page: Page,
-  state: InteractiveState,
+  session: Session,
   trigger: Trigger,
   key: string,
 ): Promise<StateOutcome | 'activated' | 'skipped'> {
+  const { page, state } = session;
   const description = await probe(page, 'describeControl', trigger.id);
   if (description === null) return 'skipped';
   const verdict = guardControl(description);
   if (!verdict.safe) {
     return { status: 'blocked', state, guard: verdict.guard, detail: verdict.detail };
   }
-  if (!(await probe(page, 'focusElement', trigger.id))) return 'skipped';
+  if (session.cancelled() || !(await probe(page, 'focusElement', trigger.id))) return 'skipped';
+  if (session.cancelled()) return 'skipped';
   await page.keyboard.press(key);
   return 'activated';
 }
@@ -129,12 +130,12 @@ export async function openMainNavigation(
   options: StateOptions = {},
 ): Promise<StateOutcome> {
   const state = 'nav_open';
-  return run(page, state, options, async () => {
+  return run(page, state, options, async (session) => {
     const triggers = await probe(page, 'navTriggers');
     if (triggers.length === 0) return { status: 'not_found', state, reason: 'no_trigger' };
     const url = withoutHash(page.url());
     for (const trigger of triggers.slice(0, 3)) {
-      const step = await activate(page, state, trigger, 'Enter');
+      const step = await activate(session, trigger, 'Enter');
       if (step === 'skipped') continue;
       if (step !== 'activated') return step;
       await settle(page, 1_500);
@@ -155,7 +156,7 @@ export async function openCartDrawer(
   options: StateOptions = {},
 ): Promise<StateOutcome> {
   const state = 'cart_drawer';
-  return run(page, state, options, async () => {
+  return run(page, state, options, async (session) => {
     const form = await probe(page, 'cartForm');
     if (!form.found) return { status: 'not_found', state, reason: form.reason };
     const description = await probe(page, 'describeControl', form.button);
@@ -169,7 +170,7 @@ export async function openCartDrawer(
     }
     const before = new Set(await probe(page, 'overlays'));
     const url = withoutHash(page.url());
-    const step = await activate(page, state, { id: form.button, target: form.target }, 'Enter');
+    const step = await activate(session, { id: form.button, target: form.target }, 'Enter');
     if (step === 'skipped') return { status: 'not_found', state, reason: 'no_product_form' };
     if (step !== 'activated') return step;
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -188,7 +189,7 @@ export async function openCartDrawer(
 /** Changes the variant with the keyboard: an arrow key on the option group or select. */
 export async function changeVariant(page: Page, options: StateOptions = {}): Promise<StateOutcome> {
   const state = 'variant_changed';
-  return run(page, state, options, async () => {
+  return run(page, state, options, async (session) => {
     const picker = await probe(page, 'variantPicker');
     if (picker.kind === 'none') return { status: 'not_found', state, reason: 'no_variant_picker' };
     const before = await probe(page, 'variantSignature');
@@ -196,7 +197,7 @@ export async function changeVariant(page: Page, options: StateOptions = {}): Pro
     const trigger = await probe(page, 'targetOf', picker.focus);
     if (trigger === null) return { status: 'not_found', state, reason: 'no_variant_picker' };
     const key = picker.kind === 'radio' ? 'ArrowRight' : 'ArrowDown';
-    const step = await activate(page, state, { id: picker.focus, target: trigger }, key);
+    const step = await activate(session, { id: picker.focus, target: trigger }, key);
     if (step === 'skipped') return { status: 'not_found', state, reason: 'no_variant_picker' };
     if (step !== 'activated') return step;
     await settle(page);
@@ -217,7 +218,7 @@ export async function openFirstModal(
   options: StateOptions = {},
 ): Promise<StateOutcome> {
   const state = 'modal';
-  return run(page, state, options, async () => {
+  return run(page, state, options, async (session) => {
     const before = await probe(page, 'overlays');
     const open = await probe(page, 'pickOverlay', before, 'dialog-only');
     if (open !== null) return { status: 'opened', state, region: open, trigger: null };
@@ -227,7 +228,7 @@ export async function openFirstModal(
     const known = new Set(before);
     const url = withoutHash(page.url());
     for (const trigger of triggers.slice(0, 3)) {
-      const step = await activate(page, state, trigger, 'Enter');
+      const step = await activate(session, trigger, 'Enter');
       if (step === 'skipped') continue;
       if (step !== 'activated') return step;
       await settle(page, 1_500);

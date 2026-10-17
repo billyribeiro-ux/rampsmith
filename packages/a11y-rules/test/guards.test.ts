@@ -55,7 +55,7 @@ describe('isCheckoutUrl', () => {
     }
   });
 
-  it('accepts ordinary storefront URLs and rejects nothing on unparsable input', () => {
+  it('does not flag ordinary storefront URLs or unparsable input', () => {
     for (const url of [
       '/cart',
       '/cart/add',
