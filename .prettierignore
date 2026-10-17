@@ -11,7 +11,8 @@ packages/contracts-ts/schemas/
 packages/contracts-ts/openapi/
 **/.sqlx/
 apps/web/src/lib/paraglide/
-apps/web/project.inlang/cache/
+apps/web/project.inlang/*
+!apps/web/project.inlang/settings.json
 apps/web/test-results/
 apps/web/playwright-report/
 
