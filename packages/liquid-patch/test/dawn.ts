@@ -20,3 +20,12 @@ export function readDawnBytes(path: string): Buffer {
 export function dawnSource(): DawnSource {
   return JSON.parse(readDawn('SOURCE.json')) as DawnSource;
 }
+
+/** Every vendored theme file (not the license or the source record), path to contents. */
+export function dawnTheme(): Map<string, string> {
+  return new Map(
+    Object.keys(dawnSource().blobs)
+      .filter((path) => path.includes('/'))
+      .map((path) => [path, readDawn(path)]),
+  );
+}

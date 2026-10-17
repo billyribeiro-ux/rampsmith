@@ -21,6 +21,15 @@ export {
 } from './parse.ts';
 export { buildPatch, type FilePatch, type PatchError, type PatchResult } from './patch.ts';
 export {
+  OFFLINE_CHECKS,
+  themeOffenses,
+  validateNoNewOffenses,
+  type ThemeFiles,
+  type ThemeOffense,
+  type ValidateOptions,
+  type ValidationResult,
+} from './theme-check.ts';
+export {
   localeEdits,
   translationKeyProblem,
   translationOutput,
