@@ -21,7 +21,7 @@ const CSS = `
 @page { size: A4; margin: 18mm 16mm; }
 :root { color-scheme: light; }
 html { background: ${PALETTE.page}; color: ${PALETTE.text}; }
-body { font: 11pt/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Liberation Sans", Arial, sans-serif; margin: 0 auto; max-width: 46rem; padding: 1.5rem; }
+body { font: 11pt/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Liberation Sans", Arial, sans-serif; font-variant-ligatures: none; margin: 0 auto; max-width: 46rem; padding: 1.5rem; }
 h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 0.75rem; }
 h2 { font-size: 1.3rem; margin: 2rem 0 0.5rem; break-after: avoid; }
 h3 { font-size: 1.05rem; margin: 1.25rem 0 0.4rem; break-after: avoid; }

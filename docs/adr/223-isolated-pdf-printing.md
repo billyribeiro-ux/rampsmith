@@ -96,6 +96,12 @@ The CI `node` job installs no Playwright browser, and this stream may not change
   devDependency can go.
 - `@sparticuz/chromium` adds a 70 MB tarball to the pnpm store for every install of the
   workspace.
+- PDF text depends on the printing machine's fonts. On the GitHub runner's system fonts the
+  outline titles lost their spaces ("ExampleGoods", run 39089310452), so the suites pin the
+  Open Sans files `@sparticuz/chromium` ships through their own fontconfig file, and the style
+  sheet turns ligatures off so text extracts and searches as typed. The image that prints
+  reports in production must ship real fonts (for example Noto or Open Sans) and repeat the
+  outline check.
 - The engine's browser is launched with a per-context proxy; a reports context sets none and is
   offline, so printing never goes through egress.
 

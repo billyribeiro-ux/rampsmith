@@ -169,9 +169,10 @@ describe('every report prints to a tagged PDF with an outline', () => {
       expect(f.alt).toMatch(/(Line|Bar) chart of /u);
     }
     // The text is real text, in reading order, not an image of it.
-    const text = await allText(doc);
-    expect(text).toContain(document.title);
-    expect(text).toContain('Deque, the maker of the axe-core engine');
+    // Lines wrap at different points with different fonts, so compare without whitespace.
+    const text = (await allText(doc)).replace(/\s/gu, '');
+    expect(text).toContain(document.title.replace(/\s/gu, ''));
+    expect(text).toContain('Deque,themakeroftheaxe-coreengine');
   });
 
   it('prints on Letter paper when asked', async () => {
