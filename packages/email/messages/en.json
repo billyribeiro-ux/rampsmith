@@ -1,0 +1,384 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "brand_name": "Rampsmith",
+  "footer_sender_name": "Rampsmith",
+  "footer_support": "Questions? Write to {address}.",
+  "footer_preferences": "Manage email preferences",
+  "footer_unsubscribe_notification": "Turn off emails like this one",
+  "footer_unsubscribe_marketing": "Unsubscribe from Rampsmith emails",
+  "common_button_fallback": "If the button does not work, copy this address into your browser:",
+  "common_link_expiry_minutes": [
+    {
+      "declarations": ["input minutes", "local minutesPlural = minutes: plural"],
+      "selectors": ["minutesPlural"],
+      "match": {
+        "minutesPlural=one": "The link works once and expires in {minutes} minute.",
+        "minutesPlural=*": "The link works once and expires in {minutes} minutes."
+      }
+    }
+  ],
+  "common_link_expiry_hours": [
+    {
+      "declarations": ["input hours", "local hoursPlural = hours: plural"],
+      "selectors": ["hoursPlural"],
+      "match": {
+        "hoursPlural=one": "The link works once and expires in {hours} hour.",
+        "hoursPlural=*": "The link works once and expires in {hours} hours."
+      }
+    }
+  ],
+  "common_summary_heading": "Summary",
+  "common_checks_label": "Automated WCAG 2.2 AA checks",
+  "common_checks_value": "Passes {passed} of {total}",
+  "common_pages_checked_label": "Pages checked",
+  "common_issues_by_impact_heading": "Issues by impact on shoppers",
+  "impact_critical": "Critical",
+  "impact_serious": "Serious",
+  "impact_moderate": "Moderate",
+  "impact_minor": "Minor",
+  "common_issue_item": "{title} (WCAG {criterion}, {impact})",
+  "common_fix_item": "{title} (WCAG {criterion})",
+  "common_more_items": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "And 1 more.",
+        "countPlural=*": "And {count} more."
+      }
+    }
+  ],
+  "common_open_rampsmith": "Open Rampsmith",
+  "common_automated_note": "Automated checks find only part of all accessibility issues. Rampsmith lists what it checked and what still needs a person to review.",
+  "common_automated_source": "Deque, the maker of axe-core, reports that axe-core finds on average 57% of WCAG issues automatically.",
+  "common_reason_store": "You received this email because notifications for {store} are sent to this address.",
+  "common_reason_store_contact": "You received this email because this address is the contact for {store} in Rampsmith.",
+  "sign_in_link_subject": "Your Rampsmith sign-in link",
+  "sign_in_link_preheader": [
+    {
+      "declarations": ["input minutes", "local minutesPlural = minutes: plural"],
+      "selectors": ["minutesPlural"],
+      "match": {
+        "minutesPlural=one": "The link works once and expires in {minutes} minute.",
+        "minutesPlural=*": "The link works once and expires in {minutes} minutes."
+      }
+    }
+  ],
+  "sign_in_link_title": "Sign in to Rampsmith",
+  "sign_in_link_intro": "Use this link to sign in to the Rampsmith dashboard.",
+  "sign_in_link_button": "Sign in to Rampsmith",
+  "sign_in_link_do_not_forward": "Do not forward this email. Anyone with the link can sign in as you until it expires.",
+  "sign_in_link_not_you": "If you did not ask to sign in, ignore this email. The link stops working on its own, and your account stays as it is.",
+  "sign_in_link_reason": "You received this email because someone asked to sign in to Rampsmith with this address.",
+  "email_verification_subject": "Confirm your email address for Rampsmith",
+  "email_verification_preheader": "Confirm this address to finish setting up your account.",
+  "email_verification_title": "Confirm your email address",
+  "email_verification_intro": "Confirm that this address is yours to finish setting up your Rampsmith account.",
+  "email_verification_button": "Confirm email address",
+  "email_verification_not_you": "If you did not create a Rampsmith account, ignore this email. The address stays unconfirmed.",
+  "email_verification_reason": "You received this email because this address was used to create a Rampsmith account.",
+  "delivery_test_subject": "Rampsmith test email",
+  "delivery_test_preheader": "Email delivery from Rampsmith works.",
+  "delivery_test_title": "Test email",
+  "delivery_test_intro": "This is a test email from Rampsmith. If you can read it, email delivery works.",
+  "delivery_test_requested_label": "Requested",
+  "delivery_test_reason": "You received this email because a Rampsmith operator sent a delivery test to this address.",
+  "scanner_confirm_subject": "Confirm where to send your accessibility report",
+  "scanner_confirm_preheader": "Confirm this address to receive the full report.",
+  "scanner_confirm_title": "Confirm your email address",
+  "scanner_confirm_intro": "Someone asked Rampsmith's free scanner to send the full accessibility report for {host} to this address.",
+  "scanner_confirm_nothing_else": "Rampsmith sends nothing to this address until you confirm it.",
+  "scanner_confirm_button": "Confirm and get the report",
+  "scanner_confirm_not_you": "If you did not ask for this report, ignore this email. Rampsmith will not write to this address again.",
+  "scanner_confirm_reason": "You received this email because this address was entered in Rampsmith's free accessibility scanner.",
+  "scanner_report_subject": "Your accessibility report for {host}",
+  "scanner_report_preheader": "Passes {passed} of {total} automated WCAG 2.2 AA checks.",
+  "scanner_report_title": "Accessibility report for {host}",
+  "scanner_report_intro": [
+    {
+      "declarations": ["input pages", "local pagesPlural = pages: plural"],
+      "selectors": ["pagesPlural"],
+      "match": {
+        "pagesPlural=one": "Rampsmith's free scanner checked 1 page of {host} on {date}, at one screen size.",
+        "pagesPlural=*": "Rampsmith's free scanner checked {pages} pages of {host} on {date}, at one screen size."
+      }
+    }
+  ],
+  "scanner_report_top_heading": "Most frequent issues",
+  "scanner_report_top_item": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{title}: 1 instance",
+        "countPlural=*": "{title}: {count} instances"
+      }
+    }
+  ],
+  "scanner_report_button": "Open the full report",
+  "scanner_report_expiry": "The report stays available until {date}.",
+  "scanner_report_learn_more": "Rampsmith can fix many of these issues at the source, in a Shopify store's own data and theme code: {link}.",
+  "scanner_report_learn_more_link": "see how it works",
+  "scanner_report_reason": "You received this email because you asked Rampsmith's free scanner to send this report here and confirmed this address.",
+  "welcome_subject": "Welcome to Rampsmith",
+  "welcome_preheader": "Your first scan of {store} is running. Here is what happens next.",
+  "welcome_title": "Welcome to Rampsmith",
+  "welcome_intro": "Rampsmith is now installed on {store}. It finds WCAG 2.2 AA failures in your store and fixes them at the source, in your own store data and theme code, with a dated record of every change.",
+  "welcome_next_heading": "What happens next",
+  "welcome_next_scan": "Your first scan is running. It checks your main page types and their interactive states, such as menus and the cart drawer.",
+  "welcome_next_results": "When it finishes, Rampsmith emails you the results, ranked by their effect on shoppers.",
+  "welcome_next_approval": "Fixes that need no code, such as image descriptions, wait for your approval. Nothing changes in your store until you approve it.",
+  "first_scan_subject": "The first scan of {store} is finished",
+  "first_scan_preheader": "{store} passes {passed} of {total} automated WCAG 2.2 AA checks.",
+  "first_scan_title": "Your first scan is finished",
+  "first_scan_intro": [
+    {
+      "declarations": ["input pages", "local pagesPlural = pages: plural"],
+      "selectors": ["pagesPlural"],
+      "match": {
+        "pagesPlural=one": "Rampsmith finished its first scan of {store} on {date}. It checked 1 page.",
+        "pagesPlural=*": "Rampsmith finished its first scan of {store} on {date}. It checked {pages} pages."
+      }
+    }
+  ],
+  "first_scan_fixes_ready": [
+    {
+      "declarations": [
+        "input count",
+        "local countExact = count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countExact", "countPlural"],
+      "match": {
+        "countExact=0, countPlural=*": "No fixes are waiting for your approval yet.",
+        "countExact=*, countPlural=one": "1 fix is ready for your approval.",
+        "countExact=*, countPlural=*": "{count} fixes are ready for your approval."
+      }
+    }
+  ],
+  "first_scan_button": "See the findings",
+  "weekly_subject": "Weekly accessibility summary for {store}",
+  "weekly_preheader": "{store} passes {passed} of {total} automated WCAG 2.2 AA checks.",
+  "weekly_title": "Your weekly summary",
+  "weekly_intro": "Here is how {store} did in the week to {date}.",
+  "weekly_previous_label": "The week before",
+  "weekly_new_label": "New issues",
+  "weekly_resolved_label": "Issues resolved",
+  "weekly_awaiting_label": "Fixes awaiting approval",
+  "weekly_next_scan_label": "Next scan",
+  "weekly_open_heading": "Open issues by impact on shoppers",
+  "regression_subject": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 new accessibility issue on {store}",
+        "countPlural=*": "{count} new accessibility issues on {store}"
+      }
+    }
+  ],
+  "regression_preheader": "Rampsmith found new failures after a recent change.",
+  "regression_title": "New issues found",
+  "regression_intro": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Rampsmith's scan of {store} on {date} found 1 issue that was not there before.",
+        "countPlural=*": "Rampsmith's scan of {store} on {date} found {count} issues that were not there before."
+      }
+    }
+  ],
+  "regression_cause_theme": "They appeared after the theme “{theme}” was published.",
+  "regression_cause_commit": "They appeared after commit {commit} was merged.",
+  "regression_cause_product": "They appeared after product data changed.",
+  "regression_cause_unknown": "Rampsmith could not tell which change caused them.",
+  "regression_list_heading": "New issues",
+  "regression_button": "See the new issues",
+  "barrier_subject": "A shopper reported an accessibility barrier on {store}",
+  "barrier_preheader": "Read the report in Rampsmith.",
+  "barrier_title": "New barrier report",
+  "barrier_intro": "A shopper used the accessibility form on {store} on {date} to report a barrier.",
+  "barrier_privacy": "To keep the shopper's details private, the report is not included in this email. Read it in Rampsmith.",
+  "barrier_button": "Read the report",
+  "channel_data": "store data",
+  "channel_pull_request": "pull request",
+  "channel_theme_package": "theme package",
+  "fix_approved_subject": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 fix approved for {store}",
+        "countPlural=*": "{count} fixes approved for {store}"
+      }
+    }
+  ],
+  "fix_approved_preheader": "Here is what Rampsmith does next.",
+  "fix_approved_title": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 fix approved",
+        "countPlural=*": "{count} fixes approved"
+      }
+    }
+  ],
+  "fix_approved_intro": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 fix for {store} was approved on {date}.",
+        "countPlural=*": "{count} fixes for {store} were approved on {date}."
+      }
+    }
+  ],
+  "fix_approved_list_heading": "Approved fixes",
+  "fix_approved_item": "{title} (WCAG {criterion}, {channel})",
+  "fix_approved_next_heading": "What happens next",
+  "fix_approved_next_data": "Store data fixes are written through Shopify's Admin API. Rampsmith then re-scans the affected pages to verify them.",
+  "fix_approved_next_pull_request": "Code fixes go to your developer as a pull request. Rampsmith verifies them after it is merged.",
+  "fix_approved_next_theme_package": "Code fixes are built into a patched copy of your theme for you to preview and publish.",
+  "fix_approved_log": "The remediation log records who approved each fix, and when.",
+  "fix_approved_button": "Review fixes",
+  "fix_verified_subject": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 fix verified on {store}",
+        "countPlural=*": "{count} fixes verified on {store}"
+      }
+    }
+  ],
+  "fix_verified_subject_attention": "Some fixes on {store} need attention",
+  "fix_verified_preheader": "The results of Rampsmith's verification scan.",
+  "fix_verified_title": "Verification results",
+  "fix_verified_intro": "Rampsmith re-scanned the affected pages of {store} on {date}.",
+  "fix_verified_passed_heading": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 fix now passes its automated check",
+        "countPlural=*": "{count} fixes now pass their automated checks"
+      }
+    }
+  ],
+  "fix_verified_failed_heading": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 fix still fails its automated check",
+        "countPlural=*": "{count} fixes still fail their automated checks"
+      }
+    }
+  ],
+  "fix_verified_failed_next": "Open each one in Rampsmith to see the evidence and the next step.",
+  "fix_verified_button": "Open the remediation log",
+  "plan_free": "Free",
+  "plan_starter": "Starter",
+  "plan_growth": "Growth",
+  "plan_pro": "Pro",
+  "cadence_monthly": "Monthly",
+  "cadence_weekly": "Weekly",
+  "cadence_daily": "Daily",
+  "plan_changed_subject": "Your Rampsmith plan is now {plan}",
+  "plan_changed_preheader": "What the {plan} plan includes for {store}.",
+  "plan_changed_title": "Plan changed to {plan}",
+  "plan_changed_intro": "The Rampsmith plan for {store} changed from {previous} to {plan} on {date}.",
+  "plan_changed_scans_label": "Scan schedule",
+  "plan_changed_drafts_label": "Alt-text drafts",
+  "plan_changed_drafts_monthly": "{count} a month",
+  "plan_changed_drafts_lifetime": "{count} in total",
+  "plan_changed_billing": "Shopify bills the plan and lists it on your Shopify invoice.",
+  "plan_changed_button": "View your plan",
+  "usage_drafts_approaching_subject": "{store} has used {used} of {limit} alt-text drafts",
+  "usage_drafts_reached_subject": "{store} has used all {limit} alt-text drafts",
+  "usage_preheader": "What this means for your store, and what you can do.",
+  "usage_drafts_approaching_title": "Alt-text drafts are running low",
+  "usage_drafts_reached_title": "Alt-text draft limit reached",
+  "usage_drafts_approaching_intro": "{store} has used {used} of the {limit} alt-text drafts in its plan.",
+  "usage_drafts_reached_intro": "{store} has used all {limit} alt-text drafts in its plan.",
+  "usage_drafts_paused_lifetime": "Rampsmith drafts no more alt text unless the plan changes.",
+  "usage_drafts_paused_until": "Rampsmith drafts no more alt text until {date}, when the allowance renews.",
+  "usage_drafts_renews": "The allowance renews on {date}.",
+  "usage_drafts_used_label": "Alt-text drafts used",
+  "usage_drafts_used_value": "{used} of {limit}",
+  "usage_unaffected": "Scans, findings and the fixes you already approved keep working.",
+  "usage_button": "Compare plans",
+  "agency_invitation_subject": "Invitation to join {organization} on Rampsmith",
+  "agency_invitation_preheader": "Accept the invitation to work on the agency's stores in Rampsmith.",
+  "agency_invitation_title": "You are invited to an agency",
+  "agency_invitation_intro_admin": "You are invited to join the agency {organization} on Rampsmith as an admin.",
+  "agency_invitation_intro_member": "You are invited to join the agency {organization} on Rampsmith as a member.",
+  "agency_invitation_intro_viewer": "You are invited to join the agency {organization} on Rampsmith as a viewer.",
+  "role_admin_can": "Admins approve and undo fixes, connect GitHub and manage members.",
+  "role_member_can": "Members run scans and propose and edit fixes.",
+  "role_viewer_can": "Viewers can read findings, fixes and reports.",
+  "agency_invitation_button": "Accept the invitation",
+  "agency_invitation_expiry": "The invitation expires on {date}.",
+  "agency_invitation_not_expected": "If you do not know this agency, ignore this email. Nobody is added unless you accept.",
+  "agency_invitation_reason": "You received this email because someone at {organization} invited this address to Rampsmith.",
+  "store_link_code_subject": "Store-link code for {store}",
+  "store_link_code_preheader": "Enter the code in your Rampsmith dashboard to link the store.",
+  "store_link_code_title": "Link a store to your agency",
+  "store_link_code_intro": "The owner of {store} shared a one-time code so that your agency can work on the store in Rampsmith.",
+  "store_link_code_label": "Store-link code",
+  "store_link_code_steps": "Sign in to your Rampsmith dashboard, choose Link a store, and enter the code.",
+  "store_link_code_button": "Open the dashboard",
+  "store_link_code_expiry": "The code works once and expires on {date}.",
+  "store_link_code_scope": "Linking gives your agency access to this one store only. The store owner can remove that access at any time.",
+  "store_link_code_not_expected": "If you did not expect this code, ignore this email. Nothing happens unless someone enters it.",
+  "store_link_code_reason": "You received this email because the owner of {store} asked Rampsmith to send this code to this address.",
+  "store_linked_subject": "{organization} can now work on {store} in Rampsmith",
+  "store_linked_preheader": "Review or remove the agency's access in Rampsmith.",
+  "store_linked_title": "Agency access added",
+  "store_linked_intro": "The agency {organization} linked {store} to its Rampsmith dashboard on {date}, using a code you shared.",
+  "store_linked_access": "People at {organization} can now see this store's findings and work on its fixes, within the roles their agency gives them.",
+  "store_linked_not_expected": "If you did not expect this, remove the agency's access in Rampsmith.",
+  "store_linked_button": "Manage agency access",
+  "data_deletion_title": "Data deleted",
+  "data_deletion_preheader": "Deletion completed on {date}.",
+  "data_deletion_store_subject": "Rampsmith deleted the data for {store}",
+  "data_deletion_store_intro": "Rampsmith deleted the data it held for {store} on {date}: store content, theme snapshots, scan evidence, findings, fixes and the remediation log.",
+  "data_deletion_store_last": "This is the last email Rampsmith sends about {store}.",
+  "data_deletion_account_subject": "Your Rampsmith account was deleted",
+  "data_deletion_account_intro": "Rampsmith deleted your dashboard account on {date}: your email address, passkeys, sessions and memberships.",
+  "data_deletion_account_last": "This is the last email Rampsmith sends to this address.",
+  "data_deletion_account_reason": "You received this email because this address belonged to a Rampsmith account that was just deleted.",
+  "data_deletion_billing_kept": "Rampsmith keeps billing records only for as long as tax law requires.",
+  "uninstall_subject": "Download your Rampsmith records for {store}",
+  "uninstall_preheader": "The download link works until {date}.",
+  "uninstall_title": "Rampsmith was uninstalled",
+  "uninstall_intro": "Rampsmith was uninstalled from {store}. It will delete the data it holds for the store on {date}.",
+  "uninstall_export": "Before then, you can download the remediation record: every fix, its finding, its WCAG criterion, who approved it and when, and its verification result.",
+  "uninstall_button": "Download the remediation record",
+  "uninstall_expiry": "The download link stops working when the data is deleted.",
+  "incident_subject_account": "Security incident notice from Rampsmith",
+  "incident_subject_store": "Security incident notice for {store}",
+  "incident_preheader": "What happened, what data is involved, and what Rampsmith is doing.",
+  "incident_title": "Security incident notice",
+  "incident_intro_account": "On {date}, Rampsmith confirmed a security incident that affects your account.",
+  "incident_intro_store": "On {date}, Rampsmith confirmed a security incident that affects {store}.",
+  "incident_what_happened": "What happened",
+  "incident_data_involved": "Data involved",
+  "incident_what_we_do": "What Rampsmith is doing",
+  "incident_what_you_can_do": "What you can do",
+  "incident_contact": "Rampsmith will email you again if anything changes. If you have questions, write to {support}.",
+  "incident_button": "Read the latest updates",
+  "incident_reason_account": "You received this email because this address belongs to a Rampsmith account affected by the incident.",
+  "subprocessor_subject": "Changes to Rampsmith's subprocessors from {date}",
+  "subprocessor_preheader": "The companies that process data on Rampsmith's behalf are changing.",
+  "subprocessor_title": "Subprocessor changes",
+  "subprocessor_intro": "From {date}, Rampsmith will change the companies that process data on its behalf:",
+  "subprocessor_item_added": "Added: {name}, for {purpose} ({location})",
+  "subprocessor_item_removed": "Removed: {name}, used for {purpose} ({location})",
+  "subprocessor_item_changed": "Changed: {name}, now for {purpose} ({location})",
+  "subprocessor_objection": "To object to a change, write to {support} by {date}.",
+  "subprocessor_button": "See the full subprocessor list",
+  "subprocessor_reason": "You received this email because Rampsmith tells customers about subprocessor changes at least 30 days ahead."
+}

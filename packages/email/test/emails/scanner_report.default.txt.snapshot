@@ -1,0 +1,58 @@
+Rampsmith
+
+Accessibility report for shop.example
+=====================================
+
+Rampsmith's free scanner checked 3 pages of shop.example on October 17,
+2026, at one screen size.
+
+Summary
+-------
+
+Automated WCAG 2.2 AA checks: Passes 41 of 50
+Pages checked: 3
+
+Issues by impact on shoppers
+----------------------------
+
+Critical: 2
+Serious: 7
+Moderate: 4
+Minor: 1
+
+Most frequent issues
+--------------------
+
+- Images without alternative text: 12 instances
+- Links without an accessible name: 5 instances
+- Text with low colour contrast: 1 instance
+
+Open the full report:
+https://rampsmith.example/scan/report/TESTONLYreport0022
+
+The report stays available until November 16, 2026.
+
+Rampsmith can fix many of these issues at the source, in a Shopify store's
+own data and theme code: see how it works
+(https://rampsmith.example/how-it-works).
+
+| Automated checks find only part of all accessibility issues. Rampsmith
+| lists what it checked and what still needs a person to review.
+|
+| Deque, the maker of axe-core, reports that axe-core finds on average 57%
+| of WCAG issues automatically.
+
+____________________________________________________________________________
+
+You received this email because you asked Rampsmith's free scanner to send
+this report here and confirmed this address.
+
+Unsubscribe from Rampsmith emails:
+https://rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

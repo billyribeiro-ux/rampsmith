@@ -1,0 +1,24 @@
+Rampsmith
+
+Confirm your email address
+==========================
+
+Someone asked Rampsmith's free scanner to send the full accessibility report
+for shop.example to this address.
+
+Rampsmith sends nothing to this address until you confirm it.
+
+Confirm and get the report:
+https://rampsmith.example/scan/confirm?c=TESTONLYconfirm0011
+
+The link works once and expires in 24 hours.
+
+If you did not ask for this report, ignore this email. Rampsmith will not
+write to this address again.
+
+____________________________________________________________________________
+
+You received this email because this address was entered in Rampsmith's free
+accessibility scanner.
+
+Questions? Write to support@rampsmith.example.
