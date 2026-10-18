@@ -1,0 +1,22 @@
+{
+  "name": "@rampsmith/corpus-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Checks for the theme test corpus (PLAN §23): golden files validate, spans exist, rule ids are known, and each theme page rendered statically and checked by axe-core in Chromium fires exactly its golden findings.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "axe-core": "4.14.0"
+  },
+  "devDependencies": {
+    "@rampsmith/tsconfig": "workspace:*",
+    "vitest": "5.0.5"
+  }
+}
