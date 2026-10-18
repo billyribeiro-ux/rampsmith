@@ -158,7 +158,12 @@ includes `**/messages/**/*.json`.
   which also proved `@sparticuz/chromium` runs on `ubuntu-24.04`.
   https://github.com/billyribeiro-ux/rampsmith/actions/runs/39089310452
 - Fix `fa31013`: the suites pin the Open Sans files `@sparticuz/chromium` ships through their own
-  fontconfig file, and the style sheet turns ligatures off. Result: see section 8.
+  fontconfig file, and the style sheet turns ligatures off. Run 39093159786: **all 8 jobs green**
+  (rust, node, e2e, contracts, images api/web/engine/egress).
+  https://github.com/billyribeiro-ux/rampsmith/actions/runs/39093159786
+- Final code commit `c32a6a2` (after the re-audit fixes and the not-evaluated wording): run
+  39094308163, **all 8 jobs green**.
+  https://github.com/billyribeiro-ux/rampsmith/actions/runs/39094308163
 
 ## 6. Security audit
 
@@ -222,4 +227,11 @@ commit after `fa31013`:
 
 ## 8. Final state
 
-Filled in at the end of the stream: head commit, CI run and result.
+- Code: `c32a6a2` on `ws/reports`; 15 test files, 240 tests, all passing locally (Node 26.12.0,
+  pnpm 12.14.0) and in CI run 39094308163 on the pinned toolchains (green).
+- The commit after it adds only this section; the STATUS.md row on `main` names that head and
+  its run.
+- ADRs: 221 (statement), 222 (package and escaping), 223 (isolated tagged PDF), 224 (remediation
+  log), 225 (coverage disclosure), 226 (summary and charts). 227 to 229 are unused.
+- Draft pull request #6 into `r0-foundations`, never to be merged; `r0-foundations` was merged in
+  at `4181c3f`, so the pull request has no conflict with its base at `4fdfb3b`.
