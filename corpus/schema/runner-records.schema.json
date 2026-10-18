@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rampsmith:corpus:runner-records:1",
+  "title": "Rampsmith corpus runner: mapping and fix records",
+  "description": "What the corpus runner records for each golden finding after scanning, mapping and patching (corpus/CONTRACT.md, Inputs; ADR-203). Finding ids are corpus-wide: <theme>/<id>.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["corpus", "mapping", "fixes", "scans", "themeCheck"],
+  "properties": {
+    "corpus": {
+      "description": "The commit of corpus/ the records were made against.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "mapping": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mappingRecord"
+      }
+    },
+    "fixes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fixRecord"
+      }
+    },
+    "scans": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "after"],
+      "properties": {
+        "before": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pageScan"
+          }
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pageScan"
+          }
+        }
+      }
+    },
+    "themeCheck": {
+      "description": "New Theme Check offenses per patched theme (liquid-patch validateNoNewOffenses).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["theme", "count"],
+        "properties": {
+          "theme": {
+            "$ref": "#/$defs/slug"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "findingId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$"
+    },
+    "span": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/elementSpan"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "file", "pointer", "start", "end"],
+          "properties": {
+            "kind": {
+              "const": "json-value"
+            },
+            "file": {
+              "$ref": "#/$defs/themePath",
+              "type": "string",
+              "pattern": "\\.json$"
+            },
+            "pointer": {
+              "type": "string",
+              "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "file", "selector", "start", "end", "property", "anchor"],
+          "properties": {
+            "kind": {
+              "const": "css-declaration"
+            },
+            "file": {
+              "$ref": "#/$defs/themePath",
+              "type": "string",
+              "pattern": "\\.(?:css|liquid)$"
+            },
+            "selector": {
+              "description": "The selector of the one rule in the file that holds the declaration, written as in the file.",
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            },
+            "property": {
+              "type": "string",
+              "pattern": "^-?[a-z][a-z-]*$"
+            },
+            "anchor": {
+              "$ref": "#/$defs/anchor"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "resource", "field"],
+          "properties": {
+            "kind": {
+              "const": "data"
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^gid://shopify/[A-Za-z]+/[0-9]+$"
+            },
+            "field": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            },
+            "anchor": {
+              "$ref": "#/$defs/anchor"
+            }
+          },
+          "dependentRequired": {
+            "start": ["end", "anchor"],
+            "end": ["start"],
+            "anchor": ["start"]
+          }
+        }
+      ]
+    },
+    "elementSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "file", "start", "tag", "anchor"],
+      "properties": {
+        "kind": {
+          "const": "element"
+        },
+        "file": {
+          "$ref": "#/$defs/themePath",
+          "type": "string",
+          "pattern": "\\.liquid$"
+        },
+        "start": {
+          "$ref": "#/$defs/offset"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        }
+      }
+    },
+    "themePath": {
+      "description": "Theme-relative path in one of Shopify's theme directories.",
+      "type": "string",
+      "pattern": "^(?:layout|templates|templates/customers|sections|blocks|snippets|locales|config|assets)/[A-Za-z0-9._-]+$"
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "anchor": {
+      "description": "The source text at the span's start: for an element, the start of its start tag, long enough to occur once in the file; for a CSS declaration, the whole declaration, occurring once in its rule; for data, the whole span. It keeps the file reviewable and lets the tooling re-find the span after an edit. Mappers ignore it.",
+      "type": "string",
+      "minLength": 2
+    },
+    "mappingRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding", "status"],
+      "properties": {
+        "finding": {
+          "$ref": "#/$defs/findingId"
+        },
+        "status": {
+          "enum": ["mapped", "needs_review", "unmapped"]
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "if": {
+        "properties": {
+          "status": {
+            "const": "mapped"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["span", "confidence"]
+      },
+      "else": {
+        "not": {
+          "type": "object",
+          "anyOf": [
+            {
+              "required": ["span"]
+            },
+            {
+              "required": ["confidence"]
+            }
+          ]
+        }
+      }
+    },
+    "fixRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding", "engine", "stillFiring"],
+      "properties": {
+        "finding": {
+          "$ref": "#/$defs/findingId"
+        },
+        "engine": {
+          "enum": ["edits", "already-fixed", "refusal"]
+        },
+        "refusal": {
+          "type": "string",
+          "pattern": "^[a-z][a-z-]*$"
+        },
+        "stillFiring": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "engine": {
+            "const": "refusal"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": ["refusal"]
+      },
+      "else": {
+        "not": {
+          "type": "object",
+          "required": ["refusal"]
+        }
+      }
+    },
+    "pageScan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["theme", "page", "rendered", "counts"],
+      "properties": {
+        "theme": {
+          "$ref": "#/$defs/slug"
+        },
+        "page": {
+          "$ref": "#/$defs/slug"
+        },
+        "rendered": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "counts": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*:(violation|incomplete)$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

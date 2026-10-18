@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import { CORPUS_ROOT } from './paths.ts';
 
-export type SchemaName = 'golden' | 'manifest';
+export type SchemaName = 'golden' | 'manifest' | 'runner-records' | 'runner-report';
 
 function compile(name: SchemaName): ValidateFunction {
   const ajv = new Ajv2020({
