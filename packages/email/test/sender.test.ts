@@ -63,7 +63,7 @@ describe('checkOutbound', () => {
       appOrigin: SETTINGS.appOrigin,
       siteOrigin: SETTINGS.siteOrigin,
       supportAddress: SETTINGS.supportAddress,
-    }).render('plan_changed', fixture('plan_changed'));
+    }).render('scanner_report', fixture('scanner_report'));
     expect(checkOutbound({ ...message, email: noAddress })).toEqual(['postal-address-missing']);
   });
 

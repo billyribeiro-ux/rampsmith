@@ -77,10 +77,18 @@ export function parseLink(
   return url.href as SafeUrl;
 }
 
-/** A `mailto:` link for an address that already passed {@link isEmailAddress}. */
+/**
+ * A support-style address, such as `support@rampsmith.com`: letters, digits, dots, hyphens,
+ * underscores and plus signs only, so it can never carry `mailto:` header fields (`?cc=`).
+ */
+export function isSimpleAddress(value: string): boolean {
+  return isEmailAddress(value) && /^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+$/u.test(value);
+}
+
+/** A `mailto:` link for an address that passed {@link isSimpleAddress}. */
 export function mailtoLink(address: string): SafeUrl {
-  if (!isEmailAddress(address)) {
-    throw new TypeError('mailtoLink needs a plain email address');
+  if (!isSimpleAddress(address)) {
+    throw new TypeError('mailtoLink needs a simple email address');
   }
   return `mailto:${address}` as SafeUrl;
 }

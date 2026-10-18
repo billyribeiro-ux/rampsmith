@@ -1,4 +1,4 @@
-import { isEmailAddress, parseOrigin, SHOPIFY_ADMIN_ORIGIN, type Origins } from './links.ts';
+import { isSimpleAddress, parseOrigin, SHOPIFY_ADMIN_ORIGIN, type Origins } from './links.ts';
 import { multiLine } from './sanitize.ts';
 
 /** Deployment settings, the same for every email a process renders. */
@@ -43,8 +43,8 @@ export function resolveSettings(settings: EmailSettings): ResolvedSettings {
   if (site === null) {
     throw new SettingsError('siteOrigin must be an HTTPS origin (HTTP only on a loopback host)');
   }
-  if (!isEmailAddress(settings.supportAddress)) {
-    throw new SettingsError('supportAddress must be a plain email address');
+  if (!isSimpleAddress(settings.supportAddress)) {
+    throw new SettingsError('supportAddress must be a plain email address such as support@…');
   }
   let postalAddress: string | null = null;
   if (settings.postalAddress !== undefined) {

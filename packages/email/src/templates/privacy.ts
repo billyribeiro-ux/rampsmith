@@ -109,7 +109,15 @@ function operatorText(max: number): Schema<string, string> {
     optional: false,
     parse(value, path, ctx) {
       const text = inner.parse(value, path, ctx);
-      const found = scanText(path, text).violations[0];
+      // An allow marker is for the repository's own files; in an email it would both switch
+      // the check off and appear in the message.
+      if (/claims-lint-allow/iu.test(text)) {
+        throw new InputError(path, 'must not contain a claims-lint allow marker');
+      }
+      // Scan one line with invisible format characters removed, so a phrase split by a hard
+      // line break or a hidden character is still found. The joiners stay: scripts need them.
+      const flat = text.replace(/\s+/gu, ' ').replace(/(?![\u200C\u200D])\p{Cf}/gu, '');
+      const found = scanText(path, flat).violations[0];
       if (found !== undefined) {
         throw new InputError(path, `contains a banned claim (${found.rule}): ${found.message}`);
       }

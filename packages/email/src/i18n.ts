@@ -245,7 +245,8 @@ export class Catalog {
       throw new CatalogError(this.locale, key, 'no such message');
     }
     const display = (name: string): string => {
-      const value = params[name];
+      // Own properties only: a placeholder named {constructor} must not read Object.prototype.
+      const value = Object.hasOwn(params, name) ? params[name] : undefined;
       if (value === undefined) {
         throw new CatalogError(this.locale, key, `no value given for {${name}}`);
       }
@@ -266,7 +267,7 @@ export class Catalog {
     for (const selector of message.selectors) {
       const local = message.locals.get(selector);
       const inputName = local?.input ?? selector;
-      const value = params[inputName];
+      const value = Object.hasOwn(params, inputName) ? params[inputName] : undefined;
       if (value === undefined) {
         throw new CatalogError(this.locale, key, `no value given for {${inputName}}`);
       }

@@ -248,21 +248,18 @@ describe('the sign-in token and other secrets', () => {
 
   it('error messages never repeat the rejected value', () => {
     const secret = 'SECRET-TOKEN-VALUE-123';
-    expect(() =>
-      renderer.render('sign_in_link', {
-        signInUrl: `https://evil.example/?t=${secret}`,
-        expiresInMinutes: 15,
-      }),
-    ).toThrow(expect.not.stringContaining(secret));
+    let thrown: unknown;
     try {
       renderer.render('sign_in_link', {
         signInUrl: `https://evil.example/?t=${secret}`,
         expiresInMinutes: 15,
       });
     } catch (error: unknown) {
-      expect(String(error)).not.toContain(secret);
-      expect(inspect(error)).not.toContain(secret);
+      thrown = error;
     }
+    expect(thrown).toBeInstanceOf(InputError);
+    expect(String(thrown)).not.toContain(secret);
+    expect(inspect(thrown)).not.toContain(secret);
   });
 
   it('rejects a sign-in link pointing anywhere but the app', () => {

@@ -1,9 +1,11 @@
 /**
  * Agency emails (PLAN §16): an invitation to an agency organization, the one-time store-link
  * code a store owner sends to an agency, and the notice to the owner once a link is made.
- * Agency names are chosen by other users, so they appear as quoted text, never as links.
+ * Agency names, and store names sent to an agency, are chosen by someone other than the
+ * recipient: they stay out of subjects and preview text, appear in quotes, and may not look
+ * like a link, address or domain (`displayName`, ADR-193).
  */
-import { instant, label, link, object, oneOf, pattern } from '../schema.ts';
+import { displayName, instant, label, link, object, oneOf, pattern } from '../schema.ts';
 import type { MessageKey } from '../translator.ts';
 import { action, COMMON, defineTemplate, msg, paragraph } from '../template.ts';
 import { STORE_NAME_MAX } from './store.ts';
@@ -30,7 +32,7 @@ export const agencyInvitation = defineTemplate({
   category: 'transactional',
   schema: object({
     ...COMMON,
-    organizationName: label(ORGANIZATION_NAME_MAX),
+    organizationName: displayName(ORGANIZATION_NAME_MAX),
     role: oneOf(ROLES),
     acceptUrl: link(['app']),
     expiresAt: instant(),
@@ -38,7 +40,7 @@ export const agencyInvitation = defineTemplate({
   build(input, t) {
     const organization = input.organizationName;
     return {
-      subject: t.text('agency_invitation_subject', { organization }),
+      subject: t.text('agency_invitation_subject'),
       preheader: t.text('agency_invitation_preheader'),
       title: t.text('agency_invitation_title'),
       blocks: [
@@ -61,7 +63,7 @@ export const storeLinkCode = defineTemplate({
   category: 'security',
   schema: object({
     ...COMMON,
-    storeName: label(STORE_NAME_MAX),
+    storeName: displayName(STORE_NAME_MAX),
     code: pattern(
       /^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){1,3}$/u,
       'groups of 4 to 8 capital letters or digits joined by hyphens',
@@ -73,7 +75,7 @@ export const storeLinkCode = defineTemplate({
   build(input, t) {
     const store = input.storeName;
     return {
-      subject: t.text('store_link_code_subject', { store }),
+      subject: t.text('store_link_code_subject'),
       preheader: t.text('store_link_code_preheader'),
       title: t.text('store_link_code_title'),
       blocks: [
@@ -96,7 +98,7 @@ export const storeLinked = defineTemplate({
   schema: object({
     ...COMMON,
     storeName: label(STORE_NAME_MAX),
-    organizationName: label(ORGANIZATION_NAME_MAX),
+    organizationName: displayName(ORGANIZATION_NAME_MAX),
     linkedAt: instant(),
     manageUrl: link(['shopifyAdmin', 'app']),
   }),
@@ -104,7 +106,7 @@ export const storeLinked = defineTemplate({
     const store = input.storeName;
     const organization = input.organizationName;
     return {
-      subject: t.text('store_linked_subject', { store, organization }),
+      subject: t.text('store_linked_subject', { store }),
       preheader: t.text('store_linked_preheader'),
       title: t.text('store_linked_title'),
       blocks: [

@@ -61,12 +61,26 @@ export class SendRefusedError extends Error {
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,200}$/u;
 const HEADER_NAME = /^[A-Za-z][A-Za-z0-9-]{0,63}$/u;
 
-/** Every reason `message` must not be sent; empty when it may be. */
-export function checkOutbound(message: OutboundEmail): RefusalReason[] {
-  const reasons: RefusalReason[] = [];
+/**
+ * Reads each field of `message` once into a frozen copy, so a getter or a later mutation
+ * cannot show the checks one value and the provider another.
+ */
+function snapshot(message: OutboundEmail): OutboundEmail {
+  const to: unknown = message.to;
+  const idempotencyKey: unknown = message.idempotencyKey;
+  const email: unknown = message.email;
+  return Object.freeze({
+    to: typeof to === 'string' ? to : '',
+    idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : '',
+    email: email as RenderedEmail,
+  });
+}
+
+function reasonsFor(message: OutboundEmail): RefusalReason[] {
   if (!RenderedEmail.isRendered(message.email)) {
     return ['not-rendered'];
   }
+  const reasons: RefusalReason[] = [];
   if (!isEmailAddress(message.to)) {
     reasons.push('recipient-invalid');
   }
@@ -85,15 +99,24 @@ export function checkOutbound(message: OutboundEmail): RefusalReason[] {
   return reasons;
 }
 
-/** Wraps `inner` so that it only ever receives messages {@link checkOutbound} accepts. */
+/** Every reason `message` must not be sent; empty when it may be. */
+export function checkOutbound(message: OutboundEmail): RefusalReason[] {
+  return reasonsFor(snapshot(message));
+}
+
+/**
+ * Wraps `inner` so that it only ever receives messages {@link checkOutbound} accepts. The inner
+ * sender gets the frozen copy that was checked, never the caller's object.
+ */
 export function guardSender(inner: EmailSender): EmailSender {
   return {
     async send(message) {
-      const reasons = checkOutbound(message);
+      const checked = snapshot(message);
+      const reasons = reasonsFor(checked);
       if (reasons.length > 0) {
         throw new SendRefusedError(reasons);
       }
-      return inner.send(message);
+      return inner.send(checked);
     },
   };
 }

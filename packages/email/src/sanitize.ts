@@ -15,21 +15,32 @@ export function isControlCharacter(c: string): boolean {
 }
 /** Explicit embeddings, overrides and isolates (LRE, RLE, PDF, LRO, RLO, LRI, RLI, FSI, PDI). */
 const BIDI_CONTROL = /[\u202A-\u202E\u2066-\u2069]/gu;
-/** Byte order marks inside text carry no meaning and hide in copy-paste. */
-const BOM = /\uFEFF/gu;
+/**
+ * Invisible characters that carry no meaning in a name or notice and can split a word past a
+ * filter: byte order mark, soft hyphen, zero-width space and word joiner. The zero-width
+ * joiner and non-joiner stay, because emoji sequences and several scripts need them.
+ */
+const INVISIBLE = /[\uFEFF\u00AD\u200B\u2060]/gu;
+/** More than this many combining marks in a row is never language, only a size attack. */
+const MARK_RUN = /(\p{M}{8})\p{M}+/gu;
 /** Line breaks in every form JavaScript and Unicode know. */
 const LINE_BREAK = /\r\n|[\r\n\u0085\u2028\u2029]/gu;
 
 function clean(value: string): string {
-  return value
+  let out = '';
+  for (const c of value
     .toWellFormed()
     .normalize('NFC')
-    .replace(BOM, '')
+    .replace(INVISIBLE, '')
     .replace(BIDI_CONTROL, '')
-    .replace(/\t/gu, ' ')
-    .split('')
-    .filter((c) => c === '\n' || !isControlCharacter(c))
-    .join('');
+    .replace(MARK_RUN, '$1')) {
+    if (c === '\t') {
+      out += ' ';
+    } else if (c === '\n' || !isControlCharacter(c)) {
+      out += c;
+    }
+  }
+  return out;
 }
 
 /** One line of text: every run of whitespace, line breaks included, becomes one space. */
@@ -54,7 +65,12 @@ const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
 
 /** Number of user-perceived characters. */
 export function graphemeLength(value: string): number {
-  return [...graphemes.segment(value)].length;
+  let count = 0;
+  const segments = graphemes.segment(value)[Symbol.iterator]();
+  while (segments.next().done !== true) {
+    count += 1;
+  }
+  return count;
 }
 
 /**

@@ -206,10 +206,20 @@ describe('object, list and optional', () => {
     expect(() => parse(shape, null)).toThrow(InputError);
   });
 
-  it('ignores a __proto__ key instead of polluting prototypes', () => {
+  it('rejects a __proto__ key without polluting prototypes', () => {
     const hostile: unknown = JSON.parse('{"name":"A","items":[1],"__proto__":{"polluted":true}}');
-    expect(failure(shape, hostile).path).toBe('input.__proto__');
+    expect(failure(shape, hostile).path).toBe('input.<unknown field>');
     expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+  });
+
+  it('names an unknown key only when it is a plain identifier', () => {
+    expect(failure(shape, { name: 'A', items: [1], ownerEmail: 'x' }).path).toBe(
+      'input.ownerEmail',
+    );
+    const forged = 'victim@example.com\nlevel=info msg=forged';
+    const error = failure(shape, { name: 'A', items: [1], [forged]: 1 });
+    expect(error.path).toBe('input.<unknown field>');
+    expect(error.message).not.toContain('victim@example.com');
   });
 
   it('checks rules across fields with refine', () => {

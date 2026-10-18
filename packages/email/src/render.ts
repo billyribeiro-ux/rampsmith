@@ -22,12 +22,15 @@ import {
 } from './template.ts';
 import { BASE_LOCALE, SHIPPED_CATALOGS, Translator } from './translator.ts';
 
-/** Shown where the postal address belongs until the founder sets it (LAUNCH.md C, row 7). */
+/**
+ * Shown in marketing email, where the law requires the postal address, until the founder sets
+ * it (LAUNCH.md C, row 7). Other categories leave the address out until then (ADR-191).
+ */
 export const POSTAL_ADDRESS_PLACEHOLDER = '[Postal address not set: EMAIL_POSTAL_ADDRESS]';
 
 /**
  * Why a rendered email must not be sent yet. `guardSender` refuses any email with a problem.
- * - `postal-address-missing`: the category requires the postal address and none is set.
+ * - `postal-address-missing`: a marketing email needs the postal address and none is set.
  * - `unsubscribe-not-https`: RFC 8058 needs an HTTPS unsubscribe link (local development).
  */
 export type SendProblem = 'postal-address-missing' | 'unsubscribe-not-https';
@@ -49,18 +52,19 @@ interface RenderedFields {
 /**
  * A rendered email. Its bodies and headers may hold a sign-in token or an unsubscribe link,
  * and its subject may hold a store name, so logging it (`JSON.stringify`, `util.inspect`,
- * pino) shows only the kind, category, language, problems and sizes.
+ * pino) shows only the kind, category, language, problems and sizes. Those fields are also
+ * non-enumerable, so spreading or `Object.entries` does not copy them by accident.
  */
 export class RenderedEmail implements RenderedFields {
   readonly #rendered = true;
   readonly kind: EmailKind;
   readonly category: Category;
   readonly lang: string;
-  readonly subject: string;
-  readonly preheader: string;
-  readonly text: string;
-  readonly html: string;
-  readonly headers: Readonly<Record<string, string>>;
+  declare readonly subject: string;
+  declare readonly preheader: string;
+  declare readonly text: string;
+  declare readonly html: string;
+  declare readonly headers: Readonly<Record<string, string>>;
   readonly problems: readonly SendProblem[];
 
   constructor(token: symbol, fields: RenderedFields) {
@@ -70,11 +74,14 @@ export class RenderedEmail implements RenderedFields {
     this.kind = fields.kind;
     this.category = fields.category;
     this.lang = fields.lang;
-    this.subject = fields.subject;
-    this.preheader = fields.preheader;
-    this.text = fields.text;
-    this.html = fields.html;
-    this.headers = Object.freeze({ ...fields.headers });
+    const hidden = (value: unknown): PropertyDescriptor => ({ value, enumerable: false });
+    Object.defineProperties(this, {
+      subject: hidden(fields.subject),
+      preheader: hidden(fields.preheader),
+      text: hidden(fields.text),
+      html: hidden(fields.html),
+      headers: hidden(Object.freeze({ ...fields.headers })),
+    });
     this.problems = Object.freeze([...fields.problems]);
     Object.freeze(this);
   }
@@ -192,14 +199,16 @@ export function createEmailRenderer(
       }
     }
 
+    // CAN-SPAM and CASL require the postal address in commercial messages only, so a missing
+    // address blocks marketing email and never a security notice or a data-deletion notice.
     let sender: string[] | null = null;
     if (template.category !== 'security') {
       sender = [t.text('footer_sender_name')];
-      if (resolved.postalAddress === null) {
+      if (resolved.postalAddress !== null) {
+        sender.push(...resolved.postalAddress.split('\n'));
+      } else if (template.category === 'marketing') {
         sender.push(POSTAL_ADDRESS_PLACEHOLDER);
         problems.push('postal-address-missing');
-      } else {
-        sender.push(...resolved.postalAddress.split('\n'));
       }
     }
 

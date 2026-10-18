@@ -67,11 +67,36 @@ function expectString(value: unknown, path: string): string {
  */
 export function label(max: number): Schema<string, string> {
   return schema((value, path) => {
-    const text = singleLine(expectString(value, path));
+    // Bound the work before cleaning: no name needs more than 16 code units per character.
+    const raw = expectString(value, path);
+    const text = singleLine(raw.length > max * 16 ? raw.slice(0, max * 16) : raw);
     if (text.length === 0) {
       throw new InputError(path, 'must not be empty');
     }
     return truncate(text, max);
+  });
+}
+
+/**
+ * Looks like a link, an address or a domain: `scheme://`, `www.`, `@`, or a dotted name
+ * ending in letters (`example.com`). Mail clients turn such text into links.
+ */
+const LINK_LIKE = /[a-z][a-z0-9+.-]*:\/\/|\bwww\.|@|[\p{L}\p{N}-]\.\p{L}{2,}(?![\p{L}\p{N}])/iu;
+
+/**
+ * A name another user chose, shown to someone who did not ask for the email: an agency name in
+ * an invitation, a store name in a store-link code sent to any address. Such a name must not
+ * read as a link or an address, or Rampsmith's signed mail would carry someone's phishing
+ * link (ADR-193). The app's own name rules should match, so this rarely fires at send time.
+ */
+export function displayName(max: number): Schema<string, string> {
+  const inner = label(max);
+  return schema((value, path, ctx) => {
+    const text = inner.parse(value, path, ctx);
+    if (LINK_LIKE.test(text)) {
+      throw new InputError(path, 'must not contain a link, an email address or a domain name');
+    }
+    return text;
   });
 }
 
@@ -82,7 +107,11 @@ export function label(max: number): Schema<string, string> {
  */
 export function prose(max: number): Schema<string, string> {
   return schema((value, path) => {
-    const text = multiLine(expectString(value, path));
+    const raw = expectString(value, path);
+    if (raw.length > max * 16) {
+      throw new InputError(path, `must be at most ${String(max)} characters`);
+    }
+    const text = multiLine(raw);
     if (text.length === 0) {
       throw new InputError(path, 'must not be empty');
     }
@@ -149,13 +178,35 @@ export function criterion(): Schema<string, string> {
 }
 
 const ISO_INSTANT =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-](\d{2}):(\d{2}))$/u;
+
+/** Whether the calendar and clock fields are in range (no 30 February, no 24:00). */
+function validFields(match: RegExpExecArray): boolean {
+  // An optional group that did not match (seconds, offset) is undefined.
+  const field = (index: number): number => Number(match[index] ?? '0');
+  const year = field(1);
+  const month = field(2);
+  const day = field(3);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysInMonth &&
+    field(4) <= 23 &&
+    field(5) <= 59 &&
+    field(6) <= 59 &&
+    field(7) <= 23 &&
+    field(8) <= 59
+  );
+}
 
 /** An RFC 3339 instant with an explicit offset, as `time` and `Date#toISOString` write it. */
 export function instant(): Schema<string, Date> {
   return schema((value, path) => {
     const text = expectString(value, path);
-    if (!ISO_INSTANT.test(text)) {
+    const match = ISO_INSTANT.exec(text);
+    if (match === null || !validFields(match)) {
       throw new InputError(path, 'must be an RFC 3339 date and time with an offset');
     }
     const date = new Date(text);
@@ -194,7 +245,9 @@ export function hostname(): Schema<string, string> {
       throw invalid;
     }
     const host = new URL(candidate).hostname;
-    if (!host.includes('.') || /^[\d.]+$/u.test(host)) {
+    // Letters, digits and hyphens in dot-separated labels, ending in a letter label: no IP
+    // literals, no trailing dot, nothing the URL parser let through but DNS would not.
+    if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/u.test(host)) {
       throw invalid;
     }
     return host;
@@ -208,7 +261,8 @@ export function localeTag(): Schema<string, string> {
     try {
       const [canonical] = text.length <= 35 ? Intl.getCanonicalLocales(text) : [];
       if (canonical !== undefined) {
-        return canonical;
+        // Language, script and region only: extensions such as -u-nu- would change digits.
+        return new Intl.Locale(canonical).baseName;
       }
     } catch {
       // Falls through to the error below.
@@ -294,7 +348,10 @@ export function object<const S extends Shape>(shape: S): Schema<ObjectInput<S>, 
     }
     for (const key of Object.keys(value)) {
       if (!Object.hasOwn(shape, key)) {
-        throw new InputError(`${path}.${key}`, 'is not a field of this email');
+        // A key is input too: name it only when it is a plain identifier, so an error never
+        // carries an address or a forged log line.
+        const shown = /^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(key) ? key : '<unknown field>';
+        throw new InputError(`${path}.${shown}`, 'is not a field of this email');
       }
     }
     const out: Record<string, unknown> = {};

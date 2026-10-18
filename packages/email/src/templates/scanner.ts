@@ -1,7 +1,9 @@
 /**
  * The free scanner's two emails (PLAN §16): the double opt-in confirmation, then the full
- * report. The scanned host comes from whoever filled in the form, so it is shown as text in
- * its ASCII form, never as a link, and kept out of the preview text.
+ * report. Anyone can type any address into the form, so the confirmation carries nothing the
+ * requester chose, not even the scanned host (ADR-193): it cannot be used to put someone
+ * else's words in a Rampsmith email. The report goes only to a confirmed address and names
+ * the host in its ASCII form.
  */
 import { hostname, instant, int, link, list, object, label, optional } from '../schema.ts';
 import {
@@ -25,8 +27,6 @@ export const scannerConfirm = defineTemplate({
   category: 'security',
   schema: object({
     ...COMMON,
-    /** The host the visitor asked to scan, such as `shop.example`. */
-    scannedHost: hostname(),
     /** The confirmation page, on the site origin; it asks for a click before confirming. */
     confirmUrl: link(['site']),
     expiresInHours: int(1, 168),
@@ -37,7 +37,7 @@ export const scannerConfirm = defineTemplate({
       preheader: t.text('scanner_confirm_preheader'),
       title: t.text('scanner_confirm_title'),
       blocks: [
-        paragraph(msg(t, 'scanner_confirm_intro', { host: input.scannedHost })),
+        paragraph(msg(t, 'scanner_confirm_intro')),
         paragraph(msg(t, 'scanner_confirm_nothing_else')),
         action(t, t.text('scanner_confirm_button'), input.confirmUrl, true),
         paragraph(msg(t, 'common_link_expiry_hours', { hours: input.expiresInHours })),

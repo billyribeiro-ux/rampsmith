@@ -240,22 +240,26 @@ describe('locale and time zone', () => {
 });
 
 describe('settings', () => {
-  it('render the postal address placeholder and refuse to send until it is set', () => {
+  it('block marketing email until the postal address is set, and nothing else', () => {
     const r = createEmailRenderer({
       appOrigin: SETTINGS.appOrigin,
       siteOrigin: SETTINGS.siteOrigin,
       supportAddress: SETTINGS.supportAddress,
     });
+    const marketing = r.render('scanner_report', fixture('scanner_report'));
+    expect(marketing.problems).toEqual(['postal-address-missing']);
+    expect(marketing.text).toContain(POSTAL_ADDRESS_PLACEHOLDER);
+    // Required notices still go out: the law asks for the address in commercial email only.
     for (const [kind, input] of [
       ['weekly_summary', fixture('weekly_summary')],
       ['data_deletion', fixture('data_deletion')],
-      ['scanner_report', fixture('scanner_report')],
+      ['incident_notice', fixture('incident_notice')],
+      ['sign_in_link', fixture('sign_in_link')],
     ] as const) {
       const email = r.renderUnknown(kind, input);
-      expect(email.problems).toEqual(['postal-address-missing']);
-      expect(email.text).toContain(POSTAL_ADDRESS_PLACEHOLDER);
+      expect(email.problems, kind).toEqual([]);
+      expect(email.text).not.toContain(POSTAL_ADDRESS_PLACEHOLDER);
     }
-    expect(r.render('sign_in_link', fixture('sign_in_link')).problems).toEqual([]);
   });
 
   it('flag an unsubscribe link without HTTPS (local development)', () => {

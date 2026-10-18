@@ -42,7 +42,6 @@ export const FIXTURES: Fixtures = {
     [
       'default',
       {
-        scannedHost: 'shop.example',
         confirmUrl: `${SITE}/scan/confirm?c=TESTONLYconfirm0011`,
         expiresInHours: 24,
       },
