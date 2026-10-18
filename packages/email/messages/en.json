@@ -9,13 +9,8 @@
   "common_button_fallback": "If the button does not work, copy this address into your browser:",
   "common_link_expiry_minutes": [
     {
-      "declarations": [
-        "input minutes",
-        "local minutesPlural = minutes: plural"
-      ],
-      "selectors": [
-        "minutesPlural"
-      ],
+      "declarations": ["input minutes", "local minutesPlural = minutes: plural"],
+      "selectors": ["minutesPlural"],
       "match": {
         "minutesPlural=one": "The link works once and expires in {minutes} minute.",
         "minutesPlural=*": "The link works once and expires in {minutes} minutes."
@@ -24,13 +19,8 @@
   ],
   "common_link_expiry_hours": [
     {
-      "declarations": [
-        "input hours",
-        "local hoursPlural = hours: plural"
-      ],
-      "selectors": [
-        "hoursPlural"
-      ],
+      "declarations": ["input hours", "local hoursPlural = hours: plural"],
+      "selectors": ["hoursPlural"],
       "match": {
         "hoursPlural=one": "The link works once and expires in {hours} hour.",
         "hoursPlural=*": "The link works once and expires in {hours} hours."
@@ -50,13 +40,8 @@
   "common_fix_item": "{title} (WCAG {criterion})",
   "common_more_items": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "And 1 more.",
         "countPlural=*": "And {count} more."
@@ -71,13 +56,8 @@
   "sign_in_link_subject": "Your Rampsmith sign-in link",
   "sign_in_link_preheader": [
     {
-      "declarations": [
-        "input minutes",
-        "local minutesPlural = minutes: plural"
-      ],
-      "selectors": [
-        "minutesPlural"
-      ],
+      "declarations": ["input minutes", "local minutesPlural = minutes: plural"],
+      "selectors": ["minutesPlural"],
       "match": {
         "minutesPlural=one": "The link works once and expires in {minutes} minute.",
         "minutesPlural=*": "The link works once and expires in {minutes} minutes."
@@ -116,13 +96,8 @@
   "scanner_report_title": "Accessibility report for {host}",
   "scanner_report_intro": [
     {
-      "declarations": [
-        "input pages",
-        "local pagesPlural = pages: plural"
-      ],
-      "selectors": [
-        "pagesPlural"
-      ],
+      "declarations": ["input pages", "local pagesPlural = pages: plural"],
+      "selectors": ["pagesPlural"],
       "match": {
         "pagesPlural=one": "Rampsmith's free scanner checked 1 page of {host} on {date}, at one screen size.",
         "pagesPlural=*": "Rampsmith's free scanner checked {pages} pages of {host} on {date}, at one screen size."
@@ -132,13 +107,8 @@
   "scanner_report_top_heading": "Most frequent issues",
   "scanner_report_top_item": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{title}: 1 instance",
         "countPlural=*": "{title}: {count} instances"
@@ -163,13 +133,8 @@
   "first_scan_title": "Your first scan is finished",
   "first_scan_intro": [
     {
-      "declarations": [
-        "input pages",
-        "local pagesPlural = pages: plural"
-      ],
-      "selectors": [
-        "pagesPlural"
-      ],
+      "declarations": ["input pages", "local pagesPlural = pages: plural"],
+      "selectors": ["pagesPlural"],
       "match": {
         "pagesPlural=one": "Rampsmith finished its first scan of {store} on {date}. It checked 1 page.",
         "pagesPlural=*": "Rampsmith finished its first scan of {store} on {date}. It checked {pages} pages."
@@ -183,10 +148,7 @@
         "local countExact = count",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countExact",
-        "countPlural"
-      ],
+      "selectors": ["countExact", "countPlural"],
       "match": {
         "countExact=0, countPlural=*": "No fixes are waiting for your approval yet.",
         "countExact=*, countPlural=one": "1 fix is ready for your approval.",
@@ -207,13 +169,8 @@
   "weekly_open_heading": "Open issues by impact on shoppers",
   "regression_subject": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 new accessibility issue on {store}",
         "countPlural=*": "{count} new accessibility issues on {store}"
@@ -224,13 +181,8 @@
   "regression_title": "New issues found",
   "regression_intro": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Rampsmith's scan of {store} on {date} found 1 issue that was not there before.",
         "countPlural=*": "Rampsmith's scan of {store} on {date} found {count} issues that were not there before."
@@ -254,13 +206,8 @@
   "channel_theme_package": "theme package",
   "fix_approved_subject": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 fix approved for {store}",
         "countPlural=*": "{count} fixes approved for {store}"
@@ -270,13 +217,8 @@
   "fix_approved_preheader": "Here is what Rampsmith does next.",
   "fix_approved_title": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 fix approved",
         "countPlural=*": "{count} fixes approved"
@@ -285,13 +227,8 @@
   ],
   "fix_approved_intro": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 fix for {store} was approved on {date}.",
         "countPlural=*": "{count} fixes for {store} were approved on {date}."
@@ -308,13 +245,8 @@
   "fix_approved_button": "Review fixes",
   "fix_verified_subject": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 fix verified on {store}",
         "countPlural=*": "{count} fixes verified on {store}"
@@ -327,13 +259,8 @@
   "fix_verified_intro": "Rampsmith re-scanned the affected pages of {store} on {date}.",
   "fix_verified_passed_heading": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 fix now passes its automated check",
         "countPlural=*": "{count} fixes now pass their automated checks"
@@ -342,13 +269,8 @@
   ],
   "fix_verified_failed_heading": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "1 fix still fails its automated check",
         "countPlural=*": "{count} fixes still fail their automated checks"

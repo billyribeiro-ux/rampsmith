@@ -47,7 +47,9 @@ function writeEmails(emails: readonly { name: string; email: RenderedEmail }[]):
 }
 
 function claimsLint(cwd: string): { status: number | null; output: string } {
-  const result = spawnSync(process.execPath, [cli], { cwd, encoding: 'utf8' });
+  // Plain output format even inside GitHub Actions, where the CLI would print annotations.
+  const env = { ...process.env, GITHUB_ACTIONS: 'false' };
+  const result = spawnSync(process.execPath, [cli], { cwd, encoding: 'utf8', env });
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
