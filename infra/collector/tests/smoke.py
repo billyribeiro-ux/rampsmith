@@ -237,8 +237,12 @@ def main() -> int:
         pem_body = f"MIIEow{marker}"
         db_password = f"{marker}{marker}"[:64]
         header_secret = f"hdr{marker}"
+        json_secret = f"pw{marker}"
+        env_secret = f"env{marker}"
+        api_key = f"ak{marker}"
         planted = (jwt, shop_token, email, f"secret-{marker}", f"hmac-{marker}", client_secret,
-                   signature, pem_body, db_password, header_secret)
+                   signature, pem_body, db_password, header_secret, json_secret, env_secret,
+                   api_key)
         pem = f"-----BEGIN PRIVATE KEY-----\n{pem_body}\nAAAA+/==\n-----END PRIVATE KEY-----"
         db_url = f"postgresql://rampsmith_api:{db_password}@postgres.railway.internal:5432/x"
         presigned = (f"https://acct.r2.cloudflarestorage.com/evidence/o.png?X-Amz-Credential="
@@ -256,7 +260,11 @@ def main() -> int:
                                 {"key": "db.connection_string",
                                  "value": {"stringValue": db_url}},
                                 {"key": "form", "value": {
-                                    "stringValue": f"grant=x&client_secret={client_secret}"}}]},
+                                    "stringValue": f"grant=x&client_secret={client_secret}"}},
+                                {"key": "request.body", "value": {
+                                    "stringValue": json.dumps({"password": json_secret})}},
+                                {"key": "env", "value": {
+                                    "stringValue": f"AWS_SECRET_ACCESS_KEY={env_secret} ok"}}]},
                 # A structured body: masked once the collector turns it into a string.
                 {"timeUnixNano": now, "severityText": "WARN",
                  "body": {"kvlistValue": {"values": [
@@ -295,7 +303,9 @@ def main() -> int:
                             "attributes": [{"key": "exception.message",
                                             "value": {"stringValue": f"bad {launch}"}},
                                            {"key": "exception.stacktrace",
-                                            "value": {"stringValue": f"key {pem}"}}]}],
+                                            "value": {"stringValue": f"key {pem}"}},
+                                           {"key": "raw.headers",
+                                            "value": {"stringValue": f"x-api-key: {api_key}"}}]}],
             }]}],
         }]}) == 200, "the collector refused the services' traces")
         check(post_json("/v1/metrics", {"resourceMetrics": [{
