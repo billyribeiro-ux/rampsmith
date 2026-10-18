@@ -65,6 +65,11 @@ jobs:
             -r infra/railway/requirements.txt -r infra/railway/requirements-ci.txt
       - name: Railway IaC and deploy helper tests
         run: python -m unittest discover -s infra/railway/tests -v
+      - name: TEMPORARY read the BuildKit image digest (removed once pinned)
+        run: |
+          for tag in v0.34.0; do
+            docker buildx imagetools inspect "moby/buildkit:$tag" | sed -n '1,4p'
+          done
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -97,6 +102,9 @@ jobs:
       - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           version: ${{ env.MISE_VERSION }}
+          # No tool cache: any job on main can write one, and these tools run next to
+          # deploy secrets or decide a gate (ADR-185).
+          cache: false
           install_args: node
       - name: The Shopify CLI installs from its lockfile without install scripts
         working-directory: infra/railway/tools/shopify-cli
@@ -237,6 +245,9 @@ jobs:
         if: steps.dockerfile.outputs.present == 'true' && (matrix.service == 'api' || matrix.service == 'engine')
         with:
           version: ${{ env.MISE_VERSION }}
+          # No tool cache: any job on main can write one, and these tools run next to
+          # deploy secrets or decide a gate (ADR-185).
+          cache: false
           install_args: cargo-binstall cargo:sqlx-cli
       - name: Database logins from bootstrap.sql
         if: steps.dockerfile.outputs.present == 'true' && matrix.service == 'api'
@@ -302,8 +313,6 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
       - name: Check the digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -435,6 +444,9 @@ jobs:
         if: matrix.service == 'api' || matrix.service == 'engine'
         with:
           version: ${{ env.MISE_VERSION }}
+          # No tool cache: any job on main can write one, and these tools run next to
+          # deploy secrets or decide a gate (ADR-185).
+          cache: false
           install_args: cargo-binstall cargo:sqlx-cli
       - name: Smoke test the pushed digest, as Railway starts it
         env:
@@ -469,13 +481,17 @@ jobs:
         with:
           pattern: verified-*
           path: release
-          merge-multiple: true
       - name: Read the verified digests
         id: read
         run: |
+          # Exactly the four verify jobs' artifacts, each in its own directory: an extra or a
+          # missing one stops the release instead of overwriting a verified digest.
+          found=$(find release -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')
+          [ "$found" = "verified-api verified-egress verified-engine verified-web " ] ||
+            { echo "::error::unexpected release artifacts: $found"; exit 1; }
           echo "## Release ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
           for service in web api engine egress; do
-            ref=$(cat "release/$service")
+            ref=$(cat "release/verified-$service/$service")
             [[ "$ref" =~ ^${REGISTRY}/rampsmith-${service}@sha256:[0-9a-f]{64}$ ]] ||
               { echo "::error::bad image reference for $service"; exit 1; }
             echo "$service=$ref" >> "$GITHUB_OUTPUT"

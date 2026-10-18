@@ -6,6 +6,7 @@
 # its row in LAUNCH.md section C, and the summary says what did not run: a skip is never a pass.
 #
 # Jobs, each holding at most one secret:
+#   scope    no environment: fails if a deploy secret also exists as a repository secret.
 #   check    no secret: the inputs, the release is on main, signed provenance for every image,
 #            and the Node.js LTS guard on .mise.toml and on the Node.js the images ship.
 #   railway  RAILWAY_TOKEN only, in the GitHub environment (production waits for the founder's
@@ -101,10 +102,35 @@ env:
   REPOSITORY: ${{ github.repository }}
 
 jobs:
-  check:
-    name: check ${{ inputs.environment }} release
+  scope:
+    name: deploy secrets scope
     # A manual run deploys only from main's copy of this workflow (ADR-185).
     if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: No repository or organization copy of a deploy secret
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}
+        run: |
+          # This job has no environment, so these resolve only to repository or organization
+          # secrets (passed by release.yml, or read directly on a manual run). Deploy secrets
+          # must be environment secrets only: a repository copy would reach every environment
+          # that lacks its own (ADR-185). Only presence is checked, never printed.
+          found=()
+          [ -z "$RAILWAY_TOKEN" ] || found+=("RAILWAY_TOKEN (LAUNCH.md C row 8)")
+          [ -z "$SHOPIFY_APP_AUTOMATION_TOKEN" ] || found+=("SHOPIFY_APP_AUTOMATION_TOKEN (LAUNCH.md C row 2)")
+          if [ "${#found[@]}" -gt 0 ]; then
+            echo "::error title=Deploy secrets::Refusing to deploy: ${found[*]} exists as a repository or organization secret. Delete it there and keep it only as a secret of the staging and production environments."
+            exit 1
+          fi
+          echo "No repository or organization copy of RAILWAY_TOKEN or SHOPIFY_APP_AUTOMATION_TOKEN."
+
+  check:
+    name: check ${{ inputs.environment }} release
+    needs: scope
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -171,6 +197,9 @@ jobs:
       - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           version: ${{ env.MISE_VERSION }}
+          # No tool cache: any job on main can write one, and these tools run next to
+          # deploy secrets or decide a gate (ADR-185).
+          cache: false
           install_args: node
 
       - name: Node.js LTS guard (.mise.toml and the images' Node.js)
@@ -419,6 +448,9 @@ jobs:
         if: steps.inputs.outputs.deploy == 'true'
         with:
           version: ${{ env.MISE_VERSION }}
+          # No tool cache: any job on main can write one, and these tools run next to
+          # deploy secrets or decide a gate (ADR-185).
+          cache: false
           install_args: node
 
       - name: Install the Shopify CLI from its lockfile, without install scripts
