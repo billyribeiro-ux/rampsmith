@@ -21,7 +21,9 @@ function required(name: string): string {
 const version = process.env['SERVICE_VERSION'] ?? '0.0.0';
 const telemetry = startTelemetry({ serviceName: 'engine', serviceVersion: version });
 const sql = postgres(required('DATABASE_URL'), { max: 5, onnotice: () => undefined });
-const browser = await chromium.launch({ proxy: { server: 'per-context' } });
+// Chromium's own sandbox stays on (PLAN §22): the engine runs as a non-root user under the
+// seccomp profile in infra/engine.seccomp.json.
+const browser = await chromium.launch({ chromiumSandbox: true, proxy: { server: 'per-context' } });
 const stop = new AbortController();
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
