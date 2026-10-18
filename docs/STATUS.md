@@ -122,7 +122,7 @@ first wave:
 | WS-8 Runbooks, nightly backup, restore drill (PLAN §22, LAUNCH B) | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Started |
 | WS-9 Deployment as configuration (PLAN §22, §24, LAUNCH B) | `ws/deploy` | `infra/railway/`, `infra/collector/`, `.github/workflows/release.yml`, `.github/workflows/deploy.yml` | 181–189 | Started |
 | WS-10 Email templates (LAUNCH B) | `ws/email` | `packages/email/` | 191–199 | Started |
-| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/`, `packages/corpus-tools/` | 201–209 | Started |
+| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/`, `packages/corpus-tools/` | 201–209 | Built at `c4156df` (code `585339e`): 6 synthetic themes (3 failing, 3 clean controls), 53 golden findings (35 targeted), 153 tests; CI green on draft PR #2 (run 39089657516). R2 needs a contrast recipe in liquid-patch (its six recipes fix 30 of 35) and a mapper that outputs setting, CSS and data targets (ADR-205) |
 | WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Started |
 | WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Started |
 
