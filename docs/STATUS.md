@@ -2,13 +2,17 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-17 22:55 UTC by the continuation check (second stream wave), after the architect chat's rulings on the stream findings.
+Last updated: 2026-10-18 01:15 UTC by the builder `Rampsmith builder 2026-10-18 01:09 UTC`.
 
 ## Active builder
 
-- 2026-10-17 18:12 UTC: session started by the scheduled task "Rampsmith R0 build", working on
-  branch `r0-foundations`. It started before this file existed, with R0-only instructions, so it
-  will not update this file. The next builder reconciles its work against R0's exit criteria.
+- 2026-10-18 01:12 UTC: `Rampsmith builder 2026-10-18 01:09 UTC`
+  (`session_0141ZUbL5kywLHK6UAtS2pct`), working on branch `r0-foundations`: reconcile R0 against
+  its exit criteria, finish what is missing, integrate, merge.
+- Ended: the original "Rampsmith R0 build" session stopped at 2026-10-17 23:25 UTC on a usage
+  limit; its last push to `r0-foundations` is `ce54cc6` (23:17 UTC). The eight second-wave
+  stream sessions (WS-6 to WS-13) also stopped on usage limits between 23:25 and 23:28 UTC;
+  only `ws/corpus` has commits beyond `16926b5`.
 
 ## Parallel streams (founder request, 17 Oct 2026, 20:40 UTC)
 
