@@ -1,0 +1,20 @@
+{
+  "name": "@rampsmith/theme-app-ext-test",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tests for the Shopify theme app extension in extensions/theme-app-ext (PLAN §14): Theme Check, size budgets, claims-lint, axe, keyboard, focus, error states and layout shift.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json && tsc -p ../../extensions/theme-app-ext/tsconfig.json"
+  },
+  "devDependencies": {
+    "@rampsmith/tsconfig": "workspace:*",
+    "@shopify/theme-check-node": "3.30.1",
+    "@sparticuz/chromium": "153.0.0",
+    "axe-core": "4.14.0",
+    "liquidjs": "10.30.0",
+    "playwright-core": "1.64.1",
+    "vitest": "5.0.5"
+  }
+}
