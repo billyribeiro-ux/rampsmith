@@ -1,0 +1,339 @@
+# Deploy one release to one Railway environment (PLAN §22, §24; ADR-185).
+#
+# Called by release.yml for staging and then production with the digests it built, or run by
+# hand (Actions > deploy > Run workflow, from main) to redeploy or roll back to an earlier
+# release's digests. Every step that needs a founder input skips with a notice naming its row
+# in LAUNCH.md section C, and the summary says what did not run: a skip is never a pass.
+#
+# Order: check the inputs and their signed provenance; refuse production unless the
+# environment requires a reviewer; refuse any deploy while .mise.toml pins a Node.js release
+# that is not LTS (CLAUDE.md, ADR-016); apply infra/railway/railway.py in two phases (api first,
+# so its pre-deploy step migrates before new workers start); wait for each service to run its
+# digest; deploy the Shopify app configuration and extension; smoke-test the public hosts.
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging or production
+        type: string
+        required: true
+      release:
+        description: The commit the images were built from
+        type: string
+        required: true
+      web-image:
+        type: string
+        required: true
+      api-image:
+        type: string
+        required: true
+      engine-image:
+        type: string
+        required: true
+      egress-image:
+        type: string
+        required: true
+    secrets:
+      # Environment secrets of the target GitHub environment, passed by name (they exist only
+      # there; never as repository secrets).
+      RAILWAY_TOKEN:
+        required: false
+      SHOPIFY_APP_AUTOMATION_TOKEN:
+        required: false
+    outputs:
+      deployed:
+        description: true when Railway actually received this release
+        value: ${{ jobs.deploy.outputs.deployed }}
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment
+        type: choice
+        options: [staging, production]
+        required: true
+      release:
+        description: Commit on main whose images to deploy (see that release run's summary)
+        type: string
+        required: true
+      web-image:
+        description: ghcr.io/billyribeiro-ux/rampsmith-web@sha256:...
+        type: string
+        required: true
+      api-image:
+        description: ghcr.io/billyribeiro-ux/rampsmith-api@sha256:...
+        type: string
+        required: true
+      engine-image:
+        description: ghcr.io/billyribeiro-ux/rampsmith-engine@sha256:...
+        type: string
+        required: true
+      egress-image:
+        description: ghcr.io/billyribeiro-ux/rampsmith-egress@sha256:...
+        type: string
+        required: true
+
+permissions: read-all
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  MISE_VERSION: '2026.10.12'
+  PYTHON_VERSION: '3.15.0'
+  RAILWAY_CLI_VERSION: '5.70.0'
+  RUST_TOOLCHAIN: '1.99.1'
+  SHOPIFY_CLI_VERSION: '4.9.4'
+
+jobs:
+  deploy:
+    name: deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    # Required reviewers on `production` (LAUNCH.md C row 14) hold this job until the founder
+    # approves; the protection step below refuses to continue if that rule is missing.
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.RAMPSMITH_APP_HOST && format('https://{0}', vars.RAMPSMITH_APP_HOST) || '' }}
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+      actions: read
+    outputs:
+      deployed: ${{ steps.railway.outputs.deployed }}
+    env:
+      TARGET: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      WEB_IMAGE: ${{ inputs.web-image }}
+      API_IMAGE: ${{ inputs.api-image }}
+      ENGINE_IMAGE: ${{ inputs.engine-image }}
+      EGRESS_IMAGE: ${{ inputs.egress-image }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Check the inputs
+        run: |
+          fail() { echo "::error title=deploy inputs::$*"; exit 1; }
+          [[ "$TARGET" == staging || "$TARGET" == production ]] || fail "unknown environment"
+          [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]] || fail "release must be a full commit SHA"
+          for pair in "web:$WEB_IMAGE" "api:$API_IMAGE" "engine:$ENGINE_IMAGE" "egress:$EGRESS_IMAGE"; do
+            service=${pair%%:*}
+            ref=${pair#*:}
+            [[ "$ref" =~ ^ghcr\.io/billyribeiro-ux/rampsmith-${service}@sha256:[0-9a-f]{64}$ ]] ||
+              fail "$service image must be ghcr.io/billyribeiro-ux/rampsmith-$service@sha256:<digest>"
+          done
+          {
+            echo "## Deploy $RELEASE to $TARGET"
+            echo
+            echo "| Step | Result |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The release is a commit on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$RELEASE" origin/main ||
+            { echo "::error title=deploy inputs::$RELEASE is not on main"; exit 1; }
+          echo "| Release on main | yes |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Production requires the founder's approval
+        if: inputs.environment == 'production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$REPOSITORY/environments/production" |
+            python3 infra/railway/scripts/check_protection.py
+          echo "| Production protection | required reviewer and branch policy present |" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Signed provenance from release.yml on main, for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh --version | head -1
+          for ref in "$WEB_IMAGE" "$API_IMAGE" "$ENGINE_IMAGE" "$EGRESS_IMAGE"; do
+            gh attestation verify "oci://$ref" \
+              --repo "$REPOSITORY" \
+              --signer-workflow "$REPOSITORY/.github/workflows/release.yml" \
+              --source-ref refs/heads/main \
+              --source-digest "$RELEASE" \
+              --deny-self-hosted-runners >/dev/null
+            echo "verified $ref"
+          done
+          echo "| Image provenance | 4 images signed by release.yml on main at $RELEASE |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Founder inputs present?
+        id: inputs
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}
+          APP_HOST: ${{ vars.RAMPSMITH_APP_HOST }}
+          WEBHOOK_HOST: ${{ vars.RAMPSMITH_WEBHOOK_HOST }}
+        run: |
+          # Only presence is recorded, never a value.
+          present() { if [ -n "$1" ]; then echo true; else echo false; fi; }
+          {
+            echo "railway=$(present "$RAILWAY_TOKEN")"
+            echo "shopify=$(present "$SHOPIFY_APP_AUTOMATION_TOKEN")"
+            echo "hosts=$( [ -n "$APP_HOST" ] && [ -n "$WEBHOOK_HOST" ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node
+
+      - name: Node.js LTS guard
+        id: lts
+        continue-on-error: true
+        run: python3 infra/railway/scripts/node_lts_guard.py .mise.toml "$(mise which node)"
+
+      - name: Railway deploy skipped (LAUNCH.md C row 8)
+        if: steps.inputs.outputs.railway != 'true'
+        env:
+          LTS: ${{ steps.lts.outcome }}
+        run: |
+          message="SKIPPED: nothing was deployed to $TARGET. The GitHub environment '$TARGET' has no RAILWAY_TOKEN secret (LAUNCH.md section C, row 8: a Railway project token for this environment)."
+          echo "::notice title=Railway deploy skipped::$message"
+          echo "| Railway deploy | **skipped**: no RAILWAY_TOKEN (LAUNCH.md C row 8) |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$LTS" != success ]; then
+            echo "| Node.js LTS guard | would refuse this deploy: .mise.toml does not pin a release tagged LTS |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Refuse to deploy before the Node.js LTS pin
+        if: steps.inputs.outputs.railway == 'true' && steps.lts.outcome != 'success'
+        run: |
+          echo "::error title=Node.js LTS guard::Refusing to deploy to $TARGET: .mise.toml pins a Node.js release whose process.release.lts is empty. Nothing deploys before the 26.x LTS pin (CLAUDE.md, ADR-016)."
+          echo "| Node.js LTS guard | **refused** the deploy |" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.inputs.outputs.railway == 'true'
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install railway-sdk (hash-pinned)
+        if: steps.inputs.outputs.railway == 'true'
+        run: python -m pip install --require-hashes -r infra/railway/requirements.txt
+
+      - name: Cache the Railway CLI build
+        if: steps.inputs.outputs.railway == 'true'
+        id: cli-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/railway-cli
+          key: railway-cli-${{ env.RAILWAY_CLI_VERSION }}-${{ runner.os }}-rust-${{ env.RUST_TOOLCHAIN }}
+
+      - name: Install the Railway CLI from crates.io (checksum-verified, locked)
+        if: steps.inputs.outputs.railway == 'true' && steps.cli-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          cargo "+$RUST_TOOLCHAIN" install railwayapp --version "$RAILWAY_CLI_VERSION" --locked \
+            --root "$HOME/.local/railway-cli"
+
+      - name: Deploy to Railway, api first
+        id: railway
+        if: steps.inputs.outputs.railway == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAMPSMITH_RELEASE: ${{ inputs.release }}
+          RAMPSMITH_APP_HOST: ${{ vars.RAMPSMITH_APP_HOST }}
+          RAMPSMITH_SITE_HOST: ${{ vars.RAMPSMITH_SITE_HOST }}
+          RAMPSMITH_WEBHOOK_HOST: ${{ vars.RAMPSMITH_WEBHOOK_HOST }}
+        run: |
+          export PATH="$HOME/.local/railway-cli/bin:$PATH"
+          railway --version
+          file=infra/railway/railway.py
+          wait_for() { python3 infra/railway/scripts/wait_for_deployment.py "$@"; }
+          echo "deployed=true" >> "$GITHUB_OUTPUT"
+          # --environment must match the project token's environment, so a token stored in the
+          # wrong GitHub environment fails here instead of deploying to the wrong place. No
+          # --confirm-destructive: a plan that removes anything stops for a human.
+          # Phase 1: the api only. Its pre-deploy step runs the migrations, and Railway moves
+          # traffic only once /readyz sees this build's schema.
+          RAMPSMITH_DEPLOY_ONLY=api RAMPSMITH_IMAGE_API=$API_IMAGE \
+            railway config apply --file "$file" --environment "$TARGET" --yes
+          wait_for api "$API_IMAGE" 1800
+          # Phase 2: everything, at the same digests.
+          RAMPSMITH_IMAGE_WEB=$WEB_IMAGE RAMPSMITH_IMAGE_API=$API_IMAGE \
+          RAMPSMITH_IMAGE_ENGINE=$ENGINE_IMAGE RAMPSMITH_IMAGE_EGRESS=$EGRESS_IMAGE \
+            railway config apply --file "$file" --environment "$TARGET" --yes
+          wait_for ctl "$API_IMAGE"
+          wait_for egress "$EGRESS_IMAGE"
+          wait_for engine "$ENGINE_IMAGE"
+          wait_for web "$WEB_IMAGE"
+          collector=$(python3 -c 'import importlib.util as u; s = u.spec_from_file_location("r", "infra/railway/railway.py"); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.COLLECTOR_IMAGE)')
+          wait_for collector "$collector"
+          echo "| Railway deploy | api, ctl, egress, engine, web and collector run this release |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Shopify app configuration and extension skipped (LAUNCH.md C rows 1, 2, 15)
+        if: steps.railway.outputs.deployed == 'true' && (steps.inputs.outputs.shopify != 'true' || hashFiles(format('shopify.app.{0}.toml', inputs.environment)) == '')
+        run: |
+          echo "::notice title=Shopify deploy skipped::SKIPPED: shopify app deploy did not run for $TARGET. It needs the SHOPIFY_APP_AUTOMATION_TOKEN secret in the '$TARGET' GitHub environment (LAUNCH.md C row 2; row 15 for staging's own app) and shopify.app.$TARGET.toml from 'shopify app config link' (row 1)."
+          echo "| Shopify app deploy | **skipped**: needs SHOPIFY_APP_AUTOMATION_TOKEN and shopify.app.$TARGET.toml (LAUNCH.md C rows 1, 2, 15) |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy the Shopify app configuration and theme app extension
+        if: steps.railway.outputs.deployed == 'true' && steps.inputs.outputs.shopify == 'true' && hashFiles(format('shopify.app.{0}.toml', inputs.environment)) != ''
+        env:
+          SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ inputs.release }}
+        run: |
+          npm install --global --no-fund --no-audit "@shopify/cli@$SHOPIFY_CLI_VERSION"
+          shopify version
+          shopify app deploy --config "$TARGET" --allow-updates --source-control-url "$COMMIT_URL"
+          echo "| Shopify app deploy | released a new app version from shopify.app.$TARGET.toml |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Public smoke tests skipped (LAUNCH.md C row 10)
+        if: steps.railway.outputs.deployed == 'true' && steps.inputs.outputs.hosts != 'true'
+        run: |
+          echo "::notice title=Smoke tests skipped::SKIPPED: the public smoke tests did not run for $TARGET. Set the RAMPSMITH_APP_HOST and RAMPSMITH_WEBHOOK_HOST variables on the '$TARGET' GitHub environment once the domain and DNS exist (LAUNCH.md C row 10)."
+          echo "| Public smoke tests | **skipped**: no RAMPSMITH_APP_HOST / RAMPSMITH_WEBHOOK_HOST (LAUNCH.md C row 10) |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Public smoke tests
+        if: steps.railway.outputs.deployed == 'true' && steps.inputs.outputs.hosts == 'true'
+        env:
+          APP_HOST: ${{ vars.RAMPSMITH_APP_HOST }}
+          WEBHOOK_HOST: ${{ vars.RAMPSMITH_WEBHOOK_HOST }}
+        run: |
+          check() {
+            local expected=$1 method=$2 url=$3 code
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X "$method" --max-time 20 \
+              --retry 5 --retry-all-errors --retry-delay 5 "$url")
+            [ "$code" = "$expected" ] ||
+              { echo "::error title=smoke test::$method $url answered $code, expected $expected"; exit 1; }
+            echo "$method $url -> $code"
+          }
+          check 200 GET "https://$APP_HOST/healthz"
+          # The webhook host reaches only the api's webhook listener (ADR-182).
+          check 404 GET "https://$WEBHOOK_HOST/readyz"
+          check 401 POST "https://$WEBHOOK_HOST/webhooks/shopify"
+          check 401 POST "https://$WEBHOOK_HOST/webhooks/github"
+          # Plain HTTP must not serve the app (PLAN §18: HTTP redirects to HTTPS).
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "http://$APP_HOST/healthz")
+          case "$code" in
+            301 | 302 | 307 | 308) echo "http:// redirects ($code)" ;;
+            *) echo "::error title=smoke test::http://$APP_HOST answered $code, expected a redirect"; exit 1 ;;
+          esac
+          echo "| Public smoke tests | passed on $APP_HOST and $WEBHOOK_HOST |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Synthetic install-scan-fix journey
+        if: steps.railway.outputs.deployed == 'true' && inputs.environment == 'staging'
+        run: |
+          # The journey arrives with the dev-store end-to-end suite (LAUNCH.md E). Until then
+          # this says so plainly instead of passing.
+          echo "::warning title=Synthetic journey not run::The install-scan-fix journey does not exist yet (LAUNCH.md section E, 'Staging deploy and the synthetic install-scan-fix journey'; inputs: rows 1 to 5, 8, 10). Only the smoke tests ran."
+          echo "| Synthetic journey | **not run**: not built yet (LAUNCH.md E) |" >> "$GITHUB_STEP_SUMMARY"

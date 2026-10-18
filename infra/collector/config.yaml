@@ -1,0 +1,104 @@
+# OpenTelemetry Collector for Rampsmith (ADR-184): OTLP/HTTP in from every service on the
+# Railway private network; traces, metrics and logs out to Grafana Cloud; logs also archived to
+# Cloudflare R2, where a lifecycle rule deletes them after 30 days (PLAN §21).
+#
+# Railway passes this file to the stock otel/opentelemetry-collector-contrib image in the
+# OTELCOL_CONFIG variable (`--config=env:OTELCOL_CONFIG`). Every value below that differs per
+# environment, and every credential, is an ${env:...} reference: the file holds no secret.
+# Checked with `otelcol-contrib validate` in release.yml, and end to end by
+# infra/collector/tests/smoke.py.
+
+extensions:
+  health_check:
+    endpoint: '[::]:13133'
+    path: /healthz
+  basicauth/grafana:
+    client_auth:
+      username: ${env:GRAFANA_CLOUD_OTLP_INSTANCE_ID}
+      password: ${env:GRAFANA_CLOUD_OTLP_TOKEN}
+
+receivers:
+  otlp:
+    protocols:
+      # OTLP/HTTP only (ADR-019). No authentication: only Rampsmith's own services share the
+      # environment's private network, and the collector has no public domain (ADR-182).
+      http:
+        endpoint: '[::]:4318'
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  resource/environment:
+    attributes:
+      - key: deployment.environment.name
+        value: ${env:RAILWAY_ENVIRONMENT_NAME}
+        action: upsert
+  # Defense in depth for PLAN §21's "no personal data or tokens": services never record these,
+  # and if one ever did, the collector drops them before export.
+  attributes/scrub:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: http.request.header.x-shopify-access-token
+        action: delete
+      - key: http.request.header.x-shopify-hmac-sha256
+        action: delete
+      - key: http.request.header.x-hub-signature-256
+        action: delete
+      - key: http.response.header.set-cookie
+        action: delete
+  batch:
+    send_batch_size: 8192
+    timeout: 5s
+
+exporters:
+  otlphttp/grafana:
+    endpoint: ${env:GRAFANA_CLOUD_OTLP_ENDPOINT}
+    auth:
+      authenticator: basicauth/grafana
+    compression: gzip
+  # The 30-day log archive. R2 speaks the S3 API at https://<account>.r2.cloudflarestorage.com
+  # with region "auto"; path-style addressing keeps the bucket out of the host name.
+  awss3/logs:
+    s3uploader:
+      region: auto
+      endpoint: ${env:R2_ENDPOINT}
+      s3_bucket: ${env:R2_BUCKET_LOGS}
+      s3_base_prefix: ${env:RAILWAY_ENVIRONMENT_NAME}
+      s3_prefix: logs
+      s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      s3_partition_timezone: UTC
+      s3_force_path_style: true
+      compression: gzip
+      unique_key_func_name: uuidv7
+      retry_mode: standard
+      retry_max_attempts: 5
+    marshaler: otlp_json
+    timeout: 30s
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+
+service:
+  extensions: [health_check, basicauth/grafana]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/environment, attributes/scrub, batch]
+      exporters: [otlphttp/grafana]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/environment, batch]
+      exporters: [otlphttp/grafana]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/environment, attributes/scrub, batch]
+      exporters: [otlphttp/grafana, awss3/logs]
+  telemetry:
+    logs:
+      level: info
+      encoding: json

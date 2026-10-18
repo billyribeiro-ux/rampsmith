@@ -1,0 +1,423 @@
+# Release pipeline (PLAN §24, ADR-185). On every push to main: build each image once, push it to
+# GHCR, attach signed SLSA build provenance and a CycloneDX SBOM attestation to its digest, scan
+# it, start it the way Railway will (smoke tests), deploy those digests to staging, then promote
+# the same digests to production behind the protected `production` environment.
+#
+# On a pull request that touches deployment files it runs the same checks as a dry run: images
+# are built and smoke-tested locally, nothing is pushed, attested or deployed.
+#
+# Every action is pinned to a full commit SHA (tag in the trailing comment), every image by
+# digest, every tool by version.
+name: release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - infra/railway/**
+      - infra/collector/**
+      - infra/*.Dockerfile
+      - crates/db/migrations/**
+      - .github/workflows/release.yml
+      - .github/workflows/deploy.yml
+      - .mise.toml
+
+permissions: read-all
+
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.ref }}
+  # A release in progress on main is never cancelled; a newer push queues behind it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  MISE_VERSION: '2026.10.12'
+  PYTHON_VERSION: '3.15.0'
+  GO_VERSION: '1.27.2'
+  ACTIONLINT_VERSION: 'v1.7.12'
+  REGISTRY: ghcr.io/billyribeiro-ux
+  # The disposable database the smoke tests use (same image and digest as ci.yml).
+  PGHOST: 127.0.0.1
+  PGPORT: '5432'
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  PGDATABASE: rampsmith
+
+jobs:
+  config:
+    name: deploy config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install railway-sdk (hash-pinned)
+        run: python -m pip install --require-hashes -r infra/railway/requirements.txt
+      - name: Railway IaC and deploy helper tests
+        run: python -m unittest discover -s infra/railway/tests -v
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install actionlint (Go module checksums verified by sum.golang.org)
+        run: go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+      - name: actionlint (with shellcheck)
+        run: |
+          shellcheck --version
+          "$(go env GOPATH)/bin/actionlint" -color \
+            .github/workflows/release.yml .github/workflows/deploy.yml
+      - name: shellcheck the test scripts
+        run: shellcheck infra/railway/tests/*.sh
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node
+      - name: Node.js LTS guard against real binaries
+        run: |
+          # The guard must agree with the pinned binary: it refuses 26.12.0 (Current) and
+          # accepts a release tagged LTS. 24.22.0 is a known LTS release ("Krypton").
+          lts=$(node -p 'process.release.lts ?? ""')
+          if python infra/railway/scripts/node_lts_guard.py .mise.toml "$(mise which node)"; then
+            result=passes
+          else
+            result=refuses
+          fi
+          if [ -n "$lts" ]; then expected=passes; else expected=refuses; fi
+          test "$result" = "$expected"
+          mise install node@24.22.0
+          printf '[tools]\nnode = "24.22.0"\n' > "$RUNNER_TEMP/lts.mise.toml"
+          python infra/railway/scripts/node_lts_guard.py "$RUNNER_TEMP/lts.mise.toml" \
+            "$(mise where node@24.22.0)/bin/node"
+          echo "::notice title=Node.js LTS guard::The guard $result deploys on the current pin ($(node --version))."
+
+  collector:
+    name: collector config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install railway-sdk (hash-pinned)
+        run: python -m pip install --require-hashes -r infra/railway/requirements.txt
+      - name: Validate and smoke-test the collector config with the pinned image
+        run: |
+          image=$(python -c 'import importlib.util as u; s = u.spec_from_file_location("r", "infra/railway/railway.py"); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.COLLECTOR_IMAGE)')
+          docker pull "$image"
+          python infra/collector/tests/smoke.py "$image"
+
+  # Temporary, removed once its output is pinned: read the collector image's index digest.
+  pins:
+    name: resolve the collector digest
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - run: |
+          for ref in otel/opentelemetry-collector-contrib:0.163.1 ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1; do
+            docker buildx imagetools inspect "$ref" | head -5
+          done
+
+  # Pull requests: build and smoke-test each image locally; nothing leaves the runner.
+  images:
+    name: image ${{ matrix.service }} (dry run)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [web, api, engine, egress]
+    services:
+      postgres:
+        # postgres:18.6-bookworm, index digest read from Docker Hub on 2026-10-17 (ci.yml).
+        image: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rampsmith
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rampsmith"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      SERVICE: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find the Dockerfile
+        id: dockerfile
+        run: |
+          if [ -f "infra/$SERVICE.Dockerfile" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=image $SERVICE::infra/$SERVICE.Dockerfile does not exist yet (main builder); a release on main fails until it does."
+          fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.dockerfile.outputs.present == 'true'
+      - name: Build the image
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/${{ matrix.service }}.Dockerfile
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: rampsmith-${{ matrix.service }}:dry-run
+          cache-from: type=gha,scope=${{ matrix.service }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.dockerfile.outputs.present == 'true'
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install railway-sdk (hash-pinned)
+        if: steps.dockerfile.outputs.present == 'true'
+        run: python -m pip install --require-hashes -r infra/railway/requirements.txt
+      - name: Install the Rust toolchain for sqlx-cli
+        if: steps.dockerfile.outputs.present == 'true' && (matrix.service == 'api' || matrix.service == 'engine')
+        run: rustup toolchain install
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        if: steps.dockerfile.outputs.present == 'true' && (matrix.service == 'api' || matrix.service == 'engine')
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: cargo-binstall cargo:sqlx-cli
+      - name: Database logins from bootstrap.sql
+        if: steps.dockerfile.outputs.present == 'true' && matrix.service == 'api'
+        run: bash infra/railway/tests/bootstrap_test.sh
+      - name: Smoke test, as Railway starts it
+        if: steps.dockerfile.outputs.present == 'true'
+        run: |
+          bash infra/railway/tests/image_smoke.sh "$SERVICE" "rampsmith-$SERVICE:dry-run"
+          if [ "$SERVICE" = api ]; then
+            bash infra/railway/tests/image_smoke.sh ctl rampsmith-api:dry-run
+          fi
+
+  # main: build once, push, attest, scan, smoke-test the pushed digest.
+  publish:
+    name: image ${{ matrix.service }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        service: [web, api, engine, egress]
+    services:
+      postgres:
+        # postgres:18.6-bookworm, index digest read from Docker Hub on 2026-10-17 (ci.yml).
+        image: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rampsmith
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rampsmith"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      SERVICE: ${{ matrix.service }}
+      STRICT: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require the Dockerfile
+        run: |
+          if [ ! -f "infra/$SERVICE.Dockerfile" ]; then
+            echo "::error title=image $SERVICE::infra/$SERVICE.Dockerfile does not exist, so this commit cannot be released."
+            exit 1
+          fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build once and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/${{ matrix.service }}.Dockerfile
+          push: true
+          # One plain image manifest per service; provenance and the SBOM are attached below
+          # as signed attestations instead of unsigned BuildKit ones.
+          provenance: false
+          sbom: false
+          tags: ${{ env.REGISTRY }}/rampsmith-${{ matrix.service }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - name: Record the digest
+        id: ref
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::unexpected digest '$DIGEST'"; exit 1; }
+          ref="$REGISTRY/rampsmith-$SERVICE@$DIGEST"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          mkdir -p release
+          echo "$ref" > "release/$SERVICE"
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ steps.ref.outputs.ref }}
+          format: cyclonedx-json
+          output-file: ${{ matrix.service }}.cdx.json
+          upload-artifact: false
+          syft-version: v1.54.1
+      - name: Vulnerabilities (fail on fixable high or critical)
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ steps.ref.outputs.ref }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+          grype-version: v0.120.1
+      - name: Signed build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/rampsmith-${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          # Storage records exist only for organization-owned repositories.
+          create-storage-record: false
+      - name: Signed SBOM attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/rampsmith-${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: ${{ matrix.service }}.cdx.json
+          push-to-registry: true
+          create-storage-record: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install railway-sdk (hash-pinned)
+        run: python -m pip install --require-hashes -r infra/railway/requirements.txt
+      - name: Install the Rust toolchain for sqlx-cli
+        if: matrix.service == 'api' || matrix.service == 'engine'
+        run: rustup toolchain install
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        if: matrix.service == 'api' || matrix.service == 'engine'
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: cargo-binstall cargo:sqlx-cli
+      - name: Smoke test the pushed digest, as Railway starts it
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          docker pull "$REF"
+          bash infra/railway/tests/image_smoke.sh "$SERVICE" "$REF"
+          if [ "$SERVICE" = api ]; then
+            bash infra/railway/tests/image_smoke.sh ctl "$REF"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.service }}
+          path: release/${{ matrix.service }}
+          retention-days: 90
+          if-no-files-found: error
+
+  manifest:
+    name: release manifest
+    needs: [config, collector, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      web: ${{ steps.read.outputs.web }}
+      api: ${{ steps.read.outputs.api }}
+      engine: ${{ steps.read.outputs.engine }}
+      egress: ${{ steps.read.outputs.egress }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Read the digests
+        id: read
+        run: |
+          for service in web api engine egress; do
+            ref=$(cat "release/$service")
+            [[ "$ref" =~ ^${REGISTRY}/rampsmith-${service}@sha256:[0-9a-f]{64}$ ]] ||
+              { echo "::error::bad image reference for $service"; exit 1; }
+            echo "$service=$ref" >> "$GITHUB_OUTPUT"
+            echo "- \`$service\`: \`$ref\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  staging:
+    name: staging
+    needs: manifest
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+      actions: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      release: ${{ github.sha }}
+      web-image: ${{ needs.manifest.outputs.web }}
+      api-image: ${{ needs.manifest.outputs.api }}
+      engine-image: ${{ needs.manifest.outputs.engine }}
+      egress-image: ${{ needs.manifest.outputs.egress }}
+    secrets:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}
+
+  production:
+    name: production
+    needs: [manifest, staging]
+    # Promotion needs a real staging deploy: a skipped one (no Railway token yet) never promotes.
+    if: needs.staging.outputs.deployed == 'true'
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+      actions: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      release: ${{ github.sha }}
+      web-image: ${{ needs.manifest.outputs.web }}
+      api-image: ${{ needs.manifest.outputs.api }}
+      engine-image: ${{ needs.manifest.outputs.engine }}
+      egress-image: ${{ needs.manifest.outputs.egress }}
+    secrets:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}
