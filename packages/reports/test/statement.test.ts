@@ -98,9 +98,11 @@ describe('renderStatement', () => {
     const out = renderStatement(input);
     expect(out.status).toBe('not_evaluated');
     expect(out.text).toContain(
-      'We have not yet evaluated Example Goods against WCAG 2.2 Level AA.',
+      'Our automated checks have not yet evaluated Example Goods against WCAG 2.2 Level AA.',
     );
-    expect(out.text).toContain('No evaluation has been completed yet.');
+    expect(out.text).toContain(
+      "Rampsmith's automated checks have not finished a scan of Example Goods yet.",
+    );
     expect(out.text).not.toContain('passed');
   });
 

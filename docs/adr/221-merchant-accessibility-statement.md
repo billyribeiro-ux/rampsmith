@@ -57,8 +57,9 @@ used as written.
    the date prepared and the date last reviewed.
 2. The standard is always WCAG 2.2 Level AA. The status is computed, never chosen by the
    merchant, and has three values:
-   - `not_evaluated`: no scan has results. "We have not yet evaluated {site} against WCAG 2.2
-     Level AA." (W3C "not assessed".)
+   - `not_evaluated`: no scan has results. "Our automated checks have not yet evaluated {site}
+     against WCAG 2.2 Level AA." (W3C "not assessed".) Evaluations the merchant lists under
+     "How we checked" still appear; the status speaks only for the automated checks.
    - `known_barriers`: an open or accepted-risk finding, a failed check, or a limitation the
      merchant entered. "{site} partially meets WCAG 2.2 Level AA: some of its content does not
      meet the standard yet." (W3C's definition of "partially conformant".)

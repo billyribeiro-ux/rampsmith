@@ -409,7 +409,7 @@ export function renderStatement(input: StatementInput): RenderedStatement {
       }),
     );
   } else {
-    p(t.text('statement_assessment_none'));
+    p(t.text('statement_assessment_none', { site }));
   }
   const others = requireItems('otherEvaluations', input.otherEvaluations ?? [], 20).map((e, i) => {
     const description = requireText(

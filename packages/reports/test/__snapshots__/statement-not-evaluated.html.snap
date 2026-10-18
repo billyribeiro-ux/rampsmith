@@ -51,10 +51,10 @@ tr { break-inside: avoid; }</style>
 </ul>
 <h2>Status against WCAG 2.2 Level AA</h2>
 <p>The Web Content Accessibility Guidelines (WCAG) 2.2, published by the W3C, describe how to make web content more accessible to people with disabilities. We use WCAG 2.2 Level AA as our standard.</p>
-<p>We have not yet evaluated Example Goods against WCAG 2.2 Level AA. We will update this statement with the results of the first evaluation.</p>
+<p>Our automated checks have not yet evaluated Example Goods against WCAG 2.2 Level AA. We will update this statement with the results of the first scan.</p>
 <p>Automated testing finds only part of all accessibility barriers. Deque, the maker of the axe-core engine these checks use, reports that axe-core finds on average 57% of WCAG issues. The rest need a person to check.</p>
 <h2>Known limitations</h2>
-<p>We have not evaluated Example Goods yet, so we cannot list the barriers on it. If you find one, please tell us.</p>
+<p>Our automated checks have not finished a scan of Example Goods yet, so we cannot list the barriers they find. If you find one, please tell us.</p>
 <p>Shopify provides the checkout pages, and some features come from third-party apps. We report barriers we find in them to their providers.</p>
 <h2>Feedback and contact</h2>
 <p>If you find an accessibility barrier on Example Goods, or need information in a different format, please tell us:</p>
@@ -69,7 +69,7 @@ tr { break-inside: avoid; }</style>
 <p>Example Goods relies on HTML, CSS, JavaScript and WAI-ARIA to work with your web browser and any assistive technology you use.</p>
 <p>We test with current versions of Chrome, Firefox and Safari.</p>
 <h2>How we checked</h2>
-<p>No evaluation has been completed yet.</p>
+<p>Rampsmith&#39;s automated checks have not finished a scan of Example Goods yet.</p>
 <ul>
 <li>Our team tested checkout-free pages with NVDA and VoiceOver. (October 10, 2026)</li>
 </ul>

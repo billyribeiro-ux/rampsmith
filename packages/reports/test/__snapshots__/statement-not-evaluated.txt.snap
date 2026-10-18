@@ -17,14 +17,14 @@ Status against WCAG 2.2 Level AA
 
 The Web Content Accessibility Guidelines (WCAG) 2.2, published by the W3C, describe how to make web content more accessible to people with disabilities. We use WCAG 2.2 Level AA as our standard.
 
-We have not yet evaluated Example Goods against WCAG 2.2 Level AA. We will update this statement with the results of the first evaluation.
+Our automated checks have not yet evaluated Example Goods against WCAG 2.2 Level AA. We will update this statement with the results of the first scan.
 
 Automated testing finds only part of all accessibility barriers. Deque, the maker of the axe-core engine these checks use, reports that axe-core finds on average 57% of WCAG issues. The rest need a person to check.
 
 Known limitations
 -----------------
 
-We have not evaluated Example Goods yet, so we cannot list the barriers on it. If you find one, please tell us.
+Our automated checks have not finished a scan of Example Goods yet, so we cannot list the barriers they find. If you find one, please tell us.
 
 Shopify provides the checkout pages, and some features come from third-party apps. We report barriers we find in them to their providers.
 
@@ -50,7 +50,7 @@ We test with current versions of Chrome, Firefox and Safari.
 How we checked
 --------------
 
-No evaluation has been completed yet.
+Rampsmith's automated checks have not finished a scan of Example Goods yet.
 
 - Our team tested checkout-free pages with NVDA and VoiceOver. (October 10, 2026)
 

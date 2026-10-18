@@ -66,7 +66,7 @@
   ],
   "statement_status_heading": "Status against WCAG 2.2 Level AA",
   "statement_standard": "The Web Content Accessibility Guidelines (WCAG) 2.2, published by the W3C, describe how to make web content more accessible to people with disabilities. We use WCAG 2.2 Level AA as our standard.",
-  "statement_status_not_evaluated": "We have not yet evaluated {site} against WCAG 2.2 Level AA. We will update this statement with the results of the first evaluation.",
+  "statement_status_not_evaluated": "Our automated checks have not yet evaluated {site} against WCAG 2.2 Level AA. We will update this statement with the results of the first scan.",
   "statement_status_known_barriers": "{site} partially meets WCAG 2.2 Level AA: some of its content does not meet the standard yet. The barriers we know about are listed under Known limitations.",
   "statement_status_no_known_barriers": "Our latest automated checks, on {date}, found no failures. Automated checks cannot test every WCAG 2.2 Level AA success criterion, so this does not show that {site} meets the standard in full. The criteria that need a person to check are listed under How we checked.",
   "statement_checks_passed": [
@@ -83,7 +83,7 @@
   "statement_limitations_heading": "Known limitations",
   "statement_limitations_intro": "These are the accessibility barriers we know about on {site}. We are working to remove them.",
   "statement_limitations_none": "We do not know of any barriers on {site} at the moment. If you find one, please tell us.",
-  "statement_limitations_unknown": "We have not evaluated {site} yet, so we cannot list the barriers on it. If you find one, please tell us.",
+  "statement_limitations_unknown": "Our automated checks have not finished a scan of {site} yet, so we cannot list the barriers they find. If you find one, please tell us.",
   "statement_limitation_criteria": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -140,7 +140,7 @@
       }
     }
   ],
-  "statement_assessment_none": "No evaluation has been completed yet.",
+  "statement_assessment_none": "Rampsmith's automated checks have not finished a scan of {site} yet.",
   "statement_assessment_other_dated": "{description} ({date})",
   "statement_complaints_heading": "If you are not satisfied with our response",
   "statement_complaints_link": "More information: {link}",
