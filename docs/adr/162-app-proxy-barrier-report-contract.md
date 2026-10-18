@@ -56,150 +56,241 @@ the api's test vectors.
 scopes = "read_products,write_products,read_files,write_files,read_themes,read_content,write_content,read_online_store_navigation,write_online_store_navigation,read_locales,write_app_proxy"
 
 [app_proxy]
-url = "https://<api host>/shopify/app-proxy"
+url = "https://<webhook host>/shopify/app-proxy"
 prefix = "apps"
 subpath = "rampsmith"
 ```
 
 So `https://<shop>/apps/rampsmith/barrier-report` reaches
-`https://<api host>/shopify/app-proxy/barrier-report`. The URL is per environment (production
-and staging apps, LAUNCH.md C rows 1 and 15).
+`https://<webhook host>/shopify/app-proxy/barrier-report`. The proxy is served from the public
+webhook host PLAN §22 already has, never from a public domain on `api` itself (which would
+expose every route; ADR-005): the edge allowlist of that host gains exactly
+`POST /shopify/app-proxy/barrier-report`, matched on the raw path, with any path that
+normalises differently (`..`, `//`, encoded slashes) refused at the edge. The URL is per
+environment (the production and staging apps, LAUNCH.md C rows 1 and 15).
 
 ### Endpoint
 
 `POST /shopify/app-proxy/barrier-report`. Any other method answers `405` with `Allow: POST`;
-any other path under `/shopify/app-proxy/` answers `404`. Every answer carries
-`Cache-Control: no-store` and `X-Content-Type-Options: nosniff`, and none sets a cookie.
+any other path under the prefix answers `404`; nothing under it ever redirects, trailing-slash
+redirects included. Every answer carries `Cache-Control: no-store` and
+`X-Content-Type-Options: nosniff`, none sets a cookie or a CORS header, and JSON answers also
+carry `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
+
+**Answers.** Success is `200 application/json` `{"status":"received"}`. Every error is an RFC
+9457 `application/problem+json` body with a stable `code` (PLAN §8): `unauthorized` (401),
+`not_found` (404), `unavailable` (404), `method_not_allowed` (405), `unsupported_media_type`
+(415), `too_large` (413), `invalid` (400, with an `errors` member), `rate_limited` (429, with
+`Retry-After`). That is the form the shared http-kit middleware already passes through
+unchanged. A request whose `Accept` does not include `application/json` is a plain form post:
+it gets a `200 application/liquid` page whatever the outcome, which Shopify renders in the
+theme; the page says what happened. The route sets its own 32 KiB body limit below the
+global one.
+
+**Parsing (applies to every step).** The raw query is parsed once into an ordered list of
+pairs with `form_urlencoded::parse`, never `axum::extract::Query` or `serde_urlencoded`,
+which drop repeated keys. More than 64 pairs is refused (`401`) before anything else. Every
+check below reads from that one parse.
 
 The api checks, in this order, and stops at the first failure:
 
-1. **Signature** (`401 {"status":"unauthorized"}`). From the raw query string: exactly one
-   `signature`, 64 lowercase hex digits; recompute over every other parameter as above with
-   `SHOPIFY_API_SECRET` (LAUNCH.md C row 1) and compare in constant time (`hmac`'s
-   `verify_slice`). A malformed signature is refused before any comparison.
-2. **Shop and freshness** (`401`). Exactly one `shop`, matching
+1. **Signature** (`401 unauthorized`). Exactly one `signature`, 64 lowercase hex digits; the
+   message is every other pair, decoded, as `key=value` with repeated keys' values joined by
+   commas, the whole strings sorted by bytes (not by key: `a-b=2` sorts before `a=1`), and
+   concatenated; the HMAC-SHA256 with `SHOPIFY_API_SECRET` (LAUNCH.md C row 1) is compared in
+   constant time (`hmac`'s `verify_slice`). A malformed signature is refused before any
+   comparison. The format has no separators, so `a=1b=2` and `a=1&b=2` sign alike; that is
+   safe only because the signed query is never shown to the shopper and every identity
+   parameter must appear once (step 2).
+2. **Reserved parameters** (`401`). Exactly one `shop`, matching
    `^[a-z0-9][a-z0-9-]*\.myshopify\.com$`; exactly one `timestamp`, 1 to 12 digits, no older
-   than 300 seconds and no more than 30 seconds ahead of the api's clock. Shopify signs each
-   request as it forwards it and never shows the signed query to the shopper, so the window
-   only bounds the replay of a captured server-side request.
-3. **Install** (`404 {"status":"unavailable"}`). `app_shop_by_domain(shop)` (ADR-022) finds an
-   installed shop; an uninstalled or unknown shop, or one whose merchant has switched reports off
-   in the app, gets this answer.
-4. **Media type** (`415 {"status":"unsupported_media_type"}`). The body is
-   `application/x-www-form-urlencoded` (optionally with `charset=UTF-8`), which a plain form
-   post and the extension's script both send.
-5. **Size** (`413 {"status":"too_large"}`). The body is read with a 32 KiB limit; a maximal
-   report in a non-Latin script percent-encodes to about 25 KB.
-6. **Rate limits** (`429 {"status":"rate_limited"}` with `Retry-After` in seconds). Counted on
-   every request that passed steps 1 to 5: per shop 30 an hour and 200 a day; per client 5 in
-   10 minutes and 20 a day. The client key is HMAC-SHA256 of the client IP under a key that
-   rotates daily and is never stored; it lives only in the limiter, which keeps nothing longer
-   than a day. The client IP is the address Shopify appends to `X-Forwarded-For`; Railway's edge
-   appends one more hop after it, so the api takes the entry its configured number of trusted
-   hops from the right, never the left-most one a client can set. Until the header's shape is
-   recorded on staging (live check, LAUNCH.md section E), per-shop limits are the authoritative
-   guard.
-7. **Body rules** (reference: `packages/theme-app-ext-test/src/barrier-report.ts`, held to its
+   than 300 seconds and no more than 30 seconds ahead of the api's clock; exactly one
+   `path_prefix`, matching `^/(a|apps|community|tools)/[A-Za-z0-9_-]{1,30}$`; at most one
+   `logged_in_customer_id`, digits or empty. Shopify does not document what it does with a
+   reserved parameter a client puts in the storefront URL; refusing every repeat means a
+   client's value can never stand beside or in front of Shopify's. A live check records what
+   Shopify actually forwards.
+3. **Replay** (treated as a duplicate: `200 received`, nothing stored). The api keeps, for 330
+   seconds, the SHA-256 of each accepted signature with the SHA-256 of its body. The same pair
+   again is a replay; one signature with more than three different bodies is refused (`401`).
+   Two reports from the same shop in the same second share a signature, since only the query is
+   signed, so the cache never refuses a signature on its first few distinct bodies. No route
+   under the prefix treats the signature as proof of who the shopper is.
+4. **Install** (`404 unavailable`). `app_shop_by_domain(shop)` (ADR-022) finds an installed
+   shop; an uninstalled or unknown shop, or one whose merchant has switched reports off in the
+   app, gets this answer.
+5. **Media type** (`415`). The body is `application/x-www-form-urlencoded` (optionally with
+   `charset=UTF-8`), which a plain form post and the extension's script both send.
+6. **Size** (`413`). At most 32 KiB; a maximal report in a non-Latin script percent-encodes to
+   about 25 KB.
+7. **Rate limits** (`429`).
+   - Stored reports per shop: 30 an hour and 200 a day, counted in PostgreSQL from
+     `barrier_reports`, so the limit holds across api instances. Discarded, invalid and
+     duplicate posts do not count, so nobody can spend a shop's budget without being stored.
+   - All verified requests per shop: 300 an hour, in process (`governor`, PLAN §7), as a cap
+     on load.
+   - Per client: 5 in 10 minutes and 20 a day, in process. The key is HMAC-SHA256, under a key
+     that rotates daily and is never stored, of the client address: IPv4 as is, IPv4-mapped
+     IPv6 folded to IPv4, other IPv6 by its /64. The address is the `X-Forwarded-For` entry
+     that Shopify appended, found by counting the hops the api trusts from the right (Railway's
+     edge, and Cloudflare's if the host is proxied), never the left-most entry a client can
+     write. The limiter holds at most 100,000 keys and nothing older than a day. In-process
+     limits apply per api instance. Until the header's shape is recorded on staging (live
+     check), the per-shop limits are the authoritative guard.
+8. **Body rules** (reference: `packages/theme-app-ext-test/src/barrier-report.ts`, held to its
    tests). The first value of each field is used and unknown fields are ignored.
    - `website` (the honeypot) not blank, or `elapsed_ms` present, numeric and under 3000:
      answer exactly as for an accepted report and store nothing.
-   - `description`: CRLF to LF, NFC, C0 and C1 controls (except tab and line feed) and the
-     bidirectional overrides and isolates (U+202A to U+202E, U+2066 to U+2069) removed,
-     trimmed; required; at most 2000 UTF-16 code units, as the form's `maxlength` counts.
+   - `description`: CRLF and U+2028/U+2029 to LF; C0 and C1 controls (except tab and line
+     feed), the bidirectional overrides and isolates (U+202A to U+202E, U+2066 to U+2069), the
+     zero-width space (U+200B), word joiner (U+2060) and byte-order mark removed; then NFC;
+     then trimmed. Zero-width (non-)joiners and directional marks stay, because scripts such as
+     Persian, Hindi and Arabic need them. Required; at most 2000 UTF-16 code units, as the
+     form's `maxlength` counts. In the Rust port these characters are written as `\u{…}`
+     escapes, never literally (rustc denies literal bidi characters).
    - `email`: trimmed; optional; at most 254 characters and the WHATWG "valid email address"
      production that `<input type="email">` enforces.
-   - Errors answer `400 {"status":"invalid","errors":[{"field":"description","code":"missing"}]}`
-     with codes `missing` and `too-long` for `description` and `invalid` for `email`. The
-     script shows these next to their fields.
-   - `page`: kept only if it starts with `/`, not `//` or `/\`, has no control character and is
-     at most 2048 characters; otherwise null. `page_type`: kept only if it is one of the 22
-     documented `request.page_type` values. `locale`: kept only if it matches
-     `^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{1,8}){0,4}$` and is at most 35 characters.
+   - Errors answer `400 invalid` with `"errors":[{"field":"description","code":"missing"}]`:
+     codes `missing` and `too-long` for `description`, `invalid` for `email`. The script shows
+     these next to their fields.
+   - `page_type`: kept only if it is one of the 22 documented `request.page_type` values.
+     `page`: kept only for a public page type (`404`, `article`, `blog`, `cart`, `collection`,
+     `index`, `list-collections`, `metaobject`, `page`, `policy`, `product`, `search`), and only
+     if it starts with `/`, not `//` or `/\`, has no control, bidirectional, invisible or
+     whitespace character and is at most 2048 characters; otherwise null. Account, gift card,
+     password and challenge pages can carry order numbers or codes in their paths, so the
+     embed sends their type alone and the api would drop a path anyway. `locale`: kept only if
+     it matches `^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{1,8}){0,4}$` and is at most 35 characters.
    - `logged_in_customer_id`, `path_prefix` and every other query parameter are never stored.
-8. **Duplicates.** The same shop, description and email within 24 hours: answer as accepted and
-   store nothing new.
-9. **Store and answer** `200 {"status":"received"}`.
+9. **Duplicates.** The same shop, description and email on the same UTC day: answer as
+   accepted and store nothing new (step "Storage" below).
+10. **Store and answer** `200 received`.
 
-The answer's format follows `Accept`: `application/json` gets the JSON bodies above (the
-script sends that). Anything else is a plain form post: the api answers `Content-Type:
-application/liquid` with a short page, which Shopify renders in the theme: a heading, one
-sentence, and a link back. Its strings are the api's own, in the report's `locale` with
-English as the fallback, and pass `claims-lint`. The page never contains the description, the
-email or any other submitted text, and no input is ever placed into Liquid source; the link
-back is `/`, or the validated `page` with every character outside `A-Z a-z 0-9 - . _ ~ /`
-percent-encoded, so no Liquid or HTML syntax can survive into it. No redirect is used, since
-Shopify follows 30x answers itself.
+**The page for a plain form post** is built only from fixed templates in the api's message
+catalog, in the report's `locale` with English as the fallback, passing `claims-lint`: a
+heading, one sentence, and a link back, wrapped in `{% raw %}…{% endraw %}` so Shopify
+interprets nothing in it. It never contains the description, the email or any other submitted
+text. The link back is `/`, or the validated `page` with every character outside
+`A-Z a-z 0-9 - . _ ~ /` percent-encoded. A test posts a hostile body and asserts that no
+submitted byte appears in the answer.
 
-The client secret never appears in logs; logs carry the tenant id, the outcome code and the
-latency, never the query string, signature, body, email, IP or user agent (PLAN §8, §21).
+**Logs and metrics.** The client secret never appears in logs. Logs carry the tenant id, the
+outcome code and the latency, never the query string, signature, body, email, IP or user
+agent (PLAN §8, §21). Each outcome is a metric, and a rise in `bad-signature` alerts as webhook
+signature failures do (PLAN §21). Whether Railway's edge logs keep the full query (with
+`logged_in_customer_id` and the signature) is recorded on staging; if they do, the edge's log
+settings drop the query for this path.
 
 ### Data held, and for how long (PLAN §19)
 
 | Field | Kept | Why |
 | --- | --- | --- |
-| `description` | As cleaned above | What the barrier is |
-| `email` | Only if given; encrypted with a per-row data key wrapped by the master key (ADR-021), plus an HMAC-SHA256 lookup hash of its trimmed lowercase form, keyed with a key derived from `RAMPSMITH_MASTER_KEYS` by HKDF-SHA256 (info `barrier-report-email-lookup`), for the compliance webhooks | So the merchant can reply |
-| `page`, `page_type`, `locale` | As validated; account pages send only `/account` | Where it happened, in which language |
+| `description` | As cleaned above; shown as plain text everywhere (App Home without automatic links, digests, PDFs; passed to any AI prompt only as delimited data) | What the barrier is |
+| `email` | Only if given; encrypted with a per-row data key wrapped by the master key (ADR-021), encryption context `barrier_reports/email/<report id>` | So the merchant can reply |
+| `email_lookup`, `email_lookup_key_id` | HMAC-SHA256 of the trimmed lowercase email under a lookup key, and that key's id | To find a shopper's reports for the compliance webhooks |
+| `page`, `page_type`, `locale` | As validated | Where it happened, in which language |
 | `received_at` | Always | Retention and ordering |
 
 Not collected: names, IP addresses (only the transient limiter key above), customer ids,
 cookies, user agents. Rampsmith processes the reports for the merchant (processor; PLAN §19).
 
+**Lookup and duplicate keys.** `crates/crypto` derives, for each master key id in
+`RAMPSMITH_MASTER_KEYS`, separate purpose keys with HKDF-SHA256 (info
+`rampsmith/barrier-report/email-lookup/v1` and `rampsmith/barrier-report/dedupe/v1`); the
+master key itself only wraps data keys. The newest key id is used for new rows and stored with
+them. A compliance webhook compares the payload's email against the hashes under every key id
+in the ring. Before an old master key leaves the ring, the rotation job opens each email it
+protects and recomputes `email_lookup` (and the duplicate key) under the newest key, and a test
+proves `customers/redact` still finds a report after a rotation.
+
 - **Retention:** 12 months from `received_at`, then deleted by the scheduler; the merchant can
   delete any report at any time.
-- **`customers/data_request`:** reports whose lookup hash matches the payload's customer email
-  are exported to the merchant; otherwise the answer is that none are held.
+- **`customers/data_request`:** reports whose `email_lookup` matches the payload's email, or
+  whose description contains the payload's email or phone number (case-insensitive, after the
+  same cleaning), are exported to the merchant; otherwise the answer is that none are held.
 - **`customers/redact`:** those reports are deleted.
 - **`shop/redact`:** every report of the shop is deleted with the rest of its data.
+- The sweep and the compliance handlers run under `TenantTx`, one tenant at a time (or a narrow
+  `security definer` function like ADR-022's), never through a connection that bypasses
+  row-level security.
 - **Requirement 5.1.5:** every report is listed in the embedded App Home, with delete and CSV
   export; no Shopify customer record is created (no customer scopes are requested).
+- **CSV export:** every cell quoted, quotes doubled, and a cell that starts with `=`, `+`, `-`,
+  `@`, tab, carriage return or their full-width forms prefixed with `'`
+  (`exportCell` in the reference module, with its tests), because every row is text from an
+  anonymous visitor.
 
 ### Storage (main builder)
 
 A tenant-owned `barrier_reports` table under `TenantTx` and row-level security, with the
 isolation suite extended to it: `id` (UUIDv7), `tenant_id`, `shop_id`, `description`,
-`email_ciphertext` (nullable), `email_key_id`, `email_lookup` (nullable, indexed per tenant),
-`page`, `page_type`, `locale`, `received_at`, `dedupe_hash` (SHA-256 of shop, description and
-email, unique per shop within the 24-hour window, enforced by the insert). A new report
-enqueues `barrier_report.notify`, which emails the merchant a daily digest at most (WS-10's
-templates) and never includes the shopper's email address in the subject.
+`email_ciphertext` and its wrapped data key and key id (nullable), `email_lookup` and
+`email_lookup_key_id` (nullable, indexed per tenant), `page`, `page_type`, `locale`,
+`received_at`, `received_day` (the UTC date), and `dedupe_key`: HMAC-SHA256 under the dedupe
+purpose key of the length-prefixed encoding of (shop id, cleaned description, `email_lookup`
+or empty), never a plain hash, which would let anyone holding a backup test candidate emails.
+`unique (shop_id, received_day, dedupe_key)` enforces the duplicate rule; the insert's
+conflict is the "store nothing new" outcome.
+
+A new report enqueues `barrier_report.notify` with the report id only. It sends the merchant a
+daily digest at most (WS-10's templates): fixed subject text, a count and a link into App Home,
+never a description or a shopper's email. Nothing is ever sent automatically to the submitted
+email address, which is unverified. The `jobs` table's payload holds no shopper data because of
+that.
 
 ### Abuse and spam
 
 The signature makes every report provably the shop's; it cannot tell a person from a bot. The
-honeypot, the 3-second floor (script only), the rate limits and duplicate suppression do that,
-all answering bots as if they succeeded. No CAPTCHA: it would add a third-party script and
-cookies to every storefront page and an accessibility barrier of its own. A cross-site post to
-the proxy has no ambient authority to abuse (`logged_in_customer_id` is ignored), so it is
-spam like any other and meets the same limits. A merchant who sees abuse turns the form off in
-the embed settings; the api can switch reports off per shop (step 3).
+honeypot, the 3-second floor (script only), the limits and duplicate suppression do that, all
+answering bots as if they succeeded. No CAPTCHA: it would add a third-party script and cookies
+to every storefront page and an accessibility barrier of its own. A cross-site post to the
+proxy has no ambient authority to abuse (Shopify strips the response cookies, and
+`logged_in_customer_id` is ignored), so it is spam like any other and meets the same limits. A
+merchant who sees abuse turns the form off in the embed settings; the api can switch reports
+off per shop (step 4).
 
 ## Consequences
 
 - The api needs `SHOPIFY_API_SECRET` (already row 1) and the `write_app_proxy` scope, which
   merchants grant at install. Adding a scope later asks installed merchants to approve it, so it
   goes in before R1's design partners install.
+- `crates/crypto` gains HKDF purpose keys per master key id (it holds only AES-GCM instances
+  today), and the key-rotation job gains the lookup re-hash.
+- The query and body parsers join the property-test and fuzzing list in PLAN §18.
 - Live checks (LAUNCH.md section E): a report through the real proxy on development store A
-  (rows 1, 3 and 8), and the `X-Forwarded-For` shape recorded on staging (row 8).
+  (rows 1, 3 and 8); the reserved parameters a client puts in the URL, sent through the real
+  proxy, with what the api received recorded; the `X-Forwarded-For` shape and Railway's edge
+  log contents recorded on staging (row 8).
 - The api's Rust tests use Shopify's two vectors and the reference module's cases.
+- Security audit (security-auditor brief, effort max, 18 Oct 2026): PASS, no critical or high
+  findings; its five medium and ten low findings are resolved in this ADR, ADR-163, the
+  reference modules and the extension.
 
 ## Plan correction
 
 PLAN §14 "Access scopes", add a row: "`write_app_proxy` | Serve the barrier-report form's app
 proxy (`/apps/rampsmith`); Shopify requires it to configure a proxy (ADR-162)".
 
-PLAN §14 "Webhooks" is unchanged; add after it a subsection "App proxy" that points to ADR-162:
-`POST /apps/rampsmith/barrier-report` to the api's `/shopify/app-proxy/barrier-report`,
-signature checked in constant time over the query, timestamp within 300 seconds, 401 on any
-failure, per-shop and per-client limits, honeypot and timing checks.
+PLAN §14, add after "Webhooks" a subsection "App proxy": "`POST /apps/rampsmith/barrier-report`
+reaches `/shopify/app-proxy/barrier-report` on the webhook host. The api parses the query once,
+checks the signature in constant time, requires each reserved parameter once and a timestamp
+within 300 seconds, refuses replays, and answers 401 to any failure; then per-shop and
+per-client limits, the honeypot and timing checks, and duplicate suppression (ADR-162)."
 
 PLAN §14 "App Home screens", add a row: "`/reports` | Barrier reports from the storefront form:
-read, delete, export (requirement 5.1.5)".
+read, delete, CSV export (requirement 5.1.5)".
 
-PLAN §18 "Threats and controls", add a row: "Forged or flooded barrier reports | App proxy
-signature and freshness check, per-shop and per-client limits, honeypot, timing floor,
-duplicate suppression; nothing submitted is ever reflected (ADR-162)".
+PLAN §18 "Threats and controls", add a row: "Forged, replayed or flooded barrier reports |
+App proxy signature, reserved-parameter and freshness checks, a replay cache, per-shop and
+per-client limits, honeypot, timing floor, duplicate suppression; nothing submitted is ever
+reflected, and exports defuse spreadsheet formulas (ADR-162)". PLAN §18 "Verification": add
+"the app proxy's query and body parsers" to the property-test and fuzzing list.
 
 PLAN §19 "Data inventory", replace the barrier-report row's Source and Purpose with "Theme
 app embed, through the app proxy | Passed to the merchant; email encrypted, only if given" and
-keep "12 months; deletable by the merchant".
+keep "12 months; deletable by the merchant". PLAN §19 "Subprocessors": the Railway row's
+personal data becomes "Account data, store content, barrier reports".
+
+PLAN §22 "Services", replace the public-hosts sentence with: "The public hosts are the app and
+marketing site, and one webhook host that serves only `/webhooks/shopify`, `/webhooks/github`,
+`/webhooks/stripe` and `POST /shopify/app-proxy/barrier-report` (ADR-162)."

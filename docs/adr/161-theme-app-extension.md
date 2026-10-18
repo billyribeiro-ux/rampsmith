@@ -75,7 +75,8 @@ the extension root other than the TOML are never uploaded.
    anything to show it renders nothing; in the theme editor only, it shows a merchant notice
    instead (merchant-facing, so the `design_mode` caution does not apply).
 4. **Statement URL.** The embed setting if set, else the app-data metafield
-   `rampsmith.statement_url` (ADR-163). No URL, no link.
+   `rampsmith.statement_url` (ADR-163), and only if it starts with `https://` or a single `/`.
+   No usable URL, no link.
 5. **No JavaScript needed.** `<details>` opens the form, the browser validates `required`,
    `maxlength` and `type="email"`, and the form posts to the app proxy (ADR-162). The script
    adds in-page sending with `fetch`, inline errors linked by `aria-describedby`, focus on the
@@ -93,9 +94,9 @@ the extension root other than the TOML are never uploaded.
    focus rings use `currentColor`; the fixed schemes are #1f1f1f/#fff with errors #b3261e and
    #ffb4ab (all at least 4.5:1); the error and status lines keep one line of space while empty;
    nothing animates.
-8. **Data minimisation.** The form sends the page path, page type and locale with the report;
-   on customer account pages it sends only `/account`, because those paths can carry order
-   numbers. The description hint asks shoppers to leave out payment, health and other personal
+8. **Data minimisation.** The form sends the page type and locale with the report, and the
+   path only for public page types; account, gift card, password and challenge pages send their
+   type alone, because their paths can carry order numbers or gift card codes. The description hint asks shoppers to leave out payment, health and other personal
    details. No app branding appears on the storefront (requirement 5.1.4).
 9. **Uninstall.** The extension holds no theme files: Shopify removes the embed with the app.
    Nothing else is written anywhere in the theme or the browser.

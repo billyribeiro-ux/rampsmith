@@ -36,15 +36,26 @@ Checked on shopify.dev on 17 and 18 October 2026:
    | Key | Type | Value | Written when |
    | --- | --- | --- | --- |
    | `statement_url` | `url` | The published statement's URL, absolute or root-relative | The merchant publishes a statement; deleted when it is unpublished |
-   | `proxy_path` | `single_line_text_field` | The proxy's storefront path, matching `^/(a\|apps\|community\|tools)/[A-Za-z0-9_-]{1,30}$` | A verified proxied request's `path_prefix` differs from `/apps/rampsmith`; deleted when it returns to the default |
+   | `proxy_path` | `single_line_text_field` | The proxy's storefront path, matching `^/(a\|apps\|community\|tools)/[A-Za-z0-9_-]{1,30}$` | The merchant confirms it in App Home (below); deleted when it returns to the default |
 
 2. **The embed reads them** as `app.metafields.rampsmith.statement_url.value` and
    `app.metafields.rampsmith.proxy_path.value`, falling back to the embed's own URL setting and
-   to `/apps/rampsmith`. Both are escaped where they are output.
-3. **Activation.** App Home's onboarding (requirement 5.1.3) shows the deep link
+   to `/apps/rampsmith`, and trusts neither as is: it links a statement only if its URL starts
+   with `https://` or with a single `/` (not `//` or `/\`), and it uses a proxy path only if it
+   is a plain same-site path (a leading `/`; no `//`, `:`, `?`, `#`, `.`, `%`, space or
+   backslash; at most 40 characters). Both are escaped where they are output.
+3. **How `proxy_path` gets set.** A moved proxy is a store setting a request cannot be trusted
+   to report: one forged parameter written into `proxy_path` would send every later report
+   (descriptions and emails) to another app's proxy, and the form would never reach Rampsmith
+   again to undo it. So the api never writes `proxy_path` from a request by itself. When a
+   request that passed every ADR-162 check carries a `path_prefix` other than the stored one,
+   the api records it as a suggestion; App Home shows it, and only the merchant's confirmation
+   (or the merchant typing the path from the admin's App proxy settings) writes the
+   metafield.
+4. **Activation.** App Home's onboarding (requirement 5.1.3) shows the deep link
    `https://<shop>/admin/themes/current/editor?context=apps&activateAppId=<client id>/accessibility`
    and says the embed starts off and that the form is a separate setting.
-4. **No `available_if`.** The embed stays visible in the editor before a statement exists, so
+5. **No `available_if`.** The embed stays visible in the editor before a statement exists, so
    the merchant can enable it and the form first; the editor notice explains the missing link.
 
 ## Consequences
@@ -52,9 +63,9 @@ Checked on shopify.dev on 17 and 18 October 2026:
 - Where the statement is published (an Online Store page through `write_content`, or a page the
   api serves through the proxy) is the statement generator's decision (WS-13 and the main
   builder); the embed only needs its URL in `statement_url`.
-- If a merchant moves the proxy before any request reaches the api, the form posts to the
-  default path and fails with the "could not be sent" message until `proxy_path` is set; App
-  Home can set it from the merchant's input as well.
+- If a merchant moves the proxy, the form posts to the default path and fails with the "could
+  not be sent" message until the merchant confirms the new path in App Home; App Home's
+  settings say so next to the embed instructions.
 - Live check (LAUNCH.md section E, rows 1 and 3): `metafieldsSet` on the app installation with
   the app's scopes, then the link on development store A.
 
