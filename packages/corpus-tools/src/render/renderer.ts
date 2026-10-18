@@ -263,7 +263,7 @@ export class ThemeRenderer {
       localization: { language: s.locale, available_languages: [s.locale] },
       template: {
         name: pageType.replace(/^customers\//, ''),
-        suffix: null,
+        suffix: spec.template.includes('.') ? (spec.template.split('.')[1] ?? null) : null,
         directory: spec.template.startsWith('customers/') ? 'customers' : null,
       },
       canonical_url: `${String(lookupPath(s.shop, 'url'))}${spec.path}`,

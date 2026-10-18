@@ -1,0 +1,4 @@
+# Real themes edited on Windows keep CRLF line endings, and span offsets count both characters.
+# These files keep CRLF in every checkout so the golden offsets stay valid (ADR-201).
+themes/birch/snippets/*.liquid text eol=crlf
+themes/birch-clean/snippets/*.liquid text eol=crlf

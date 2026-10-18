@@ -100,6 +100,64 @@
           "path": "/account/login"
         }
       ]
+    },
+    {
+      "name": "birch",
+      "kind": "failing",
+      "path": "themes/birch",
+      "store": "harbor",
+      "golden": "golden/birch.json",
+      "description": "An older-style theme still common on live stores: tab indentation, CRLF snippets, static header and footer sections, {% include %}, a stylesheet rendered from theme settings (theme.css.liquid), icon fonts, unquoted and single-quoted attributes, and markup duplicated for mobile and desktop.",
+      "variety": [
+        "tab indentation",
+        "CRLF line endings in snippets",
+        "static sections with settings in config/settings_data.json",
+        "{% include %} and legacy img_url",
+        "colour from assets/theme.css.liquid, both hard-coded and from settings",
+        "unquoted and single-quoted attribute values",
+        "lazy images with data-src",
+        "an empty aria-label",
+        "identical mobile and desktop markup in one section"
+      ],
+      "pages": [
+        {
+          "id": "index",
+          "template": "index",
+          "path": "/"
+        },
+        {
+          "id": "collection",
+          "template": "collection",
+          "path": "/collections/summer-edit",
+          "resource": {
+            "type": "collection",
+            "handle": "summer-edit"
+          }
+        },
+        {
+          "id": "product",
+          "template": "product",
+          "path": "/products/wool-throw",
+          "resource": {
+            "type": "product",
+            "handle": "wool-throw"
+          }
+        },
+        {
+          "id": "search",
+          "template": "search",
+          "path": "/search?q=linen"
+        },
+        {
+          "id": "contact",
+          "template": "page.contact",
+          "path": "/pages/contact",
+          "resource": {
+            "type": "page",
+            "handle": "contact"
+          }
+        }
+      ]
     }
   ]
 }

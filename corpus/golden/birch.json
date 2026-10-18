@@ -1,0 +1,631 @@
+{
+  "$schema": "../schema/golden.schema.json",
+  "subject": "birch",
+  "kind": "failing",
+  "alignment": {
+    "axeCore": "4.14.0",
+    "a11yRules": "b79ba2f",
+    "liquidPatch": "551b200"
+  },
+  "findings": [
+    {
+      "id": "html-lang-empty",
+      "ruleId": "html-has-lang",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["3.1.1"],
+      "category": "document-language",
+      "description": "The layout sets lang=\"\" on <html>, which declares no language.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": "html"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "layout/theme.liquid",
+        "start": 16,
+        "tag": "html",
+        "anchor": "<html lang=\"\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "document-language",
+        "outcome": "fixed",
+        "targeted": true,
+        "note": "The recipe replaces the empty value with {{ request.locale.iso_code }} (ADR-102)."
+      }
+    },
+    {
+      "id": "announcement-contrast",
+      "ruleId": "color-contrast",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.4.3"],
+      "category": "low-contrast",
+      "description": "Announcement text takes the colour setting #a6a6a6 through assets/theme.css.liquid, on #fafafa: about 2.3:1.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".announcement__text"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "json-value",
+        "file": "config/settings_data.json",
+        "pointer": "/current/color_announcement_text",
+        "start": 145,
+        "end": 154
+      },
+      "rendersFrom": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 28,
+        "tag": "p",
+        "anchor": "<p class=\"announcement__text\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "contrast",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "minimumRatio": 4.5,
+          "against": "/current/color_announcement_bg"
+        },
+        "note": "The setting reaches the page through {{ settings.color_announcement_text }} in a .css.liquid asset, not a {% style %} tag."
+      }
+    },
+    {
+      "id": "card-vendor-contrast",
+      "ruleId": "color-contrast",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.4.3"],
+      "category": "low-contrast",
+      "description": "The product card vendor line is hard-coded #a8a8a8 in the stylesheet, about 2.4:1 on white.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".product-card__vendor",
+          "count": 3
+        },
+        {
+          "page": "collection",
+          "selector": ".product-card__vendor",
+          "count": 4
+        },
+        {
+          "page": "search",
+          "selector": ".product-card__vendor",
+          "count": 2
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "css-declaration",
+        "file": "assets/theme.css.liquid",
+        "start": 2679,
+        "end": 2693,
+        "property": "color",
+        "anchor": "color: #a8a8a8"
+      },
+      "rendersFrom": {
+        "kind": "element",
+        "file": "snippets/product-card.liquid",
+        "start": 368,
+        "tag": "p",
+        "anchor": "<p class=\"product-card__vendor\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "contrast",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "minimumRatio": 4.5
+        }
+      }
+    },
+    {
+      "id": "announcement-close-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The announcement close button has aria-label=\"\" and an SVG hidden from assistive technology.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".announcement__close"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 108,
+        "tag": "button",
+        "anchor": "<button type=\"button\" class=\"announcement__close\" aria-label=\"\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "general.announcement.close",
+            "text": "Close announcement"
+          }
+        },
+        "note": "The recipe replaces the empty aria-label (ADR-102)."
+      }
+    },
+    {
+      "id": "header-search-label",
+      "ruleId": "label",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The header search field, written with unquoted attribute values, has no label, placeholder or id.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".site-header__search-input"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 833,
+        "tag": "input",
+        "anchor": "<input type=search name=q class=site-header__search-input>"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "general.search.label",
+            "text": "Search"
+          },
+          "visuallyHiddenClass": "sr-only"
+        },
+        "note": "A static section: section.id is \"header\", so the added id is Field-q-{{ section.id }}."
+      }
+    },
+    {
+      "id": "account-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The account link holds only an icon-font <i> marked aria-hidden.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".site-header__account"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 1012,
+        "tag": "a",
+        "anchor": "<a href=\"/account\" class=\"site-header__account\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "customer.account.title",
+            "text": "Account"
+          },
+          "visuallyHiddenClass": "sr-only"
+        }
+      }
+    },
+    {
+      "id": "desktop-cart-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The desktop cart link holds only an image with alt=\"\", so it has no name.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".site-header__desktop .site-header__cart"
+        }
+      ],
+      "mapping": "ambiguous",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 1123,
+        "tag": "a",
+        "anchor": "<a href=\"/cart\" class=\"site-header__cart\">\n\t\t\t<img src=\"{{ 'icon-cart.svg' | asset_url }}\" alt=\"\" width=\"24\" height=\"24\">\n\t\t</a>\n\t</div>\n</header>"
+      },
+      "ambiguity": "sections/header.liquid has two identical cart links: one in .site-header__mobile (display: none at 1280px) and this one in .site-header__desktop. Tag, attributes and classes match; only the parent element's class tells them apart.",
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": false,
+        "params": {
+          "label": {
+            "key": "templates.cart.cart",
+            "text": "Cart"
+          },
+          "visuallyHiddenClass": "sr-only"
+        },
+        "note": "Not in the fix-rate denominator: the span is chosen among identical candidates. The hidden mobile copy has the same failure and needs the same edit."
+      }
+    },
+    {
+      "id": "youtube-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The YouTube link holds only an icon-font <i>; the Pinterest link beside it is named by its title attribute.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".social-icons__link[href*=\"youtube\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "snippets/social-icons.liquid",
+        "start": 310,
+        "tag": "a",
+        "anchor": "<a href=\"{{ settings.social_youtube_link }}\" class=\"social-icons__link\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "general.social.youtube",
+            "text": "YouTube"
+          },
+          "visuallyHiddenClass": "sr-only"
+        }
+      }
+    },
+    {
+      "id": "payment-visa-alt",
+      "ruleId": "image-alt",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-theme-image",
+      "description": "The Visa payment icon is an asset image with no alt attribute; the Mastercard icon beside it has one.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".payment-icon[src*=\"payment-visa\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/footer.liquid",
+        "start": 622,
+        "tag": "img",
+        "anchor": "<img src=\"{{ 'payment-visa.svg' | asset_url }}\" class=\"payment-icon\" width=\"38\" height=\"24\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "image-alt",
+        "outcome": "refused",
+        "refusal": "no-image-object",
+        "targeted": false,
+        "note": "The src is an asset URL with no image object to take alt from; a person decides between alt=\"Visa\" and decorative alt=\"\" with a reason."
+      }
+    },
+    {
+      "id": "slideshow-prev-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The slideshow previous button, written with single-quoted attributes, holds only an aria-hidden icon span.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".slideshow__btn--prev"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/slideshow.liquid",
+        "start": 398,
+        "tag": "button",
+        "anchor": "<button type='button' class='slideshow__btn slideshow__btn--prev'>"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "sections.slideshow.previous",
+            "text": "Previous slide"
+          }
+        }
+      }
+    },
+    {
+      "id": "slideshow-next-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The slideshow next button holds only an aria-hidden icon span.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".slideshow__btn--next"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/slideshow.liquid",
+        "start": 544,
+        "tag": "button",
+        "anchor": "<button type='button' class='slideshow__btn slideshow__btn--next'>"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "sections.slideshow.next",
+            "text": "Next slide"
+          }
+        }
+      }
+    },
+    {
+      "id": "card-image-alt",
+      "ruleId": "image-alt",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-theme-image",
+      "description": "Product card images load lazily from data-src and have no alt attribute; the snippet renders once per card.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".product-card__image",
+          "count": 3
+        },
+        {
+          "page": "collection",
+          "selector": ".product-card__image",
+          "count": 4
+        },
+        {
+          "page": "search",
+          "selector": ".product-card__image",
+          "count": 2
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "snippets/product-card.liquid",
+        "start": 88,
+        "tag": "img",
+        "anchor": "<img data-src=\"{{ product.featured_image | img_url: '600x' }}\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "image-alt",
+        "outcome": "fixed",
+        "targeted": true,
+        "note": "The image object is read from data-src: alt=\"{{ product.featured_image.alt | escape }}\". The mug's media alt is empty, so its card image becomes decorative until the data fix."
+      }
+    },
+    {
+      "id": "collection-hero-alt",
+      "ruleId": "image-alt",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-theme-image",
+      "description": "The collection image, printed with the legacy img_url filter, has no alt attribute.",
+      "occurrences": [
+        {
+          "page": "collection",
+          "selector": ".collection-hero__image"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/collection-template.liquid",
+        "start": 55,
+        "tag": "img",
+        "anchor": "<img src=\"{{ collection.image | img_url: '1200x' }}\" class=\"collection-hero__image\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "image-alt",
+        "outcome": "fixed",
+        "targeted": true
+      }
+    },
+    {
+      "id": "sort-select-name",
+      "ruleId": "select-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The collection sort <select> has an id but no label; a <span> shows \"Sort by\" beside it.",
+      "occurrences": [
+        {
+          "page": "collection",
+          "selector": "#SortBy"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/collection-template.liquid",
+        "start": 357,
+        "tag": "select",
+        "anchor": "<select name=\"sort_by\" id=\"SortBy\" class=\"collection-sort__select\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "collections.sorting.title",
+            "text": "Sort by"
+          },
+          "visuallyHiddenClass": "sr-only"
+        }
+      }
+    },
+    {
+      "id": "contact-message-label",
+      "ruleId": "label",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The contact form message <textarea> has a paragraph above it but no label.",
+      "occurrences": [
+        {
+          "page": "contact",
+          "selector": "#ContactMessage"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/contact-form.liquid",
+        "start": 517,
+        "tag": "textarea",
+        "anchor": "<textarea\n\t\t\trows=\"6\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "contact.form.message",
+            "text": "Message"
+          },
+          "visuallyHiddenClass": "sr-only"
+        }
+      }
+    },
+    {
+      "id": "btn-focus-outline",
+      "ruleId": "rs-focus-indicator-missing",
+      "engine": "rampsmith-browser",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.7"],
+      "category": "focus-visible",
+      "description": "The stylesheet removes the focus outline from every .btn and adds no other focus style.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".btn",
+          "count": 2
+        },
+        {
+          "page": "collection",
+          "selector": ".btn",
+          "count": 2
+        },
+        {
+          "page": "product",
+          "selector": ".btn",
+          "count": 3
+        },
+        {
+          "page": "search",
+          "selector": ".btn",
+          "count": 3
+        },
+        {
+          "page": "contact",
+          "selector": ".btn",
+          "count": 3
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "css-declaration",
+        "file": "assets/theme.css.liquid",
+        "start": 755,
+        "end": 765,
+        "property": "outline",
+        "anchor": "outline: 0"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "focus-visible",
+        "outcome": "fixed",
+        "targeted": false,
+        "params": {
+          "minimumRatio": 3
+        },
+        "note": "A planned deterministic recipe (PLAN §12, invisible focus): a :focus-visible outline meeting 3:1. Outside the six top categories, so not in the fix-rate denominator."
+      }
+    }
+  ]
+}

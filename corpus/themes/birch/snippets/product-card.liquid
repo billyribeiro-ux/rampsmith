@@ -1,0 +1,8 @@
+<div class="product-card">
+	<a href="{{ product.url }}" class="product-card__link">
+		<img data-src="{{ product.featured_image | img_url: '600x' }}" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="lazyload product-card__image" width="300" height="375">
+		<span class="product-card__title">{{ product.title }}</span>
+	</a>
+	<p class="product-card__vendor">{{ product.vendor }}</p>
+	<p class="product-card__price">{{ product.price | money }}</p>
+</div>

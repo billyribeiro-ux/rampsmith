@@ -1,0 +1,19 @@
+<div class="search-page">
+	<h1 class="search-page__title">{{ 'general.search.title' | t }}</h1>
+	<form action="/search" method="get" role="search" class="search-page__form">
+		<label for="SearchQuery">{{ 'general.search.label' | t }}</label>
+		<input type="search" name="q" id="SearchQuery" value="{{ search.terms | escape }}">
+		<button type="submit" class="btn">{{ 'general.search.submit' | t }}</button>
+	</form>
+  {% if search.performed %}
+		<div class="grid">
+      {% for item in search.results %}
+        {% render 'product-card', product: item %}
+      {% endfor %}
+		</div>
+  {% endif %}
+</div>
+
+{% schema %}
+{ "name": "Search", "settings": [] }
+{% endschema %}
