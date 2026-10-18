@@ -1,0 +1,111 @@
+{%- comment -%}
+  Rampsmith app embed (PLAN §14, ADR-161). Off until the merchant enables it under Theme
+  settings > App embeds. It renders a small labelled region before </body>: a link to the
+  published accessibility statement and, if the merchant turns it on, a barrier-report form
+  that posts through the signed app proxy (ADR-162). Every visible string comes from
+  locales/; nothing is written to the theme, cookies or browser storage.
+
+  App-data metafields the app sets (ADR-162): rampsmith.statement_url, the published
+  statement, used when the embed's own URL setting is empty; and rampsmith.proxy_path, set
+  only if the merchant moved the app proxy away from /apps/rampsmith.
+{%- endcomment -%}
+{%- liquid
+  assign statement_url = block.settings.statement_url
+  if statement_url == blank
+    assign statement_url = app.metafields.rampsmith.statement_url.value
+  endif
+
+  assign show_link = false
+  if block.settings.show_statement_link and statement_url != blank
+    assign show_link = true
+  endif
+
+  assign show_form = block.settings.show_report_form
+  assign proxy_path = app.metafields.rampsmith.proxy_path.value | default: '/apps/rampsmith'
+
+  case block.settings.color_scheme
+    when 'light'
+      assign scheme = 'light'
+    when 'dark'
+      assign scheme = 'dark'
+    else
+      assign scheme = 'theme'
+  endcase
+
+  assign uid = 'rs-a11y-' | append: block.id
+-%}
+{%- if show_link or show_form -%}
+  {%- render 'rampsmith-a11y-styles' -%}
+  <aside
+    class="rs-a11y rs-a11y--{{ scheme }}"
+    aria-label="{{ 'embed.landmark_label' | t }}"
+    data-rampsmith-a11y
+  >
+    {%- if show_link -%}
+      <p class="rs-a11y__links">
+        <a class="rs-a11y__link" href="{{ statement_url | escape }}">
+          {{- 'embed.statement_link' | t -}}
+        </a>
+      </p>
+    {%- endif -%}
+    {%- if show_form -%}
+      {%- render 'rampsmith-barrier-report', uid: uid, proxy_path: proxy_path -%}
+    {%- endif -%}
+  </aside>
+{%- elsif request.design_mode -%}
+  {%- render 'rampsmith-a11y-styles' -%}
+  <aside
+    class="rs-a11y rs-a11y--theme"
+    aria-label="{{ 'embed.landmark_label' | t }}"
+    data-rampsmith-a11y
+  >
+    <p class="rs-a11y__notice">{{ 'embed.editor_notice' | t }}</p>
+  </aside>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "t:embed.name",
+  "target": "body",
+  "settings": [
+    {
+      "type": "header",
+      "content": "t:embed.settings.statement_header.content"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_statement_link",
+      "label": "t:embed.settings.show_statement_link.label",
+      "default": true
+    },
+    {
+      "type": "url",
+      "id": "statement_url",
+      "label": "t:embed.settings.statement_url.label",
+      "info": "t:embed.settings.statement_url.info"
+    },
+    {
+      "type": "header",
+      "content": "t:embed.settings.report_header.content"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_report_form",
+      "label": "t:embed.settings.show_report_form.label",
+      "info": "t:embed.settings.show_report_form.info",
+      "default": false
+    },
+    {
+      "type": "select",
+      "id": "color_scheme",
+      "label": "t:embed.settings.color_scheme.label",
+      "options": [
+        { "value": "theme", "label": "t:embed.settings.color_scheme.options.theme" },
+        { "value": "light", "label": "t:embed.settings.color_scheme.options.light" },
+        { "value": "dark", "label": "t:embed.settings.color_scheme.options.dark" }
+      ],
+      "default": "theme"
+    }
+  ]
+}
+{% endschema %}

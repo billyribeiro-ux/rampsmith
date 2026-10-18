@@ -1,0 +1,32 @@
+{
+  "embed": {
+    "name": "Accessibility statement",
+    "settings": {
+      "statement_header": {
+        "content": "Accessibility link"
+      },
+      "show_statement_link": {
+        "label": "Show the Accessibility link"
+      },
+      "statement_url": {
+        "label": "Accessibility statement URL",
+        "info": "Leave empty to link to the statement you publish in the app."
+      },
+      "report_header": {
+        "content": "Barrier report form"
+      },
+      "show_report_form": {
+        "label": "Show the barrier report form",
+        "info": "Shoppers can tell you about accessibility barriers. Reports appear in the app and are kept for 12 months."
+      },
+      "color_scheme": {
+        "label": "Colors",
+        "options": {
+          "theme": "Theme colors",
+          "light": "Dark text on white",
+          "dark": "White text on dark"
+        }
+      }
+    }
+  }
+}
