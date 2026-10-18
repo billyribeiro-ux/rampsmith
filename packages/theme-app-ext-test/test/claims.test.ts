@@ -25,7 +25,10 @@ function lint(name: string, edit?: (dir: string) => void) {
     JSON.stringify({ include: extensionGlobs, exclude: [], allowlist: 'claims-lint.allow.json' }),
   );
   writeFileSync(join(root, 'claims-lint.allow.json'), JSON.stringify({ entries: [] }));
-  const result = spawnSync(process.execPath, [CLI], { cwd: root, encoding: 'utf8' });
+  // Plain output even on GitHub Actions, where the CLI would otherwise print annotations and
+  // the deliberate violation below would show up on the pull request.
+  const env = { ...process.env, GITHUB_ACTIONS: 'false' };
+  const result = spawnSync(process.execPath, [CLI], { cwd: root, encoding: 'utf8', env });
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
