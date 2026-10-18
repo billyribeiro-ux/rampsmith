@@ -84,6 +84,8 @@ gate).
 
 ## CI on the pinned toolchains (ci.yml through draft pull request #2)
 
+- [Run 39089657516](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39089657516) on
+  `585339e`, the last code commit (review fixes, 153 tests): all 8 jobs green.
 - [Run 39087766684](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39087766684) on
   `3620472`: all 8 jobs green (rust, node, e2e, contracts, images api, egress, engine, web). The
   node job installs Chrome Headless Shell 156.0.8078.4 for the locked playwright-core and runs the
