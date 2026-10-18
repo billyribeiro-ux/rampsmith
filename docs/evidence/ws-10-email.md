@@ -59,7 +59,12 @@ the subject, preview, text and HTML of every email, and a negative control), `li
   including the 104 browser tests on `@sparticuz/chromium` in 17.8 s. Fixed by running the CLI
   with `GITHUB_ACTIONS=false` in that test; reproduced and verified locally with
   `GITHUB_ACTIONS=true`.
-- Final run: see the next section.
+- Run 39089899615 (`e823c3b`): **all 8 jobs green**: `node` (ESLint, Prettier, tsc and
+  svelte-check, knip, claims-lint, Vitest including the 780 email tests), `rust`, `contracts`,
+  `e2e`, `images (api)`, `images (web)`, `images (engine)`, `images (egress)`:
+  <https://github.com/billyribeiro-ux/rampsmith/actions/runs/39089899615>.
+- Run 39089495772 (`62d65e3`) failed only on Prettier for `messages/en.json` (rewritten by a
+  script after formatting); fixed in `e823c3b`.
 
 ## Security audit (security-auditor brief, effort max)
 
