@@ -15,13 +15,18 @@ aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "al
 anyhow = "1.0.104"
 axum = "0.8.9"
 base64 = "0.23.1"
+bytes = "1.12.1"
 contracts = { package = "rampsmith-contracts", path = "crates/contracts" }
 crypto = { package = "rampsmith-crypto", path = "crates/crypto" }
 db = { package = "rampsmith-db", path = "crates/db" }
 domain = { package = "rampsmith-domain", path = "crates/domain" }
+hmac = "0.13.0"
 http-body-util = "0.1.5"
 http-kit = { package = "rampsmith-http-kit", path = "crates/http-kit" }
+hyper = "1.12.0"
+hyper-util = "0.1.21"
 identity = { package = "rampsmith-identity", path = "crates/identity" }
+ipnet = "2.12.2"
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
 opentelemetry = "0.33.1"
 opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }

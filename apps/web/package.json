@@ -20,7 +20,8 @@
   "dependencies": {
     "@opentelemetry/api": "1.9.1",
     "@rampsmith/contracts-ts": "workspace:*",
-    "@rampsmith/telemetry": "workspace:*"
+    "@rampsmith/telemetry": "workspace:*",
+    "@rampsmith/ui": "workspace:*"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

@@ -2,7 +2,7 @@
 
 use schemars::{Schema, schema_for};
 
-use crate::job::{JobError, ShopifyTokenRefresh};
+use crate::job::{JobError, ScanPage, ShopifyTokenRefresh};
 use crate::problem::Problem;
 
 /// A JSON Schema and the file stem it is written under.
@@ -25,6 +25,10 @@ pub fn schemas() -> Vec<NamedSchema> {
         NamedSchema {
             name: "problem",
             schema: schema_for!(Problem),
+        },
+        NamedSchema {
+            name: "scan-page",
+            schema: schema_for!(ScanPage),
         },
         NamedSchema {
             name: "shopify-token-refresh",

@@ -30,6 +30,10 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [022](022-shopify-authentication.md) | Shopify authentication and offline-token lifecycle | Accepted |
 | [023](023-web-skeleton.md) | Web skeleton, the embedded App Home and its security headers | Accepted |
 | [024](024-passkeys.md) | Passkeys and sessions for the standalone dashboard | Accepted |
+| [025](025-egress-guard-and-scan-tokens.md) | The egress guard, scan tokens and the engine skeleton | Accepted |
+| [026](026-design-system-primitives.md) | Design-system primitives in `packages/ui` | Accepted |
+| [027](027-challenge-detection-from-s2.md) | Challenge detection calibrated by spike S-2 | Accepted |
+| [028](028-service-images.md) | Images for web, engine and egress | Accepted |
 
 ## Template
 
