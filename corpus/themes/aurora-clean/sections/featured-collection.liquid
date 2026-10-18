@@ -1,0 +1,33 @@
+{%- assign collection = section.settings.collection -%}
+<section class="featured-collection page-width">
+  <div class="featured-collection__header">
+    <h2 class="featured-collection__title">{{ section.settings.title | escape }}</h2>
+    {%- if section.settings.description != blank -%}
+      <p class="featured-collection__description" style="color: {{ section.settings.description_color }};">
+        {{- section.settings.description | escape -}}
+      </p>
+    {%- endif -%}
+  </div>
+
+  <ul class="product-grid" role="list">
+    {%- for product in collection.products limit: section.settings.products_to_show -%}
+      <li class="product-grid__item">
+        {% render 'card-product', card_product: product %}
+      </li>
+    {%- endfor -%}
+  </ul>
+</section>
+
+{% schema %}
+{
+  "name": "Featured collection",
+  "settings": [
+    { "type": "text", "id": "title", "label": "Heading", "default": "Featured collection" },
+    { "type": "text", "id": "description", "label": "Description" },
+    { "type": "color", "id": "description_color", "label": "Description colour", "default": "#5c5c5c" },
+    { "type": "collection", "id": "collection", "label": "Collection" },
+    { "type": "range", "id": "products_to_show", "min": 2, "max": 12, "step": 1, "label": "Products to show", "default": 4 }
+  ],
+  "presets": [{ "name": "Featured collection" }]
+}
+{% endschema %}

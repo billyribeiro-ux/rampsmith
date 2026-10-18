@@ -1,0 +1,25 @@
+<section class="collection page-width">
+  <h1 class="collection__title">{{ collection.title | escape }}</h1>
+  {%- if collection.description != blank -%}
+    <div class="collection__description rte">{{ collection.description }}</div>
+  {%- endif -%}
+
+  {%- paginate collection.products by section.settings.products_per_page -%}
+    <ul class="product-grid" role="list">
+      {%- for product in collection.products -%}
+        <li class="product-grid__item">
+          {% render 'card-product', card_product: product %}
+        </li>
+      {%- endfor -%}
+    </ul>
+  {%- endpaginate -%}
+</section>
+
+{% schema %}
+{
+  "name": "Product grid",
+  "settings": [
+    { "type": "range", "id": "products_per_page", "min": 4, "max": 24, "step": 4, "label": "Products per page", "default": 12 }
+  ]
+}
+{% endschema %}

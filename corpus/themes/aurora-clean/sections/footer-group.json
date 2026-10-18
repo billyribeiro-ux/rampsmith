@@ -1,0 +1,15 @@
+{
+  "type": "footer",
+  "name": "Footer group",
+  "sections": {
+    "footer": {
+      "type": "footer",
+      "settings": {
+        "menu": "footer",
+        "newsletter_heading": "Letters from the studio",
+        "show_social": true
+      }
+    }
+  },
+  "order": ["footer"]
+}

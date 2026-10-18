@@ -206,6 +206,163 @@
           "path": "/password"
         }
       ]
+    },
+    {
+      "name": "aurora-clean",
+      "kind": "control",
+      "path": "themes/aurora-clean",
+      "store": "harbor-clean",
+      "golden": "golden/aurora-clean.json",
+      "description": "Aurora with every golden finding fixed the way the recipes write their edits (lang, labels, visually hidden text, aria-label, alt from the image object) and passing colours; with the clean store it must produce zero results.",
+      "twinOf": "aurora",
+      "variety": ["the markup of its twin with each finding fixed"],
+      "pages": [
+        {
+          "id": "index",
+          "template": "index",
+          "path": "/"
+        },
+        {
+          "id": "product",
+          "template": "product",
+          "path": "/products/linen-shirt",
+          "resource": {
+            "type": "product",
+            "handle": "linen-shirt"
+          }
+        },
+        {
+          "id": "collection",
+          "template": "collection",
+          "path": "/collections/summer-edit",
+          "resource": {
+            "type": "collection",
+            "handle": "summer-edit"
+          }
+        },
+        {
+          "id": "cart",
+          "template": "cart",
+          "path": "/cart"
+        },
+        {
+          "id": "search",
+          "template": "search",
+          "path": "/search?q=linen"
+        },
+        {
+          "id": "page",
+          "template": "page",
+          "path": "/pages/about",
+          "resource": {
+            "type": "page",
+            "handle": "about"
+          }
+        },
+        {
+          "id": "article",
+          "template": "article",
+          "path": "/blogs/journal/caring-for-linen",
+          "resource": {
+            "type": "article",
+            "handle": "journal/caring-for-linen"
+          }
+        },
+        {
+          "id": "login",
+          "template": "customers/login",
+          "path": "/account/login"
+        }
+      ]
+    },
+    {
+      "name": "birch-clean",
+      "kind": "control",
+      "path": "themes/birch-clean",
+      "store": "harbor-clean",
+      "golden": "golden/birch-clean.json",
+      "description": "Birch with every golden finding fixed in its own style (tabs, CRLF snippets, the sr-only class, a :focus-visible outline); with the clean store it must produce zero results.",
+      "twinOf": "birch",
+      "variety": ["the markup of its twin with each finding fixed"],
+      "pages": [
+        {
+          "id": "index",
+          "template": "index",
+          "path": "/"
+        },
+        {
+          "id": "collection",
+          "template": "collection",
+          "path": "/collections/summer-edit",
+          "resource": {
+            "type": "collection",
+            "handle": "summer-edit"
+          }
+        },
+        {
+          "id": "product",
+          "template": "product",
+          "path": "/products/wool-throw",
+          "resource": {
+            "type": "product",
+            "handle": "wool-throw"
+          }
+        },
+        {
+          "id": "search",
+          "template": "search",
+          "path": "/search?q=linen"
+        },
+        {
+          "id": "contact",
+          "template": "page.contact",
+          "path": "/pages/contact",
+          "resource": {
+            "type": "page",
+            "handle": "contact"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cedar-clean",
+      "kind": "control",
+      "path": "themes/cedar-clean",
+      "store": "harbor-clean",
+      "golden": "golden/cedar-clean.json",
+      "description": "Cedar with every golden finding fixed, including the custom widgets (option roles, a valid aria-expanded, plain buttons for carousel dots) and a main landmark on the password page; with the clean store it must produce zero results.",
+      "twinOf": "cedar",
+      "variety": ["the markup of its twin with each finding fixed"],
+      "pages": [
+        {
+          "id": "index",
+          "template": "index",
+          "path": "/"
+        },
+        {
+          "id": "product",
+          "template": "product",
+          "path": "/products/linen-shirt",
+          "resource": {
+            "type": "product",
+            "handle": "linen-shirt"
+          }
+        },
+        {
+          "id": "collection",
+          "template": "collection",
+          "path": "/collections/summer-edit",
+          "resource": {
+            "type": "collection",
+            "handle": "summer-edit"
+          }
+        },
+        {
+          "id": "password",
+          "template": "password",
+          "path": "/password"
+        }
+      ]
     }
   ]
 }

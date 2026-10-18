@@ -1,0 +1,33 @@
+{% stylesheet %}
+  .newsletter {
+    padding: 40px 24px;
+    background: #ffffff;
+  }
+
+  .newsletter__note {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: #6b6b6b;
+  }
+{% endstylesheet %}
+
+<section class="newsletter">
+  <h2 class="newsletter__heading">{{ section.settings.heading | escape }}</h2>
+  {%- form 'customer', class: 'newsletter__form' -%}
+    <input type="hidden" name="contact[tags]" value="newsletter">
+    <label for="Newsletter-{{ section.id }}" class="visually-hidden">{{ 'newsletter.label' | t }}</label>
+    <input type="email" name="contact[email]" id="Newsletter-{{ section.id }}" autocomplete="email" class="field">
+    <button type="submit" class="button">{{ 'newsletter.submit' | t }}</button>
+  {%- endform -%}
+  <p class="newsletter__note">{{ section.settings.note | escape }}</p>
+</section>
+
+{% schema %}
+{
+  "name": "Newsletter",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Subscribe" },
+    { "type": "text", "id": "note", "label": "Note" }
+  ]
+}
+{% endschema %}

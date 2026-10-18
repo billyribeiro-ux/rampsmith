@@ -1,0 +1,18 @@
+{
+  "type": "header",
+  "name": "Header",
+  "sections": {
+    "header": {
+      "type": "header",
+      "blocks": {
+        "logo": { "type": "logo", "settings": {} },
+        "menu": { "type": "menu", "settings": { "menu": "main-menu" } },
+        "search": { "type": "search-link", "settings": {} },
+        "cart": { "type": "cart-link", "settings": {} }
+      },
+      "block_order": ["logo", "menu", "search", "cart"],
+      "settings": {}
+    }
+  },
+  "order": ["header"]
+}
