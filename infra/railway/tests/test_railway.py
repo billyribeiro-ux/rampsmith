@@ -42,8 +42,8 @@ HOSTS = {
     "RAMPSMITH_SITE_HOST": "rampsmith.example",
     "RAMPSMITH_WEBHOOK_HOST": "hooks.rampsmith.example",
 }
-RELEASE = {"RAMPSMITH_RELEASE": "0123456789abcdef0123456789abcdef01234567"}
-INPUT_NAMES = (*IMAGES, *HOSTS, *RELEASE, "RAMPSMITH_DEPLOY_ONLY")
+INPUT_NAMES = (*IMAGES, "RAMPSMITH_IMAGE_CTL", *HOSTS)
+ENVIRONMENTS = ("staging", "production", "preview")
 
 # Runtime founder inputs in LAUNCH.md section C (rows 1, 2, 4, 5, 6, 7, 9, 12), as Railway
 # shared variables, plus the names this stream proposes (ADR-182, ADR-184).
@@ -78,6 +78,7 @@ PROPOSED = {
     "R2_LOGS_ACCESS_KEY_ID",
     "R2_LOGS_SECRET_ACCESS_KEY",
     "EGRESS_TOKEN_SECRET",
+    "RAMPSMITH_OTLP_TOKEN",
     "RAMPSMITH_DB_PASSWORD_MIGRATOR",
     "RAMPSMITH_DB_PASSWORD_API",
     "RAMPSMITH_DB_PASSWORD_CTL",
@@ -88,7 +89,7 @@ PROPOSED = {
 # referenced by any service.
 SECRET_USERS = {
     "SHOPIFY_API_SECRET": {"api", "ctl"},
-    "SHOPIFY_PARTNER_API_TOKEN": {"api", "ctl"},
+    "SHOPIFY_PARTNER_API_TOKEN": {"ctl"},
     "GITHUB_APP_PRIVATE_KEY": {"ctl"},
     "GITHUB_APP_WEBHOOK_SECRET": {"api"},
     "ANTHROPIC_API_KEY": {"engine"},
@@ -99,6 +100,8 @@ SECRET_USERS = {
     "GRAFANA_CLOUD_OTLP_TOKEN": {"collector"},
     "R2_LOGS_SECRET_ACCESS_KEY": {"collector"},
     "EGRESS_TOKEN_SECRET": {"engine", "egress"},
+    # Every service writes telemetry with it; the collector checks it (ADR-184).
+    "RAMPSMITH_OTLP_TOKEN": {"web", "api", "ctl", "engine", "egress", "collector"},
     "RAMPSMITH_DB_PASSWORD_MIGRATOR": {"api"},
     "RAMPSMITH_DB_PASSWORD_API": {"api"},
     "RAMPSMITH_DB_PASSWORD_CTL": {"ctl"},
@@ -164,7 +167,7 @@ def shared_refs(resource: dict[str, Any]) -> set[str]:
 
 
 def full() -> dict[str, dict[str, Any]]:
-    return evaluate("production", **IMAGES, **HOSTS, **RELEASE)
+    return evaluate("production", **IMAGES, **HOSTS)
 
 
 class Shape(unittest.TestCase):
@@ -187,7 +190,7 @@ class Shape(unittest.TestCase):
         self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
 
     def test_every_environment_defines_the_same_services(self) -> None:
-        for environment in ("staging", "production", "preview"):
+        for environment in ENVIRONMENTS:
             with self.subTest(environment=environment):
                 self.assertEqual(set(evaluate(environment)), SERVICES | {"postgres"})
 
@@ -271,40 +274,55 @@ class HealthAndCommands(unittest.TestCase):
 
 
 class Exposure(unittest.TestCase):
-    def test_only_web_and_the_webhook_listener_are_public(self) -> None:
-        resources = full()
-        public = {n for n, r in resources.items() if (r.get("networking") or {}).get("customDomains")}
-        self.assertEqual(public, {"web", "api"})
-        web = resources["web"]["networking"]["customDomains"]
-        self.assertEqual(
-            web, {"app.rampsmith.example": {"port": 3000}, "rampsmith.example": {"port": 3000}}
-        )
-        api = resources["api"]["networking"]["customDomains"]
-        self.assertEqual(api, {"hooks.rampsmith.example": {"port": 8081}})
-        # The webhook listener is not the private API port Railway health-checks.
-        self.assertEqual(literal(resources["api"], "WEBHOOK_BIND_ADDR"), "[::]:8081")
-        self.assertNotEqual(literal(resources["api"], "PORT"), "8081")
-
-    def test_nothing_else_is_reachable_from_the_internet(self) -> None:
-        for environment in ("staging", "production", "preview"):
-            resources = evaluate(environment, **HOSTS)
-            for name, resource in resources.items():
-                networking = resource.get("networking") or {}
+    def test_the_file_declares_no_networking(self) -> None:
+        """Railway's IaC cannot create domains or set their ports (CLI 5.70.0), so railway.py
+        declares none: ensure_network.py holds exposure to PUBLIC instead (ADR-182)."""
+        for environment in ENVIRONMENTS:
+            for name, resource in evaluate(environment, **HOSTS).items():
                 with self.subTest(environment=environment, resource=name):
-                    self.assertFalse(networking.get("tcpProxies"))
-                    self.assertFalse(networking.get("serviceDomains"))
+                    self.assertNotIn("networking", resource)
 
-    def test_no_domains_without_hosts(self) -> None:
-        for name, resource in evaluate("staging").items():
-            with self.subTest(resource=name):
-                self.assertNotIn("networking", resource)
-        api = evaluate("staging")["api"]
-        self.assertEqual(variables(api)["WEBAUTHN_RP_ID"], {"type": "preserve"})
+    def test_only_web_and_the_webhook_listener_are_public(self) -> None:
+        module = load_module()
+        self.assertEqual(
+            module.PUBLIC,
+            (
+                ("web", "RAMPSMITH_APP_HOST", 3000),
+                ("web", "RAMPSMITH_SITE_HOST", 3000),
+                ("api", "RAMPSMITH_WEBHOOK_HOST", 8081),
+            ),
+        )
+        api = full()["api"]
+        # The webhook listener is not the private API port Railway health-checks.
+        self.assertEqual(literal(api, "WEBHOOK_BIND_ADDR"), "[::]:8081")
+        self.assertEqual(literal(api, "PORT"), "8080")
+        self.assertNotEqual(module.API_WEBHOOK_PORT, module.PORTS["api"])
+        self.assertEqual(set(module.SERVICES), SERVICES | {"postgres"})
 
     def test_passkeys_bind_to_the_app_host(self) -> None:
         api = full()["api"]
         self.assertEqual(literal(api, "WEBAUTHN_RP_ID"), "app.rampsmith.example")
         self.assertEqual(literal(api, "WEBAUTHN_RP_ORIGIN"), "https://app.rampsmith.example")
+
+    def test_without_an_app_host_passkey_settings_are_kept(self) -> None:
+        api = evaluate("staging")["api"]
+        self.assertEqual(variables(api)["WEBAUTHN_RP_ID"], {"type": "preserve"})
+        self.assertEqual(variables(api)["WEBAUTHN_RP_ORIGIN"], {"type": "preserve"})
+
+    def test_host_names_are_validated(self) -> None:
+        module = load_module()
+        for value in ("https://app.example.com", "app.example.com/x", "app", "-a.example.com",
+                      "app.example.com:443", "app..example.com"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    module.host({"RAMPSMITH_APP_HOST": value}, "RAMPSMITH_APP_HOST")
+                with self.assertRaises(ValueError):
+                    evaluate("staging", RAMPSMITH_APP_HOST=value)
+        self.assertEqual(
+            module.host({"RAMPSMITH_APP_HOST": " App.Example.COM "}, "RAMPSMITH_APP_HOST"),
+            "app.example.com",
+        )
+        self.assertIsNone(module.host({}, "RAMPSMITH_APP_HOST"))
 
 
 class EgressIsolation(unittest.TestCase):
@@ -322,7 +340,7 @@ class EgressIsolation(unittest.TestCase):
         self.assertEqual(holders, {"engine", "egress"})
 
     def test_no_environment_opens_private_ranges(self) -> None:
-        for environment in ("staging", "production", "preview"):
+        for environment in ENVIRONMENTS:
             egress = evaluate(environment)["egress"]
             for name in ("EGRESS_ALLOWED_CIDRS", "EGRESS_TUNNEL_PORTS", "EGRESS_HTTP_PORTS"):
                 with self.subTest(environment=environment, variable=name):
@@ -331,8 +349,8 @@ class EgressIsolation(unittest.TestCase):
 
 class Secrets(unittest.TestCase):
     def test_secrets_are_references_never_values(self) -> None:
-        for environment in ("staging", "production", "preview"):
-            resources = evaluate(environment, **IMAGES, **HOSTS, **RELEASE)
+        for environment in ENVIRONMENTS:
+            resources = evaluate(environment, **IMAGES, **HOSTS)
             for name, resource in resources.items():
                 for key, value in variables(resource).items():
                     if not SECRET_NAME.search(key) or key in {"OTELCOL_CONFIG"}:
@@ -381,7 +399,23 @@ class Secrets(unittest.TestCase):
                     literal(resources[name], "OTEL_EXPORTER_OTLP_ENDPOINT"),
                     "http://${{collector.RAILWAY_PRIVATE_DOMAIN}}:4318",
                 )
-                self.assertNotIn("OTEL_EXPORTER_OTLP_HEADERS", variables(resources[name]))
+                self.assertEqual(
+                    literal(resources[name], "OTEL_EXPORTER_OTLP_HEADERS"),
+                    "Authorization=Bearer%20${{shared.RAMPSMITH_OTLP_TOKEN}}",
+                )
+                self.assertEqual(
+                    literal(resources[name], "OTEL_EXPORTER_OTLP_PROTOCOL"), "http/protobuf"
+                )
+        collector = resources["collector"]
+        self.assertNotIn("OTEL_EXPORTER_OTLP_ENDPOINT", variables(collector))
+        self.assertEqual(
+            literal(collector, "RAMPSMITH_OTLP_TOKEN"), "${{shared.RAMPSMITH_OTLP_TOKEN}}"
+        )
+
+    def test_the_collector_requires_the_token(self) -> None:
+        config = COLLECTOR_CONFIG.read_text(encoding="utf-8")
+        self.assertIn("token: ${env:RAMPSMITH_OTLP_TOKEN}", config)
+        self.assertIn("authenticator: bearertokenauth/services", config)
 
 
 class Images(unittest.TestCase):
@@ -395,24 +429,34 @@ class Images(unittest.TestCase):
                     {"type": "image", "image": IMAGES[f"RAMPSMITH_IMAGE_{variable}"]},
                 )
 
-    def test_a_missing_image_leaves_the_source_unchanged(self) -> None:
+    def test_a_service_without_an_image_declares_no_source(self) -> None:
+        """deploy.yml always passes every image (railway_plan.py refuses a plan that would
+        drop a source); railway.py itself never invents one."""
         resources = evaluate("staging", RAMPSMITH_IMAGE_API=IMAGES["RAMPSMITH_IMAGE_API"])
-        self.assertIn("source", resources["api"])
-        self.assertIn("source", resources["ctl"])
+        self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
+        self.assertEqual(resources["ctl"]["source"], resources["api"]["source"])
         for name in ("web", "engine", "egress"):
             with self.subTest(service=name):
                 self.assertNotIn("source", resources[name])
-
-    def test_the_first_phase_moves_only_the_api(self) -> None:
-        resources = evaluate("production", **IMAGES, RAMPSMITH_DEPLOY_ONLY="api")
-        self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
-        for name in ("ctl", "web", "engine", "egress"):
-            with self.subTest(service=name):
-                self.assertNotIn("source", resources[name])
         # The collector's pinned image is part of the file, not of a release.
-        self.assertIn("source", resources["collector"])
+        self.assertEqual(resources["collector"]["source"]["image"], load_module().COLLECTOR_IMAGE)
+
+    def test_ctl_can_keep_its_running_image(self) -> None:
+        """The first deploy phase moves api alone and keeps ctl on the image it runs now."""
+        older = f"ghcr.io/billyribeiro-ux/rampsmith-api@sha256:{'cd' * 32}"
+        resources = evaluate("production", **IMAGES, RAMPSMITH_IMAGE_CTL=older)
+        self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
+        self.assertEqual(resources["ctl"]["source"]["image"], older)
         with self.assertRaises(ValueError):
-            evaluate("production", **IMAGES, RAMPSMITH_DEPLOY_ONLY="api,worker")
+            evaluate("production", **IMAGES,
+                     RAMPSMITH_IMAGE_CTL=f"ghcr.io/billyribeiro-ux/rampsmith-web@{DIGEST}")
+
+    def test_an_empty_ctl_image_declares_no_source(self) -> None:
+        """The first deploy creates ctl without an image, so it starts only after the api's
+        pre-deploy step has migrated (phase two)."""
+        resources = evaluate("production", **IMAGES, RAMPSMITH_IMAGE_CTL="")
+        self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
+        self.assertNotIn("source", resources["ctl"])
 
     def test_floating_or_foreign_images_are_refused(self) -> None:
         bad = (
@@ -427,20 +471,13 @@ class Images(unittest.TestCase):
             with self.subTest(image=value), self.assertRaises(ValueError):
                 evaluate("staging", RAMPSMITH_IMAGE_API=value)
 
-    def test_release_and_hosts_are_validated(self) -> None:
-        for key, value in (("RAMPSMITH_RELEASE", "main"),
-                           ("RAMPSMITH_RELEASE", "0123456"),
-                           ("RAMPSMITH_APP_HOST", "https://app.example.com"),
-                           ("RAMPSMITH_WEBHOOK_HOST", "hooks.example.com/webhooks")):
-            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
-                evaluate("staging", **{key: value})
-
-    def test_the_release_is_the_service_version(self) -> None:
+    def test_no_version_label_is_a_variable(self) -> None:
+        """SERVICE_VERSION is baked into each image at build time (release.yml), so a variable
+        change can never label an old image with a new release (ADR-185)."""
         for name, resource in full().items():
-            if name == "postgres":
-                continue
             with self.subTest(service=name):
-                self.assertEqual(literal(resource, "SERVICE_VERSION"), RELEASE["RAMPSMITH_RELEASE"])
+                self.assertNotIn("SERVICE_VERSION", variables(resource))
+                self.assertNotIn("OTEL_RESOURCE_ATTRIBUTES", variables(resource))
 
     def test_the_collector_image_is_pinned(self) -> None:
         module = load_module()

@@ -1,8 +1,11 @@
 -- Database logins for one Railway environment (ADR-183). Run once per environment, before the
--- first deploy, as the database superuser that Railway's PostgreSQL template creates:
+-- first deploy, as the database superuser that Railway's PostgreSQL template creates. Read each
+-- password without echo, so none lands in shell history or a process list:
 --
---   export RAMPSMITH_DB_PASSWORD_MIGRATOR=...  RAMPSMITH_DB_PASSWORD_API=...
---   export RAMPSMITH_DB_PASSWORD_CTL=...       RAMPSMITH_DB_PASSWORD_ENGINE=...
+--   for name in MIGRATOR API CTL ENGINE; do
+--     read -rsp "RAMPSMITH_DB_PASSWORD_$name: " value; echo
+--     export "RAMPSMITH_DB_PASSWORD_$name=$value"
+--   done; unset value
 --   railway connect postgres --ssh        (psql 15 or newer, over SSH: no public TCP proxy)
 --   \i infra/railway/bootstrap.sql
 --
@@ -17,7 +20,8 @@
 --                       migrations create the group roles.
 --   rampsmith_api       login for `api`, member of rampsmith_app.
 --   rampsmith_ctl       login for `ctl`, member of rampsmith_worker.
---   rampsmith_engine    login for `engine`, member of rampsmith_worker.
+--   rampsmith_engine    login for `engine`, member of rampsmith_worker: as broad as ctl's until
+--                       a migration adds a narrower engine role (ADR-183, open item).
 -- None of the service logins is a superuser, owns a table, or has BYPASSRLS, so every
 -- row-level security policy applies to them (ADR-006, crates/db/migrations).
 
@@ -31,6 +35,8 @@ set log_statement = 'none';
 set log_min_error_statement = 'panic';
 set log_min_duration_statement = -1;
 set client_min_messages = warning;
+-- And out of pg_stat_statements, should that extension ever be loaded.
+set pg_stat_statements.track_utility = off;
 
 \getenv migrator_password RAMPSMITH_DB_PASSWORD_MIGRATOR
 \getenv api_password RAMPSMITH_DB_PASSWORD_API

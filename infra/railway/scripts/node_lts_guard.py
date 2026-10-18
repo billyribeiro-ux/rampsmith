@@ -4,9 +4,14 @@ CLAUDE.md and ADR-016: releases may merge on Node 26.12.0, but nothing deploys b
 move to the first 26.x release tagged LTS. A release counts as LTS when `process.release.lts`
 prints a codename, so this runs the pinned binary instead of trusting a version table.
 
+The line is fixed too: ADR-016 makes 26 the Node.js line, and changing it needs the founder, so
+an LTS release of another line (24.x, say) is refused as well.
+
 Usage: python3 node_lts_guard.py [path/to/.mise.toml] [node executable]
-Exit 0 and print the codename when the pin is LTS; exit 1 with a GitHub error annotation
-otherwise (including when the `node` on PATH is not the pinned version).
+The executable may be a wrapper that runs `node` inside a release image, which is how deploy.yml
+checks the Node.js the images actually ship. Exit 0 and print the codename when the pin is an
+LTS release of line 26 and the binary is that release; exit 1 with a GitHub error annotation
+otherwise.
 """
 
 from __future__ import annotations
@@ -15,6 +20,8 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+
+REQUIRED_MAJOR = 26  # ADR-016; changing the line needs the founder
 
 
 def pinned_node(mise_toml: Path) -> str:
@@ -38,8 +45,10 @@ def node_release(node: str) -> tuple[str, str]:
     return version.strip().removeprefix("v"), lts.strip()
 
 
-def check(mise_toml: Path, node: str) -> tuple[bool, str]:
+def check(mise_toml: Path, node: str, major: int = REQUIRED_MAJOR) -> tuple[bool, str]:
     pinned = pinned_node(mise_toml)
+    if pinned.split(".")[0] != str(major):
+        return False, f"{mise_toml} pins Node.js {pinned}, not a {major}.x release (ADR-016)"
     version, lts = node_release(node)
     if version != pinned:
         return False, f"node on PATH is {version}, but {mise_toml} pins {pinned}"

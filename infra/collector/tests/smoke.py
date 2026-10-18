@@ -8,9 +8,11 @@ stand in for them, and the real collector runs the real config exactly as Railwa
 - a fake S3 endpoint (path-style, like R2) that stores every PUT.
 
 The check proves: `validate` accepts the config and rejects a broken one; the health check
-answers on /healthz; traces, metrics and logs reach "Grafana" with basic auth and the
-environment attribute; only logs reach the archive, gzip-compressed OTLP JSON under
-<environment>/logs/year=.../; and the scrubbed headers never leave the collector.
+answers on /healthz; the receiver refuses telemetry without the services' bearer token; traces,
+metrics and logs reach "Grafana" with basic auth and the environment attribute; only logs reach
+the archive, gzip-compressed OTLP JSON under <environment>/logs/year=.../; and tokens, query
+strings and email addresses planted in URLs, attributes and log bodies never leave the
+collector unmasked.
 
 Usage: python3 infra/collector/tests/smoke.py <collector image@sha256:...>
 Needs Docker. Uses only the Python standard library.
@@ -38,6 +40,7 @@ CONFIG = Path(__file__).resolve().parent.parent / "config.yaml"
 CONTAINER = f"ws9-collector-{uuid.uuid4().hex[:8]}"
 INSTANCE_ID = "123456"
 TOKEN = "ci-only-token"
+SERVICES_TOKEN = uuid.uuid4().hex
 BUCKET = "rampsmith-logs-ci"
 ENVIRONMENT = "ci"
 HEALTH_URL = "http://127.0.0.1:13133/healthz"
@@ -144,16 +147,24 @@ def wait_for(description: str, predicate: Any, timeout: float = 60.0) -> None:
     raise AssertionError(f"timed out waiting for {description}")
 
 
-def post_json(path: str, payload: dict[str, Any]) -> None:
+def check(condition: bool, message: str) -> None:
+    """An assertion that survives `python -O`."""
+    if not condition:
+        raise AssertionError(message)
+
+
+def post_json(path: str, payload: dict[str, Any], token: str | None = SERVICES_TOKEN) -> int:
+    headers = {"Content-Type": "application/json"}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
-        OTLP_URL + path,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+        OTLP_URL + path, data=json.dumps(payload).encode(), headers=headers, method="POST"
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 200:
-            raise AssertionError(f"collector answered {response.status} for {path}")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return int(response.status)
+    except urllib.error.HTTPError as error:
+        return int(error.code)
 
 
 def resource(service: str) -> dict[str, Any]:
@@ -180,6 +191,7 @@ def main() -> int:
         "AWS_REQUEST_CHECKSUM_CALCULATION": "when_required",
         "AWS_RESPONSE_CHECKSUM_VALIDATION": "when_required",
         "RAILWAY_ENVIRONMENT_NAME": ENVIRONMENT,
+        "RAMPSMITH_OTLP_TOKEN": SERVICES_TOKEN,
     }
     child_env = {**os.environ, **values}
 
@@ -213,33 +225,57 @@ def main() -> int:
 
         marker = uuid.uuid4().hex
         now = str(time.time_ns())
-        post_json("/v1/logs", {"resourceLogs": [{
+        # Values that must never leave the collector as they are.
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzaG9wIn0." + marker
+        shop_token = "shpat_" + marker
+        email = f"merchant-{marker}@example.com"
+        planted = (jwt, shop_token, email, f"secret-{marker}", f"hmac-{marker}")
+
+        logs = {"resourceLogs": [{
             "resource": resource("api"),
             "scopeLogs": [{"logRecords": [
                 {"timeUnixNano": now, "severityText": "INFO",
-                 "body": {"stringValue": f"log-{marker}"},
+                 "body": {"stringValue": f"log-{marker} token {shop_token} for {email}"},
                  "attributes": [{"key": "http.request.header.authorization",
-                                 "value": {"stringValue": f"Bearer secret-{marker}"}}]},
+                                 "value": {"stringValue": f"Bearer secret-{marker}"}},
+                                {"key": "note", "value": {
+                                    "stringValue": f"Authorization: Bearer secret-{marker}"}}]},
             ]}],
-        }]})
-        post_json("/v1/traces", {"resourceSpans": [{
-            "resource": resource("api"),
+        }]}
+        check(post_json("/v1/logs", logs, token=None) == 401,
+              "the receiver accepted telemetry without the services' token")
+        check(post_json("/v1/logs", logs, token="wrong") == 401,
+              "the receiver accepted telemetry with a wrong token")
+        print("the receiver refuses telemetry without the services' token")
+        check(post_json("/v1/logs", logs) == 200, "the collector refused the services' logs")
+        launch = (f"https://app.rampsmith.example/app?embedded=1&hmac=hmac-{marker}"
+                  f"&id_token={jwt}&shop=demo.myshopify.com")
+        check(post_json("/v1/traces", {"resourceSpans": [{
+            "resource": resource("web"),
             "scopeSpans": [{"spans": [{
                 "traceId": uuid.uuid4().hex, "spanId": uuid.uuid4().hex[:16],
                 "name": f"span-{marker}", "kind": 2,
                 "startTimeUnixNano": now, "endTimeUnixNano": now,
                 "attributes": [{"key": "http.request.header.cookie",
-                                "value": {"stringValue": f"session=secret-{marker}"}}],
+                                "value": {"stringValue": f"session=secret-{marker}"}},
+                               {"key": "http.url", "value": {"stringValue": launch}},
+                               {"key": "url.full", "value": {"stringValue": launch}},
+                               {"key": "url.query",
+                                "value": {"stringValue": f"id_token={jwt}"}},
+                               {"key": "enduser.email", "value": {"stringValue": email}}],
+                "events": [{"timeUnixNano": now, "name": "exception",
+                            "attributes": [{"key": "exception.message",
+                                            "value": {"stringValue": f"bad {launch}"}}]}],
             }]}],
-        }]})
-        post_json("/v1/metrics", {"resourceMetrics": [{
+        }]}) == 200, "the collector refused the services' traces")
+        check(post_json("/v1/metrics", {"resourceMetrics": [{
             "resource": resource("api"),
             "scopeMetrics": [{"metrics": [{
                 "name": f"metric_{marker}",
                 "sum": {"aggregationTemporality": 2, "isMonotonic": True,
                         "dataPoints": [{"asInt": "1", "timeUnixNano": now}]},
             }]}],
-        }]})
+        }]}) == 200, "the collector refused the services' metrics")
 
         def grafana_has(path: str, needle: str) -> bool:
             with lock:
@@ -264,16 +300,22 @@ def main() -> int:
         objects = archived()
 
         expected_auth = "Basic " + base64.b64encode(f"{INSTANCE_ID}:{TOKEN}".encode()).decode()
-        assert authorizations == {expected_auth}, "every export must carry the basic credentials"
+        check(authorizations == {expected_auth}, "every export must carry the basic credentials")
         for key, body in objects:
-            assert key.startswith(f"{ENVIRONMENT}/logs/year="), f"unexpected archive key {key}"
+            check(key.startswith(f"{ENVIRONMENT}/logs/year="), f"unexpected archive key {key}")
             json.loads(body)  # otlp_json
-            assert f"span-{marker}".encode() not in body, "traces must not be archived"
-            assert f"metric_{marker}".encode() not in body, "metrics must not be archived"
-        for body in grafana_bodies + [body for _, body in objects]:
-            assert f"secret-{marker}".encode() not in body, "a scrubbed header left the collector"
-        assert any(b"deployment.environment.name" in body and ENVIRONMENT.encode() in body
-                   for _, body in objects), "the environment attribute is missing"
+            check(f"span-{marker}".encode() not in body, "traces must not be archived")
+            check(f"metric_{marker}".encode() not in body, "metrics must not be archived")
+        everything = grafana_bodies + [body for _, body in objects]
+        for body in everything:
+            for value in planted:
+                check(value.encode() not in body, f"{value[:12]}... left the collector unmasked")
+        check(any(b"[REDACTED" in body for body in everything), "nothing was masked")
+        check(any(b"https://app.rampsmith.example/app" in body for body in grafana_bodies),
+              "the URL without its query string should still reach Grafana")
+        check(any(b"deployment.environment.name" in body and ENVIRONMENT.encode() in body
+                  for _, body in objects), "the environment attribute is missing")
+        print("tokens, query strings and email addresses were masked before export")
         print(f"archive holds {len(objects)} gzip OTLP JSON object(s) under {ENVIRONMENT}/logs/")
         print("collector smoke test: PASS")
         return 0

@@ -1,62 +1,80 @@
-"""Refuse a production deploy unless the GitHub environment really requires a reviewer.
+"""Refuse a deploy unless its GitHub environment is protected as LAUNCH.md C row 14 says.
 
-PLAN §24 and LAUNCH.md C row 14: production deploys wait for the founder's approval on the
-protected `production` environment. GitHub enforces the approval before the job starts, but
-only if the founder configured it; an unprotected environment would run the job at once. So
-the deploy job reads its own environment (`gh api repos/{owner}/{repo}/environments/{name}`)
-and stops before touching Railway unless there is a required-reviewers rule with at least one
-reviewer and deployments are limited to protected or selected branches (ADR-185).
+GitHub enforces an environment's rules before a job that uses it starts, but only the rules the
+founder configured. So each deploy reads its own environment first, with no secret in reach,
+and stops unless:
 
-Usage: gh api repos/OWNER/REPO/environments/production | python3 check_protection.py
+- deployments are limited to selected branches and the only selected branch is `main`
+  (`deployment_branch_policy` with `custom_branch_policies`, and the branch-policy list
+  `[main]`), for staging and production alike, so no other branch's workflow can use the
+  environment's secrets; and
+- for production, a required-reviewers rule names at least one reviewer, so the founder
+  approves every production deploy (PLAN §24).
+
+Usage: check_protection.py <environment.json> <branch-policies.json> [--require-reviewer]
+where the files hold `gh api repos/OWNER/REPO/environments/NAME` and
+`gh api repos/OWNER/REPO/environments/NAME/deployment-branch-policies` (ADR-185).
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 
-def problems(environment: dict[str, Any]) -> list[str]:
+def problems(environment: dict[str, Any], policies: dict[str, Any], reviewer: bool) -> list[str]:
     found: list[str] = []
-    rules = environment.get("protection_rules") or []
-    reviewers = [
-        reviewer
-        for rule in rules
-        if isinstance(rule, dict) and rule.get("type") == "required_reviewers"
-        for reviewer in (rule.get("reviewers") or [])
-    ]
-    if not reviewers:
-        found.append("no required reviewer is configured")
+    if reviewer:
+        reviewers = [
+            person
+            for rule in environment.get("protection_rules") or []
+            if isinstance(rule, dict) and rule.get("type") == "required_reviewers"
+            for person in (rule.get("reviewers") or [])
+        ]
+        if not reviewers:
+            found.append("no required reviewer is configured")
     policy = environment.get("deployment_branch_policy")
-    if not isinstance(policy, dict) or not (
-        policy.get("protected_branches") or policy.get("custom_branch_policies")
-    ):
-        found.append("deployments are not limited to protected or selected branches")
+    if not (isinstance(policy, dict) and policy.get("custom_branch_policies") is True):
+        found.append("deployments are not limited to selected branches")
+    else:
+        branches = [
+            (item.get("name"), item.get("type", "branch"))
+            for item in policies.get("branch_policies") or []
+            if isinstance(item, dict)
+        ]
+        if branches != [("main", "branch")]:
+            names = ", ".join(f"{name} ({kind})" for name, kind in branches) or "none"
+            found.append(f"the selected branches must be exactly main, not: {names}")
     return found
 
 
-def main() -> int:
+def main(argv: list[str]) -> int:
+    if len(argv) not in (3, 4) or (len(argv) == 4 and argv[3] != "--require-reviewer"):
+        print("usage: check_protection.py <environment.json> <policies.json> [--require-reviewer]")
+        return 2
     try:
-        environment = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        print("::error title=Production protection::could not read the environment settings")
+        environment = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+        policies = json.loads(Path(argv[2]).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        print("::error title=Environment protection::could not read the environment settings")
         return 1
-    if not isinstance(environment, dict):
-        print("::error title=Production protection::unexpected environment settings")
+    if not isinstance(environment, dict) or not isinstance(policies, dict):
+        print("::error title=Environment protection::unexpected environment settings")
         return 1
-    found = problems(environment)
-    name = environment.get("name", "production")
+    name = environment.get("name", "?")
+    found = problems(environment, policies, len(argv) == 4)
     if found:
-        detail = "; ".join(found)
         print(
-            f"::error title=Production protection::Refusing to deploy: the {name} environment "
-            f"is not protected ({detail}). Configure it as LAUNCH.md C row 14 describes."
+            f"::error title=Environment protection::Refusing to deploy: the {name} environment "
+            f"is not protected ({'; '.join(found)}). Configure it as LAUNCH.md C row 14 describes."
         )
         return 1
-    print(f"The {name} environment requires a reviewer and is limited to selected branches")
+    rules = "a required reviewer and " if len(argv) == 4 else ""
+    print(f"The {name} environment has {rules}deployments limited to main")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))

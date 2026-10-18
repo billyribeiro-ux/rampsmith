@@ -51,7 +51,7 @@ hex() { openssl rand -hex 32; }
 
 user=$(docker image inspect --format '{{.Config.User}}' "$image")
 case "$user" in
-  "" | root | 0 | 0:*) fail "the image runs as root (USER is '${user}')" ;;
+  "" | root | root:* | 0 | 0:*) fail "the image runs as root (USER is '${user}')" ;;
 esac
 echo "runs as $user"
 
@@ -192,8 +192,11 @@ if [ "$service" = api ]; then
   echo "the api process cannot see MIGRATION_DATABASE_URL"
   # The public domain reaches only the webhook listener.
   if curl -s -o /dev/null "http://127.0.0.1:$webhook_port/"; then
-    code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$webhook_port/readyz")
-    [ "$code" = 404 ] || fail "the webhook listener serves /readyz ($code); it must serve only /webhooks/*"
+    for path in /readyz /healthz /openapi.json /api /v1; do
+      code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$webhook_port$path")
+      [ "$code" = 404 ] ||
+        fail "the webhook listener answers $path with $code; it must serve only /webhooks/*"
+    done
     code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$webhook_port/webhooks/shopify")
     [ "$code" = 401 ] || fail "an unsigned Shopify webhook got $code, not 401"
     echo "the webhook listener serves only signed /webhooks/* requests"

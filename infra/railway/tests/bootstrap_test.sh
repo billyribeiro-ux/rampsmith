@@ -74,12 +74,16 @@ else
   done
 fi
 
-echo "4. no service login is privileged, and the migrator owns every table"
+echo "4. no login is privileged, and the migrator owns every table"
 privileged=$(as_superuser -c "
   select string_agg(rolname, ',') from pg_roles
   where rolname in ('rampsmith_migrator', 'rampsmith_api', 'rampsmith_ctl', 'rampsmith_engine')
-    and (rolsuper or rolbypassrls or rolreplication or not rolcanlogin)")
+    and (rolsuper or rolbypassrls or rolreplication or rolcreatedb or not rolcanlogin)")
 [ -z "$privileged" ] || fail "privileged or non-login roles: $privileged"
+creators=$(as_superuser -c "
+  select string_agg(rolname, ',') from pg_roles
+  where rolname in ('rampsmith_api', 'rampsmith_ctl', 'rampsmith_engine') and rolcreaterole")
+[ -z "$creators" ] || fail "service logins that can create roles: $creators"
 foreign=$(as_superuser -c "
   select string_agg(c.relname || ':' || pg_get_userbyid(c.relowner), ',')
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -92,16 +96,21 @@ creators=$(as_superuser -c "
 [ -z "$creators" ] || fail "service logins that can create objects: $creators"
 
 echo "5. row-level security applies to the api login"
+tenant=$(as_superuser -c "insert into tenants (id, kind) values (gen_random_uuid(), 'organization') returning id")
 if out=$(as_login rampsmith_api "$RAMPSMITH_DB_PASSWORD_API" -c "select count(*) from tenants" 2>&1); then
   fail "rampsmith_api read tenants without a tenant context: $out"
 fi
 grep -q 'app.tenant_id' <<<"$out" || fail "unexpected error without a tenant: $out"
-count=$(as_login rampsmith_api "$RAMPSMITH_DB_PASSWORD_API" -c "
-  begin;
-  select set_config('app.tenant_id', gen_random_uuid()::text, true);
-  select count(*) from tenants;
-  commit;" | sed -n '2p')
-[ "$count" = 0 ] || fail "rampsmith_api saw $count tenants inside an unknown tenant"
+count_as() {
+  as_login rampsmith_api "$RAMPSMITH_DB_PASSWORD_API" -c "
+    begin;
+    select set_config('app.tenant_id', '$1', true);
+    select count(*) from tenants;
+    commit;" | sed -n '2p'
+}
+[ "$(count_as "$tenant")" = 1 ] || fail "rampsmith_api cannot see its own tenant"
+[ "$(count_as "$(as_superuser -c 'select gen_random_uuid()')")" = 0 ] ||
+  fail "rampsmith_api saw another tenant's row"
 
 echo "6. workers reach the job queue"
 for login in ctl engine; do
