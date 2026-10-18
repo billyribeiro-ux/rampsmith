@@ -20,27 +20,39 @@ export function escapeHtml(text: string): string {
 }
 
 /**
- * C0 and C1 controls other than tab and line feed, DEL, and the explicit bidirectional
- * embedding, override and isolate controls (U+202A–U+202E, U+2066–U+2069), which could make
- * a merchant-supplied name reorder the report text around it.
+ * C0 and C1 controls other than tab and line feed, DEL, the explicit bidirectional embedding,
+ * override and isolate controls (U+202A–U+202E, U+2066–U+2069), which could make a
+ * merchant-supplied name reorder the report text around it, and the invisible characters that
+ * carry no meaning in report text: zero width space (U+200B), word joiner and the invisible
+ * operators (U+2060–U+2064), and the byte-order mark (U+FEFF). The joiners U+200C and U+200D
+ * and the implicit marks U+200E, U+200F and U+061C stay: Persian, Indic scripts, emoji and
+ * right-to-left text need them.
  */
-// eslint-disable-next-line no-control-regex -- matching control characters is the point
-const UNSAFE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/gu;
+const UNSAFE =
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/gu;
 
 /**
- * Cleans free text before it is rendered anywhere: normalizes line endings to LF, removes
- * unsafe control characters, and replaces lone surrogates with U+FFFD.
+ * Cleans free text before it is rendered anywhere: normalizes line endings, including the
+ * Unicode line and paragraph separators, to LF; removes unsafe and invisible characters; and
+ * replaces lone surrogates with U+FFFD.
  */
 export function sanitizeText(text: string): string {
-  return text.toWellFormed().replace(/\r\n?/gu, '\n').replace(UNSAFE, '');
+  return text
+    .toWellFormed()
+    .replace(/\r\n?|[\u2028\u2029]/gu, '\n')
+    .replace(UNSAFE, '');
 }
+
+/** Longest URL accepted, before and after serialization (percent-encoding can grow it). */
+const MAX_URL = 2_048;
 
 /**
  * Returns the serialized URL when `input` is an absolute `https:` or `http:` URL without
  * credentials, and `undefined` otherwise. Only URLs that pass become `href` values.
  */
 export function safeWebUrl(input: string): string | undefined {
-  if (input !== input.trim() || !/^https?:\/\//iu.test(input)) {
+  if (input.length > MAX_URL || input !== input.trim() || !/^https?:\/\//iu.test(input)) {
     return undefined;
   }
   let url: URL;
@@ -49,7 +61,12 @@ export function safeWebUrl(input: string): string | undefined {
   } catch {
     return undefined;
   }
-  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) {
+  if (
+    (url.protocol !== 'https:' && url.protocol !== 'http:') ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.href.length > MAX_URL
+  ) {
     return undefined;
   }
   return url.href;

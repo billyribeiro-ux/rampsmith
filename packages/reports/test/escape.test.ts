@@ -98,3 +98,24 @@ describe('email and phone links', () => {
     expect(telHref('555-CALL-NOW')).toBeUndefined();
   });
 });
+
+describe('limits and invisible characters', () => {
+  it('refuses a URL longer than 2,048 characters, before or after serialization', () => {
+    expect(safeWebUrl(`https://example.com/${'a'.repeat(2_020)}`)).toBeDefined();
+    expect(safeWebUrl(`https://example.com/${'a'.repeat(2_040)}`)).toBeUndefined();
+    // 250 euro signs percent-encode to 9 characters each: short as typed, too long as an href.
+    expect(safeWebUrl(`https://example.com/${'\u20AC'.repeat(250)}`)).toBeUndefined();
+  });
+
+  it('turns Unicode line and paragraph separators into line feeds', () => {
+    expect(sanitizeText('a\u2028b\u2029c')).toBe('a\nb\nc');
+  });
+
+  it('removes zero-width spaces, word joiners and byte-order marks, and keeps joiners', () => {
+    expect(sanitizeText('com\u200Bpli\u2060ant\uFEFF')).toBe('compliant');
+    // ZWNJ in Persian and ZWJ in emoji carry meaning.
+    expect(sanitizeText('می\u200Cخواهم \u{1F469}\u200D\u{1F4BB}')).toBe(
+      'می\u200Cخواهم \u{1F469}\u200D\u{1F4BB}',
+    );
+  });
+});

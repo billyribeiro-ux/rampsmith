@@ -1,6 +1,6 @@
 // The coverage disclosure every report carries (PLAN §11): which WCAG 2.2 A and AA criteria
 // the automated checks test, which they test only in part, and which need a person (ADR-225).
-import { ReportInputError, requireCount, requireLine } from './validate.ts';
+import { quote, ReportInputError, requireCount, requireLine } from './validate.ts';
 import { WCAG22_AA, compareCriteria, isWcag22AaCriterion, type SuccessCriterion } from './wcag.ts';
 
 /**
@@ -38,13 +38,13 @@ export function classifyCoverage(input: CoverageInput, field = 'coverage'): Cove
       if (!isWcag22AaCriterion(id)) {
         throw new ReportInputError(
           `${field}.${name}`,
-          `${JSON.stringify(id)} is not a WCAG 2.2 Level A or AA success criterion`,
+          `${quote(id)} is not a WCAG 2.2 Level A or AA success criterion`,
         );
       }
       if (name === 'partial' && automated.has(id)) {
         throw new ReportInputError(
           `${field}.partial`,
-          `${id} is listed both as automated and partial`,
+          `${quote(id)} is listed both as automated and partial`,
         );
       }
     }
@@ -106,7 +106,7 @@ export function coverageFromRules(options: {
     if (!tested.has(id)) {
       throw new ReportInputError(
         'automated',
-        `${id} has no rule in this ruleset, so it cannot be automated`,
+        `${quote(id)} has no rule in this ruleset, so it cannot be automated`,
       );
     }
   }

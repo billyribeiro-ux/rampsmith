@@ -199,7 +199,8 @@ describe('remediationLogJson', () => {
     );
     expect(json).not.toMatch(/[<>&\u2028\u2029]/u);
     expect(JSON.parse(json)).toMatchObject({
-      entries: [{ change: { before: '</script><b>&\u2028\u2029' } }],
+      // U+2028 and U+2029 are line breaks, normalized to LF like CR and CRLF.
+      entries: [{ change: { before: '</script><b>&\n\n' } }],
     });
   });
 });

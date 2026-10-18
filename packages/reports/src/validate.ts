@@ -14,6 +14,19 @@ export class ReportInputError extends Error {
   }
 }
 
+/**
+ * A short, single-line, quoted form of an offending value for an error message: at most 40
+ * characters, with control characters and line breaks escaped, so an error never carries a
+ * forged log line or a whole hostile input.
+ */
+export function quote(value: string): string {
+  const short = value.length > 40 ? `${value.slice(0, 40)}…` : value;
+  return JSON.stringify(short).replace(
+    /[\u007f-\u009f\u2028\u2029]/gu,
+    (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
 /** Longest free text accepted in one field, so a hostile input cannot stall the PDF printer. */
 const MAX_TEXT = 2_000;
 /** Longest single-line value, such as a name. */

@@ -5,6 +5,7 @@ import { toCsv } from './csv.ts';
 import { safeWebUrl, sanitizeText } from './escape.ts';
 import { translator, type MessageKey, type Translator } from './i18n.ts';
 import {
+  quote,
   ReportInputError,
   requireDate,
   requireItems,
@@ -142,10 +143,15 @@ function checkEntry(entry: RemediationEntry, index: number): CheckedEntry {
   }
   const approvedAt =
     entry.approvedAt === null ? null : requireDate(`${f}.approvedAt`, entry.approvedAt);
-  const approver: Approver | null =
-    entry.approver === null || entry.approver.kind === 'system'
-      ? entry.approver
-      : { kind: 'user', name: requireLine(`${f}.approver.name`, entry.approver.name) };
+  // Rebuilt field by field, so nothing beyond the kind and the name reaches the export.
+  let approver: Approver | null = null;
+  if (entry.approver !== null) {
+    requireOneOf(`${f}.approver.kind`, entry.approver.kind, ['user', 'system']);
+    approver =
+      entry.approver.kind === 'system'
+        ? { kind: 'system' }
+        : { kind: 'user', name: requireLine(`${f}.approver.name`, entry.approver.name) };
+  }
   const appliedAt =
     entry.appliedAt === null ? null : requireDate(`${f}.appliedAt`, entry.appliedAt);
   if (entry.change.kind !== kind) {
@@ -189,7 +195,7 @@ function checkEntry(entry: RemediationEntry, index: number): CheckedEntry {
       if (!isWcag22AaCriterion(id)) {
         throw new ReportInputError(
           `${g}.criteria`,
-          `${JSON.stringify(id)} is not a WCAG 2.2 A or AA criterion`,
+          `${quote(id)} is not a WCAG 2.2 A or AA criterion`,
         );
       }
     }

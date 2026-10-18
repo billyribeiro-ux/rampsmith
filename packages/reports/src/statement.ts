@@ -19,6 +19,7 @@ import { markup } from './html.ts';
 import { translator, type Locale, type Translator } from './i18n.ts';
 import { automationLimitBlock, coverageBlocks } from './sections.ts';
 import {
+  quote,
   ReportInputError,
   MAX_LINE,
   optionalText,
@@ -170,7 +171,7 @@ function barriers(findings: readonly StatementFinding[]): Barrier[] {
       if (!isWcag22AaCriterion(id)) {
         throw new ReportInputError(
           `${field}.criteria`,
-          `${JSON.stringify(id)} is not a WCAG 2.2 A or AA criterion`,
+          `${quote(id)} is not a WCAG 2.2 A or AA criterion`,
         );
       }
     }

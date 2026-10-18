@@ -11,8 +11,15 @@ import { sanitizeText } from './escape.ts';
  */
 const FORMULA_START = /^\s*[=+\-@\t\r\n\uFF1D\uFF0B\uFF0D\uFF20]/u;
 
+/**
+ * The same characters right after a comma, semicolon, tab or line break inside a field. A
+ * spreadsheet that splits on its locale's list separator without honouring quotes (Excel in
+ * many EU locales uses ";") would start a new cell there, so those get an apostrophe too.
+ */
+const FORMULA_AFTER_SEPARATOR = /([,;\t\n])(\s*)([=+\-@\uFF1D\uFF0B\uFF0D\uFF20])/gu;
+
 export function csvCell(value: string): string {
-  const clean = sanitizeText(value);
+  const clean = sanitizeText(value).replace(FORMULA_AFTER_SEPARATOR, "$1$2'$3");
   const safe = FORMULA_START.test(clean) ? `'${clean}` : clean;
   return `"${safe.replaceAll('"', '""')}"`;
 }

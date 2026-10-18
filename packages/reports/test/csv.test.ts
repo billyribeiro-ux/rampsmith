@@ -17,8 +17,9 @@ describe('csvCell', () => {
     ['+1+cmd|calc', `"'+1+cmd|calc"`],
     ['-2+3', `"'-2+3"`],
     ['@SUM(A1:A2)', `"'@SUM(A1:A2)"`],
-    ['\t=1+1', `"'\t=1+1"`],
-    ['\r=1+1', `"'\n=1+1"`],
+    // A leading tab or line break is itself a trigger, and so is the "=" after it.
+    ['\t=1+1', `"'\t'=1+1"`],
+    ['\r=1+1', `"'\n'=1+1"`],
     ['  =1+1', `"'  =1+1"`],
     ['＝1+1', `"'＝1+1"`],
     ['＋1', `"'＋1"`],
@@ -28,8 +29,16 @@ describe('csvCell', () => {
     expect(csvCell(input)).toBe(expected);
   });
 
-  it('does not touch a trigger character that is not at the start', () => {
+  it('does not touch a trigger character inside a word', () => {
     expect(csvCell('a=b+c-d@e')).toBe('"a=b+c-d@e"');
+  });
+
+  it('neutralizes a formula after a separator, for parsers that ignore quotes', () => {
+    expect(csvCell('Green scarf;=6*7;')).toBe(`"Green scarf;'=6*7;"`);
+    expect(csvCell('a, +1')).toBe(`"a, '+1"`);
+    expect(csvCell('x\t@SUM(A1)')).toBe(`"x\t'@SUM(A1)"`);
+    expect(csvCell('line\n-1+1')).toBe(`"line\n'-1+1"`);
+    expect(csvCell('a;;=b')).toBe(`"a;;'=b"`);
   });
 
   it('removes unsafe control characters', () => {

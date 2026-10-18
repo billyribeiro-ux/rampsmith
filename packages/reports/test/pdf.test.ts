@@ -17,7 +17,8 @@ import {
   ReportRenderError,
   type ReportDocument,
 } from '../src/index.ts';
-import { printIsolated } from '../src/pdf.ts';
+import { CONTENT_SECURITY_POLICY } from '../src/document.ts';
+import { printIsolated, type PdfBrowser, type PdfContext } from '../src/pdf.ts';
 import { launch } from './support/browser.ts';
 import { hostileStatement, hostileSummary } from './support/hostile.ts';
 import { outputs } from './support/outputs.ts';
@@ -283,7 +284,7 @@ describe('the print is isolated from the network and from local files', () => {
   it('stops a print that runs past its time limit', async () => {
     const huge = page(`<table>${'<tr><td>cell</td></tr>'.repeat(60_000)}</table>`);
     await expect(printIsolated(huge, 'en', browser, { timeoutMs: 50 })).rejects.toThrow(
-      /(loading|printing) took longer than 50 ms/u,
+      /printing took longer than 50 ms/u,
     );
   });
 
@@ -291,5 +292,104 @@ describe('the print is isolated from the network and from local files', () => {
     const response = await fetch(`${origin}/direct`);
     expect(await response.text()).toBe('reached');
     expect(hits.at(-1)).toBe('/direct');
+  });
+});
+
+describe('each isolation layer holds with the others turned off', () => {
+  type Layer = 'csp' | 'offline' | 'proxy' | 'route';
+
+  /** A browser that keeps only `keep` of the printer's layers. */
+  function only(keep: Layer): PdfBrowser {
+    return {
+      async newContext(options) {
+        const { offline, proxy, ...rest } = options;
+        const context = await browser.newContext({
+          ...rest,
+          bypassCSP: keep !== 'csp',
+          ...(keep === 'offline' ? { offline } : {}),
+          ...(keep === 'proxy' ? { proxy } : {}),
+        });
+        if (keep === 'route') return context;
+        const unrouted: PdfContext = {
+          route: () => Promise.resolve(),
+          newPage: () => context.newPage(),
+          close: () => context.close(),
+        };
+        return unrouted;
+      },
+    };
+  }
+
+  const csp = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`;
+  const vectors = (): [string, string][] => [
+    ['an image', `<img src="${origin}/layer-img" alt="">`],
+    ['a style sheet', `<link rel="stylesheet" href="${origin}/layer-css">`],
+    [
+      'a font',
+      `<style>@font-face { font-family: x; src: url(${origin}/layer-font); } p { font-family: x; }</style>`,
+    ],
+    ['an iframe', `<iframe src="${origin}/layer-frame" title="x"></iframe>`],
+    ['a prefetch', `<link rel="prefetch" href="${origin}/layer-prefetch">`],
+  ];
+
+  async function attempt(keep: Layer, vector: string): Promise<string[]> {
+    const before = hits.length;
+    const markup = `<!doctype html><html lang="en"><head><title>Layer</title>${keep === 'csp' ? csp : ''}${vector}</head><body><p>Layer test</p></body></html>`;
+    await printIsolated(markup, 'en', only(keep), { timeoutMs: 15_000 }).catch(() => undefined);
+    // Give a stray connection time to arrive before counting.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return hits.slice(before);
+  }
+
+  it.each(['csp', 'offline', 'proxy'] as const)('%s alone stops every vector', async (keep) => {
+    for (const [what, vector] of vectors()) {
+      expect(await attempt(keep, vector), `${keep}: ${what}`).toEqual([]);
+    }
+  });
+
+  it('routing alone stops every vector but a prefetch, which the other layers stop', async () => {
+    for (const [what, vector] of vectors().filter(([w]) => w !== 'a prefetch')) {
+      expect(await attempt('route', vector), `route: ${what}`).toEqual([]);
+    }
+  });
+});
+
+describe('failures are ReportRenderErrors that name the step, never the data', () => {
+  it('wraps a browser error without its message', async () => {
+    const failing: PdfBrowser = {
+      newContext: () =>
+        Promise.resolve({
+          route: () => Promise.resolve(),
+          newPage: () => Promise.reject(new Error('Browser logs: customer@example.com')),
+          close: () => Promise.resolve(),
+        }),
+    };
+    const error = await printIsolated('<p>x</p>', 'en', failing).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ReportRenderError);
+    expect(String(error)).toBe('ReportRenderError: the browser failed while printing (Error)');
+  });
+
+  it('applies the deadline to opening the context, and closes a context that opens late', async () => {
+    let closed = 0;
+    let open: ((context: PdfContext) => void) | undefined;
+    const slow: PdfBrowser = {
+      newContext: () =>
+        new Promise<PdfContext>((resolve) => {
+          open = resolve;
+        }),
+    };
+    await expect(printIsolated('<p>x</p>', 'en', slow, { timeoutMs: 50 })).rejects.toThrow(
+      'printing took longer than 50 ms',
+    );
+    open?.({
+      route: () => Promise.resolve(),
+      newPage: () => Promise.reject(new Error('never used')),
+      close: () => {
+        closed += 1;
+        return Promise.resolve();
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(closed).toBe(1);
   });
 });

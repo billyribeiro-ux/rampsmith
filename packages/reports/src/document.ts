@@ -65,19 +65,40 @@ export const CONTENT_SECURITY_POLICY = [
 
 const KEY = Symbol('ReportDocument');
 
-/** A complete report document. Only this package's renderers can create one. */
+/**
+ * A complete report document. Only this package's renderers can create one; it is frozen and
+ * its fields are private, so `ReportDocument.is` cannot be satisfied by a look-alike object,
+ * an `Object.create(ReportDocument.prototype)`, or a document whose HTML was swapped.
+ */
 export class ReportDocument {
-  readonly lang: string;
-  readonly title: string;
-  readonly html: string;
+  readonly #lang: string;
+  readonly #title: string;
+  readonly #html: string;
 
   constructor(key: symbol, lang: string, title: string, markup: string) {
     if (key !== KEY) {
       throw new TypeError('report documents are created only by this package');
     }
-    this.lang = lang;
-    this.title = title;
-    this.html = markup;
+    this.#lang = lang;
+    this.#title = title;
+    this.#html = markup;
+    Object.freeze(this);
+  }
+
+  static is(value: unknown): value is ReportDocument {
+    return typeof value === 'object' && value !== null && #html in value;
+  }
+
+  get lang(): string {
+    return this.#lang;
+  }
+
+  get title(): string {
+    return this.#title;
+  }
+
+  get html(): string {
+    return this.#html;
   }
 }
 

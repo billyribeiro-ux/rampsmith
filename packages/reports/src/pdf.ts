@@ -2,10 +2,11 @@
 // (PLAN §16: "PDFs render from HTML through Chromium's print with `tagged: true` and a
 // document outline"). Merchant data is in the page, so the page is isolated (ADR-223):
 // JavaScript is off; the document's content security policy refuses every fetch; the context
-// is offline and aborts every request it sees; and if the page tried to load anything or
-// navigated anywhere, the PDF is discarded and an error raised. The caller owns the browser:
-// the engine's Playwright Chromium in production, never launched with flags that weaken web
-// security (such as --disable-web-security or --allow-file-access-from-files).
+// is offline, routes through a proxy nothing listens on, and aborts every request it sees; and
+// if the page tried to load anything or navigated anywhere, the PDF is discarded and an error
+// raised. The caller owns the browser: the engine's Playwright Chromium in production, never
+// launched with flags that weaken web security (such as --disable-web-security or
+// --allow-file-access-from-files).
 import { ReportDocument } from './document.ts';
 
 /** The part of Playwright's `Page` this module uses. A Playwright `Page` satisfies it. */
@@ -44,13 +45,14 @@ export interface PdfBrowser {
     bypassCSP: false;
     locale: string;
     timezoneId: 'UTC';
+    proxy: { readonly server: string; readonly bypass: string };
   }): Promise<PdfContext>;
 }
 
 export interface PdfOptions {
   /** Paper size; the document's own `@page` rule sets A4 unless `Letter` is asked for. */
   readonly format?: 'A4' | 'Letter';
-  /** Longest the load and the print may each take, in milliseconds. */
+  /** Longest the whole print may take, from opening the context to the PDF, in milliseconds. */
   readonly timeoutMs?: number;
 }
 
@@ -62,7 +64,7 @@ export class ReportRenderError extends Error {
   }
 }
 
-/** Rejects when `promise` has not settled within `ms`; the caller's `finally` closes the page. */
+/** Rejects when `promise` has not settled within `ms`. */
 async function withTimeout<T>(promise: Promise<T>, ms: number, step: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {
@@ -77,13 +79,19 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, step: string): Pr
   }
 }
 
+/**
+ * A proxy nothing listens on, with loopback included (`<-loopback>` removes Chromium's implicit
+ * loopback bypass), so a request that slipped past every other layer still cannot connect.
+ */
+const DEAD_PROXY = { server: 'http://127.0.0.1:9', bypass: '<-loopback>' } as const;
+
 /** Prints a document this package rendered. Anything else is refused. */
 export async function renderPdf(
   document: ReportDocument,
   browser: PdfBrowser,
   options: PdfOptions = {},
 ): Promise<Uint8Array> {
-  if (!(document instanceof ReportDocument)) {
+  if (!ReportDocument.is(document)) {
     throw new TypeError('renderPdf prints only documents rendered by @rampsmith/reports');
   }
   return printIsolated(document.html, document.lang, browser, options);
@@ -92,6 +100,8 @@ export async function renderPdf(
 /**
  * The isolated print itself. Exported for the tests that feed it hostile markup directly, to
  * prove the isolation holds even if escaping ever failed; production code calls `renderPdf`.
+ * Every failure is a `ReportRenderError` whose message names the step, never the page's URLs
+ * or the browser's log, which could carry merchant data.
  */
 export async function printIsolated(
   markup: string,
@@ -99,43 +109,45 @@ export async function printIsolated(
   browser: PdfBrowser,
   options: PdfOptions = {},
 ): Promise<Uint8Array> {
-  const timeout = options.timeoutMs ?? 30_000;
-  const context = await browser.newContext({
-    javaScriptEnabled: false,
-    offline: true,
-    serviceWorkers: 'block',
-    acceptDownloads: false,
-    bypassCSP: false,
-    locale: lang,
-    timezoneId: 'UTC',
-  });
-  try {
+  const timeout = options.timeoutMs ?? 60_000;
+  let context: PdfContext | undefined;
+  /** Set once the caller has its answer; a context that opens later is closed at once. */
+  const state = { finished: false };
+  const work = (async (): Promise<Uint8Array> => {
+    const created = await browser.newContext({
+      javaScriptEnabled: false,
+      offline: true,
+      serviceWorkers: 'block',
+      acceptDownloads: false,
+      bypassCSP: false,
+      locale: lang,
+      timezoneId: 'UTC',
+      proxy: DEAD_PROXY,
+    });
+    if (state.finished) {
+      // The deadline passed while the context was being created.
+      await created.close();
+      throw new ReportRenderError('printing was abandoned');
+    }
+    context = created;
     let attempts = 0;
-    await context.route('**/*', async (route) => {
+    await created.route('**/*', async (route) => {
       await route.abort('blockedbyclient');
     });
-    const page = await context.newPage();
+    const page = await created.newPage();
     page.on('request', () => {
       attempts += 1;
     });
-    // Playwright's own timeout is off (0); one deadline covers the load, and one the print.
-    await withTimeout(
-      page.setContent(markup, { waitUntil: 'load', timeout: 0 }),
-      timeout,
-      'loading',
-    );
+    // Playwright's own timeout is off (0); the one deadline below covers every step.
+    await page.setContent(markup, { waitUntil: 'load', timeout: 0 });
     await page.emulateMedia({ media: 'print' });
-    const pdf = await withTimeout(
-      page.pdf({
-        format: options.format ?? 'A4',
-        printBackground: true,
-        preferCSSPageSize: options.format === undefined,
-        tagged: true,
-        outline: true,
-      }),
-      timeout,
-      'printing',
-    );
+    const pdf = await page.pdf({
+      format: options.format ?? 'A4',
+      printBackground: true,
+      preferCSSPageSize: options.format === undefined,
+      tagged: true,
+      outline: true,
+    });
     // Counts only: a URL the page tried could carry merchant data, so it is never reported.
     if (attempts > 0) {
       throw new ReportRenderError(
@@ -146,7 +158,18 @@ export async function printIsolated(
       throw new ReportRenderError('the document navigated or opened a frame; reports do neither');
     }
     return pdf;
+  })();
+  try {
+    return await withTimeout(work, timeout, 'printing');
+  } catch (error: unknown) {
+    if (error instanceof ReportRenderError) throw error;
+    const name = error instanceof Error ? error.name : typeof error;
+    throw new ReportRenderError(`the browser failed while printing (${name})`);
   } finally {
-    await context.close();
+    state.finished = true;
+    work.catch(() => undefined);
+    if (context !== undefined) {
+      await withTimeout(context.close(), 5_000, 'closing').catch(() => undefined);
+    }
   }
 }

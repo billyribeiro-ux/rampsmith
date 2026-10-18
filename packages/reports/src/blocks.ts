@@ -6,16 +6,30 @@ import { markup, join, type Html } from './html.ts';
 
 const KEY = Symbol('Link');
 
+/** A validated link. Frozen, with private fields, so it cannot be forged or altered. */
 export class Link {
-  readonly href: string;
-  readonly label: string;
+  readonly #href: string;
+  readonly #label: string;
 
   constructor(key: symbol, href: string, label: string) {
     if (key !== KEY) {
       throw new TypeError('links are created only by webLink, emailLink and phoneLink');
     }
-    this.href = href;
-    this.label = sanitizeText(label);
+    this.#href = href;
+    this.#label = sanitizeText(label);
+    Object.freeze(this);
+  }
+
+  static is(value: unknown): value is Link {
+    return typeof value === 'object' && value !== null && #href in value;
+  }
+
+  get href(): string {
+    return this.#href;
+  }
+
+  get label(): string {
+    return this.#label;
   }
 }
 
@@ -47,7 +61,7 @@ export type Block =
 function inlineHtml(content: readonly Inline[]): Html {
   return join(
     content.map((part) =>
-      part instanceof Link ? markup`<a href="${part.href}">${part.label}</a>` : markup`${part}`,
+      Link.is(part) ? markup`<a href="${part.href}">${part.label}</a>` : markup`${part}`,
     ),
   );
 }
@@ -55,7 +69,7 @@ function inlineHtml(content: readonly Inline[]): Html {
 function inlineText(content: readonly Inline[]): string {
   return content
     .map((part) => {
-      if (!(part instanceof Link)) return sanitizeText(part);
+      if (!Link.is(part)) return sanitizeText(part);
       // An email address or phone number is its own label; a web link shows its URL.
       return /^(?:mailto|tel):/u.test(part.href) || part.label === part.href
         ? part.label
