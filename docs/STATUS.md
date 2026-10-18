@@ -2,17 +2,43 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-18 01:15 UTC by the builder `Rampsmith builder 2026-10-18 01:09 UTC`.
+Last updated: 2026-10-18 01:30 UTC by the builder `Rampsmith builder 2026-10-18 01:09 UTC`,
+which stood down (below).
 
 ## Active builder
 
-- 2026-10-18 01:12 UTC: `Rampsmith builder 2026-10-18 01:09 UTC`
-  (`session_0141ZUbL5kywLHK6UAtS2pct`), working on branch `r0-foundations`: reconcile R0 against
-  its exit criteria, finish what is missing, integrate, merge.
-- Ended: the original "Rampsmith R0 build" session stopped at 2026-10-17 23:25 UTC on a usage
-  limit; its last push to `r0-foundations` is `ce54cc6` (23:17 UTC). The eight second-wave
-  stream sessions (WS-6 to WS-13) also stopped on usage limits between 23:25 and 23:28 UTC;
-  only `ws/corpus` has commits beyond `16926b5`.
+- The original "Rampsmith R0 build" session (`session_01Q33Wmz7em3UDGwr492j6SH`) is active on
+  `r0-foundations` again. Its scheduled task reads FAILED (usage limit, 2026-10-17 23:25 UTC),
+  but the session resumed and pushed `13e5a23`, `93c4419` and `4fdfb3b` (web `/healthz`,
+  sandboxed engine self-check, web/engine/egress images, ADR-028 "service images") at
+  2026-10-18 01:16 UTC. It works from R0-only instructions and does not read this file.
+- Lock-rule gap: clause 1 does not see a resumed session whose task reads FAILED; clause 2 sees
+  it only while it pushes. The builder `Rampsmith builder 2026-10-18 01:09 UTC`
+  (`session_0141ZUbL5kywLHK6UAtS2pct`) registered at 01:12 UTC, when `r0-foundations` had had no
+  push for 115 minutes, found the 01:16 push at 01:26 and stood down at 01:30 UTC. It built only
+  the R0 required corrections, parked on branch `r0-corrections` (next section).
+- The second-wave stream sessions (WS-6 to WS-13) stopped on usage limits between 23:25 and
+  23:28 UTC; WS-11 has since resumed (`ws/corpus` pushed at 01:11 UTC, draft PR #2).
+
+## R0 corrections parked on `r0-corrections` (for whoever merges R0)
+
+Branch `r0-corrections` at `d1bfeab` is `r0-foundations` at `4fdfb3b` plus three commits:
+1. `0192225`: `main` merged in. `r0-foundations` now uses ADR-028 for its service images, so
+   main's Node runtime ADR became **ADR-029** (`docs/adr/029-node-26-lts-runtime.md`), with
+   every reference moved (PLAN §6 and §7, CLAUDE.md, ENVIRONMENT.md, the release-verifier, both
+   Node evidence files) and an index row. Required correction 2 below is done there.
+2. `824aab7`: the claims-lint `EISDIR` fix with a test for a matching directory.
+3. `d1bfeab`: required correction 1, `mise run check:node-pins` (`packages/node-pins`, 11
+   tests), in `verify` and CI's `node` job; every workspace `package.json` now declares
+   `engines.node`; each CI and spikes job that installs Node logs `node --version` and
+   `process.release.lts` and fails when the version differs from `.mise.toml`.
+
+Local gate on `d1bfeab` (Node 26.12.0, pnpm 12.14.0): ESLint, Prettier, tsc and svelte-check,
+knip, claims-lint (14 files), node-pins, and the claims-lint (50) and node-pins (11) tests all
+pass; no Rust changed. To apply: once the R0 session has stopped pushing, merge
+`r0-corrections` into `r0-foundations` (a fast-forward if nothing newer landed; otherwise a
+merge), let PR #1's CI run, and record its `node --version` line for correction 3. When `main`
+is merged again later, `docs/adr/016-node-26-lts-runtime.md` must stay deleted and only 029 kept.
 
 ## Parallel streams (founder request, 17 Oct 2026, 20:40 UTC)
 
@@ -160,7 +186,9 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
      file, the release-verifier, both Node evidence files) and add it to `docs/adr/README.md`.
   3. Record the CI log's `node --version` in `docs/evidence/`.
 
-  The release-verifier fails R0 until all three are done. Follow-up, required before anything
+  Steps 1 and 2 are done on branch `r0-corrections` (above), with ADR-029 as the new number,
+  because `r0-foundations` took 028 for its service images. The release-verifier fails R0
+  until all three are done. Follow-up, required before anything
   deploys and not before any merge: once the first 26.x release tagged LTS exists (due
   2026-10-28), pin it everywhere ADR-016 lists in one change; regenerate `pnpm-lock.yaml`; point
   ADR-014's sandbox binary at `node-linux-x64@<that version>`; replace the "first 26.x release
@@ -169,6 +197,7 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 - **claims-lint directory bug (main builder).** `claims-lint` fails with `EISDIR` when a
   directory matches `listing/**/*`. In `packages/claims-lint/src/cli.ts` `discoverFiles`, keep
   only paths where `statSync(join(cwd, path)).isFile()`, with a test for a matching directory.
+  Done on `r0-corrections` (`824aab7`).
 - **Log retention.** PLAN §21 keeps logs 30 days; Grafana Cloud Free keeps 14 and Pro keeps 30
   at a cost ([pricing](https://grafana.com/pricing/), read 17 Oct 2026). Keep Grafana Free and
   archive logs to R2 for 30 days through the collector, after verifying its S3-compatible
