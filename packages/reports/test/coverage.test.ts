@@ -88,7 +88,8 @@ describe('coverageFromRules', () => {
     for (const id of ['1.2.3', '2.4.5', '3.2.6', '3.3.7', '3.3.8']) {
       expect(manual, id).toContain(id);
     }
-    expect(partial.length + manual.length).toBe(55);
+    expect(partial).toHaveLength(23);
+    expect(manual).toHaveLength(32);
   });
 });
 
