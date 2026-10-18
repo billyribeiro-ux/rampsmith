@@ -1,12 +1,13 @@
 <script lang="ts">
   // The frame of every standalone page: a skip link, the brand, and the main landmark.
   import type { Snippet } from 'svelte';
+  import { SkipLink } from '@rampsmith/ui';
   import { m } from '#lib/paraglide/messages.js';
 
   let { children }: { children: Snippet } = $props();
 </script>
 
-<a class="skip" href="#main">{m.skip_to_content()}</a>
+<SkipLink>{m.skip_to_content()}</SkipLink>
 <header>
   <p class="brand">{m.app_name()}</p>
 </header>
@@ -15,18 +16,11 @@
 </main>
 
 <style>
-  .skip {
-    position: absolute;
-    left: -10000px;
-  }
-  .skip:focus {
-    position: static;
-  }
   header,
   main {
     max-width: 48rem;
     margin: 0 auto;
-    padding: 1rem 1.5rem;
+    padding: var(--rs-space-4) var(--rs-space-6);
   }
   .brand {
     font-weight: 700;
