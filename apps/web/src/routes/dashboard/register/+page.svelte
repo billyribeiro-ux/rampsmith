@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { Button, Link } from '@rampsmith/ui';
   import StandaloneShell from '#lib/components/StandaloneShell.svelte';
   import { m } from '#lib/paraglide/messages.js';
   import { register } from '#lib/passkeys.ts';
@@ -64,7 +65,7 @@
         bind:value={name}
       />
     </p>
-    <p><button type="submit" disabled={working}>{m.register_button()}</button></p>
+    <p><Button variant="primary" type="submit" disabled={working}>{m.register_button()}</Button></p>
   </form>
   <p id="register-status" role="status">{working ? m.register_working() : ''}</p>
   {#if failure !== undefined}
@@ -72,7 +73,7 @@
   {/if}
   <p>
     {m.register_have_account()}
-    <a href={resolve('/dashboard/sign-in')}>{m.register_sign_in_link()}</a>
+    <Link href={resolve('/dashboard/sign-in')}>{m.register_sign_in_link()}</Link>
   </p>
 </StandaloneShell>
 
@@ -83,12 +84,13 @@
   }
   input {
     font: inherit;
-    padding: 0.4rem;
+    min-height: var(--rs-target);
+    padding: 0 var(--rs-space-3);
     min-width: min(100%, 20rem);
-    border: 1px solid #6b6b6b;
-    border-radius: 4px;
+    border: 1px solid var(--rs-color-border);
+    border-radius: var(--rs-radius);
   }
   .error {
-    color: #a4161a;
+    color: var(--rs-color-critical);
   }
 </style>
