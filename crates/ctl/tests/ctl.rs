@@ -75,6 +75,11 @@ struct World {
 
 /// A shop installed at `now()` through token exchange, run as the worker role.
 async fn world(opts: PgPoolOptions, conn: PgConnectOptions) -> World {
+    world_at(opts, conn, now()).await
+}
+
+/// A shop installed at `at` through token exchange, run as the worker role.
+async fn world_at(opts: PgPoolOptions, conn: PgConnectOptions, at: OffsetDateTime) -> World {
     let owner = opts.clone().connect_with(conn.clone()).await.unwrap();
     let pool = worker_pool(opts, conn).await;
     let db = Db::from_pool(pool.clone());
@@ -99,7 +104,7 @@ async fn world(opts: PgPoolOptions, conn: PgConnectOptions) -> World {
         )
         .unwrap(),
     );
-    let t = now().unix_timestamp();
+    let t = at.unix_timestamp();
     let token = encode(
         &Header::new(Algorithm::HS256),
         &json!({"iss": "https://demo.myshopify.com/admin", "dest": "https://demo.myshopify.com",
@@ -107,7 +112,7 @@ async fn world(opts: PgPoolOptions, conn: PgConnectOptions) -> World {
         &EncodingKey::from_secret(SECRET.as_bytes()),
     )
     .unwrap();
-    let session = auth.authenticate_at(&token, now()).await.unwrap();
+    let session = auth.authenticate_at(&token, at).await.unwrap();
     World {
         pool,
         owner,
@@ -277,7 +282,10 @@ async fn the_worker_runs_due_keepalive_jobs_end_to_end(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
-    let w = world(opts, conn).await;
+    // The real worker reads the wall clock, so the shop is installed at the wall clock too:
+    // with the fixed `now()`, the stored access token went stale an hour after that instant
+    // and the job took the refresh path this test does not mock.
+    let w = world_at(opts, conn, OffsetDateTime::now_utc()).await;
     // Make the installed keep-alive due now.
     sqlx::query("update jobs set run_at = now() - interval '1 second'")
         .execute(&w.owner)
