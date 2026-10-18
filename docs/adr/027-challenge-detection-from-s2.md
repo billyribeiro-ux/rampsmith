@@ -18,7 +18,9 @@ A page is a challenge when any of these holds, checked in this order:
 
 1. **Cloudflare:** the main document has `cf-mitigated: challenge`, the title starts with
    "Just a moment" or "Attention Required! | Cloudflare", or the markup contains `_cf_chl_opt`
-   or `cf-chl-`.
+   or `cf-chl-` **on a page with fewer than five links and no Shopify sections** (amended
+   2026-10-18: the S-2 rerun found a storefront embedding Turnstile, whose widget ids start with
+   `cf-chl-`).
 2. **Shopify's challenge page:** the final URL's path is `/challenge`.
 3. **A CAPTCHA interstitial:** CAPTCHA markup is present **and** the page has fewer than five
    links **and** no Shopify sections.
@@ -28,8 +30,8 @@ The detector reads the full document, its final URL and its response headers.
 
 ## Consequences
 
-- Storefronts that use a CAPTCHA only for their forms are scanned; S-2's recorded signals give
-  0 of 50 flagged.
+- Storefronts that use a CAPTCHA or Turnstile only for their forms are scanned; both S-2 runs'
+  recorded signals give 0 of 50 flagged.
 - A real CAPTCHA wall on a page with many links would be missed and scanned; the axe results
   would then describe the wall, not the store. The blocked-scan metric in production and the
   S-2 rerun watch for this.

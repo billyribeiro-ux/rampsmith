@@ -1,8 +1,9 @@
 /**
  * Bot-challenge detection (PLAN §11): a challenged page is reported as blocked, never solved
  * or evaded. Calibrated by spike S-2 (docs/spikes/S-2-bot-challenges.md): most Shopify
- * storefronts load hCaptcha for their forms, so a CAPTCHA script alone is not a challenge;
- * only a page that is nothing but the CAPTCHA is.
+ * storefronts load hCaptcha for their forms, and some embed Cloudflare Turnstile, whose widget
+ * markup carries `cf-chl-` ids. So challenge markup counts only on a page that is nothing but
+ * the challenge; the `cf-mitigated` header and Cloudflare's interstitial title count anywhere.
  */
 export type Challenge = 'cloudflare' | 'captcha' | 'rate_limited';
 
@@ -31,6 +32,11 @@ function linkCount(html: string): number {
   return html.match(/<a\s[^>]*href=/gi)?.length ?? 0;
 }
 
+/** Whether the page has no content of its own: few links and no Shopify sections. */
+function interstitial(html: string): boolean {
+  return linkCount(html) < MIN_LINKS_OF_A_REAL_PAGE && !html.includes('shopify-section');
+}
+
 /** Why the page is a challenge rather than the store, or `undefined`. */
 export function detectChallenge(page: LoadedPage): Challenge | undefined {
   const title = page.title.trim().toLowerCase();
@@ -38,19 +44,13 @@ export function detectChallenge(page: LoadedPage): Challenge | undefined {
   if (
     page.headers['cf-mitigated'] === 'challenge' ||
     CLOUDFLARE_TITLES.some((t) => title.startsWith(t)) ||
-    CLOUDFLARE_MARKUP.some((m) => html.includes(m))
+    (CLOUDFLARE_MARKUP.some((m) => html.includes(m)) && interstitial(html))
   ) {
     return 'cloudflare';
   }
   // Shopify's bot protection answers on /challenge.
   if (new URL(page.url).pathname.replace(/\/+$/, '') === '/challenge') return 'captcha';
-  if (
-    CAPTCHA_MARKUP.some((m) => html.includes(m)) &&
-    linkCount(html) < MIN_LINKS_OF_A_REAL_PAGE &&
-    !html.includes('shopify-section')
-  ) {
-    return 'captcha';
-  }
+  if (CAPTCHA_MARKUP.some((m) => html.includes(m)) && interstitial(html)) return 'captcha';
   if (page.status === 429) return 'rate_limited';
   return undefined;
 }

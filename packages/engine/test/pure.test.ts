@@ -111,6 +111,17 @@ describe('detectChallenge', () => {
     ).toBeUndefined();
   });
 
+  it('does not mistake a storefront with an embedded Turnstile widget for a challenge', () => {
+    // As the S-2 rerun saw on one headless storefront: HTTP 200, hundreds of links, no Shopify
+    // sections, and Turnstile's widget markup, whose element ids start with cf-chl-.
+    const turnstile = [
+      '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>',
+      ...Array.from({ length: 40 }, (_, i) => `<a href="/products/p${i.toString()}">P</a>`),
+      '<form><div id="cf-chl-widget-a1b2c"></div></form>',
+    ].join('');
+    expect(detectChallenge(page({ html: turnstile }))).toBeUndefined();
+  });
+
   it('reports rate limiting and leaves ordinary pages alone', () => {
     expect(detectChallenge(page({ status: 429, title: 'Too many' }))).toBe('rate_limited');
     expect(
