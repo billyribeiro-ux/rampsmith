@@ -34,6 +34,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [026](026-design-system-primitives.md) | Design-system primitives in `packages/ui` | Accepted |
 | [027](027-challenge-detection-from-s2.md) | Challenge detection calibrated by spike S-2 | Accepted |
 | [028](028-service-images.md) | Images for web, engine and egress | Accepted |
+| [029](029-node-26-lts-runtime.md) | Node.js 26 LTS for every Node service (26.12.0 until the LTS release) | Accepted |
 
 ## Template
 
