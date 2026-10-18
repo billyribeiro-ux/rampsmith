@@ -66,15 +66,46 @@ export type ParseResult =
 const EMAIL =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/u;
 const LOCALE = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{1,8}){0,4}$/u;
-// C0 and C1 controls except tab and line feed, and the bidirectional overrides and isolates
-// that can make text read differently from how it is stored.
-// eslint-disable-next-line no-control-regex -- removing control characters is the point
-const UNSAFE = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]/gu;
-// eslint-disable-next-line no-control-regex -- detecting control characters is the point
-const CONTROL = /[\u0000-\u001F\u007F-\u009F]/u;
+// Removed from submitted text: C0 and C1 controls except tab and line feed; the bidirectional
+// overrides and isolates (U+202A-U+202E, U+2066-U+2069) that make text read differently from
+// how it is stored; and the invisible zero-width space, word joiner and byte-order mark. Line
+// and paragraph separators become line feeds. Zero-width (non-)joiners and the directional
+// marks stay: scripts such as Persian, Hindi and Arabic need them.
+const UNSAFE =
+  // eslint-disable-next-line no-control-regex -- removing control characters is the point
+  /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{200B}\u{202A}-\u{202E}\u{2060}\u{2066}-\u{2069}\u{FEFF}]/gu;
+// A page path is refused outright if it holds any of those, or any whitespace.
+const PATH_UNSAFE =
+  // eslint-disable-next-line no-control-regex -- detecting control characters is the point
+  /[\u0000-\u001F\u007F-\u009F\u{200B}-\u{200F}\u{202A}-\u{202E}\u{2060}-\u{2069}\u{FEFF}\s]/u;
+
+/**
+ * Page types whose path is worth keeping. Every other type (customer account pages, gift
+ * cards, the storefront password and challenge pages) can carry identifiers or secrets in
+ * its path, so only its type is kept.
+ */
+export const PUBLIC_PAGE_TYPES: ReadonlySet<string> = new Set([
+  '404',
+  'article',
+  'blog',
+  'cart',
+  'collection',
+  'index',
+  'list-collections',
+  'metaobject',
+  'page',
+  'policy',
+  'product',
+  'search',
+]);
 
 function clean(value: string): string {
-  return value.replaceAll('\r\n', '\n').normalize('NFC').replaceAll(UNSAFE, '').trim();
+  return value
+    .replaceAll('\r\n', '\n')
+    .replaceAll(/[\u{2028}\u{2029}]/gu, '\n')
+    .replaceAll(UNSAFE, '')
+    .normalize('NFC')
+    .trim();
 }
 
 function samePath(value: string): string | null {
@@ -84,8 +115,19 @@ function samePath(value: string): string | null {
     !path.startsWith('//') &&
     !path.startsWith('/\\') &&
     path.length <= MAX_PAGE_LENGTH &&
-    !CONTROL.test(path);
+    !PATH_UNSAFE.test(path);
   return ok ? path : null;
+}
+
+/**
+ * One CSV cell of the merchant's export: always quoted, and a leading character a spreadsheet
+ * would read as a formula (`= + - @`, their full-width forms, tab or carriage return) is
+ * prefixed with an apostrophe, because every report is text from an anonymous visitor.
+ */
+export function exportCell(value: string | null): string {
+  const text = value ?? '';
+  const safe = /^[=+\-@\t\r\u{FF1D}\u{FF0B}\u{FF0D}\u{FF20}]/u.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 /**
@@ -117,14 +159,15 @@ export function parseBarrierReport(body: string): ParseResult {
   if (errors.length > 0) return { kind: 'invalid', errors };
 
   const pageType = first('page_type').trim();
+  const known = PAGE_TYPES.has(pageType);
   const locale = first('locale').trim();
   return {
     kind: 'accepted',
     report: {
       description,
       email: email === '' ? null : email,
-      page: samePath(first('page')),
-      pageType: PAGE_TYPES.has(pageType) ? pageType : null,
+      page: known && PUBLIC_PAGE_TYPES.has(pageType) ? samePath(first('page')) : null,
+      pageType: known ? pageType : null,
       locale: locale.length <= 35 && LOCALE.test(locale) ? locale : null,
     },
   };

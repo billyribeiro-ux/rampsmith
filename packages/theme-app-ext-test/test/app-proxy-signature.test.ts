@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_AGE_SECONDS,
+  MAX_PARAMETERS,
   MAX_SKEW_SECONDS,
   appProxyMessage,
   appProxySignature,
@@ -26,6 +27,11 @@ describe('appProxyMessage', () => {
 
   it('keeps a key whose value is empty', () => {
     expect(appProxyMessage(new URLSearchParams(ANONYMOUS))).toContain('logged_in_customer_id=path');
+  });
+
+  it('sorts whole key=value strings, not keys, as the documented Ruby example does', () => {
+    // By key, "a" would come before "a-b"; as strings, "a-b=2" sorts first ("-" < "=").
+    expect(appProxyMessage(new URLSearchParams('a=1&a-b=2'))).toBe('a-b=2a=1');
   });
 
   it('sorts by UTF-8 bytes, as the documented Ruby example does', () => {
@@ -128,5 +134,100 @@ describe('verifyAppProxyQuery', () => {
 
   it('refuses an empty secret', () => {
     expect(() => verifyAppProxyQuery(LOGGED_IN, '', NOW)).toThrow(/secret/u);
+  });
+});
+
+describe('the parameters Shopify reserves', () => {
+  const signed = (raw: string): string => {
+    const query = new URLSearchParams(raw);
+    query.set('signature', appProxySignature(query, SECRET));
+    return query.toString();
+  };
+  const base = {
+    shop: 'shop-name.myshopify.com',
+    path_prefix: '/apps/rampsmith',
+    logged_in_customer_id: '',
+    timestamp: String(NOW),
+  };
+  const query = (fields: Record<string, string>, before = ''): string =>
+    signed(`${before}${new URLSearchParams(fields).toString()}`);
+
+  it('accepts a well-formed request and returns the validated path prefix', () => {
+    expect(verifyAppProxyQuery(query(base), SECRET, NOW)).toEqual({
+      ok: true,
+      shop: 'shop-name.myshopify.com',
+      pathPrefix: '/apps/rampsmith',
+      timestamp: NOW,
+    });
+  });
+
+  it('refuses each reserved parameter repeated, with a client-supplied value first', () => {
+    const cases: [string, string][] = [
+      ['shop=other.myshopify.com&', 'bad-shop'],
+      [`timestamp=${String(NOW)}&`, 'bad-timestamp'],
+      ['path_prefix=%2Fapps%2Fother-app&', 'bad-path-prefix'],
+      ['logged_in_customer_id=42&', 'bad-customer'],
+    ];
+    for (const [before, reason] of cases) {
+      expect(verifyAppProxyQuery(query(base, before), SECRET, NOW), before).toEqual({
+        ok: false,
+        reason,
+      });
+    }
+  });
+
+  it('refuses a path prefix that is not a proxy path, and a missing one', () => {
+    for (const prefix of [
+      '//evil.example',
+      'https://evil.example/x',
+      '/apps/',
+      '/admin/x',
+      '/apps/a/b',
+      `/apps/${'a'.repeat(31)}`,
+    ]) {
+      expect(
+        verifyAppProxyQuery(query({ ...base, path_prefix: prefix }), SECRET, NOW),
+        prefix,
+      ).toEqual({
+        ok: false,
+        reason: 'bad-path-prefix',
+      });
+    }
+    for (const prefix of ['/a/x', '/apps/rampsmith', '/community/r_s-1', '/tools/a11y']) {
+      expect(verifyAppProxyQuery(query({ ...base, path_prefix: prefix }), SECRET, NOW).ok).toBe(
+        true,
+      );
+    }
+    const withoutPrefix = Object.fromEntries(
+      Object.entries(base).filter(([k]) => k !== 'path_prefix'),
+    );
+    expect(verifyAppProxyQuery(query(withoutPrefix), SECRET, NOW)).toEqual({
+      ok: false,
+      reason: 'bad-path-prefix',
+    });
+  });
+
+  it('accepts an absent or numeric customer id and refuses anything else', () => {
+    const anonymous = Object.fromEntries(
+      Object.entries(base).filter(([k]) => k !== 'logged_in_customer_id'),
+    );
+    expect(verifyAppProxyQuery(query(anonymous), SECRET, NOW).ok).toBe(true);
+    expect(
+      verifyAppProxyQuery(query({ ...base, logged_in_customer_id: '42' }), SECRET, NOW).ok,
+    ).toBe(true);
+    expect(
+      verifyAppProxyQuery(query({ ...base, logged_in_customer_id: 'x' }), SECRET, NOW),
+    ).toEqual({
+      ok: false,
+      reason: 'bad-customer',
+    });
+  });
+
+  it('refuses a query with more than MAX_PARAMETERS parameters before computing anything', () => {
+    const many = Array.from({ length: MAX_PARAMETERS }, (_, i) => `p${String(i)}=1`).join('&');
+    expect(verifyAppProxyQuery(query(base, `${many}&`), SECRET, NOW)).toEqual({
+      ok: false,
+      reason: 'malformed-query',
+    });
   });
 });

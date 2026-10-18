@@ -37,6 +37,23 @@ describe('the statement link', () => {
     expect(html).toMatch(onlyWhitespace);
   });
 
+  it('links only an https:// or same-site statement URL', async () => {
+    for (const statementMetafield of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      'data:text/html,x',
+      'http://example.com/a11y',
+      '//evil.example/a11y',
+      '/\\evil.example',
+      'pages/a',
+    ]) {
+      expect(await renderEmbed({ statementMetafield }), statementMetafield).toMatch(onlyWhitespace);
+    }
+    expect(await renderEmbed({ statementMetafield: 'HTTPS://example.com/a' })).toContain(
+      'href="HTTPS://example.com/a"',
+    );
+  });
+
   it('escapes the URL', async () => {
     const html = await renderEmbed({ statementMetafield: '/p?a=1&b="><script>x</script>' });
     expect(html).toContain('href="/p?a=1&amp;b=&quot;&gt;&lt;script&gt;x&lt;/script&gt;"');
@@ -82,6 +99,22 @@ describe('the barrier-report form', () => {
     expect(html).toContain('action="/tools/a11y/barrier-report"');
   });
 
+  it('ignores a proxy path that is not a plain same-site path', async () => {
+    for (const proxyPathMetafield of [
+      '//evil.example',
+      'https://evil.example/x',
+      'javascript:alert(1)//',
+      'apps/rampsmith',
+      '/apps/x?y=1',
+      '/apps/../x',
+      '/a\\b',
+      `/apps/${'a'.repeat(40)}`,
+    ]) {
+      const html = await renderEmbed({ settings: { show_report_form: true }, proxyPathMetafield });
+      expect(html, proxyPathMetafield).toContain('action="/apps/rampsmith/barrier-report"');
+    }
+  });
+
   it('sends the page path, page type and locale as hidden fields', async () => {
     const html = await renderEmbed({
       settings: { show_report_form: true },
@@ -94,14 +127,17 @@ describe('the barrier-report form', () => {
     expect(html).toContain('<input type="hidden" name="locale" value="fr">');
   });
 
-  it('sends only /account from customer account pages, whose paths can carry order numbers', async () => {
-    const html = await renderEmbed({
-      settings: { show_report_form: true },
-      path: '/account/orders/1234567',
-      pageType: 'customers/order',
-    });
-    expect(html).toContain('name="page" value="/account"');
-    expect(html).not.toContain('1234567');
+  it('sends no path from account, gift card or password pages, whose paths can carry secrets', async () => {
+    for (const [pageType, path] of [
+      ['customers/order', '/account/orders/1234567'],
+      ['gift_card', '/gift_cards/56174706753/0011c591fc720d0a51b80cdb694f969e'],
+      ['password', '/password'],
+    ] as const) {
+      const html = await renderEmbed({ settings: { show_report_form: true }, path, pageType });
+      expect(html, pageType).toContain('name="page" value=""');
+      expect(html, pageType).toContain(`name="page_type" value="${pageType}"`);
+      expect(html, pageType).not.toContain(path);
+    }
   });
 
   it('escapes the page path', async () => {

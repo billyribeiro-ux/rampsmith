@@ -14,9 +14,15 @@ export const MAX_AGE_SECONDS = 300;
 /** Newest accepted `timestamp`, in seconds after now (clock skew). */
 export const MAX_SKEW_SECONDS = 30;
 
+/** More parameters than this and the query is refused before any work is done. */
+export const MAX_PARAMETERS = 64;
+
 const SIGNATURE = /^[0-9a-f]{64}$/u;
 const MYSHOPIFY = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/u;
 const SECONDS = /^[0-9]{1,12}$/u;
+/** A proxy's storefront path: Shopify's four prefixes and a subpath of up to 30 characters. */
+const PATH_PREFIX = /^\/(?:a|apps|community|tools)\/[A-Za-z0-9_-]{1,30}$/u;
+const CUSTOMER_ID = /^[0-9]{0,20}$/u;
 
 export type VerifyResult =
   | {
@@ -28,12 +34,15 @@ export type VerifyResult =
   | {
       readonly ok: false;
       readonly reason:
+        | 'malformed-query'
         | 'missing-signature'
         | 'malformed-signature'
         | 'bad-signature'
         | 'bad-shop'
         | 'bad-timestamp'
-        | 'stale';
+        | 'stale'
+        | 'bad-path-prefix'
+        | 'bad-customer';
     };
 
 function byUtf8(a: string, b: string): number {
@@ -63,8 +72,10 @@ export function appProxySignature(query: URLSearchParams, secret: string): strin
 /**
  * Verifies a proxied request's raw query string. The comparison is constant-time and runs
  * only on a well-formed signature, and a fresh timestamp bounds how long a request can be
- * replayed. A valid signature proves the request came through Shopify for `shop`; it says
- * nothing about the shopper or the (unsigned) body.
+ * replayed. Every parameter Shopify reserves must appear at most once (exactly once for
+ * `shop`, `timestamp` and `path_prefix`), so a value a client put in the URL can never stand
+ * beside or in front of Shopify's own. A valid signature proves the request came through
+ * Shopify for `shop`; it says nothing about the shopper or the (unsigned) body.
  */
 export function verifyAppProxyQuery(
   rawQuery: string,
@@ -73,6 +84,7 @@ export function verifyAppProxyQuery(
 ): VerifyResult {
   if (secret === '') throw new Error('verifyAppProxyQuery: the client secret is empty');
   const query = new URLSearchParams(rawQuery);
+  if ([...query.keys()].length > MAX_PARAMETERS) return { ok: false, reason: 'malformed-query' };
   const signatures = query.getAll('signature');
   if (signatures.length === 0) return { ok: false, reason: 'missing-signature' };
   const [given] = signatures;
@@ -98,5 +110,14 @@ export function verifyAppProxyQuery(
   if (timestamp < nowSeconds - MAX_AGE_SECONDS || timestamp > nowSeconds + MAX_SKEW_SECONDS) {
     return { ok: false, reason: 'stale' };
   }
-  return { ok: true, shop, pathPrefix: query.get('path_prefix') ?? '', timestamp };
+  const prefixes = query.getAll('path_prefix');
+  const [pathPrefix] = prefixes;
+  if (prefixes.length !== 1 || pathPrefix === undefined || !PATH_PREFIX.test(pathPrefix)) {
+    return { ok: false, reason: 'bad-path-prefix' };
+  }
+  const customers = query.getAll('logged_in_customer_id');
+  if (customers.length > 1 || customers.some((c) => !CUSTOMER_ID.test(c))) {
+    return { ok: false, reason: 'bad-customer' };
+  }
+  return { ok: true, shop, pathPrefix, timestamp };
 }

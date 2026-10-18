@@ -5,9 +5,10 @@
   that posts through the signed app proxy (ADR-162). Every visible string comes from
   locales/; nothing is written to the theme, cookies or browser storage.
 
-  App-data metafields the app sets (ADR-162): rampsmith.statement_url, the published
+  App-data metafields the app sets (ADR-163): rampsmith.statement_url, the published
   statement, used when the embed's own URL setting is empty; and rampsmith.proxy_path, set
-  only if the merchant moved the app proxy away from /apps/rampsmith.
+  only if the merchant moved the app proxy away from /apps/rampsmith. Neither is trusted as
+  is: the link needs an https:// or same-site URL, and the proxy path a plain same-site path.
 {%- endcomment -%}
 {%- liquid
   assign statement_url = block.settings.statement_url
@@ -15,13 +16,41 @@
     assign statement_url = app.metafields.rampsmith.statement_url.value
   endif
 
+  assign url_head = statement_url | slice: 0, 8 | downcase
+  assign url_first = statement_url | slice: 0, 1
+  assign url_second = statement_url | slice: 1, 1 | url_encode
+  assign statement_ok = false
+  if url_head == 'https://'
+    assign statement_ok = true
+  elsif url_first == '/' and url_second != '%2F' and url_second != '%5C'
+    assign statement_ok = true
+  endif
+
   assign show_link = false
-  if block.settings.show_statement_link and statement_url != blank
+  if block.settings.show_statement_link and statement_ok
     assign show_link = true
   endif
 
   assign show_form = block.settings.show_report_form
   assign proxy_path = app.metafields.rampsmith.proxy_path.value | default: '/apps/rampsmith'
+  assign proxy_ok = true
+  assign proxy_first = proxy_path | slice: 0, 1
+  assign proxy_encoded = proxy_path | url_encode
+  if proxy_first != '/' or proxy_path.size > 40 or proxy_path contains '//'
+    assign proxy_ok = false
+  endif
+  if proxy_path contains ':' or proxy_path contains '?' or proxy_path contains '#'
+    assign proxy_ok = false
+  endif
+  if proxy_path contains '.' or proxy_path contains '%' or proxy_path contains ' '
+    assign proxy_ok = false
+  endif
+  if proxy_encoded contains '%5C'
+    assign proxy_ok = false
+  endif
+  unless proxy_ok
+    assign proxy_path = '/apps/rampsmith'
+  endunless
 
   case block.settings.color_scheme
     when 'light'
@@ -32,7 +61,7 @@
       assign scheme = 'theme'
   endcase
 
-  assign uid = 'rs-a11y-' | append: block.id
+  assign uid = 'rs-a11y-' | append: block.id | escape
 -%}
 {%- if show_link or show_form -%}
   {%- render 'rampsmith-a11y-styles' -%}

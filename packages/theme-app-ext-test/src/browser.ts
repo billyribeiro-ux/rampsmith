@@ -87,21 +87,30 @@ interface ApiAnswer {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
+/** An RFC 9457 problem answer with the stable `code` PLAN §8 requires. */
+function problem(
+  status: number,
+  code: string,
+  extra: Record<string, unknown> = {},
+  headers: Readonly<Record<string, string>> = {},
+): ApiAnswer {
+  return { status, json: { type: 'about:blank', title: code, status, code, ...extra }, headers };
+}
+
+const RECEIVED: ApiAnswer = { status: 200, json: { status: 'received' } };
+
 /** The api side of the contract (ADR-162), run on the request Shopify forwarded. */
 function api(proxy: ProxyState, method: string, rawQuery: string, body: string): ApiAnswer {
   const verified = verifyAppProxyQuery(rawQuery, PROXY_SECRET, Math.floor(Date.now() / 1000));
-  if (!verified.ok) return { status: 401, json: { status: 'unauthorized' } };
-  if (method !== 'POST') return { status: 405, json: { status: 'method_not_allowed' } };
+  if (!verified.ok) return problem(401, 'unauthorized');
+  if (method !== 'POST') return problem(405, 'method_not_allowed', {}, { allow: 'POST' });
   switch (proxy.mode) {
     case 'rate-limited':
-      return { status: 429, json: { status: 'rate_limited' }, headers: { 'retry-after': '600' } };
+      return problem(429, 'rate_limited', {}, { 'retry-after': '600' });
     case 'server-error':
-      return { status: 500, json: { status: 'error' } };
+      return problem(500, 'internal');
     case 'server-invalid':
-      return {
-        status: 400,
-        json: { status: 'invalid', errors: [{ field: 'email', code: 'invalid' }] },
-      };
+      return problem(400, 'invalid', { errors: [{ field: 'email', code: 'invalid' }] });
     case 'normal':
     case 'html-error':
     case 'connection-reset':
@@ -110,18 +119,22 @@ function api(proxy: ProxyState, method: string, rawQuery: string, body: string):
   const parsed = parseBarrierReport(body);
   switch (parsed.kind) {
     case 'too-large':
-      return { status: 413, json: { status: 'too_large' } };
+      return problem(413, 'too_large');
     case 'invalid':
-      return { status: 400, json: { status: 'invalid', errors: parsed.errors } };
+      return problem(400, 'invalid', { errors: parsed.errors });
     case 'discarded':
-      return { status: 200, json: { status: 'received' } };
+      return RECEIVED;
     case 'accepted':
       proxy.stored.push(parsed.report);
-      return { status: 200, json: { status: 'received' } };
+      return RECEIVED;
   }
 }
 
-/** Shopify's side: add and sign the proxy parameters, forward, relay the answer. */
+/**
+ * Shopify's side: add and sign the proxy parameters, forward, relay the answer. Shopify does not
+ * document what it does with reserved parameters a client puts in the URL; this fake replaces
+ * them, the api refuses any repeated one (ADR-162), and a live check records what Shopify does.
+ */
 async function appProxy(route: Route, request: Request, proxy: ProxyState): Promise<void> {
   const url = new URL(request.url());
   const query = new URLSearchParams(url.search);
@@ -148,20 +161,23 @@ async function appProxy(route: Route, request: Request, proxy: ProxyState): Prom
     await route.fulfill({ status: 502, contentType: 'text/html', body: '<p>Bad gateway</p>' });
     return;
   }
+  const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
   if (accept.includes('application/json')) {
     await route.fulfill({
       status: answer.status,
-      contentType: 'application/json; charset=utf-8',
-      headers: answer.headers ?? {},
+      contentType:
+        answer.status === 200 ? 'application/json; charset=utf-8' : 'application/problem+json',
+      headers: { ...headers, ...answer.headers },
       body: JSON.stringify(answer.json),
     });
     return;
   }
-  // A plain form post: the api answers with application/liquid, which Shopify renders in the
-  // theme's layout. The api's page text is the api's own (ADR-162), not the extension's.
+  // A plain form post: the api answers 200 with application/liquid, which Shopify renders in
+  // the theme's layout; the page says what happened. Its text is the api's own (ADR-162).
   const sent = answer.json['status'] === 'received';
   await route.fulfill({
-    status: answer.status,
+    status: 200,
+    headers,
     contentType: 'text/html; charset=utf-8',
     body: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Report</title></head><body><main><h1>${sent ? 'Report sent' : 'Report not sent'}</h1></main></body></html>`,
   });
