@@ -21,7 +21,10 @@
       "span": {
         "kind": "data",
         "resource": "gid://shopify/MediaImage/9301",
-        "field": "alt"
+        "field": "alt",
+        "start": 0,
+        "end": 0,
+        "anchor": ""
       },
       "expectedFix": {
         "channel": "admin-api",
@@ -44,7 +47,10 @@
       "span": {
         "kind": "data",
         "resource": "gid://shopify/MediaImage/9201",
-        "field": "alt"
+        "field": "alt",
+        "start": 0,
+        "end": 12,
+        "anchor": "IMG_2041.JPG"
       },
       "expectedFix": {
         "channel": "admin-api",

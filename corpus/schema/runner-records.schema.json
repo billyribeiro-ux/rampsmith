@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rampsmith:corpus:runner-records:1",
   "title": "Rampsmith corpus runner: mapping and fix records",
-  "description": "What the corpus runner records for each golden finding after scanning, mapping and patching (corpus/CONTRACT.md, Inputs; ADR-203). Finding ids are corpus-wide: <theme>/<id>.",
+  "description": "What the corpus runner records for each golden finding after scanning, mapping and patching (corpus/CONTRACT.md, Inputs; ADR-203). Finding ids are corpus-wide: <theme>/<id>. Mappers need not send anchors or CSS selectors; spans compare by location only.",
   "type": "object",
   "additionalProperties": false,
   "required": ["corpus", "mapping", "fixes", "scans", "themeCheck"],
@@ -105,7 +105,7 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "file", "selector", "start", "end", "property", "anchor"],
+          "required": ["kind", "file", "start", "end", "property"],
           "properties": {
             "kind": {
               "const": "css-declaration"
@@ -158,13 +158,12 @@
               "$ref": "#/$defs/offset"
             },
             "anchor": {
-              "$ref": "#/$defs/anchor"
+              "type": "string"
             }
           },
           "dependentRequired": {
-            "start": ["end", "anchor"],
-            "end": ["start"],
-            "anchor": ["start"]
+            "start": ["end"],
+            "end": ["start"]
           }
         }
       ]
@@ -172,7 +171,7 @@
     "elementSpan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "file", "start", "tag", "anchor"],
+      "required": ["kind", "file", "start", "tag"],
       "properties": {
         "kind": {
           "const": "element"
@@ -308,6 +307,17 @@
           "type": "string"
         },
         "counts": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*:(violation|incomplete)$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "resolved": {
+          "description": "After patching: golden occurrence nodes per rule and outcome that fired before and no longer fire.",
           "type": "object",
           "propertyNames": {
             "pattern": "^[a-z][a-z0-9-]*:(violation|incomplete)$"

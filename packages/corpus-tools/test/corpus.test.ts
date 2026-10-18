@@ -64,6 +64,17 @@ describe.each(corpus.themes.map((t) => [t.entry.name, t] as const))('theme %s', 
   });
 });
 
+describe('line endings', () => {
+  it('keeps birch snippets in CRLF, as stored in the repository', () => {
+    for (const name of ['birch', 'birch-clean']) {
+      const theme = corpus.themes.find((t) => t.entry.name === name)?.theme;
+      for (const [path, source] of theme?.files ?? []) {
+        if (path.startsWith('snippets/')) expect(source, `${name}/${path}`).toMatch(/\r\n/);
+      }
+    }
+  });
+});
+
 describe.each(corpus.stores.map((s) => [s.entry.name, s] as const))('store %s', (_name, s) => {
   it('golden findings verify against the fixture data', () => {
     expect(verifyGolden(s.golden, goldenContext(corpus, s))).toEqual([]);

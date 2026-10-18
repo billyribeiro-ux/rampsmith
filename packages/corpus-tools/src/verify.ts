@@ -6,6 +6,7 @@ import {
   type GoldenFile,
   type GoldenFinding,
   type RecipeName,
+  type RefusalCode,
   type Span,
 } from './golden.ts';
 import type { Manifest } from './manifest.ts';
@@ -32,6 +33,31 @@ export interface GoldenContext {
   readonly pages: readonly string[];
   readonly store: StoreFixture | null;
 }
+
+/** Refusal codes any recipe can return when the target is wrong (ADR-102). */
+const GENERAL_REFUSALS: readonly RefusalCode[] = [
+  'wrong-file',
+  'target-not-found',
+  'wrong-element',
+  'invalid-parameter',
+];
+
+/** The refusals each recipe documents in ADR-102, beyond the general ones. */
+const RECIPE_REFUSALS: Readonly<Partial<Record<RecipeName, readonly RefusalCode[]>>> = {
+  'document-language': ['liquid-in-attribute', 'conditional-attribute'],
+  'skip-link': ['main-landmark-not-found', 'head-not-found', 'id-conflict'],
+  'empty-link': ['liquid-in-attribute', 'conditional-attribute', 'dynamic-content'],
+  'empty-button': ['liquid-in-attribute', 'conditional-attribute', 'dynamic-content'],
+  'form-label': [
+    'liquid-in-attribute',
+    'conditional-attribute',
+    'dynamic-content',
+    'not-labelable',
+    'needs-unique-id',
+    'id-conflict',
+  ],
+  'image-alt': ['liquid-in-attribute', 'conditional-attribute', 'no-image-object'],
+};
 
 /** Which span a recipe can act on: element tags, or other span kinds. */
 function recipeFitsSpan(recipe: RecipeName, span: Span): string | null {
@@ -123,6 +149,14 @@ function findingProblems(finding: GoldenFinding, context: GoldenContext): string
     }
     if (finding.mapping !== 'deterministic') {
       problems.push('a targeted finding must map deterministically');
+    }
+  }
+  if (fix.refusal !== undefined) {
+    const allowed = RECIPE_REFUSALS[fix.recipe];
+    if (allowed === undefined) {
+      problems.push(`recipe ${fix.recipe} has no documented refusals`);
+    } else if (!GENERAL_REFUSALS.includes(fix.refusal) && !allowed.includes(fix.refusal)) {
+      problems.push(`recipe ${fix.recipe} does not refuse with ${fix.refusal} (ADR-102)`);
     }
   }
   if (fix.channel === 'admin-api' && finding.span.kind !== 'data') {

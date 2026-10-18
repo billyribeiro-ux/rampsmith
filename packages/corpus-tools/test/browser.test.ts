@@ -16,7 +16,7 @@ afterAll(async () => {
   await browser.close();
 });
 
-const clean = { missing: [], unexpected: [], countMismatch: [], impactMismatch: [] };
+const clean = { missing: [], unexpected: [], countMismatch: [], impactMismatch: [], duplicate: [] };
 
 describe.each(corpus.themes.map((t) => [t.entry.name, t] as const))(
   'theme %s in Chromium',

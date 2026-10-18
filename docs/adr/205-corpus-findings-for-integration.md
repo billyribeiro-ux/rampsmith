@@ -17,8 +17,9 @@ the contract test (`test/contract.test.ts`).
    `bypass` passes when the page has a landmark, a heading or an internal link, and reports
    only as incomplete otherwise (`reviewOnFail`). W3C's Understanding 2.4.1
    (https://www.w3.org/WAI/WCAG21/Understanding/bypass-blocks.html, read 2026-10-18) lists ARIA11
-   (landmarks) and H69 (headings) as sufficient on their own, beside G1 (skip link). So a theme
-   with `<main>` and no skip link meets 2.4.1 and produces no finding; where `bypass` does report
+   (landmarks) and H69 (headings) as sufficient techniques on their own, beside G1 (skip link). So
+   a theme with `<main>` and no skip link produces no axe-core finding, and its landmarks or
+   headings can satisfy 2.4.1, which a person confirms; where `bypass` does report
    (cedar's password layout), there is no `<main>`, and liquid-patch's `skip-link` recipe refuses
    with `main-landmark-not-found`. The skip-link recipe is a best-practice addition, not a fix
    for a reported failure. Golden: `cedar/password-bypass`.
@@ -52,13 +53,27 @@ the contract test (`test/contract.test.ts`).
    (`birch/desktop-cart-link-name`). Fixing only the mapped span leaves the hidden copy empty for
    mobile users; the engine should offer the same edit for identical siblings.
 
+8. **The mapper must output more than elements.** 9 of the 48 rendered findings map to a target
+   that is not an element: 3 colour settings (two global settings in `config/settings_data.json`
+   and one section setting in `templates/index.json`), 5 CSS declarations (in assets and in a
+   section `{% stylesheet %}`), and 1 rich-text field. PLAN §12's mapping steps cover elements and
+   global colour settings only. A mapper that stops at the element tops out at 39 of 48 (81%),
+   below the 95% gate, and mapping a CSS-driven colour to the element at 0.9 or above is a wrong
+   span: the fix is not there. Each such golden finding records that element as `rendersFrom`.
+
 ## Plan correction
 
 PLAN §12, "Fix catalog, in build order", the "No skip link (2.4.1)" row, Fix cell. Replace
 "Skip link to the main landmark, visible on focus" with:
 
 ```markdown
-Skip link to the main landmark, visible on focus; a best-practice addition where the page has a landmark or headings (2.4.1 is then met and axe-core reports nothing), and a refusal where axe-core's `bypass` reports, since that page has no main landmark (ADR-205)
+Skip link to the main landmark, visible on focus; a best-practice addition where the page has a landmark or headings (axe-core then reports nothing, and landmarks (ARIA11) or headings (H69) can satisfy 2.4.1), and a refusal where axe-core's `bypass` reports, since that page has no main landmark (ADR-205)
+```
+
+PLAN §12, "Mapping a rendered element to its source", step 5. Replace "Page-wide failures map straight to `layout/theme.liquid`; colour failures driven by theme settings map to `config/settings_data.json`." with:
+
+```markdown
+5. Page-wide failures map straight to the layout file. Colour failures map to where the colour is set: a theme setting's value in `config/settings_data.json`, a section or block setting's value in the JSON template or section group, or the CSS declaration in an asset or a section's `{% stylesheet %}`. Elements printed by rich-text output (`product.description`, `article.content`, `page.content`) map to the resource and field, as data-audit findings do (corpus/CONTRACT.md; ADR-205).
 ```
 
 PLAN §12, the "Missing form labels (1.3.1, 4.1.2)" row, Failure cell: replace "(1.3.1, 4.1.2)"

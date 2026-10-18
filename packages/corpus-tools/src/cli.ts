@@ -75,10 +75,12 @@ function spans(write: boolean): void {
     const path = join(CORPUS_ROOT, subject.golden);
     const file = JSON.parse(readFileSync(path, 'utf8')) as GoldenFile;
     let changed = 0;
+    let fileFailures = 0;
     const move = (span: Span, where: string): Span => {
       const next = relocate(span, subject.theme, subject.store);
       if (next === null) {
         failures += 1;
+        fileFailures += 1;
         process.stderr.write(`${where}: the anchor or pointer is missing or not unique\n`);
         return span;
       }
@@ -98,7 +100,8 @@ function spans(write: boolean): void {
           }),
     }));
     process.stdout.write(`${subject.golden}: ${String(changed)} span(s) moved\n`);
-    if (write && changed > 0)
+    // A file with a span that could not be re-found is left as it is, so nothing half-moves.
+    if (write && changed > 0 && fileFailures === 0)
       writeFileSync(path, `${JSON.stringify({ ...file, findings }, null, 2)}\n`);
   }
   if (failures > 0) process.exitCode = 1;

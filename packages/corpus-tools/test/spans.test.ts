@@ -29,7 +29,7 @@ const store = loadStore('fixtures/store.json');
 
 describe('pointerPath and jsonValueAt', () => {
   it('reads RFC 6901 pointers with escapes and array indexes', () => {
-    expect(pointerPath('/current/a~1b/1')).toEqual(['current', 'a/b', 1]);
+    expect(pointerPath('/current/a~1b/1')).toEqual(['current', 'a/b', '1']);
     expect(pointerPath('/x~0y')).toEqual(['x~y']);
     expect(() => pointerPath('current')).toThrow(/JSON Pointer/);
   });
@@ -45,6 +45,18 @@ describe('pointerPath and jsonValueAt', () => {
       ),
     ).toBe('"two"');
     expect(jsonValueAt(json, '/current/missing')).toBeNull();
+  });
+
+  it('keeps all-digit tokens as object keys, as older themes number their blocks', () => {
+    const blocks =
+      '{"blocks":{"1585245264519":{"type":"slide"},"0":{"type":"text"}},"order":["a","b"]}';
+    const slide = jsonValueAt(blocks, '/blocks/1585245264519/type');
+    expect(blocks.slice(slide?.start, slide?.end)).toBe('"slide"');
+    const zero = jsonValueAt(blocks, '/blocks/0/type');
+    expect(blocks.slice(zero?.start, zero?.end)).toBe('"text"');
+    const second = jsonValueAt(blocks, '/order/1');
+    expect(blocks.slice(second?.start, second?.end)).toBe('"b"');
+    expect(jsonValueAt(blocks, '/order/x')).toBeNull();
   });
 });
 
@@ -70,6 +82,35 @@ describe('cssDeclaration', () => {
     expect(cssDeclaration('.a { color: red; color: red; }', '.a', 'color: red')).toMatch(
       /more than once/,
     );
+  });
+
+  it('does not find a declaration inside a longer property', () => {
+    expect(cssDeclaration('.a { background-color: #777; }', '.a', 'color: #777')).toMatch(
+      /has no declaration/,
+    );
+    const both = '.a { background-color: #777; color: #777; }';
+    expect(cssDeclaration(both, '.a', 'color: #777')).toBe(both.lastIndexOf('color: #777'));
+  });
+
+  it('compares selectors whole: descendants and lists are other rules', () => {
+    const source = '.card .btn { outline: 0; }\n.a,\n.btn { outline: 0; }\n.btn { outline: 0; }';
+    expect(cssDeclaration(source, '.btn', 'outline: 0')).toBe(source.lastIndexOf('outline: 0'));
+    expect(cssDeclaration(source, '.a, .btn', 'outline: 0')).toBe(source.indexOf('outline: 0', 30));
+  });
+
+  it('skips comments and Liquid, whose braces are not CSS braces', () => {
+    const source =
+      '/* x */.n { color: {{ settings.text }}; margin: 0; }\n{% if a %}.m { color: red; }{% endif %}';
+    expect(cssDeclaration(source, '.n', 'margin: 0')).toBe(source.indexOf('margin: 0'));
+    expect(cssDeclaration(source, '.m', 'color: red')).toBe(source.indexOf('color: red'));
+  });
+
+  it('finds a rule inside a section stylesheet tag and inside @media', () => {
+    const section =
+      '{% stylesheet %}\n  .note { color: #999; }\n{% endstylesheet %}\n<p class="note">x</p>\n{% schema %}{"name":"N","settings":[]}{% endschema %}';
+    expect(cssDeclaration(section, '.note', 'color: #999')).toBe(section.indexOf('color: #999'));
+    const media = '@media (min-width: 750px) { .x { width: 16px; } }';
+    expect(cssDeclaration(media, '.x', 'width: 16px')).toBe(media.indexOf('width: 16px'));
   });
 });
 
@@ -165,6 +206,40 @@ describe('spanProblem and relocate', () => {
         store,
       ),
     ).toMatch(/no field/);
+  });
+
+  it('accepts a zero-length data span for an empty field', () => {
+    const empty: Span = {
+      kind: 'data',
+      resource: 'gid://shopify/MediaImage/9301',
+      field: 'alt',
+      start: 0,
+      end: 0,
+      anchor: '',
+    };
+    expect(spanProblem(empty, null, store)).toBeNull();
+    expect(relocate({ ...empty, end: 3 }, null, store)).toEqual(empty);
+    expect(
+      relocate({ ...empty, resource: 'gid://shopify/MediaImage/9201' }, null, store),
+    ).toBeNull();
+  });
+
+  it('re-finds an element only where its anchor begins an element with its tag', () => {
+    const commented: Theme = {
+      name: 'c',
+      files: new Map([
+        ['sections/c.liquid', '<!-- <a href="/x"> --><div><a href="/x">x</a></div>'],
+      ]),
+    };
+    const span: Span = {
+      kind: 'element',
+      file: 'sections/c.liquid',
+      start: 0,
+      tag: 'a',
+      anchor: '<a href="/x">x',
+    };
+    expect(relocate(span, commented, null)).toMatchObject({ start: 27 });
+    expect(relocate({ ...span, anchor: '<!-- <a' }, commented, null)).toBeNull();
   });
 
   it('re-finds spans from their anchors and pointers', () => {

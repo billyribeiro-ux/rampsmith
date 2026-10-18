@@ -57,7 +57,7 @@ export type Span =
       readonly file: string;
       readonly start: number;
       readonly tag: string;
-      /** The start tag's text from `start` to the first line end; reviewers read it, mappers ignore it. */
+      /** Source text from `start`, long enough to occur once in the file; reviewers read it, mappers ignore it. */
       readonly anchor: string;
     }
   | {

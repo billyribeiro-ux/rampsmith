@@ -6,30 +6,45 @@ import {
   type DocumentNode,
   type LiquidHtmlNode,
 } from '@shopify/liquid-html-parser';
-import { findNodeAtLocation, parseTree, type Node as JsonNode } from 'jsonc-parser';
+import { parseTree, type Node as JsonNode } from 'jsonc-parser';
 import type { Span } from './golden.ts';
 import type { StoreFixture } from './render/store.ts';
 import type { Theme } from './render/theme.ts';
 
-/** RFC 6901 pointer → path segments; numeric segments index arrays. */
-export function pointerPath(pointer: string): (string | number)[] {
+/** RFC 6901 pointer → unescaped reference tokens. */
+export function pointerPath(pointer: string): string[] {
   if (pointer === '') return [];
   if (!pointer.startsWith('/')) throw new Error(`"${pointer}" is not a JSON Pointer`);
   return pointer
     .slice(1)
     .split('/')
-    .map((raw) => raw.replaceAll('~1', '/').replaceAll('~0', '~'))
-    .map((seg) => (/^(0|[1-9]\d*)$/.test(seg) ? Number(seg) : seg));
+    .map((raw) => raw.replaceAll('~1', '/').replaceAll('~0', '~'));
 }
 
-/** The JSON value a pointer names, with its offsets, or `null`. */
+/**
+ * The JSON value a pointer names, with its offsets, or `null`. Each token is resolved against
+ * the node it applies to: an object member by key (numeric block ids such as
+ * `"1585245264519"` stay keys) or an array element by index. A string value's span includes its
+ * quotes, as jsonc-parser reports it.
+ */
 export function jsonValueAt(
   source: string,
   pointer: string,
 ): { start: number; end: number } | null {
-  const tree: JsonNode | undefined = parseTree(source, [], { allowTrailingComma: true });
-  if (tree === undefined) return null;
-  const node = findNodeAtLocation(tree, pointerPath(pointer));
+  let node: JsonNode | undefined = parseTree(source, [], { allowTrailingComma: true });
+  for (const token of pointerPath(pointer)) {
+    if (node === undefined) return null;
+    if (node.type === 'object') {
+      const member: JsonNode | undefined = (node.children ?? []).find(
+        (property) => property.children?.[0]?.value === token,
+      );
+      node = member?.children?.[1];
+    } else if (node.type === 'array' && /^(0|[1-9]\d*)$/.test(token)) {
+      node = node.children?.[Number(token)];
+    } else {
+      return null;
+    }
+  }
   if (node === undefined) return null;
   return { start: node.offset, end: node.offset + node.length };
 }
@@ -139,7 +154,7 @@ export function spanProblem(
     const value = storeField(store, span.resource, span.field);
     if (value === null) return `${span.resource} has no field ${span.field} in the store`;
     if (span.start === undefined || span.end === undefined) return null;
-    if (span.end > value.length || span.start >= span.end) return 'offsets lie outside the value';
+    if (span.end > value.length || span.start > span.end) return 'offsets lie outside the value';
     if (value.slice(span.start, span.end) !== span.anchor) {
       return `the value between the offsets is not the anchor`;
     }
@@ -192,8 +207,9 @@ export function relocate(span: Span, theme: Theme | null, store: StoreFixture | 
   if (span.kind === 'data') {
     if (span.anchor === undefined || store === null) return span;
     const value = storeField(store, span.resource, span.field);
-    const hits = value === null ? [] : occurrencesOf(value, span.anchor);
-    const [start, ...rest] = hits;
+    if (value === null) return null;
+    if (span.anchor === '') return value === '' ? { ...span, start: 0, end: 0 } : null;
+    const [start, ...rest] = occurrencesOf(value, span.anchor);
     if (start === undefined || rest.length > 0) return null;
     return { ...span, start, end: start + span.anchor.length };
   }
@@ -209,34 +225,92 @@ export function relocate(span: Span, theme: Theme | null, store: StoreFixture | 
   }
   const [start, ...rest] = occurrencesOf(source, span.anchor);
   if (start === undefined || rest.length > 0) return null;
-  return { ...span, start };
+  // The anchor must begin an element with the span's tag, not sit in a comment or attribute.
+  return elementStarts(source).get(start) === span.tag ? { ...span, start } : null;
+}
+
+/** A CSS rule: its selector as written (comments removed, whitespace collapsed) and body offsets. */
+interface CssRule {
+  readonly selector: string;
+  readonly bodyStart: number;
+  readonly bodyEnd: number;
+}
+
+function normalizeSelector(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ', ')
+    .trim();
+}
+
+/**
+ * Every brace block of a stylesheet with its selector, in closing order. Comments are skipped,
+ * and so is Liquid (`{{ ... }}`, `{% ... %}`) in a `.css.liquid` asset or around a
+ * `{% stylesheet %}` body, whose braces are not CSS braces. At-rule blocks such as `@media` are
+ * returned too, under their prelude, and the rules inside them under their own selectors.
+ */
+function cssRules(source: string): CssRule[] {
+  const rules: CssRule[] = [];
+  const open: { selectorStart: number; bodyStart: number }[] = [];
+  let boundary = 0;
+  let i = 0;
+  while (i < source.length) {
+    if (source.startsWith('/*', i)) {
+      const close = source.indexOf('*/', i + 2);
+      i = close === -1 ? source.length : close + 2;
+      continue;
+    }
+    if (source.startsWith('{{', i) || source.startsWith('{%', i)) {
+      const tag = source.startsWith('{%', i);
+      const close = source.indexOf(tag ? '%}' : '}}', i + 2);
+      i = close === -1 ? source.length : close + 2;
+      // A Liquid tag such as {% stylesheet %} ends whatever came before; output may sit in a value.
+      if (tag) boundary = i;
+      continue;
+    }
+    const ch = source.charAt(i);
+    if (ch === '{') {
+      open.push({ selectorStart: boundary, bodyStart: i + 1 });
+      boundary = i + 1;
+    } else if (ch === '}') {
+      const rule = open.pop();
+      if (rule !== undefined) {
+        const selector = normalizeSelector(source.slice(rule.selectorStart, rule.bodyStart - 1));
+        rules.push({ selector, bodyStart: rule.bodyStart, bodyEnd: i });
+      }
+      boundary = i + 1;
+    } else if (ch === ';' && open.length === 0) {
+      boundary = i + 1;
+    }
+    i += 1;
+  }
+  return rules;
 }
 
 /**
  * The offset of `declaration` inside the one rule whose selector is `selector`, or why there
- * is none. The selector must begin the rule (after the file start, a `}` or whitespace) and be
- * followed by `{`; the rule must occur once, and the declaration once inside it.
+ * is none. Selectors compare whole, after removing comments and collapsing whitespace, so
+ * `.btn` does not match `.card .btn` or `.a, .btn`. The declaration must start the rule body or
+ * follow a `;`, so `color: red` is not found inside `background-color: red`, and must occur
+ * once in the rule.
  */
 export function cssDeclaration(
   source: string,
   selector: string,
   declaration: string,
 ): number | string {
-  const rules = occurrencesOf(source, selector).filter((i) => {
-    const before = i === 0 ? '' : source.charAt(i - 1);
-    return (
-      (before === '' || /[\s}]/.test(before)) && /^\s*\{/.test(source.slice(i + selector.length))
-    );
-  });
-  const [rule, ...others] = rules;
+  const wanted = normalizeSelector(selector);
+  const matches = cssRules(source).filter((r) => r.selector === wanted);
+  const [rule, ...others] = matches;
   if (rule === undefined) return `no rule with the selector ${selector}`;
   if (others.length > 0) return `the selector ${selector} begins more than one rule`;
-  const open = source.indexOf('{', rule + selector.length);
-  const close = source.indexOf('}', open);
-  if (close === -1) return `the rule ${selector} is not closed`;
-  const body = source.slice(open + 1, close);
-  const [hit, ...more] = occurrencesOf(body, declaration);
+  const body = source.slice(rule.bodyStart, rule.bodyEnd);
+  const hits = occurrencesOf(body, declaration).filter((at) =>
+    /(^|[;{])\s*$/.test(body.slice(0, at)),
+  );
+  const [hit, ...more] = hits;
   if (hit === undefined) return `the rule ${selector} has no declaration ${declaration}`;
   if (more.length > 0) return `the declaration ${declaration} occurs more than once in ${selector}`;
-  return open + 1 + hit;
+  return rule.bodyStart + hit;
 }

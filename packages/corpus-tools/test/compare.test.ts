@@ -39,7 +39,13 @@ describe('comparePage', () => {
       [occ('a', 'link-name', [4, 9]), occ('b', 'label', [12])],
       [node('link-name', 4), node('link-name', 9), node('label', 12)],
     );
-    expect(result).toEqual({ missing: [], unexpected: [], countMismatch: [], impactMismatch: [] });
+    expect(result).toEqual({
+      missing: [],
+      unexpected: [],
+      countMismatch: [],
+      impactMismatch: [],
+      duplicate: [],
+    });
   });
 
   it('reports a golden node that axe does not flag for that rule', () => {
@@ -94,6 +100,18 @@ describe('comparePage', () => {
     );
     expect(result.missing).toEqual([]);
     expect(result.unexpected).toEqual([]);
+  });
+});
+
+describe('comparePage duplicates', () => {
+  it('reports two findings claiming one element for one rule, which would make the join ambiguous', () => {
+    const result = comparePage(
+      [occ('x', 'button-name', [1]), occ('y', 'button-name', [1])],
+      [node('button-name', 1)],
+    );
+    expect(result.duplicate).toEqual([
+      { rule: 'button-name', outcome: 'violation', index: 1, findings: ['x', 'y'] },
+    ]);
   });
 });
 

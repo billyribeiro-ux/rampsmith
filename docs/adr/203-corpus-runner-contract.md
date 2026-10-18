@@ -34,9 +34,12 @@ The full contract is `corpus/CONTRACT.md`; the scoring is pure code with tests w
    target size, skip link, widgets) nor ambiguous mappings.
 5. **Fixed**: the engine returned edits and, after all of the theme's patches are applied, no
    occurrence of the finding still fires its rule. Fix rate = fixed / targeted.
-6. **Render regression**: a page that stops rendering or is not scanned after patching; any
-   `(rule, outcome)` node count that rises on any page; or a new Theme Check offense. Gate: fix
-   rate ≥ 0.90 and zero regressions.
+6. **Render regression**: a page that stops rendering or is not scanned after patching; on any
+   page, a `(rule, outcome)` node count after patching that differs from the count before minus
+   the golden nodes the patch resolved (higher means a new result, even one that replaced a
+   resolved node; lower means something vanished, such as content swallowed by broken markup);
+   or a new Theme Check offense. Two scans of one page, or a page scanned only after patching,
+   are errors. Gate: fix rate ≥ 0.90 and zero regressions.
 7. **Expected refusals** (liquid-patch's typed refusals, such as `dynamic-content` for a link whose
    name comes from Liquid output) are checked too: a different outcome is reported for review,
    because it means either the golden file or the engine is wrong.
@@ -44,11 +47,13 @@ The full contract is `corpus/CONTRACT.md`; the scoring is pure code with tests w
 ## Consequences
 
 - Scoring cannot be gamed by a confident wrong answer: one wrong span at 0.9 fails the gate.
-- Counting node totals per rule and outcome catches a patch that breaks markup elsewhere on the
-  page (an unclosed tag that swallows content shifts results) without pixel comparisons that
-  font differences between machines would make flaky.
-- With only the six recipes liquid-patch ships at `551b200`, the oracle run in
-  `test/contract.test.ts` reaches 30 of 35 targeted findings (85.7%): the five low-contrast
+- Exact accounting per rule and outcome (before, minus resolved golden nodes, equals after) catches
+  a patch that adds a failure, swaps one failure for another, or breaks markup so that checked
+  content disappears, without pixel comparisons that font differences between machines would make
+  flaky. It does not see a visual change that axe-core does not measure.
+- With only the six recipes liquid-patch ships at `551b200`, 30 of 35 targeted findings (85.7%)
+  can be fixed: the oracle in `test/contract.test.ts` shows the ceiling, and running those recipes
+  on the corpus (evidence file) fixed exactly those 30 with zero regressions. The five low-contrast
   findings need the contrast recipe of PLAN §12 before R2 can pass (ADR-205).
 
 ## Plan correction

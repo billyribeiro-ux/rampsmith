@@ -152,7 +152,13 @@
             "type": "string"
           },
           "kind": {
-            "enum": ["render-failed", "page-missing", "new-result", "theme-check"]
+            "enum": [
+              "render-failed",
+              "page-missing",
+              "new-result",
+              "unexplained-drop",
+              "theme-check"
+            ]
           },
           "detail": {
             "type": "string"

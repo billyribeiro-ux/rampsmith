@@ -324,10 +324,22 @@ describe('findRegressions', () => {
     },
   ];
 
-  it('finds none when every count stays or drops', () => {
+  it('finds none when every count falls by the golden nodes the patch resolved', () => {
     const after: PageScan[] = [
-      { theme: 't', page: 'index', rendered: true, counts: { 'link-name:violation': 0 } },
-      { theme: 't', page: 'product', rendered: true, counts: { 'color-contrast:incomplete': 2 } },
+      {
+        theme: 't',
+        page: 'index',
+        rendered: true,
+        counts: { 'link-name:violation': 0 },
+        resolved: { 'link-name:violation': 3 },
+      },
+      {
+        theme: 't',
+        page: 'product',
+        rendered: true,
+        counts: { 'color-contrast:incomplete': 2 },
+        resolved: { 'label:violation': 1 },
+      },
     ];
     expect(findRegressions(before, after)).toEqual([]);
   });
@@ -340,6 +352,7 @@ describe('findRegressions', () => {
         page: 'product',
         rendered: true,
         counts: { 'label:violation': 1, 'duplicate-id-aria:incomplete': 1 },
+        resolved: { 'color-contrast:incomplete': 2 },
       },
     ];
     expect(findRegressions(before, after)).toEqual([
@@ -348,7 +361,7 @@ describe('findRegressions', () => {
         theme: 't',
         page: 'product',
         kind: 'new-result',
-        detail: 'duplicate-id-aria:incomplete rose from 0 to 1',
+        detail: 'duplicate-id-aria:incomplete is 1, expected 0 after 0 resolved',
       },
     ]);
     expect(findRegressions(before, after.slice(1))).toContainEqual({
@@ -383,5 +396,152 @@ describe('buildReport', () => {
     });
     expect(bad.gates).toEqual({ mapping: true, fixes: false });
     expect(bad.passed).toBe(false);
+  });
+});
+
+describe('scoreMapping record checks', () => {
+  it('rejects a malformed mapped record even for a finding that needs no mapping', () => {
+    const dataOnly = finding(
+      't/media',
+      { kind: 'data', resource: 'gid://shopify/MediaImage/1', field: 'alt' },
+      { ruleId: 'rs-media-alt-empty', mapping: 'none' },
+    );
+    expect(() => scoreMapping([dataOnly], [{ finding: 't/media', status: 'mapped' }])).toThrow(
+      /span and a confidence/,
+    );
+    expect(() =>
+      scoreMapping(
+        [dataOnly],
+        [{ finding: 't/media', status: 'needs_review', span: header, confidence: 0.5 }],
+      ),
+    ).toThrow(/only a mapped record/);
+  });
+});
+
+describe('scoreFixes beyond the targeted set', () => {
+  const extra = [
+    finding(
+      't/refuse',
+      { ...header, start: 900 },
+      {
+        expectedFix: {
+          channel: 'theme-patch',
+          recipe: 'empty-link',
+          outcome: 'refused',
+          refusal: 'dynamic-content',
+          targeted: false,
+        },
+      },
+    ),
+    finding(
+      't/focus',
+      { ...header, start: 950 },
+      {
+        ruleId: 'rs-focus-indicator-missing',
+        expectedFix: {
+          channel: 'theme-patch',
+          recipe: 'focus-visible',
+          outcome: 'fixed',
+          targeted: false,
+        },
+      },
+    ),
+    finding(
+      't/widget',
+      { ...header, start: 990 },
+      {
+        ruleId: 'aria-valid-attr-value',
+        expectedFix: {
+          channel: 'theme-patch',
+          recipe: 'ai-proposal',
+          outcome: 'review',
+          targeted: false,
+        },
+      },
+    ),
+    finding(
+      't/media',
+      { kind: 'data', resource: 'gid://shopify/MediaImage/1', field: 'alt' },
+      {
+        ruleId: 'rs-media-alt-empty',
+        mapping: 'none',
+        expectedFix: {
+          channel: 'admin-api',
+          recipe: 'media-alt',
+          outcome: 'review',
+          targeted: false,
+        },
+      },
+    ),
+  ];
+
+  it('reports a missing record for an expected refusal as unexpected', () => {
+    const score = scoreFixes(extra, []);
+    expect(score.unexpected).toEqual([
+      { finding: 't/refuse', expected: 'refused:dynamic-content', actual: 'missing' },
+    ]);
+  });
+
+  it('gives untargeted fixes a verdict without counting them', () => {
+    const score = scoreFixes(extra, [{ finding: 't/focus', engine: 'edits', stillFiring: true }]);
+    expect(score.targeted).toBe(0);
+    expect(score.verdicts).toContainEqual({ finding: 't/focus', verdict: 'still-firing' });
+  });
+
+  it('marks review findings as review, with or without a record', () => {
+    const score = scoreFixes(extra, []);
+    expect(score.verdicts).toContainEqual({ finding: 't/widget', verdict: 'review' });
+    expect(score.verdicts).toContainEqual({ finding: 't/media', verdict: 'review' });
+  });
+});
+
+describe('findRegressions accounting', () => {
+  const was: PageScan = {
+    theme: 't',
+    page: 'cart',
+    rendered: true,
+    counts: { 'link-name:violation': 3, 'label:violation': 2 },
+  };
+
+  it('expects each count to fall by exactly the golden nodes the patch resolved', () => {
+    const ok: PageScan = {
+      ...was,
+      counts: { 'link-name:violation': 1, 'label:violation': 2 },
+      resolved: { 'link-name:violation': 2 },
+    };
+    expect(findRegressions([was], [ok])).toEqual([]);
+  });
+
+  it('reports a node that replaced a resolved one, which a plain count misses', () => {
+    const swapped: PageScan = {
+      ...was,
+      counts: { 'link-name:violation': 3, 'label:violation': 2 },
+      resolved: { 'link-name:violation': 1 },
+    };
+    expect(findRegressions([was], [swapped])).toEqual([
+      {
+        theme: 't',
+        page: 'cart',
+        kind: 'new-result',
+        detail: 'link-name:violation is 3, expected 2 after 1 resolved',
+      },
+    ]);
+  });
+
+  it('reports a drop no resolved node explains, such as content swallowed by broken markup', () => {
+    const lost: PageScan = { ...was, counts: { 'link-name:violation': 3 } };
+    expect(findRegressions([was], [lost])).toEqual([
+      {
+        theme: 't',
+        page: 'cart',
+        kind: 'unexplained-drop',
+        detail: 'label:violation is 0, expected 2 after 0 resolved',
+      },
+    ]);
+  });
+
+  it('rejects duplicate scans and pages scanned only after the patch', () => {
+    expect(() => findRegressions([was, was], [was])).toThrow(/scanned twice/);
+    expect(() => findRegressions([was], [was, { ...was, page: 'new' }])).toThrow(/only after/);
   });
 });

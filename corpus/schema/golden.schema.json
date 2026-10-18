@@ -239,7 +239,8 @@
               "$ref": "#/$defs/offset"
             },
             "anchor": {
-              "$ref": "#/$defs/anchor"
+              "description": "The value's text between the offsets; empty for an empty field, whose span is [0, 0).",
+              "type": "string"
             }
           },
           "dependentRequired": {

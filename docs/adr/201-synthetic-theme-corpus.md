@@ -80,14 +80,17 @@ Shopify theme architecture, read on shopify.dev on 2026-10-17:
    the `<` of its start tag (`RecipeTarget`, ADR-102) and adds the tag name. Three more kinds cover
    targets that are not elements: a JSON value by RFC 6901 pointer (PLAN §12 step 5 maps
    setting-driven colours to `config/settings_data.json`), a CSS declaration inside a named rule,
-   and store data in a11y-rules' `DataLocation` shape (resource GID, field, offsets). Every span
-   carries an `anchor`, the source text at its start, so files stay reviewable and offsets can be
-   re-found after an edit.
+   and store data in a11y-rules' `DataLocation` shape (resource GID, field, offsets; `[0, 0)` for an
+   empty field). Element and CSS spans, and data spans with offsets, carry an `anchor`, the source
+   text at their start, so files stay reviewable and offsets can be re-found after an edit; a JSON
+   span is re-found by its pointer. A JSON string value's span includes its quotes; a CSS
+   declaration's span excludes the trailing `;`.
 5. **Section ids.** Template sections get `template--<n>__<key>`, Shopify's documented form, with
    `n` a deterministic FNV-1a hash of theme and template. Group sections get
    `sections--<n>__<key>`, a corpus convention because the format is undocumented; a mapper must
    resolve a wrapper through the `__<key>` suffix and the group's JSON, not through the prefix.
-6. **Variety on purpose**: CRLF snippets (kept by `corpus/.gitattributes`), tabs, unquoted and
+6. **Variety on purpose**: CRLF snippets (stored byte for byte with `-text` in
+   `corpus/.gitattributes`, so the offsets hold in git objects as well as checkouts), tabs, unquoted and
    single-quoted attributes, `{% include %}`, `img_url`, `data-src`, `.css.liquid`, `{% liquid %}`,
    `inline_asset_content`, `{% stylesheet %}`, template suffixes, static sections and theme blocks.
 

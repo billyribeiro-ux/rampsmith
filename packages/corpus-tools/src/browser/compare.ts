@@ -51,6 +51,13 @@ export interface PageComparison {
     readonly expected: Impact;
     readonly actual: Impact | null;
   }[];
+  /** One element claimed for one rule and outcome by more than one finding. */
+  readonly duplicate: readonly {
+    readonly rule: string;
+    readonly outcome: Outcome;
+    readonly index: number;
+    readonly findings: readonly string[];
+  }[];
 }
 
 const key = (rule: string, outcome: Outcome, index: number): string =>
@@ -67,6 +74,10 @@ export function comparePage(
 ): PageComparison {
   const byKey = new Map(nodes.map((n) => [key(n.rule, n.outcome, n.index), n]));
   const covered = new Set<string>();
+  const claims = new Map<
+    string,
+    { rule: string; outcome: Outcome; index: number; findings: string[] }
+  >();
   const missing: PageComparison['missing'][number][] = [];
   const countMismatch: PageComparison['countMismatch'][number][] = [];
   const impactMismatch: PageComparison['impactMismatch'][number][] = [];
@@ -82,6 +93,9 @@ export function comparePage(
     for (const index of o.indices) {
       const k = key(o.rule, o.outcome, index);
       covered.add(k);
+      const claim = claims.get(k) ?? { rule: o.rule, outcome: o.outcome, index, findings: [] };
+      if (!claim.findings.includes(o.finding)) claim.findings.push(o.finding);
+      claims.set(k, claim);
       const hit = byKey.get(k);
       if (hit === undefined) {
         missing.push({
@@ -105,7 +119,8 @@ export function comparePage(
   const unexpected = nodes
     .filter((n) => !covered.has(key(n.rule, n.outcome, n.index)))
     .map((n) => ({ rule: n.rule, outcome: n.outcome, index: n.index, target: n.target }));
-  return { missing, unexpected, countMismatch, impactMismatch };
+  const duplicate = [...claims.values()].filter((c) => c.findings.length > 1);
+  return { missing, unexpected, countMismatch, impactMismatch, duplicate };
 }
 
 /** Result nodes per `<ruleId>:<outcome>`, the shape `PageScan.counts` takes (metrics.ts). */

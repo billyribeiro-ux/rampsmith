@@ -107,6 +107,25 @@ function indexRecords<R extends { readonly finding: string }>(
   return byFinding;
 }
 
+/** A mapped record has a span and a confidence in [0, 1]; other records have neither. */
+function checkMappingRecord(record: MappingRecord): void {
+  const { span, confidence } = record;
+  if (record.status !== 'mapped') {
+    if (span !== undefined || confidence !== undefined) {
+      throw new Error(`finding ${record.finding}: only a mapped record has a span or a confidence`);
+    }
+    return;
+  }
+  if (span === undefined || confidence === undefined) {
+    throw new Error(`mapped finding ${record.finding} needs a span and a confidence`);
+  }
+  if (!(confidence >= 0 && confidence <= 1)) {
+    throw new Error(
+      `finding ${record.finding} has confidence ${String(confidence)} outside [0, 1]`,
+    );
+  }
+}
+
 function mappingVerdict(
   golden: ScoredFinding,
   record: MappingRecord | undefined,
@@ -116,14 +135,7 @@ function mappingVerdict(
   if (record.status === 'needs_review') return 'needs-review';
   if (record.status === 'unmapped') return 'unmapped';
   const { span, confidence } = record;
-  if (span === undefined || confidence === undefined) {
-    throw new Error(`mapped finding ${record.finding} needs a span and a confidence`);
-  }
-  if (!(confidence >= 0 && confidence <= 1)) {
-    throw new Error(
-      `finding ${record.finding} has confidence ${String(confidence)} outside [0, 1]`,
-    );
-  }
+  if (span === undefined || confidence === undefined) return 'unmapped';
   if (confidence < threshold) return 'below-threshold';
   return spansEqual(golden.span, span) ? 'correct' : 'wrong-above-threshold';
 }
@@ -139,6 +151,7 @@ export function scoreMapping(
   threshold = MAPPING_THRESHOLD,
 ): MappingScore {
   const byFinding = indexRecords(goldens, records);
+  records.forEach(checkMappingRecord);
   const counted = goldens.filter((g) => g.mapping !== 'none');
   const verdicts = counted.map((g) => ({
     finding: g.id,
@@ -204,8 +217,11 @@ function describeActual(record: FixRecord): string {
 }
 
 /**
- * Fix rate over the targeted findings (`expectedFix.targeted`). A targeted finding is fixed
- * only when the engine produced edits and the rescan of the patched theme no longer fires it.
+ * Fix rate over the targeted findings (`expectedFix.targeted`). A finding the engine should fix
+ * is fixed only when the engine produced edits and the rescan of the patched theme no longer
+ * fires it; only targeted ones count. An expected refusal must come with the golden code;
+ * anything else, a missing record included, is listed under `unexpected`. Findings left to
+ * review (AI proposals, Admin API data fixes) are reported, never scored.
  */
 export function scoreFixes(
   goldens: readonly ScoredFinding[],
@@ -217,33 +233,33 @@ export function scoreFixes(
   for (const golden of goldens) {
     const record = byFinding.get(golden.id);
     const expected = golden.expectedFix;
-    if (record === undefined) {
-      verdicts.push({ finding: golden.id, verdict: 'missing' });
-      continue;
-    }
-    if (expected.targeted) {
-      const verdict: FixVerdict =
-        record.engine !== 'edits' ? 'not-patched' : record.stillFiring ? 'still-firing' : 'fixed';
-      verdicts.push({ finding: golden.id, verdict });
+    if (expected.outcome === 'review' || expected.channel !== 'theme-patch') {
+      verdicts.push({ finding: golden.id, verdict: 'review' });
     } else if (expected.outcome === 'refused') {
-      const asExpected = record.engine === 'refusal' && record.refusal === expected.refusal;
+      const asExpected = record?.engine === 'refusal' && record.refusal === expected.refusal;
       verdicts.push({
         finding: golden.id,
-        verdict: asExpected ? 'refused-as-expected' : 'unexpected',
+        verdict:
+          record === undefined ? 'missing' : asExpected ? 'refused-as-expected' : 'unexpected',
       });
       if (!asExpected) {
         unexpected.push({
           finding: golden.id,
           expected: describeExpected(expected),
-          actual: describeActual(record),
+          actual: record === undefined ? 'missing' : describeActual(record),
         });
       }
+    } else if (record === undefined) {
+      verdicts.push({ finding: golden.id, verdict: 'missing' });
     } else {
-      verdicts.push({ finding: golden.id, verdict: 'review' });
+      const verdict: FixVerdict =
+        record.engine !== 'edits' ? 'not-patched' : record.stillFiring ? 'still-firing' : 'fixed';
+      verdicts.push({ finding: golden.id, verdict });
     }
   }
-  const targeted = goldens.filter((g) => g.expectedFix.targeted).length;
-  const fixed = verdicts.filter((v) => v.verdict === 'fixed').length;
+  const targetedIds = new Set(goldens.filter((g) => g.expectedFix.targeted).map((g) => g.id));
+  const fixed = verdicts.filter((v) => v.verdict === 'fixed' && targetedIds.has(v.finding)).length;
+  const targeted = targetedIds.size;
   return { targeted, fixed, fixRate: targeted === 0 ? 0 : fixed / targeted, verdicts, unexpected };
 }
 
@@ -255,19 +271,37 @@ export interface PageScan {
   readonly error?: string;
   /** Result nodes per `<ruleId>:<outcome>`, such as `label:violation`. */
   readonly counts: Readonly<Record<string, number>>;
+  /**
+   * After patching only: golden occurrence nodes per `<ruleId>:<outcome>` that fired before and
+   * no longer fire. The count of each pair must fall by exactly this much.
+   */
+  readonly resolved?: Readonly<Record<string, number>>;
 }
 
 export interface Regression {
   readonly theme: string;
   readonly page: string;
-  readonly kind: 'render-failed' | 'page-missing' | 'new-result' | 'theme-check';
+  readonly kind:
+    'render-failed' | 'page-missing' | 'new-result' | 'unexplained-drop' | 'theme-check';
   readonly detail: string;
+}
+
+function indexScans(scans: readonly PageScan[], which: string): Map<string, PageScan> {
+  const byKey = new Map<string, PageScan>();
+  for (const scan of scans) {
+    const key = `${scan.theme}\u0000${scan.page}`;
+    if (byKey.has(key)) throw new Error(`${scan.theme}/${scan.page} is scanned twice ${which}`);
+    byKey.set(key, scan);
+  }
+  return byKey;
 }
 
 /**
  * Render regressions (CONTRACT.md): a page that rendered before the patch and does not after,
- * or is not scanned after; any rule and outcome whose node count rises on any page; and any new
- * Theme Check offense in the patched theme.
+ * or is not scanned after; for any rule and outcome on any page, a count after patching that
+ * differs from the count before minus the golden nodes the patch resolved (higher: a new
+ * result; lower: something vanished, such as content swallowed by broken markup); and any new
+ * Theme Check offense. Two scans of one page, or a page scanned only after, are errors.
  */
 export function findRegressions(
   before: readonly PageScan[],
@@ -275,7 +309,13 @@ export function findRegressions(
   themeCheck: readonly { readonly theme: string; readonly count: number }[] = [],
 ): Regression[] {
   const regressions: Regression[] = [];
-  const afterByKey = new Map(after.map((p) => [`${p.theme}\u0000${p.page}`, p]));
+  const beforeByKey = indexScans(before, 'before patching');
+  const afterByKey = indexScans(after, 'after patching');
+  for (const [key, scan] of afterByKey) {
+    if (!beforeByKey.has(key)) {
+      throw new Error(`${scan.theme}/${scan.page} is scanned only after patching`);
+    }
+  }
   for (const page of before) {
     if (!page.rendered) continue;
     const next = afterByKey.get(`${page.theme}\u0000${page.page}`);
@@ -301,12 +341,14 @@ export function findRegressions(
     for (const key of keys) {
       const was = page.counts[key] ?? 0;
       const now = next.counts[key] ?? 0;
-      if (now > was) {
+      const resolved = next.resolved?.[key] ?? 0;
+      const expected = was - resolved;
+      if (now !== expected) {
         regressions.push({
           theme: page.theme,
           page: page.page,
-          kind: 'new-result',
-          detail: `${key} rose from ${String(was)} to ${String(now)}`,
+          kind: now > expected ? 'new-result' : 'unexplained-drop',
+          detail: `${key} is ${String(now)}, expected ${String(expected)} after ${String(resolved)} resolved`,
         });
       }
     }

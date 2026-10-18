@@ -35,8 +35,9 @@ pins Chrome Headless Shell 156.0.8078.4. `ajv` 8.20.0 (MIT) validates the schema
    `bypass` reports only as incomplete), never ignored.
 3. **Chromium**: `scripts/ensure-chromium.ts` runs before Vitest. With `CI=true` it installs the
    headless shell bundled with the locked playwright-core through playwright-core's own installer,
-   so ci.yml's node job checks on the pinned Chromium without a workflow change; run 39087288762
-   downloaded Chrome Headless Shell 156.0.8078.4 and passed. Elsewhere `CHROMIUM_EXECUTABLE_PATH`
+   so ci.yml's node job checks on the pinned Chromium without a workflow change; in run
+   39087288762 the node job downloaded Chrome Headless Shell 156.0.8078.4 and passed, and run
+   39088109891 passed all eight jobs. Elsewhere `CHROMIUM_EXECUTABLE_PATH`
    and `CHROMIUM_ARGS` select another build, as `packages/a11y-rules` does; without either, the
    script fails with the fix rather than skipping.
 4. **Custom rules**: findings of `@rampsmith/a11y-rules` rules are listed in the goldens with the
