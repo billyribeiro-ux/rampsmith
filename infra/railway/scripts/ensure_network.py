@@ -13,8 +13,9 @@ Usage: python3 ensure_network.py <environment> [--create]
 With --create, a listed host that is missing is registered (its DNS records are printed for the
 founder). A wrong target port is corrected and still fails the run, because until then that
 host reached the wrong listener (the api's private API, say), which someone must look into.
-Anything else that is wrong fails, and nothing is ever deleted. Host names come from RAMPSMITH_APP_HOST, RAMPSMITH_SITE_HOST and
-RAMPSMITH_WEBHOOK_HOST; an unset one means that domain must not exist yet.
+Anything else that is wrong fails, and nothing is ever deleted. Host names come from
+RAMPSMITH_APP_HOST, RAMPSMITH_SITE_HOST and RAMPSMITH_WEBHOOK_HOST; an unset one means that
+domain must not exist yet.
 """
 
 from __future__ import annotations

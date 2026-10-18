@@ -357,7 +357,11 @@ jobs:
           }
           apply() {
             python3 "$helpers/railway_plan.py" check "$1.json" "$1.expected.json"
-            railway config apply --plan "$1.plan" --environment "$TARGET" --yes
+            # The CLI exits 0 on a pinned apply whatever Railway reports, so read the result
+            # (kept on the runner: it carries change outputs) and refuse anything but applied.
+            railway config apply --plan "$1.plan" --environment "$TARGET" --yes --json \
+              > "$1.applied.json"
+            python3 "$helpers/railway_plan.py" applied "$1.applied.json"
           }
           since() { date -u -d '-10 seconds' +%Y-%m-%dT%H:%M:%SZ; }
           wait_for() { python3 "$helpers/wait_for_deployment.py" "$@"; }

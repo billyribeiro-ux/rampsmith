@@ -396,9 +396,51 @@ class RailwayPlan(unittest.TestCase):
             with self.subTest(change=change):
                 self.assertTrue(plan.problems(a_plan(NOW, NEW, changes=[change]), NEW))
         allowed = [{"kind": kind, "summary": kind, "severity": "safe"}
-                   for kind in ("resource.create", "resource.update", "variable.set",
-                                "service.create", "volume.create")]
+                   for kind in ("resource.create", "resource.update", "variable.set")]
         self.assertEqual(plan.problems(a_plan(NOW, NEW, changes=allowed), NEW), [])
+        # Kinds the CLI does not emit today stop for a human, even if they look harmless.
+        for kind in ("domain.create", "tcpproxy.create", "volume.create", "service.create"):
+            with self.subTest(kind=kind):
+                change = {"kind": kind, "summary": kind, "severity": "safe"}
+                self.assertTrue(plan.problems(a_plan(NOW, NEW, changes=[change]), NEW))
+
+    def test_destructive_updates_are_refused_without_their_label(self) -> None:
+        for change in (
+            {"kind": "resource.update", "summary": "Move database postgres to eu-west4"},
+            {"kind": "resource.update", "summary": "Resize volume data from 5000MB to 500MB"},
+            {"kind": "resource.update", "summary": "Update web volumeAttachments",
+             "details": ["volumeAttachments.data"]},
+        ):
+            with self.subTest(change=change):
+                self.assertTrue(plan.problems(a_plan(NOW, NEW, changes=[change]), NEW))
+
+    def test_an_apply_must_report_applied(self) -> None:
+        self.assertEqual(plan.apply_problems({"status": "applied", "changes": [
+            {"kind": "resource.update", "summary": "web", "status": "applied"}]}), [])
+        self.assertEqual(plan.apply_problems({"id": None, "status": "noop", "changes": []}), [])
+        for result in (
+            {"status": "failed", "changes": []},
+            {"status": "partially_applied", "changes": []},
+            {"status": "staged", "changes": []},
+            {"status": "applied", "changes": [{"summary": "Set API_URL", "status": "failed"}]},
+            {"status": "applied", "diagnostics": [{"severity": "error", "message": "x"}]},
+            {"changes": []},
+            None,
+        ):
+            with self.subTest(result=result):
+                self.assertTrue(plan.apply_problems(result))
+
+    def test_applied_never_prints_outputs(self) -> None:
+        directory = Path(tempfile.mkdtemp())
+        path = directory / "applied.json"
+        path.write_text(json.dumps({"status": "failed", "changes": [
+            {"summary": "Set X", "status": "failed", "outputs": {"value": "s3cr3t"}}]}),
+            encoding="utf-8")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(plan.main(["p", "applied", str(path)]), 1)
+        self.assertNotIn("s3cr3t", out.getvalue())
+        self.assertIn("change failed: Set X", out.getvalue())
 
     def test_destructive_changes_errors_and_failures_are_refused(self) -> None:
         destructive = [{"summary": "delete service ctl", "severity": "destructive",

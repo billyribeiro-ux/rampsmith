@@ -13,10 +13,16 @@ service's source (`diff_top_level_field` in src/iac/change_set.rs), and its JSON
       moves the api alone and keeps every other service, ctl included, on what it runs now;
       phase `all` moves every service to the new release.
   railway_plan.py check <plan.json> <expected.json>
-      refuses the plan unless it is ok, has no error diagnostic, every change is a create, an
-      update or a set (by its kind, whatever severity Railway gives it), nothing is labelled
-      destructive, every image service's desired source is exactly the expected image (null
-      only for a service that has no source yet), and no service loses a source it has.
+      refuses the plan unless it is ok, has no error diagnostic, every change's kind is one of
+      resource.create, resource.update and variable.set (whatever severity Railway gives it)
+      and none is labelled destructive or is one of the CLI's destructive updates (a database
+      move, a volume resize or detach), every image service's desired source is exactly the
+      expected image (null only for a service that has no source yet), and no service loses a
+      source it has.
+  railway_plan.py applied <applied.json>
+      refuses an apply result (`railway config apply --plan ... --json`) unless its status is
+      applied or noop and no change failed. CLI 5.70.0 exits 0 on a pinned apply whatever the
+      status (src/commands/config/runner.rs), so this is the only check of it.
 
 It never prints the plan itself: the graphs carry variable names and Railway's redacted values.
 """
@@ -35,9 +41,15 @@ REPOSITORIES = {
     name: f"{REGISTRY}/rampsmith-{'api' if name == 'ctl' else name}" for name in IMAGE_SERVICES
 }
 _DIGEST_REF = re.compile(r"^(?P<repository>[a-z0-9][a-z0-9./_-]*)@sha256:[0-9a-f]{64}$")
-# The kinds a deploy may apply. Railway's preview returns the change set that is applied, with
-# its own severities, so deletions and anything unknown are refused by kind as well.
-_ALLOWED_KIND = re.compile(r"^[a-z]+(?:\.[a-z]+)*\.(?:create|update|set)$")
+# The kinds a deploy may apply: CLI 5.70.0's diff emits only these and resource.delete and
+# variable.delete (src/iac/change_set.rs). Railway's preview returns the change set that is
+# applied, with its own severities, so deletions and any new kind are refused by kind as well;
+# a CLI upgrade re-reads change_set.rs (ADR-181).
+ALLOWED_KINDS = frozenset({"resource.create", "resource.update", "variable.set"})
+# resource.update changes that change_set.rs marks destructive: refused by their summary or
+# details too, in case the severity label is missing.
+DESTRUCTIVE_UPDATES = ("Move database", "Resize volume", "Detach volume")
+APPLIED = frozenset({"applied", "noop"})
 
 
 def _resources(graph: Any) -> dict[str, dict[str, Any]]:
@@ -106,11 +118,16 @@ def problems(plan: dict[str, Any], expected: dict[str, str | None]) -> list[str]
             found.append("a change that is not an object")
             continue
         kind = change.get("kind")
+        summary = str(change.get("summary") or "")
         if change.get("severity") == "destructive":
-            found.append(f"destructive change: {change.get('summary')}")
-        elif not (isinstance(kind, str) and _ALLOWED_KIND.fullmatch(kind)):
-            found.append(f"change of kind {kind!r} is not a create, update or set: "
-                         f"{change.get('summary')}")
+            found.append(f"destructive change: {summary}")
+        elif kind not in ALLOWED_KINDS:
+            found.append(f"change of kind {kind!r} is not one a deploy makes: {summary}")
+        elif kind == "resource.update" and (
+            summary.startswith(DESTRUCTIVE_UPDATES)
+            or "volumeAttachments" in json.dumps(change.get("details"))
+        ):
+            found.append(f"destructive update: {summary}")
     current = _resources(plan.get("currentGraph"))
     desired = _resources(plan.get("desiredGraph"))
     for name in IMAGE_SERVICES:
@@ -131,6 +148,23 @@ def problems(plan: dict[str, Any], expected: dict[str, str | None]) -> list[str]
     return found
 
 
+def apply_problems(result: Any) -> list[str]:
+    if not isinstance(result, dict):
+        return ["the apply result is not an object"]
+    found: list[str] = []
+    status = result.get("status")
+    if status not in APPLIED:
+        found.append(f"the apply finished with status {status!r}, not applied")
+    for change in result.get("changes") or []:
+        if isinstance(change, dict) and change.get("status") == "failed":
+            name = change.get("summary") or change.get("path") or change.get("kind")
+            found.append(f"change failed: {name}")
+    for diagnostic in result.get("diagnostics") or []:
+        if isinstance(diagnostic, dict) and diagnostic.get("severity") == "error":
+            found.append(f"apply diagnostic: {diagnostic.get('message')}")
+    return found
+
+
 def summary(plan: dict[str, Any]) -> list[str]:
     current = _resources(plan.get("currentGraph"))
     desired = _resources(plan.get("desiredGraph"))
@@ -147,12 +181,12 @@ def summary(plan: dict[str, Any]) -> list[str]:
 
 USAGE = (
     "usage: railway_plan.py current <plan.json> | phase <current.json> <new.json> <api|all> "
-    "<name> | check <plan.json> <expected.json>"
+    "<name> | check <plan.json> <expected.json> | applied <applied.json>"
 )
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 3 or argv[1] not in ("current", "phase", "check"):
+    if len(argv) < 3 or argv[1] not in ("current", "phase", "check", "applied"):
         print(USAGE)
         return 2
     if argv[1] == "phase":
@@ -175,6 +209,17 @@ def main(argv: list[str]) -> int:
         for name in IMAGE_SERVICES:
             print(f"{argv[5]}: {name} -> {expected[name] or 'none'}")
         return 0
+    if argv[1] == "applied":
+        try:
+            result = json.loads(Path(argv[2]).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            result = None
+        found = apply_problems(result)
+        for problem in found:
+            print(f"::error title=Railway apply failed::{problem}")
+        if not found:
+            print(f"Railway applied the plan ({result.get('status')})")
+        return 1 if found else 0
     plan = json.loads(Path(argv[2]).read_text(encoding="utf-8"))
     if argv[1] == "current":
         print(json.dumps(current_images(plan)))
