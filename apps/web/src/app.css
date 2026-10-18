@@ -1,26 +1,20 @@
-/* Base styles for the standalone pages; the embedded app uses Polaris (PLAN §16). */
+/*
+ * Page-level styles for the standalone pages; colours, spacing, motion and the focus ring come
+ * from @rampsmith/ui's tokens (PLAN §16). The embedded app uses Polaris.
+ */
 :root {
-  --rs-color-text: #1a1a1a;
-  --rs-color-muted: #4a4a4a;
-  --rs-color-surface: #ffffff;
-  --rs-color-accent: #1f3a5f;
-  --rs-color-focus: #0b57d0;
-  --rs-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--rs-color-text);
   background: var(--rs-color-surface);
   font-family: var(--rs-font);
-  line-height: 1.5;
+  font-size: var(--rs-font-size);
+  line-height: var(--rs-line-height);
 }
 
 body {
   margin: 0;
 }
 
-:focus-visible {
-  outline: 3px solid var(--rs-color-focus);
-  outline-offset: 2px;
-}
-
+/* Whatever a component forgets, reduced motion still stops it. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -21,3 +21,4 @@ apps/web/src/lib/paraglide/
 # OS and editor noise
 .DS_Store
 *.log
+.vitest/
