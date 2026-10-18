@@ -383,11 +383,9 @@ jobs:
   staging:
     name: staging
     needs: manifest
-    permissions:
-      contents: read
-      packages: read
-      attestations: read
-      actions: read
+    # A called workflow may not ask for more than its caller grants; deploy.yml defaults to
+    # read-all like every workflow here, and its one job narrows that to what it uses.
+    permissions: read-all
     uses: ./.github/workflows/deploy.yml
     with:
       environment: staging
@@ -405,11 +403,9 @@ jobs:
     needs: [manifest, staging]
     # Promotion needs a real staging deploy: a skipped one (no Railway token yet) never promotes.
     if: needs.staging.outputs.deployed == 'true'
-    permissions:
-      contents: read
-      packages: read
-      attestations: read
-      actions: read
+    # A called workflow may not ask for more than its caller grants; deploy.yml defaults to
+    # read-all like every workflow here, and its one job narrows that to what it uses.
+    permissions: read-all
     uses: ./.github/workflows/deploy.yml
     with:
       environment: production
