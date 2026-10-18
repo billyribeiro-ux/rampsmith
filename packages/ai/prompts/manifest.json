@@ -1,0 +1,26 @@
+{
+  "alt-text": {
+    "version": 1,
+    "sha256": "b2c884f521c771ee15343f540845823eabb364debc0233f730f4e063872d5ed9"
+  },
+  "rewrite": {
+    "version": 1,
+    "sha256": "cec218f9f2af8de78f5bae2856dbe7436a17858e179cf759f349d8fab6669618"
+  },
+  "tie-break": {
+    "version": 1,
+    "sha256": "6f51ae44a603471972b64ceb6076b64e7add42566d7fc4ce3c31c6e4c9aab0ca"
+  },
+  "patch-proposal": {
+    "version": 1,
+    "sha256": "49aae75ab617290e2a55b51a08ffe18796cdd23607e9807024648f7cb7e34fae"
+  },
+  "explain": {
+    "version": 1,
+    "sha256": "f874179b91febc64a2dc74bfb24c7cda5a66953b833bf251e53e53156daa67dd"
+  },
+  "grade-alt-text": {
+    "version": 1,
+    "sha256": "1ac4752dfaf755d64588de879552cb86bbd708b16f34f59181795867eed74105"
+  }
+}
