@@ -110,7 +110,27 @@ ten low findings. Each was fixed:
 | L9: guard accepted any LTS line; images not checked | 26.x only; web and engine images checked |
 | L10: no evidence file | This file |
 
-The second review of the fixed code is recorded under "Final state".
+### Second review (effort max, on `af2100e`)
+
+One high, one medium and nine low findings, each fixed:
+
+| Finding | Fix |
+| --- | --- |
+| N-1 high: `jdx/mise-action` restored the shared Actions cache (Node.js, npm) in the Shopify token job and the LTS-guard job; any job on `main` can write that cache under a predictable key | `cache: false` on every mise-action step in both workflows; `WorkflowHygiene` tests enforce it |
+| N-2 medium: the signing build read and wrote the BuildKit Actions cache that other `main` jobs can write | `publish` builds without a cache; a test enforces it |
+| N-3: BuildKit daemon image `moby/buildkit:buildx-stable-1` (floating) | pinned by digest (`BUILDKIT_IMAGE` in `release.yml`) |
+| N-4: a branch rule without `type` was read as a branch | refused unless `type` is `branch` |
+| N-5: destructive changes recognised only by Railway's severity label | refused by kind too: only create, update and set pass |
+| N-6: the manifest merged artifacts by wildcard | exactly the four `verified-<service>` artifacts, or the release stops |
+| N-7: scrubbing gaps (string arrays, status messages, structured bodies, client secrets, presigned URLs, PEM keys, URL passwords) | header attributes dropped whole, more patterns, status messages and string-converted bodies scrubbed; ADR-184 says exactly what is covered |
+| N-8: "cannot check for repository secrets" was wrong | `scope` job fails while a deploy secret exists as a repository or organization secret |
+| N-9: a corrected domain port passed silently | corrected and still fails the run |
+| N-10: the engine holds a read-write token for all evidence | cannot be scoped in R2; recorded in ADR-182 and open item 4 |
+| N-11: bootstrap session hygiene | `log_transaction_sample_rate = 0`, `track_activities = off`, unset the shell variables |
+
+The review also noted that a rollback across a migration would fail at `sqlx migrate run`
+(now `--ignore-missing`, ADR-183) and that no Renovate rule reads `COLLECTOR_IMAGE` (the
+comment no longer claims one; integration note 11). The third review is under "Final state".
 
 ## Integration notes (for the integrator and the main builder)
 
@@ -138,6 +158,11 @@ The second review of the fixed code is recorded under "Final state".
    TypeScript (`railway config pull`), and the Shopify CLI can move into the root
    `devDependencies`.
 10. `docs/FOUNDER_SETUP.md` sections 0, 7, 9 and 10: merge "Founder setup" below.
+11. `renovate.json`: a regex manager for `COLLECTOR_IMAGE` in `infra/railway/railway.py`, for
+    `BUILDKIT_IMAGE` in `release.yml`, for `railway-cli.sha256` (with `RAILWAY_CLI_VERSION`)
+    and for `infra/railway/tools/shopify-cli`; until then they are updated by hand.
+12. The api's `/readyz` must accept a database whose newest migration is newer than the
+    build's own (a rollback, ADR-183), while still refusing an older one.
 
 ## Founder setup (to merge into `docs/FOUNDER_SETUP.md`)
 
@@ -194,6 +219,9 @@ Steps checked against Railway's, GitHub's, Grafana's and Cloudflare's documentat
    done; unset value
    railway connect postgres --ssh      # then, at the psql prompt:
    \i infra/railway/bootstrap.sql
+   \q
+   unset RAMPSMITH_DB_PASSWORD_MIGRATOR RAMPSMITH_DB_PASSWORD_API \
+     RAMPSMITH_DB_PASSWORD_CTL RAMPSMITH_DB_PASSWORD_ENGINE
    ```
 
    paste each password from the shared variable of the same name, then
@@ -242,7 +270,7 @@ Each has a substitute test that passes in CI now and skips live with a notice na
 | 5. Public exposure exactly as listed | 8, 10 | `test_scripts.py` `EnsureNetwork` | `RAILWAY_TOKEN=... python3 infra/railway/scripts/ensure_network.py staging` |
 | 6. Public smoke tests and TLS | 10 | `image_smoke.sh` (health, webhook listener 404/401) | the `smoke` job |
 | 7. Telemetry: a trace, a metric and a log in Grafana; the log in the R2 archive under `<environment>/logs/` | 6, 9 | `infra/collector/tests/smoke.py` | Grafana Explore; `aws s3 ls --endpoint-url https://<account>.r2.cloudflarestorage.com s3://<logs bucket>/staging/logs/ --recursive` |
-| 8. Collector start-up: one configuration only (Railway start command and the image's `CMD`) | 8 | `smoke.py` starts it with the same command | `railway logs --service collector` shows one "Everything is ready" and no default-config pipeline |
+| 8. Collector start-up: one configuration only (Railway start command and the image's `CMD`) | 8 | `smoke.py` starts it with the same command | `railway logs --service collector` shows one "Everything is ready", "Starting HTTP server" on `[::]:4318` only, and no "Starting GRPC server" (the image's default config would add an unauthenticated gRPC receiver) |
 | 9. Engine starts on Railway without the seccomp option (ADR-028) | 8 | `image_smoke.sh engine` (gap on PRs, failure on `main`) | the `railway` job's wait for `engine`, then `railway logs --service engine` |
 | 10. Shopify app deploy | 1, 2, 15 | `npm ci --ignore-scripts` and `shopify version` in `release.yml` | the `shopify` job |
 | 11. Production promotion waits for the founder | 14 | `check_protection.py --require-reviewer` tests | a release with staging verified: the `railway production` job waits for review |
@@ -259,8 +287,13 @@ Each has a substitute test that passes in CI now and skips live with a notice na
 2. Synthetic install-scan-fix journey: `deploy.yml` warns that it did not run until the
    dev-store suite exists.
 3. A repository-level `RAILWAY_TOKEN` or `SHOPIFY_APP_AUTOMATION_TOKEN` would be the fallback
-   when an environment lacks its own; the founder setup says environment secrets only, and
-   GitHub's token cannot list repository secrets to check.
+   when an environment lacks its own: the `scope` job now fails every deploy while one exists.
+4. The engine's evidence token (second review N-10): R2 tokens cannot be limited to a prefix or
+   to writes, so a browser escape in the engine reaches every tenant's evidence. Fix in code:
+   ctl mints presigned upload URLs for the engine (or a separate upload bucket), and the
+   engine loses `R2_SECRET_ACCESS_KEY`.
+5. Public exposure is checked at every deploy, not between deploys; a scheduled verify-only
+   run would need the Railway token outside a deploy (founder decision).
 
 ## Final state
 

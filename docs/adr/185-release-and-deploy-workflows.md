@@ -111,8 +111,11 @@ one job:
      the api alone and passes every other service the image it runs (an empty `ctl` image on
      the first deploy, so ctl starts only after the migrations); phase 2 moves every service.
      Each phase is `railway config plan --json --out`, then `railway_plan.py check` (the plan
-     succeeded, no error diagnostic, nothing destructive, every image exactly as expected, no
-     source removed), then `railway config apply --plan --yes`, so the change set applied is
+     succeeded, no error diagnostic, every change's kind is a create, an update or a set and
+     none is labelled destructive, every image exactly as expected, no source removed), then
+     `railway config apply --plan --yes`. The JSON and the `.plan` file come from one CLI call
+     and carry the change set Railway's own preview returned (`src/iac/engine.rs`), with
+     Railway's severities, which is why kinds are checked too; so the change set applied is
      the one checked and a dashboard edit in between fails the apply. `--environment` must
      match the project token's environment. No `--confirm-destructive`.
    - `wait_for_deployment.py` waits for each service's deployment created after that phase's
@@ -135,10 +138,18 @@ one job:
 Rollback is this workflow run by hand from `main` with an earlier release's commit and digests
 (each release run's summary lists them). Migrations are never rolled back (PLAN §22).
 
-### Permissions and secrets
+### Permissions, caches and secrets
 
 Both workflows default to `permissions: read-all`; each job asks for less. Only `publish` may
-write packages and mint OIDC tokens. `RAILWAY_TOKEN` and `SHOPIFY_APP_AUTOMATION_TOKEN` are
+write packages and mint OIDC tokens. No job reads a cache another job could have written where
+it matters: every `jdx/mise-action` step sets `cache: false` (its cache key is predictable and
+any job on `main` can write the Actions cache, so a planted `node` or `sqlx` would run next to
+a deploy token or decide a gate), `publish` builds without the BuildKit Actions cache (only the
+pull-request dry run reads it, and pull requests cannot write it), and the BuildKit daemon
+image is pinned by digest. The manifest takes exactly the four `verified-<service>` artifacts
+and fails on any other. `test_scripts.py` `WorkflowHygiene` checks these rules on every run.
+The `scope` job, which has no environment, fails while either deploy secret also exists as a
+repository or organization secret. `RAILWAY_TOKEN` and `SHOPIFY_APP_AUTOMATION_TOKEN` are
 passed by name, as GitHub requires; they must exist only as environment secrets of `staging`
 and `production` (an environment secret takes precedence over a repository secret of the same
 name, but a repository secret would be the fallback), and no step echoes a secret (presence

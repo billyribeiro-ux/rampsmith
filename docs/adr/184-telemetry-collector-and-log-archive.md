@@ -83,14 +83,20 @@ Checked on 17–18 Oct 2026:
    logs, and the evidence token cannot touch logs. The founder adds a lifecycle rule that deletes objects after 30 days (prefix empty),
    in the dashboard or with `npx wrangler r2 bucket lifecycle add`.
 6. **Hygiene** (PLAN §21: no personal data or tokens): `memory_limiter` first, the environment
-   as `deployment.environment.name`; an `attributes` processor deletes authorization, cookie,
-   Shopify token and webhook-signature header attributes and `url.query`; a `transform`
-   processor strips query strings (Shopify's embedded-app `id_token`, `hmac` and `session`
-   arrive there) from span names, `http.url`, `url.full`, `http.target` and metric attributes,
-   and masks, in every span, span-event and log attribute and in log bodies: sensitive query
-   parameters, JWTs, Shopify, GitHub, Stripe and Anthropic token shapes, `Bearer`/`Basic`
-   credentials and email addresses. Services are written not to record these; the collector is
-   the second line, not the first.
+   as `deployment.environment.name`; an `attributes` processor deletes the authorization,
+   cookie, Shopify token and webhook-signature header attributes and `url.query`; a `transform`
+   processor then drops every `http.request.header.*` and `http.response.header.*` attribute
+   (their values are often string arrays, which pattern replacement does not reach), strips
+   query strings (Shopify's embedded-app `id_token`, `hmac` and `session` arrive there) from
+   span names, `http.url`, `url.full`, `http.target` and metric attributes, and masks, in the
+   **string** values of span, span-event and log attributes, span status messages and log
+   bodies (a structured body is turned into its string form first): sensitive query and form
+   parameters (including `client_secret`, `api_key` and presigned-URL `X-Amz-Signature` and
+   `X-Amz-Credential`), JWTs, Shopify, GitHub, Stripe and Anthropic token shapes, PEM private
+   keys, `Bearer`/`Basic` credentials, passwords in URLs, and email addresses; resource and
+   scope attributes get the token patterns. Values inside arrays or nested maps of other
+   attributes are not rewritten. Services are written not to record any of this; the collector
+   is the second line, not the first.
 7. **Health**: the `health_check` extension on `[::]:13133/healthz`, Railway's health check.
 8. **Verification now** (LAUNCH.md E substitute): `infra/collector/tests/smoke.py` runs the
    pinned image with the real config the way Railway starts it, against a fake Grafana gateway
@@ -99,7 +105,9 @@ Checked on 17–18 Oct 2026:
    receiver answers 401 without the token or with a wrong one, that traces, metrics and logs
    reach "Grafana" with credentials and the environment attribute, that only logs reach the
    archive as gzip OTLP JSON under the expected prefix, and that a planted JWT, Shopify token,
-   email address, bearer credential and signed query string never leave unmasked. The live checks are listed in `docs/evidence/ws-9-deploy.md`.
+   email address, bearer credential, signed query string, client secret, presigned-URL
+   signature, PEM key, database password, header array and structured log body never leave
+   unmasked. The live checks are listed in `docs/evidence/ws-9-deploy.md`.
 
 ## Consequences
 

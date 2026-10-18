@@ -48,9 +48,10 @@ also sits in the environment of the internet-facing api process.
    - Passwords are the shared variables `RAMPSMITH_DB_PASSWORD_*` (64 hex digits). The founder
      enters each with `read -rsp` (no echo, no shell history, not in a process list) and psql
      reads them with `\getenv`. The script turns statement logging off for its session
-     (`log_statement`, `log_min_error_statement`, `log_min_duration_statement`) and
-     `pg_stat_statements.track_utility`, so the `ALTER ROLE ... PASSWORD` statements stay out of
-     the server log and statistics; it refuses a missing, malformed or repeated password and a
+     (`log_statement`, `log_min_error_statement`, `log_min_duration_statement`,
+     `log_transaction_sample_rate`), `track_activities` and `pg_stat_statements.track_utility`,
+     so the `ALTER ROLE ... PASSWORD` statements stay out of the server log, `pg_stat_activity`
+     and statistics; the founder unsets the shell variables afterwards; it refuses a missing, malformed or repeated password and a
      non-superuser session, and is safe to run again, which is how passwords rotate.
    - `rampsmith_engine` is, for now, as broad as `rampsmith_ctl` (both are `rampsmith_worker`).
      The engine only needs the job queue and its own results, so a narrower `rampsmith_engine`
@@ -58,8 +59,11 @@ also sits in the environment of the internet-facing api process.
      until it lands, a compromised engine can read what ctl can. Open item in
      `docs/evidence/ws-9-deploy.md`.
 2. **The api's pre-deploy step migrates as `rampsmith_migrator`:**
-   `/bin/sh -c "DATABASE_URL=$MIGRATION_DATABASE_URL exec /usr/local/bin/sqlx migrate run --source /usr/local/share/rampsmith/migrations"`,
-   with a 900 s timeout. `MIGRATION_DATABASE_URL` is a template over the migrator's shared
+   `/bin/sh -c "DATABASE_URL=$MIGRATION_DATABASE_URL exec /usr/local/bin/sqlx migrate run --ignore-missing --source /usr/local/share/rampsmith/migrations"`,
+   with a 900 s timeout. `--ignore-missing` (sqlx-cli 0.9.0, `src/opt.rs`: "Ignore applied
+   migrations that are missing in the resolved migrations") lets a rollback to an older image
+   start on a database that already carries newer, expand-only migrations; a migration whose
+   content changed still fails its checksum. `MIGRATION_DATABASE_URL` is a template over the migrator's shared
    password; no other service has it.
 3. **The api process never sees that credential.** Its start command is
    `/bin/sh -c "unset MIGRATION_DATABASE_URL; exec /usr/local/bin/api"`: after `exec`, the
@@ -92,6 +96,8 @@ also sits in the environment of the internet-facing api process.
 - `bootstrap_test.sh` proves on PostgreSQL 18 that the migrator can apply every migration, that
   no service login is privileged or can create objects, that row-level security refuses the api
   login without a tenant, that workers reach the queue, and that a second run rotates passwords.
+- A rollback also needs the older build's `/readyz` to accept a database whose newest
+  migration is newer than its own (integration note in `docs/evidence/ws-9-deploy.md`).
 - The first deploy to an environment must come after the bootstrap; `/readyz` stays 503 and the
   deploy fails until migrations run as the migrator.
 

@@ -61,9 +61,11 @@ listener binds `[::]` (dual stack). `web` and `api` overlap old and new deployme
   `/webhooks/*` (`WEBHOOK_BIND_ADDR`); the api's private API on 8080, which `web` calls, is
   never reachable from the internet (ADR-005). `infra/railway/scripts/ensure_network.py` runs
   after every deploy: it registers a listed host that is missing (printing its DNS records),
-  corrects a wrong target port, and fails the deploy on any Railway-generated domain, any TCP
-  proxy (PostgreSQL's included) or any unlisted custom domain. It never deletes: removing
-  exposure is a founder step it names.
+  and fails the deploy on any Railway-generated domain, any TCP proxy (PostgreSQL's included),
+  any unlisted custom domain, and any listed one that targeted the wrong port, which it
+  corrects but still reports, because until then that host reached the wrong listener. It
+  never deletes: removing exposure is a founder step it names. It runs at deploy time only, so
+  a change made in the dashboard between deploys is caught by the next deploy, not before.
 - **Only `engine` reaches `egress`.** Railway's private network has no per-service rules, so
   the control is: `egress` has no public domain; only `engine` is given `EGRESS_PROXY_URL`; and
   `egress` accepts only requests carrying a token signed with `EGRESS_TOKEN_SECRET`
@@ -113,6 +115,11 @@ Per-environment settings that are not secret come from GitHub environment variab
 time: `RAMPSMITH_APP_HOST`, `RAMPSMITH_SITE_HOST` and `RAMPSMITH_WEBHOOK_HOST` (LAUNCH.md C
 row 10). From them `railway.py` sets `WEBAUTHN_RP_ID` and `WEBAUTHN_RP_ORIGIN`, and
 `ensure_network.py` the custom domains.
+
+The engine, which loads hostile pages, holds the evidence bucket's read-write token: R2 tokens
+cannot be limited to a prefix or to writes, so a browser escape in the engine reaches every
+tenant's evidence. The fix needs code (ctl minting presigned upload URLs for the engine, or a
+separate upload bucket) and is an open item in `docs/evidence/ws-9-deploy.md`.
 
 Credentials are scoped per environment and per use: each environment has its own Railway
 shared variables, its own R2 buckets with their own tokens (the evidence token cannot touch
