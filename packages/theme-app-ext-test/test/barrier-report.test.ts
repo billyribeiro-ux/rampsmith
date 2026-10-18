@@ -7,9 +7,11 @@ import {
   MAX_EMAIL_LENGTH,
   MAX_PAGE_LENGTH,
   MIN_ELAPSED_MS,
+  MIN_PHONE_DIGITS,
   PAGE_TYPES,
   PUBLIC_PAGE_TYPES,
   exportCell,
+  mentionsShopper,
   parseBarrierReport,
 } from '../src/barrier-report.ts';
 
@@ -264,5 +266,58 @@ describe('exportCell', () => {
     }
     expect(exportCell("=cmd|'/Ccalc'!A0@x.y")).toBe(`"'=cmd|'/Ccalc'!A0@x.y"`);
     expect(exportCell('a=b')).toBe('"a=b"');
+  });
+});
+
+describe('more page and export rules', () => {
+  it('drops paths on app proxies and paths disguised with invisible letters', () => {
+    for (const page of [
+      '/apps/other/session/abc',
+      '/a/x',
+      '/tools/x',
+      '/community/y',
+      `/products/a${cp(0x3164)}b`,
+      `/products/a${cp(0xffa0)}b`,
+      `/products/a${cp(0x61c)}b`,
+    ]) {
+      expect(parseBarrierReport(form({ description: 'x', page_type: 'page', page })), page).toEqual(
+        {
+          kind: 'accepted',
+          report: expect.objectContaining({ page: null }) as unknown,
+        },
+      );
+    }
+    expect(
+      parseBarrierReport(form({ description: 'x', page_type: 'page', page: '/apples' })),
+    ).toEqual({
+      kind: 'accepted',
+      report: expect.objectContaining({ page: '/apples' }) as unknown,
+    });
+  });
+
+  it('defuses a formula behind leading whitespace', () => {
+    expect(exportCell(' =1+1')).toBe(`"' =1+1"`);
+    expect(exportCell('\n@SUM(A1)')).toBe(`"'\n@SUM(A1)"`);
+  });
+});
+
+describe('mentionsShopper', () => {
+  it('finds the email as a literal, case-insensitive substring', () => {
+    expect(
+      mentionsShopper('Reach me at Ana.B@Example.com please', { email: 'ana.b@example.com' }),
+    ).toBe(true);
+    expect(mentionsShopper('Write to aXb@x.com', { email: 'a_b@x.com' })).toBe(false);
+    expect(mentionsShopper('Write to a%b@x.com', { email: 'a_b@x.com' })).toBe(false);
+    expect(mentionsShopper('nothing here', { email: '' })).toBe(false);
+  });
+
+  it('finds a phone number however it was typed, and ignores short numbers', () => {
+    expect(mentionsShopper('Call (613) 555-0100 after 5', { phone: '+16135550100' })).toBe(true);
+    expect(mentionsShopper('Call +1 613.555.0100', { phone: '6135550100' })).toBe(true);
+    expect(mentionsShopper('Order 5550100 failed', { phone: '+16135550100' })).toBe(true);
+    expect(mentionsShopper('Size 10 shoe, 2 pairs', { phone: '+16135550100' })).toBe(false);
+    expect(MIN_PHONE_DIGITS).toBe(7);
+    expect(mentionsShopper('Call 555-0100', { phone: '555' })).toBe(false);
+    expect(mentionsShopper('Call 613 555 0199', { phone: '+16135550100' })).toBe(false);
   });
 });

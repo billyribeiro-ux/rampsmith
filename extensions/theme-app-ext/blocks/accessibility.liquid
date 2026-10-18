@@ -19,11 +19,17 @@
   assign url_head = statement_url | slice: 0, 8 | downcase
   assign url_first = statement_url | slice: 0, 1
   assign url_second = statement_url | slice: 1, 1 | url_encode
+  assign url_encoded = statement_url | url_encode
   assign statement_ok = false
   if url_head == 'https://'
     assign statement_ok = true
   elsif url_first == '/' and url_second != '%2F' and url_second != '%5C'
     assign statement_ok = true
+  endif
+  # Browsers drop tabs and line breaks from URLs before parsing them, so "/<tab>/host" would
+  # become "//host".
+  if url_encoded contains '%09' or url_encoded contains '%0A' or url_encoded contains '%0D'
+    assign statement_ok = false
   endif
 
   assign show_link = false
@@ -33,19 +39,15 @@
 
   assign show_form = block.settings.show_report_form
   assign proxy_path = app.metafields.rampsmith.proxy_path.value | default: '/apps/rampsmith'
+  # Allowlist: only characters url_encode leaves alone, plus "/" (no tab, line break, colon,
+  # backslash, percent, space or non-ASCII), starting with one "/", no ".", at most 40 long.
   assign proxy_ok = true
   assign proxy_first = proxy_path | slice: 0, 1
-  assign proxy_encoded = proxy_path | url_encode
-  if proxy_first != '/' or proxy_path.size > 40 or proxy_path contains '//'
+  assign proxy_plain = proxy_path | url_encode | replace: '%2F', '/'
+  if proxy_plain != proxy_path or proxy_first != '/' or proxy_path.size > 40
     assign proxy_ok = false
   endif
-  if proxy_path contains ':' or proxy_path contains '?' or proxy_path contains '#'
-    assign proxy_ok = false
-  endif
-  if proxy_path contains '.' or proxy_path contains '%' or proxy_path contains ' '
-    assign proxy_ok = false
-  endif
-  if proxy_encoded contains '%5C'
+  if proxy_path contains '//' or proxy_path contains '.'
     assign proxy_ok = false
   endif
   unless proxy_ok

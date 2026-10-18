@@ -5,8 +5,10 @@
   messages from the data-msg-* attributes below. The status and error lines keep their space
   while empty, so filling them never moves the page.
 
-  The page path is sent only for public page types; account, gift card, password and
-  challenge pages send their type alone, since their paths can carry order numbers or codes.
+  The page path is sent only for public page types, and never for app proxy pages (/a/,
+  /apps/, /community/, /tools/), whose paths other apps may use for tokens; account, gift
+  card, password and challenge pages send their type alone, since their paths can carry
+  order numbers or codes.
   Accepts: uid (string, unique id prefix), proxy_path (string, the app proxy's storefront path)
 {%- endcomment -%}
 {%- liquid
@@ -16,6 +18,13 @@
     else
       assign page_path = ''
   endcase
+  assign path_a = page_path | slice: 0, 3
+  assign path_apps = page_path | slice: 0, 6
+  assign path_tools = page_path | slice: 0, 7
+  assign path_community = page_path | slice: 0, 11
+  if path_a == '/a/' or path_apps == '/apps/' or path_tools == '/tools/' or path_community == '/community/'
+    assign page_path = ''
+  endif
 -%}
 <details class="rs-a11y__report">
   <summary class="rs-a11y__toggle">{{ 'report.toggle' | t }}</summary>

@@ -63,7 +63,7 @@
       ? /** @type {Record<string, unknown>} */ (value)
       : {};
 
-  /** A 400 answer's `errors: [{field, code}]` as message keys. @param {unknown} errors */
+  /** A 422 answer's `errors: [{field, code}]` as message keys. @param {unknown} errors */
   const serverKeys = (errors) => {
     /** @type {Map<string, string>} */
     const keys = new Map();
@@ -99,7 +99,7 @@
         say(msg('sent'));
       } else if (response.status === 429) {
         say(msg('rate-limited'));
-      } else if (response.status === 400 && show(serverKeys(answer['errors']))) {
+      } else if (response.status === 422 && show(serverKeys(answer['errors']))) {
         say(msg('invalid'));
       } else {
         say(msg('failed'));

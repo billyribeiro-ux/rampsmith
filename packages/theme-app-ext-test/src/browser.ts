@@ -87,7 +87,7 @@ interface ApiAnswer {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-/** An RFC 9457 problem answer with the stable `code` PLAN §8 requires. */
+/** An RFC 9457 problem answer with a `code` from crates/contracts' ProblemCode (PLAN §8). */
 function problem(
   status: number,
   code: string,
@@ -102,15 +102,15 @@ const RECEIVED: ApiAnswer = { status: 200, json: { status: 'received' } };
 /** The api side of the contract (ADR-162), run on the request Shopify forwarded. */
 function api(proxy: ProxyState, method: string, rawQuery: string, body: string): ApiAnswer {
   const verified = verifyAppProxyQuery(rawQuery, PROXY_SECRET, Math.floor(Date.now() / 1000));
-  if (!verified.ok) return problem(401, 'unauthorized');
-  if (method !== 'POST') return problem(405, 'method_not_allowed', {}, { allow: 'POST' });
+  if (!verified.ok) return problem(401, 'unauthenticated');
+  if (method !== 'POST') return problem(404, 'not_found');
   switch (proxy.mode) {
     case 'rate-limited':
       return problem(429, 'rate_limited', {}, { 'retry-after': '600' });
     case 'server-error':
       return problem(500, 'internal');
     case 'server-invalid':
-      return problem(400, 'invalid', { errors: [{ field: 'email', code: 'invalid' }] });
+      return problem(422, 'validation_failed', { errors: [{ field: 'email', code: 'invalid' }] });
     case 'normal':
     case 'html-error':
     case 'connection-reset':
@@ -119,9 +119,9 @@ function api(proxy: ProxyState, method: string, rawQuery: string, body: string):
   const parsed = parseBarrierReport(body);
   switch (parsed.kind) {
     case 'too-large':
-      return problem(413, 'too_large');
+      return problem(413, 'payload_too_large');
     case 'invalid':
-      return problem(400, 'invalid', { errors: parsed.errors });
+      return problem(422, 'validation_failed', { errors: parsed.errors });
     case 'discarded':
       return RECEIVED;
     case 'accepted':

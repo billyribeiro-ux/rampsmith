@@ -46,6 +46,11 @@ describe('the statement link', () => {
       '//evil.example/a11y',
       '/\\evil.example',
       'pages/a',
+      '/\t/evil.example/a11y',
+      '/\n/evil.example/a11y',
+      '/\r/evil.example/a11y',
+      '/\t\\evil.example/a11y',
+      'https://evil.example/\n',
     ]) {
       expect(await renderEmbed({ statementMetafield }), statementMetafield).toMatch(onlyWhitespace);
     }
@@ -109,6 +114,12 @@ describe('the barrier-report form', () => {
       '/apps/../x',
       '/a\\b',
       `/apps/${'a'.repeat(40)}`,
+      '/\t/1249712128',
+      '/\n/evil.example',
+      '/\r/evil.example',
+      '/\t\\evil.example',
+      '/apps/a b',
+      '/apps/caf\u00e9',
     ]) {
       const html = await renderEmbed({ settings: { show_report_form: true }, proxyPathMetafield });
       expect(html, proxyPathMetafield).toContain('action="/apps/rampsmith/barrier-report"');
@@ -138,6 +149,23 @@ describe('the barrier-report form', () => {
       expect(html, pageType).toContain(`name="page_type" value="${pageType}"`);
       expect(html, pageType).not.toContain(path);
     }
+  });
+
+  it('sends no path from another app’s proxy page', async () => {
+    for (const path of ['/a/x/token-1', '/apps/other/session/abc', '/tools/x', '/community/y']) {
+      const html = await renderEmbed({
+        settings: { show_report_form: true },
+        path,
+        pageType: 'page',
+      });
+      expect(html, path).toContain('name="page" value=""');
+    }
+    const ok = await renderEmbed({
+      settings: { show_report_form: true },
+      path: '/apples',
+      pageType: 'page',
+    });
+    expect(ok).toContain('name="page" value="/apples"');
   });
 
   it('escapes the page path', async () => {

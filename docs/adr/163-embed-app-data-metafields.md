@@ -40,10 +40,13 @@ Checked on shopify.dev on 17 and 18 October 2026:
 
 2. **The embed reads them** as `app.metafields.rampsmith.statement_url.value` and
    `app.metafields.rampsmith.proxy_path.value`, falling back to the embed's own URL setting and
-   to `/apps/rampsmith`, and trusts neither as is: it links a statement only if its URL starts
-   with `https://` or with a single `/` (not `//` or `/\`), and it uses a proxy path only if it
-   is a plain same-site path (a leading `/`; no `//`, `:`, `?`, `#`, `.`, `%`, space or
-   backslash; at most 40 characters). Both are escaped where they are output.
+   to `/apps/rampsmith`, and trusts neither as is. It links a statement only if its URL starts
+   with `https://` or with a single `/` (not `//` or `/\`) and holds no tab, line feed or
+   carriage return, which browsers drop before parsing (so `/<tab>/host` would become
+   `//host`). It uses a proxy path only if `url_encode` leaves it unchanged apart from its
+   slashes (so no tab, line break, colon, backslash, percent sign, space or non-ASCII
+   character), it starts with one `/`, has no `//` or `.`, and is at most 40 characters. Both
+   are escaped where they are output.
 3. **How `proxy_path` gets set.** A moved proxy is a store setting a request cannot be trusted
    to report: one forged parameter written into `proxy_path` would send every later report
    (descriptions and emails) to another app's proxy, and the form would never reach Rampsmith

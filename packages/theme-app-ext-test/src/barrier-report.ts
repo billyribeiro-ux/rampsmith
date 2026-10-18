@@ -74,10 +74,11 @@ const LOCALE = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{1,8}){0,4}$/u;
 const UNSAFE =
   // eslint-disable-next-line no-control-regex -- removing control characters is the point
   /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{200B}\u{202A}-\u{202E}\u{2060}\u{2066}-\u{2069}\u{FEFF}]/gu;
-// A page path is refused outright if it holds any of those, or any whitespace.
+// A page path is refused outright if it holds any of those, any whitespace, the Arabic letter
+// mark or the Hangul fillers (invisible characters used to disguise paths).
 const PATH_UNSAFE =
   // eslint-disable-next-line no-control-regex -- detecting control characters is the point
-  /[\u0000-\u001F\u007F-\u009F\u{200B}-\u{200F}\u{202A}-\u{202E}\u{2060}-\u{2069}\u{FEFF}\s]/u;
+  /[\u0000-\u001F\u007F-\u009F\u{061C}\u{115F}\u{1160}\u{200B}-\u{200F}\u{202A}-\u{202E}\u{2060}-\u{2069}\u{3164}\u{FEFF}\u{FFA0}\s]/u;
 
 /**
  * Page types whose path is worth keeping. Every other type (customer account pages, gift
@@ -108,6 +109,7 @@ function clean(value: string): string {
     .trim();
 }
 
+/** A same-site path, never one on an app proxy (whose paths other apps may use for tokens). */
 function samePath(value: string): string | null {
   const path = value.trim();
   const ok =
@@ -115,18 +117,20 @@ function samePath(value: string): string | null {
     !path.startsWith('//') &&
     !path.startsWith('/\\') &&
     path.length <= MAX_PAGE_LENGTH &&
-    !PATH_UNSAFE.test(path);
+    !PATH_UNSAFE.test(path) &&
+    !/^\/(?:a|apps|community|tools)\//u.test(path);
   return ok ? path : null;
 }
 
 /**
  * One CSV cell of the merchant's export: always quoted, and a leading character a spreadsheet
  * would read as a formula (`= + - @`, their full-width forms, tab or carriage return) is
- * prefixed with an apostrophe, because every report is text from an anonymous visitor.
+ * prefixed with an apostrophe, also behind leading whitespace, because every report is text
+ * from an anonymous visitor.
  */
 export function exportCell(value: string | null): string {
   const text = value ?? '';
-  const safe = /^[=+\-@\t\r\u{FF1D}\u{FF0B}\u{FF0D}\u{FF20}]/u.test(text) ? `'${text}` : text;
+  const safe = /^\s*[=+\-@\t\r\u{FF1D}\u{FF0B}\u{FF0D}\u{FF20}]/u.test(text) ? `'${text}` : text;
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
@@ -171,4 +175,34 @@ export function parseBarrierReport(body: string): ParseResult {
       locale: locale.length <= 35 && LOCALE.test(locale) ? locale : null,
     },
   };
+}
+
+/** Digits a phone number must have before the compliance search compares it at all. */
+export const MIN_PHONE_DIGITS = 7;
+
+/**
+ * Whether a report's description mentions the shopper a compliance webhook names, for reports
+ * submitted without the email field. The email is compared as a literal, case-insensitive
+ * substring, never as a LIKE pattern, whose `_` and `%` would match other shoppers' addresses.
+ * Phone numbers are compared as digits only: a run of digits in the description matches when
+ * one ends with the other and the shorter has at least MIN_PHONE_DIGITS, so "+1 613 555 0100"
+ * finds "(613) 555-0100".
+ */
+export function mentionsShopper(
+  description: string,
+  shopper: { readonly email?: string | null; readonly phone?: string | null },
+): boolean {
+  const text = description.toLowerCase();
+  const email = (shopper.email ?? '').trim().toLowerCase();
+  if (email !== '' && text.includes(email)) return true;
+  const phone = (shopper.phone ?? '').replaceAll(/[^0-9]/gu, '');
+  if (phone.length < MIN_PHONE_DIGITS) return false;
+  for (const run of description.match(/\+?[0-9][0-9 ().-]*[0-9]/gu) ?? []) {
+    const digits = run.replaceAll(/[^0-9]/gu, '');
+    const shorter = Math.min(digits.length, phone.length);
+    if (shorter >= MIN_PHONE_DIGITS && (digits.endsWith(phone) || phone.endsWith(digits))) {
+      return true;
+    }
+  }
+  return false;
 }
