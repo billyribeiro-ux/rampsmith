@@ -119,6 +119,11 @@ describe('the barrier-report form', () => {
       '/\r/evil.example',
       '/\t\\evil.example',
       '/apps/a b',
+      '/',
+      '/apps/',
+      '/apps/x/',
+      '/x/y',
+      '/apps',
       '/apps/caf\u00e9',
     ]) {
       const html = await renderEmbed({ settings: { show_report_form: true }, proxyPathMetafield });

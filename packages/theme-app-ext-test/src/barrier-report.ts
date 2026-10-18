@@ -180,13 +180,33 @@ export function parseBarrierReport(body: string): ParseResult {
 /** Digits a phone number must have before the compliance search compares it at all. */
 export const MIN_PHONE_DIGITS = 7;
 
+const LOCAL_PART_CHAR = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]/u;
+const DOMAIN_CHAR = /[a-z0-9-]/u;
+
+/** Whether `email` occurs in `text` (both lowercase) as a whole address, not inside a longer one. */
+function containsAddress(text: string, email: string): boolean {
+  for (let at = text.indexOf(email); at !== -1; at = text.indexOf(email, at + 1)) {
+    const before = text.charAt(at - 1);
+    const after = text.charAt(at + email.length);
+    const next = text.charAt(at + email.length + 1);
+    const startsClean = at === 0 || !LOCAL_PART_CHAR.test(before);
+    const endsClean =
+      after === '' || (!DOMAIN_CHAR.test(after) && !(after === '.' && DOMAIN_CHAR.test(next)));
+    if (startsClean && endsClean) return true;
+  }
+  return false;
+}
+
 /**
  * Whether a report's description mentions the shopper a compliance webhook names, for reports
  * submitted without the email field. The email is compared as a literal, case-insensitive
- * substring, never as a LIKE pattern, whose `_` and `%` would match other shoppers' addresses.
- * Phone numbers are compared as digits only: a run of digits in the description matches when
- * one ends with the other and the shorter has at least MIN_PHONE_DIGITS, so "+1 613 555 0100"
- * finds "(613) 555-0100".
+ * whole address: never as a LIKE pattern, whose `_` and `%` would match other shoppers'
+ * addresses, and never inside a longer address (`ann@x.com` does not match `joann@x.com` or
+ * `ann@x.com.br`). Phone numbers are compared as digits only: a run of digits in the
+ * description matches when one ends with the other and the shorter has at least
+ * MIN_PHONE_DIGITS, so "+1 613 555 0100" finds "(613) 555-0100". A bare seven-digit number
+ * that equals the phone's last seven digits matches on purpose: a missed report is the worse
+ * failure for a compliance request, and such a collision is unlikely.
  */
 export function mentionsShopper(
   description: string,
@@ -194,7 +214,7 @@ export function mentionsShopper(
 ): boolean {
   const text = description.toLowerCase();
   const email = (shopper.email ?? '').trim().toLowerCase();
-  if (email !== '' && text.includes(email)) return true;
+  if (email !== '' && containsAddress(text, email)) return true;
   const phone = (shopper.phone ?? '').replaceAll(/[^0-9]/gu, '');
   if (phone.length < MIN_PHONE_DIGITS) return false;
   for (const run of description.match(/\+?[0-9][0-9 ().-]*[0-9]/gu) ?? []) {

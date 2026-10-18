@@ -220,11 +220,15 @@ proves `customers/redact` still finds a report after a rotation.
   delete any report at any time.
 - **`customers/data_request`:** reports whose `email_lookup` matches the payload's email, or
   whose description mentions the payload's email or phone (`mentionsShopper` in the reference
-  module: the email as a literal, case-insensitive substring, never a `LIKE` pattern, whose `_`
-  and `%` would match other shoppers' addresses, in SQL `strpos(lower(description),
-  lower($1)) > 0`; the phone as digits only, at least 7, matching a digit run that ends with it
-  or that it ends with), are exported to the merchant; otherwise the answer is that none are
-  held.
+  module: the email as a literal, case-insensitive whole address, never a `LIKE` pattern,
+  whose `_` and `%` would match other shoppers' addresses, and never inside a longer address
+  (`ann@x.com` matches neither `joann@x.com` nor `ann@x.com.br`), with SQL
+  `strpos(lower(description), lower($1)) > 0` only as a prefilter before the boundary check;
+  the phone as digits only, at least 7, matching a digit run that ends with it or that it ends
+  with), are exported to the merchant; otherwise the answer is that none are held. A bare
+  seven-digit number equal to the phone's last seven digits matches on purpose: missing a
+  shopper's report is the worse failure for a compliance request, and the collision is
+  unlikely.
 - **`customers/redact`:** those reports are deleted.
 - **`shop/redact`:** every report of the shop is deleted with the rest of its data.
 - The sweep and the compliance handlers run under `TenantTx`, one tenant at a time (or a narrow

@@ -311,6 +311,29 @@ describe('mentionsShopper', () => {
     expect(mentionsShopper('nothing here', { email: '' })).toBe(false);
   });
 
+  it('matches the email only as a whole address', () => {
+    const email = 'ann@gmail.com';
+    for (const text of [
+      'joann@gmail.com',
+      'ann@gmail.com.br',
+      'ann@gmail.community',
+      'ann@gmail.com-x',
+    ]) {
+      expect(mentionsShopper(`Mail ${text} now`, { email }), text).toBe(false);
+    }
+    for (const text of [
+      'ann@gmail.com',
+      '(ann@gmail.com)',
+      '<ann@gmail.com>',
+      'ann@gmail.com.',
+      'ann@gmail.com, joann@gmail.com',
+    ]) {
+      expect(mentionsShopper(`Mail ${text}`, { email }), text).toBe(true);
+    }
+    expect(mentionsShopper('ann@gmail.com', { email })).toBe(true);
+    expect(mentionsShopper('joann@gmail.com then ann@gmail.com', { email })).toBe(true);
+  });
+
   it('finds a phone number however it was typed, and ignores short numbers', () => {
     expect(mentionsShopper('Call (613) 555-0100 after 5', { phone: '+16135550100' })).toBe(true);
     expect(mentionsShopper('Call +1 613.555.0100', { phone: '6135550100' })).toBe(true);

@@ -45,8 +45,10 @@ Checked on shopify.dev on 17 and 18 October 2026:
    carriage return, which browsers drop before parsing (so `/<tab>/host` would become
    `//host`). It uses a proxy path only if `url_encode` leaves it unchanged apart from its
    slashes (so no tab, line break, colon, backslash, percent sign, space or non-ASCII
-   character), it starts with one `/`, has no `//` or `.`, and is at most 40 characters. Both
-   are escaped where they are output.
+   character), it starts with one `/`, has no `//` or `.`, is at most 40 characters, and has
+   exactly two segments, the first `a`, `apps`, `community` or `tools` (so `/` or `/apps/`
+   cannot turn the form's action into `//barrier-report`). Both are escaped where they are
+   output.
 3. **How `proxy_path` gets set.** A moved proxy is a store setting a request cannot be trusted
    to report: one forged parameter written into `proxy_path` would send every later report
    (descriptions and emails) to another app's proxy, and the form would never reach Rampsmith
