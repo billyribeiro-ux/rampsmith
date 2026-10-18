@@ -45,10 +45,13 @@ const mediaFinding: GoldenFinding = {
   expectedFix: { channel: 'admin-api', recipe: 'media-alt', outcome: 'review', targeted: false },
 };
 
-function golden(findings: readonly unknown[], kind: 'failing' | 'control' = 'failing'): unknown {
+function golden(
+  findings: readonly unknown[],
+  kind: 'failing' | 'control' | 'store' = 'failing',
+): unknown {
   const file: Omit<GoldenFile, 'findings'> & { findings: readonly unknown[] } = {
     $schema: '../schema/golden.schema.json',
-    theme: 'aurora',
+    subject: 'aurora',
     kind,
     alignment: { axeCore: '4.14.0', a11yRules: 'b79ba2f', liquidPatch: '551b200' },
     findings,
@@ -62,8 +65,18 @@ const withFix = (fix: Record<string, unknown>): unknown => ({
 });
 
 describe('golden schema', () => {
-  it('accepts a render finding and a data finding', () => {
-    expect(validate('golden', golden([linkFinding, mediaFinding]))).toEqual([]);
+  it('accepts render findings for a theme and data findings for a store, not the reverse', () => {
+    expect(validate('golden', golden([linkFinding]))).toEqual([]);
+    expect(validate('golden', golden([mediaFinding], 'store'))).toEqual([]);
+    expect(validate('golden', golden([mediaFinding]))).not.toEqual([]);
+    expect(validate('golden', golden([linkFinding], 'store'))).not.toEqual([]);
+  });
+
+  it('accepts * for every page of the theme', () => {
+    const everywhere = { ...linkFinding, occurrences: [{ page: '*', selector: 'a.header__cart' }] };
+    expect(validate('golden', golden([everywhere]))).toEqual([]);
+    const bad = { ...linkFinding, occurrences: [{ page: '**', selector: 'a' }] };
+    expect(validate('golden', golden([bad]))).not.toEqual([]);
   });
 
   it('accepts a control with no findings and rejects one with findings', () => {
@@ -129,12 +142,12 @@ describe('golden schema', () => {
     expect(
       validate(
         'golden',
-        golden([{ ...mediaFinding, occurrences: [{ page: 'product', selector: 'img' }] }]),
+        golden([{ ...mediaFinding, occurrences: [{ page: 'product', selector: 'img' }] }], 'store'),
       ),
     ).not.toEqual([]);
-    expect(validate('golden', golden([{ ...mediaFinding, mapping: 'deterministic' }]))).not.toEqual(
-      [],
-    );
+    expect(
+      validate('golden', golden([{ ...mediaFinding, mapping: 'deterministic' }], 'store')),
+    ).not.toEqual([]);
     expect(validate('golden', golden([{ ...linkFinding, mapping: 'none' }]))).not.toEqual([]);
     const unrendered = Object.fromEntries(
       Object.entries(linkFinding).filter(([name]) => name !== 'occurrences'),
@@ -208,12 +221,20 @@ describe('manifest schema', () => {
       tags: ['wcag2a', 'wcag2aa'],
       viewport: { width: 1280, height: 800 },
     },
-    fixtures: 'fixtures/store.json',
+    stores: [
+      {
+        name: 'harbor',
+        fixtures: 'fixtures/store.json',
+        golden: 'golden/store-harbor.json',
+        description: 'The store the failing themes render.',
+      },
+    ],
     themes: [
       {
         name: 'aurora',
         kind: 'failing',
         path: 'themes/aurora',
+        store: 'harbor',
         golden: 'golden/aurora.json',
         description: 'A small apparel theme with the failures of a typical theme.',
         variety: ['two-space indentation'],

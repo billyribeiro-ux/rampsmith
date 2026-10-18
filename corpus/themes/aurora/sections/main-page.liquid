@@ -1,0 +1,10 @@
+<article class="page page-width">
+  <h1 class="page__title">{{ page.title | escape }}</h1>
+  <div class="page__content rte">
+    {{ page.content }}
+  </div>
+</article>
+
+{% schema %}
+{ "name": "Page", "settings": [] }
+{% endschema %}

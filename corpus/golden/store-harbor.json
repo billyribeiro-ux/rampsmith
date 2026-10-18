@@ -1,0 +1,133 @@
+{
+  "$schema": "../schema/golden.schema.json",
+  "subject": "harbor",
+  "kind": "store",
+  "alignment": {
+    "axeCore": "4.14.0",
+    "a11yRules": "b79ba2f",
+    "liquidPatch": "551b200"
+  },
+  "findings": [
+    {
+      "id": "mug-media-alt-empty",
+      "ruleId": "rs-media-alt-empty",
+      "engine": "rampsmith-data",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-media",
+      "description": "The stoneware mug's only product image has empty alt text.",
+      "mapping": "none",
+      "span": {
+        "kind": "data",
+        "resource": "gid://shopify/MediaImage/9301",
+        "field": "alt"
+      },
+      "expectedFix": {
+        "channel": "admin-api",
+        "recipe": "media-alt",
+        "outcome": "review",
+        "targeted": false,
+        "note": "Alt text drafted from the image and the product title, written with fileUpdate after approval (PLAN §12)."
+      }
+    },
+    {
+      "id": "tote-media-alt-filename",
+      "ruleId": "rs-media-alt-filename",
+      "engine": "rampsmith-data",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-media",
+      "description": "The canvas tote's product image uses its file name, IMG_2041.JPG, as alt text.",
+      "mapping": "none",
+      "span": {
+        "kind": "data",
+        "resource": "gid://shopify/MediaImage/9201",
+        "field": "alt"
+      },
+      "expectedFix": {
+        "channel": "admin-api",
+        "recipe": "media-alt",
+        "outcome": "review",
+        "targeted": false
+      }
+    },
+    {
+      "id": "shirt-heading-skip",
+      "ruleId": "rs-rich-text-heading-skip",
+      "engine": "rampsmith-data",
+      "outcome": "violation",
+      "impact": "moderate",
+      "criteria": ["1.3.1"],
+      "category": "rich-text",
+      "description": "The linen shirt's description jumps from an h2 to an h4.",
+      "mapping": "none",
+      "span": {
+        "kind": "data",
+        "resource": "gid://shopify/Product/7001",
+        "field": "descriptionHtml",
+        "start": 130,
+        "end": 143,
+        "anchor": "<h4>Care</h4>"
+      },
+      "expectedFix": {
+        "channel": "admin-api",
+        "recipe": "rich-text",
+        "outcome": "review",
+        "targeted": false,
+        "note": "A best practice related to 1.3.1, never counted as a WCAG failure (ADR-112)."
+      }
+    },
+    {
+      "id": "shirt-vague-link",
+      "ruleId": "rs-rich-text-link-vague",
+      "engine": "rampsmith-data",
+      "outcome": "violation",
+      "impact": "moderate",
+      "criteria": ["2.4.4"],
+      "category": "rich-text",
+      "description": "A paragraph of the linen shirt's description is only a \"Click here\" link, with no text giving its purpose.",
+      "mapping": "none",
+      "span": {
+        "kind": "data",
+        "resource": "gid://shopify/Product/7001",
+        "field": "descriptionHtml",
+        "start": 187,
+        "end": 223,
+        "anchor": "<a href=\"/pages/care\">Click here</a>"
+      },
+      "expectedFix": {
+        "channel": "admin-api",
+        "recipe": "rich-text",
+        "outcome": "review",
+        "targeted": false
+      }
+    },
+    {
+      "id": "article-img-alt-missing",
+      "ruleId": "rs-rich-text-img-alt-missing",
+      "engine": "rampsmith-data",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "rich-text",
+      "description": "An image in the \"Caring for linen\" article body has no alt attribute.",
+      "mapping": "none",
+      "span": {
+        "kind": "data",
+        "resource": "gid://shopify/Article/3001",
+        "field": "body",
+        "start": 75,
+        "end": 144,
+        "anchor": "<img src=\"/cdn/shop/files/linen-drying.jpg\" width=\"800\" height=\"500\">"
+      },
+      "expectedFix": {
+        "channel": "admin-api",
+        "recipe": "rich-text",
+        "outcome": "review",
+        "targeted": false
+      }
+    }
+  ]
+}

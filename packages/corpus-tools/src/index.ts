@@ -59,3 +59,31 @@ export {
 } from './rules.ts';
 export { validate, type SchemaName } from './schema.ts';
 export { CORPUS_ROOT } from './paths.ts';
+export {
+  ORIGIN,
+  checkTheme,
+  launchChromium,
+  occurrencesFor,
+  runPage,
+  type PageResult,
+  type PageRun,
+} from './browser/check.ts';
+export {
+  goldenContext,
+  loadCorpus,
+  type Corpus,
+  type LoadedStore,
+  type LoadedTheme,
+} from './corpus.ts';
+export {
+  loadGolden,
+  loadManifest,
+  type Manifest,
+  type StoreEntry,
+  type ThemeEntry,
+} from './manifest.ts';
+export { FIXED_NOW, ThemeRenderer, type PageSpec } from './render/renderer.ts';
+export { loadStore, storeObjects, type StoreFixture, type StoreObjects } from './render/store.ts';
+export { THEME_DIRECTORIES, loadTheme, type Theme } from './render/theme.ts';
+export { relocate, spanProblem } from './spans.ts';
+export { TARGETABLE_RECIPES, verifyGolden, type GoldenContext } from './verify.ts';

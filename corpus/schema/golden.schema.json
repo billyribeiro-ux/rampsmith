@@ -5,69 +5,182 @@
   "description": "Every finding the scanner must report on the theme's rendered pages, where it maps in source, and what the fix engine is expected to do (PLAN §23; corpus/CONTRACT.md; ADR-201).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "theme", "kind", "alignment", "findings"],
+  "required": ["$schema", "subject", "kind", "alignment", "findings"],
   "properties": {
-    "$schema": { "const": "../schema/golden.schema.json" },
-    "theme": { "$ref": "#/$defs/slug" },
-    "kind": { "enum": ["failing", "control"] },
+    "$schema": {
+      "const": "../schema/golden.schema.json"
+    },
+    "subject": {
+      "description": "The theme, or for a store's data-audit findings the store, these findings belong to.",
+      "$ref": "#/$defs/slug"
+    },
+    "kind": {
+      "enum": ["failing", "control", "store"]
+    },
     "alignment": {
       "description": "Versions and commits whose rule ids and span format the findings follow.",
       "type": "object",
       "additionalProperties": false,
       "required": ["axeCore", "a11yRules", "liquidPatch"],
       "properties": {
-        "axeCore": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
-        "a11yRules": { "$ref": "#/$defs/commit" },
-        "liquidPatch": { "$ref": "#/$defs/commit" }
+        "axeCore": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "a11yRules": {
+          "$ref": "#/$defs/commit"
+        },
+        "liquidPatch": {
+          "$ref": "#/$defs/commit"
+        }
       }
     },
     "findings": {
       "type": "array",
-      "items": { "$ref": "#/$defs/finding" }
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
     }
   },
-  "if": { "properties": { "kind": { "const": "control" } } },
-  "then": { "properties": { "findings": { "type": "array", "maxItems": 0 } } },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "control"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "store"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "engine": {
+                  "const": "rampsmith-data"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "engine": {
+                  "enum": ["axe", "rampsmith-browser"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
-    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 64 },
-    "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
     "themePath": {
       "description": "Theme-relative path in one of Shopify's theme directories.",
       "type": "string",
       "pattern": "^(?:layout|templates|templates/customers|sections|blocks|snippets|locales|config|assets)/[A-Za-z0-9._-]+$"
     },
-    "offset": { "type": "integer", "minimum": 0 },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
     "anchor": {
       "description": "The source text that starts at the span's start offset: for an element, its start tag up to the first line end; for a CSS declaration or data, the whole span. It keeps the file reviewable and lets the tooling re-find the span after an edit. Mappers ignore it.",
       "type": "string",
       "minLength": 2
     },
-    "criterion": { "type": "string", "pattern": "^[1-4]\\.[1-9][0-9]?\\.[1-9][0-9]?$" },
+    "criterion": {
+      "type": "string",
+      "pattern": "^[1-4]\\.[1-9][0-9]?\\.[1-9][0-9]?$"
+    },
     "elementSpan": {
       "type": "object",
       "additionalProperties": false,
       "required": ["kind", "file", "start", "tag", "anchor"],
       "properties": {
-        "kind": { "const": "element" },
-        "file": { "$ref": "#/$defs/themePath", "type": "string", "pattern": "\\.liquid$" },
-        "start": { "$ref": "#/$defs/offset" },
-        "tag": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-        "anchor": { "$ref": "#/$defs/anchor" }
+        "kind": {
+          "const": "element"
+        },
+        "file": {
+          "$ref": "#/$defs/themePath",
+          "type": "string",
+          "pattern": "\\.liquid$"
+        },
+        "start": {
+          "$ref": "#/$defs/offset"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        }
       }
     },
     "span": {
       "oneOf": [
-        { "$ref": "#/$defs/elementSpan" },
+        {
+          "$ref": "#/$defs/elementSpan"
+        },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["kind", "file", "pointer", "start", "end"],
           "properties": {
-            "kind": { "const": "json-value" },
-            "file": { "$ref": "#/$defs/themePath", "type": "string", "pattern": "\\.json$" },
-            "pointer": { "type": "string", "pattern": "^(?:/(?:[^~/]|~[01])*)+$" },
-            "start": { "$ref": "#/$defs/offset" },
-            "end": { "$ref": "#/$defs/offset" }
+            "kind": {
+              "const": "json-value"
+            },
+            "file": {
+              "$ref": "#/$defs/themePath",
+              "type": "string",
+              "pattern": "\\.json$"
+            },
+            "pointer": {
+              "type": "string",
+              "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            }
           }
         },
         {
@@ -75,16 +188,27 @@
           "additionalProperties": false,
           "required": ["kind", "file", "start", "end", "property", "anchor"],
           "properties": {
-            "kind": { "const": "css-declaration" },
+            "kind": {
+              "const": "css-declaration"
+            },
             "file": {
               "$ref": "#/$defs/themePath",
               "type": "string",
               "pattern": "\\.(?:css|liquid)$"
             },
-            "start": { "$ref": "#/$defs/offset" },
-            "end": { "$ref": "#/$defs/offset" },
-            "property": { "type": "string", "pattern": "^-?[a-z][a-z-]*$" },
-            "anchor": { "$ref": "#/$defs/anchor" }
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            },
+            "property": {
+              "type": "string",
+              "pattern": "^-?[a-z][a-z-]*$"
+            },
+            "anchor": {
+              "$ref": "#/$defs/anchor"
+            }
           }
         },
         {
@@ -92,14 +216,32 @@
           "additionalProperties": false,
           "required": ["kind", "resource", "field"],
           "properties": {
-            "kind": { "const": "data" },
-            "resource": { "type": "string", "pattern": "^gid://shopify/[A-Za-z]+/[0-9]+$" },
-            "field": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]*$" },
-            "start": { "$ref": "#/$defs/offset" },
-            "end": { "$ref": "#/$defs/offset" },
-            "anchor": { "$ref": "#/$defs/anchor" }
+            "kind": {
+              "const": "data"
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^gid://shopify/[A-Za-z]+/[0-9]+$"
+            },
+            "field": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            },
+            "anchor": {
+              "$ref": "#/$defs/anchor"
+            }
           },
-          "dependentRequired": { "start": ["end", "anchor"], "end": ["start"], "anchor": ["start"] }
+          "dependentRequired": {
+            "start": ["end", "anchor"],
+            "end": ["start"],
+            "anchor": ["start"]
+          }
         }
       ]
     },
@@ -108,9 +250,25 @@
       "additionalProperties": false,
       "required": ["page", "selector"],
       "properties": {
-        "page": { "$ref": "#/$defs/slug" },
-        "selector": { "type": "string", "minLength": 1 },
-        "count": { "type": "integer", "minimum": 1 }
+        "page": {
+          "description": "A page id from the manifest, or * for every page of the theme.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/slug"
+            },
+            {
+              "const": "*"
+            }
+          ]
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "expectedFix": {
@@ -118,7 +276,9 @@
       "additionalProperties": false,
       "required": ["channel", "recipe", "outcome", "targeted"],
       "properties": {
-        "channel": { "enum": ["theme-patch", "admin-api", "none"] },
+        "channel": {
+          "enum": ["theme-patch", "admin-api", "none"]
+        },
         "recipe": {
           "enum": [
             "document-language",
@@ -135,7 +295,9 @@
             "ai-proposal"
           ]
         },
-        "outcome": { "enum": ["fixed", "refused", "review"] },
+        "outcome": {
+          "enum": ["fixed", "refused", "review"]
+        },
         "refusal": {
           "enum": [
             "wrong-file",
@@ -153,21 +315,55 @@
             "invalid-parameter"
           ]
         },
-        "targeted": { "type": "boolean" },
-        "params": { "type": "object" },
-        "note": { "type": "string", "minLength": 1 }
+        "targeted": {
+          "type": "boolean"
+        },
+        "params": {
+          "type": "object"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "outcome": { "const": "refused" } } },
-          "then": { "type": "object", "required": ["refusal"] },
-          "else": { "not": { "type": "object", "required": ["refusal"] } }
-        },
-        {
-          "if": { "properties": { "targeted": { "const": true } } },
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "refused"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "properties": { "channel": { "const": "theme-patch" }, "outcome": { "const": "fixed" } }
+            "required": ["refusal"]
+          },
+          "else": {
+            "not": {
+              "type": "object",
+              "required": ["refusal"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "targeted": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "const": "theme-patch"
+              },
+              "outcome": {
+                "const": "fixed"
+              }
+            }
           }
         }
       ]
@@ -189,14 +385,27 @@
         "expectedFix"
       ],
       "properties": {
-        "id": { "$ref": "#/$defs/slug" },
-        "ruleId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-        "engine": { "enum": ["axe", "rampsmith-browser", "rampsmith-data"] },
-        "outcome": { "enum": ["violation", "incomplete"] },
-        "impact": { "enum": ["minor", "moderate", "serious", "critical"] },
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "ruleId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "engine": {
+          "enum": ["axe", "rampsmith-browser", "rampsmith-data"]
+        },
+        "outcome": {
+          "enum": ["violation", "incomplete"]
+        },
+        "impact": {
+          "enum": ["minor", "moderate", "serious", "critical"]
+        },
         "criteria": {
           "type": "array",
-          "items": { "$ref": "#/$defs/criterion" },
+          "items": {
+            "$ref": "#/$defs/criterion"
+          },
           "minItems": 1,
           "uniqueItems": true
         },
@@ -217,39 +426,91 @@
             "other"
           ]
         },
-        "description": { "type": "string", "minLength": 10 },
+        "description": {
+          "type": "string",
+          "minLength": 10
+        },
         "occurrences": {
           "type": "array",
-          "items": { "$ref": "#/$defs/occurrence" },
+          "items": {
+            "$ref": "#/$defs/occurrence"
+          },
           "minItems": 1
         },
-        "mapping": { "enum": ["deterministic", "ambiguous", "none"] },
-        "span": { "$ref": "#/$defs/span" },
-        "rendersFrom": { "$ref": "#/$defs/elementSpan" },
-        "ambiguity": { "type": "string", "minLength": 10 },
-        "expectedFix": { "$ref": "#/$defs/expectedFix" }
+        "mapping": {
+          "enum": ["deterministic", "ambiguous", "none"]
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "rendersFrom": {
+          "$ref": "#/$defs/elementSpan"
+        },
+        "ambiguity": {
+          "type": "string",
+          "minLength": 10
+        },
+        "expectedFix": {
+          "$ref": "#/$defs/expectedFix"
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "engine": { "const": "rampsmith-data" } } },
+          "if": {
+            "properties": {
+              "engine": {
+                "const": "rampsmith-data"
+              }
+            }
+          },
           "then": {
             "type": "object",
             "properties": {
-              "mapping": { "const": "none" },
-              "span": { "type": "object", "properties": { "kind": { "const": "data" } } }
+              "mapping": {
+                "const": "none"
+              },
+              "span": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "data"
+                  }
+                }
+              }
             },
-            "not": { "type": "object", "required": ["occurrences"] }
+            "not": {
+              "type": "object",
+              "required": ["occurrences"]
+            }
           },
           "else": {
             "type": "object",
             "required": ["occurrences"],
-            "properties": { "mapping": { "enum": ["deterministic", "ambiguous"] } }
+            "properties": {
+              "mapping": {
+                "enum": ["deterministic", "ambiguous"]
+              }
+            }
           }
         },
         {
-          "if": { "properties": { "mapping": { "const": "ambiguous" } } },
-          "then": { "type": "object", "required": ["ambiguity"] },
-          "else": { "not": { "type": "object", "required": ["ambiguity"] } }
+          "if": {
+            "properties": {
+              "mapping": {
+                "const": "ambiguous"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "required": ["ambiguity"]
+          },
+          "else": {
+            "not": {
+              "type": "object",
+              "required": ["ambiguity"]
+            }
+          }
         }
       ]
     }

@@ -1,0 +1,105 @@
+{
+  "$schema": "./schema/manifest.schema.json",
+  "version": 1,
+  "renderer": {
+    "liquidjs": "10.30.0"
+  },
+  "checker": {
+    "axeCore": "4.14.0",
+    "playwrightCore": "1.64.1",
+    "tags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    }
+  },
+  "stores": [
+    {
+      "name": "harbor",
+      "fixtures": "fixtures/store.json",
+      "golden": "golden/store-harbor.json",
+      "description": "Harbor & Pine, the store the failing themes render: its product media, rich text and article bodies carry the data-audit failures."
+    },
+    {
+      "name": "harbor-clean",
+      "fixtures": "fixtures/store-clean.json",
+      "golden": "golden/store-harbor-clean.json",
+      "description": "The same store with every data-audit failure fixed, rendered by the controls so a clean theme shows zero findings."
+    }
+  ],
+  "themes": [
+    {
+      "name": "aurora",
+      "kind": "failing",
+      "path": "themes/aurora",
+      "store": "harbor",
+      "golden": "golden/aurora.json",
+      "description": "An Online Store 2.0 apparel theme in the conventions most current themes follow: JSON templates for all eight R1 page types, header and footer section groups, colour settings, and snippets for icons, cards, prices and quantity.",
+      "variety": [
+        "two-space indentation, one attribute per line on long tags",
+        "header and footer section groups",
+        "icons from {% render 'icon-*' %} snippets and one inline <svg>",
+        "colour from global settings and from a section setting in a JSON template",
+        "image_url | image_tag output inside a link"
+      ],
+      "pages": [
+        {
+          "id": "index",
+          "template": "index",
+          "path": "/"
+        },
+        {
+          "id": "product",
+          "template": "product",
+          "path": "/products/linen-shirt",
+          "resource": {
+            "type": "product",
+            "handle": "linen-shirt"
+          }
+        },
+        {
+          "id": "collection",
+          "template": "collection",
+          "path": "/collections/summer-edit",
+          "resource": {
+            "type": "collection",
+            "handle": "summer-edit"
+          }
+        },
+        {
+          "id": "cart",
+          "template": "cart",
+          "path": "/cart"
+        },
+        {
+          "id": "search",
+          "template": "search",
+          "path": "/search?q=linen"
+        },
+        {
+          "id": "page",
+          "template": "page",
+          "path": "/pages/about",
+          "resource": {
+            "type": "page",
+            "handle": "about"
+          }
+        },
+        {
+          "id": "article",
+          "template": "article",
+          "path": "/blogs/journal/caring-for-linen",
+          "resource": {
+            "type": "article",
+            "handle": "journal/caring-for-linen"
+          }
+        },
+        {
+          "id": "login",
+          "template": "customers/login",
+          "path": "/account/login"
+        }
+      ]
+    }
+  ]
+}

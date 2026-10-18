@@ -5,26 +5,41 @@
   "description": "The themes of the corpus, the pages rendered for each, and the pinned renderer and checker (PLAN §23; corpus/CONTRACT.md; ADR-201, ADR-202).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "version", "renderer", "checker", "fixtures", "themes"],
+  "required": ["$schema", "version", "renderer", "checker", "stores", "themes"],
   "properties": {
-    "$schema": { "const": "./schema/manifest.schema.json" },
-    "version": { "const": 1 },
+    "$schema": {
+      "const": "./schema/manifest.schema.json"
+    },
+    "version": {
+      "const": 1
+    },
     "renderer": {
       "type": "object",
       "additionalProperties": false,
       "required": ["liquidjs"],
-      "properties": { "liquidjs": { "$ref": "#/$defs/version" } }
+      "properties": {
+        "liquidjs": {
+          "$ref": "#/$defs/version"
+        }
+      }
     },
     "checker": {
       "type": "object",
       "additionalProperties": false,
       "required": ["axeCore", "playwrightCore", "tags", "viewport"],
       "properties": {
-        "axeCore": { "$ref": "#/$defs/version" },
-        "playwrightCore": { "$ref": "#/$defs/version" },
+        "axeCore": {
+          "$ref": "#/$defs/version"
+        },
+        "playwrightCore": {
+          "$ref": "#/$defs/version"
+        },
         "tags": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^wcag[0-9a]+$" },
+          "items": {
+            "type": "string",
+            "pattern": "^wcag[0-9a]+$"
+          },
           "minItems": 1,
           "uniqueItems": true
         },
@@ -33,32 +48,70 @@
           "additionalProperties": false,
           "required": ["width", "height"],
           "properties": {
-            "width": { "type": "integer", "minimum": 320 },
-            "height": { "type": "integer", "minimum": 320 }
+            "width": {
+              "type": "integer",
+              "minimum": 320
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 320
+            }
           }
         }
       }
     },
-    "fixtures": { "type": "string", "pattern": "^fixtures/[a-z0-9-]+\\.json$" },
     "themes": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/theme" }
+      "items": {
+        "$ref": "#/$defs/theme"
+      }
+    },
+    "stores": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/store"
+      }
     }
   },
   "$defs": {
-    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
-    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 64 },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
     "theme": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "kind", "path", "golden", "description", "variety", "pages"],
+      "required": ["name", "kind", "path", "store", "golden", "description", "variety", "pages"],
       "properties": {
-        "name": { "$ref": "#/$defs/slug" },
-        "kind": { "enum": ["failing", "control"] },
-        "path": { "type": "string", "pattern": "^themes/[a-z0-9-]+$" },
-        "golden": { "type": "string", "pattern": "^golden/[a-z0-9-]+\\.json$" },
-        "description": { "type": "string", "minLength": 20 },
+        "name": {
+          "$ref": "#/$defs/slug"
+        },
+        "kind": {
+          "enum": ["failing", "control"]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^themes/[a-z0-9-]+$"
+        },
+        "store": {
+          "description": "The fixture store the theme renders, by name.",
+          "$ref": "#/$defs/slug"
+        },
+        "golden": {
+          "type": "string",
+          "pattern": "^golden/[a-z0-9-]+\\.json$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 20
+        },
         "twinOf": {
           "description": "For a control: the failing theme whose markup it mirrors with every golden finding fixed.",
           "$ref": "#/$defs/slug"
@@ -66,13 +119,18 @@
         "variety": {
           "description": "Markup styles the theme exercises, so the mapper and recipes meet what real themes write.",
           "type": "array",
-          "items": { "type": "string", "minLength": 3 },
+          "items": {
+            "type": "string",
+            "minLength": 3
+          },
           "minItems": 1
         },
         "pages": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/page" }
+          "items": {
+            "$ref": "#/$defs/page"
+          }
         }
       }
     },
@@ -81,24 +139,55 @@
       "additionalProperties": false,
       "required": ["id", "template", "path"],
       "properties": {
-        "id": { "$ref": "#/$defs/slug" },
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
         "template": {
           "description": "JSON template name, such as product or customers/login.",
           "type": "string",
           "pattern": "^(?:customers/)?[a-z0-9_-]+(?:\\.[a-z0-9_-]+)?$"
         },
-        "path": { "type": "string", "pattern": "^/" },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
         "resource": {
           "description": "The fixture resource the page shows, by handle.",
           "type": "object",
           "additionalProperties": false,
           "required": ["type", "handle"],
           "properties": {
-            "type": { "enum": ["product", "collection", "page", "article", "blog"] },
-            "handle": { "type": "string", "pattern": "^[a-z0-9-]+(?:/[a-z0-9-]+)?$" }
+            "type": {
+              "enum": ["product", "collection", "page", "article", "blog"]
+            },
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]+(?:/[a-z0-9-]+)?$"
+            }
           }
+        }
+      }
+    },
+    "store": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fixtures", "golden", "description"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/slug"
         },
-        "search": { "type": "string" }
+        "fixtures": {
+          "type": "string",
+          "pattern": "^fixtures/[a-z0-9-]+\\.json$"
+        },
+        "golden": {
+          "type": "string",
+          "pattern": "^golden/[a-z0-9-]+\\.json$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 20
+        }
       }
     }
   }

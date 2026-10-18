@@ -155,6 +155,7 @@ export interface ExpectedFix {
 
 /** One place the rendered finding appears: every element `selector` matches on `page`. */
 export interface Occurrence {
+  /** A page id of the theme, or `*` for every page of the theme. */
   readonly page: string;
   readonly selector: string;
   /** How many elements the selector matches on the page; 1 when omitted. */
@@ -185,8 +186,9 @@ export interface GoldenFinding {
 
 export interface GoldenFile {
   readonly $schema: string;
-  readonly theme: string;
-  readonly kind: 'failing' | 'control';
+  /** The theme, or for a store's data-audit findings the store. */
+  readonly subject: string;
+  readonly kind: 'failing' | 'control' | 'store';
   /** The sibling streams' commits whose rule ids and span format these goldens follow. */
   readonly alignment: {
     readonly axeCore: string;
