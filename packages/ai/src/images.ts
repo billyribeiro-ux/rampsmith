@@ -43,9 +43,64 @@ function hasSignature(mediaType: ImageMediaType, bytes: Buffer): boolean {
 }
 
 /**
+ * Reads an image's pixel size from its header: JPEG (SOFn marker), PNG (IHDR), GIF (logical
+ * screen) and WebP (VP8, VP8L and VP8X). Returns `null` when the header is not understood.
+ */
+export function readImageSize(
+  bytes: Buffer,
+  mediaType: ImageMediaType,
+): { width: number; height: number } | null {
+  switch (mediaType) {
+    case 'image/png':
+      return bytes.length >= 24 && bytes.subarray(12, 16).toString('latin1') === 'IHDR'
+        ? { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+        : null;
+    case 'image/gif':
+      return bytes.length >= 10
+        ? { width: bytes.readUInt16LE(6), height: bytes.readUInt16LE(8) }
+        : null;
+    case 'image/webp': {
+      const chunk = bytes.subarray(12, 16).toString('latin1');
+      if (chunk === 'VP8 ' && bytes.length >= 30) {
+        return { width: bytes.readUInt16LE(26) & 0x3fff, height: bytes.readUInt16LE(28) & 0x3fff };
+      }
+      if (chunk === 'VP8L' && bytes.length >= 25) {
+        const b = bytes.readUInt32LE(21);
+        return { width: (b & 0x3fff) + 1, height: ((b >>> 14) & 0x3fff) + 1 };
+      }
+      if (chunk === 'VP8X' && bytes.length >= 30) {
+        return { width: bytes.readUIntLE(24, 3) + 1, height: bytes.readUIntLE(27, 3) + 1 };
+      }
+      return null;
+    }
+    case 'image/jpeg': {
+      let at = 2;
+      while (at + 9 < bytes.length) {
+        if (bytes[at] !== 0xff) {
+          return null;
+        }
+        const marker = bytes[at + 1] ?? 0;
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+          at += 2;
+          continue;
+        }
+        const length = bytes.readUInt16BE(at + 2);
+        const isFrame = marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker);
+        if (isFrame) {
+          return { width: bytes.readUInt16BE(at + 7), height: bytes.readUInt16BE(at + 5) };
+        }
+        at += 2 + length;
+      }
+      return null;
+    }
+  }
+}
+
+/**
  * Checks an image before it is sent: an allowed media type, valid base64 within the size
  * limit, bytes that really are that format (an HTML error page from a CDN is not an image),
- * and dimensions inside the resize target.
+ * dimensions that match the header (the cost estimate depends on them) and that sit inside
+ * the resize target.
  */
 export function validateImage(image: ImageInput, maxLongEdge: number = ALT_TEXT_LONG_EDGE): void {
   const types: readonly string[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -58,11 +113,15 @@ export function validateImage(image: ImageInput, maxLongEdge: number = ALT_TEXT_
   if (image.base64.length % 4 !== 0 || !BASE64.test(image.base64)) {
     throw new AiError('ai_input_invalid', 'the image is not valid base64');
   }
-  const head = Buffer.from(image.base64.slice(0, 32), 'base64');
-  if (!hasSignature(image.mediaType, head)) {
+  const bytes = Buffer.from(image.base64, 'base64');
+  if (!hasSignature(image.mediaType, bytes)) {
     throw new AiError('ai_input_invalid', 'the image bytes do not match its media type');
   }
   const { width, height } = image;
+  const actual = readImageSize(bytes, image.mediaType);
+  if (actual?.width !== width || actual.height !== height) {
+    throw new AiError('ai_input_invalid', 'the image dimensions do not match its header');
+  }
   if (
     !Number.isInteger(width) ||
     !Number.isInteger(height) ||
