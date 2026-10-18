@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "0.135.0",
     "@opentelemetry/api": "1.9.1",
     "@rampsmith/claims-lint": "workspace:*",
-    "ajv": "8.20.0"
+    "ajv": "8.20.0",
+    "parse5": "8.0.1"
   }
 }

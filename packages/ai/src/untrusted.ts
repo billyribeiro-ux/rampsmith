@@ -34,6 +34,20 @@ function isInvisible(codePoint: number): boolean {
   return INVISIBLE_RANGES.some(([low, high]) => codePoint >= low && codePoint <= high);
 }
 
+/**
+ * Whether `text` holds a character `sanitizeUntrustedText` would remove as invisible.
+ * Carriage returns are line endings, not hidden text.
+ */
+export function containsInvisible(text: string): boolean {
+  for (const char of text) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    if (codePoint !== 0x0d && isInvisible(codePoint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
 
 /**

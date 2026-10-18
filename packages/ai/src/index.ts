@@ -40,6 +40,7 @@ export {
 export {
   detectInstructionLikeText,
   encodeDataBlock,
+  containsInvisible,
   sanitizeUntrustedText,
   scrubPersonalData,
   stripQueryAndFragment,
@@ -106,3 +107,48 @@ export {
   type BatchTicket,
   type SubmitResult,
 } from './batch.ts';
+export {
+  analyzeDescription,
+  applyRewrite,
+  isVagueLinkText,
+  validHeadingOutline,
+  type DescriptionAnalysis,
+  type HeadingTarget,
+  type LinkTarget,
+  type RewriteChanges,
+} from './html.ts';
+export {
+  MAX_REWRITE_HTML,
+  checkRewrite,
+  generateRewrite,
+  prepareRewrite,
+  type RewriteDraft,
+  type RewriteInput,
+} from './tasks/rewrite.ts';
+export {
+  TIE_BREAK_MIN_CONFIDENCE,
+  breakTie,
+  checkTieBreak,
+  prepareTieBreak,
+  type TieBreakCandidate,
+  type TieBreakChoice,
+  type TieBreakInput,
+} from './tasks/tie-break.ts';
+export {
+  MAX_CHANGED_CHARS,
+  MAX_SPAN_CHARS,
+  addedConstructs,
+  checkPatchProposal,
+  preparePatchProposal,
+  proposePatch,
+  type PatchEdit,
+  type PatchProposal,
+  type PatchProposalInput,
+} from './tasks/patch-proposal.ts';
+export {
+  checkExplanation,
+  explainRule,
+  prepareExplanation,
+  type ExplainInput,
+  type Explanation,
+} from './tasks/explain.ts';
