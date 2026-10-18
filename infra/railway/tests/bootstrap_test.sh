@@ -65,7 +65,7 @@ echo "3. the migrator applies every migration"
 migrator_url=$(url rampsmith_migrator "$RAMPSMITH_DB_PASSWORD_MIGRATOR")
 if command -v sqlx >/dev/null 2>&1; then
   # Exactly what the api's pre-deploy step runs (infra/railway/railway.py).
-  DATABASE_URL=$migrator_url sqlx migrate run --source "$migrations"
+  DATABASE_URL=$migrator_url sqlx migrate run --ignore-missing --source "$migrations"
   DATABASE_URL=$migrator_url sqlx migrate info --source "$migrations"
 else
   echo "::notice title=bootstrap test::sqlx is not on PATH; applying the migrations with psql"

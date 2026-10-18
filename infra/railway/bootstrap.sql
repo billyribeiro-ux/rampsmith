@@ -8,6 +8,9 @@
 --   done; unset value
 --   railway connect postgres --ssh        (psql 15 or newer, over SSH: no public TCP proxy)
 --   \i infra/railway/bootstrap.sql
+--   \q
+--   unset RAMPSMITH_DB_PASSWORD_MIGRATOR RAMPSMITH_DB_PASSWORD_API RAMPSMITH_DB_PASSWORD_CTL \
+--     RAMPSMITH_DB_PASSWORD_ENGINE
 --
 -- Each password is the value of the Railway shared variable of the same name, generated with
 -- `openssl rand -hex 32` (64 hex digits, so it needs no escaping inside a connection URL).
@@ -30,12 +33,16 @@
 \set ECHO none
 \set ECHO_HIDDEN off
 
--- Keep the passwords out of the server log, whatever its settings.
+-- Keep the passwords out of the server log, whatever its settings: no statement logging, no
+-- sampled transactions, no error statements.
 set log_statement = 'none';
 set log_min_error_statement = 'panic';
 set log_min_duration_statement = -1;
+set log_transaction_sample_rate = 0;
 set client_min_messages = warning;
--- And out of pg_stat_statements, should that extension ever be loaded.
+-- Out of pg_stat_activity while a statement runs, and out of pg_stat_statements, should that
+-- extension ever be loaded.
+set track_activities = off;
 set pg_stat_statements.track_utility = off;
 
 \getenv migrator_password RAMPSMITH_DB_PASSWORD_MIGRATOR

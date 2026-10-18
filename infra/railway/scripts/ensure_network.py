@@ -11,8 +11,9 @@ cannot enforce exposure. This does, with the CLI's own domain and TCP-proxy comm
 
 Usage: python3 ensure_network.py <environment> [--create]
 With --create, a listed host that is missing is registered (its DNS records are printed for the
-founder) and a wrong target port is corrected; anything else that is wrong fails, and nothing is
-ever deleted. Host names come from RAMPSMITH_APP_HOST, RAMPSMITH_SITE_HOST and
+founder). A wrong target port is corrected and still fails the run, because until then that
+host reached the wrong listener (the api's private API, say), which someone must look into.
+Anything else that is wrong fails, and nothing is ever deleted. Host names come from RAMPSMITH_APP_HOST, RAMPSMITH_SITE_HOST and
 RAMPSMITH_WEBHOOK_HOST; an unset one means that domain must not exist yet.
 """
 
@@ -109,6 +110,10 @@ def check_service(
                 continue
             run(["domain", "update", name, "--port", str(port), *scope])
             notes.append(f"{name} now targets port {port} (was {seen[name]})")
+            problems.append(
+                f"{name} on {service} targeted port {seen[name]}, not {port}, before this run "
+                "corrected it: find out how, and what that listener served publicly"
+            )
     return problems, notes
 
 

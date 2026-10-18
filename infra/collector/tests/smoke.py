@@ -232,7 +232,17 @@ def main() -> int:
         jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzaG9wIn0." + marker
         shop_token = "shpat_" + marker
         email = f"merchant-{marker}@example.com"
-        planted = (jwt, shop_token, email, f"secret-{marker}", f"hmac-{marker}")
+        client_secret = f"cs{marker}"
+        signature = f"sig{marker}"
+        pem_body = f"MIIEow{marker}"
+        db_password = f"{marker}{marker}"[:64]
+        header_secret = f"hdr{marker}"
+        planted = (jwt, shop_token, email, f"secret-{marker}", f"hmac-{marker}", client_secret,
+                   signature, pem_body, db_password, header_secret)
+        pem = f"-----BEGIN PRIVATE KEY-----\n{pem_body}\nAAAA+/==\n-----END PRIVATE KEY-----"
+        db_url = f"postgresql://rampsmith_api:{db_password}@postgres.railway.internal:5432/x"
+        presigned = (f"https://acct.r2.cloudflarestorage.com/evidence/o.png?X-Amz-Credential="
+                     f"AKIA{marker}&X-Amz-Signature={signature}")
 
         logs = {"resourceLogs": [{
             "resource": resource("api"),
@@ -242,7 +252,17 @@ def main() -> int:
                  "attributes": [{"key": "http.request.header.authorization",
                                  "value": {"stringValue": f"Bearer secret-{marker}"}},
                                 {"key": "note", "value": {
-                                    "stringValue": f"Authorization: Bearer secret-{marker}"}}]},
+                                    "stringValue": f"Authorization: Bearer secret-{marker}"}},
+                                {"key": "db.connection_string",
+                                 "value": {"stringValue": db_url}},
+                                {"key": "form", "value": {
+                                    "stringValue": f"grant=x&client_secret={client_secret}"}}]},
+                # A structured body: masked once the collector turns it into a string.
+                {"timeUnixNano": now, "severityText": "WARN",
+                 "body": {"kvlistValue": {"values": [
+                     {"key": "message", "value": {"stringValue": f"maplog-{marker}"}},
+                     {"key": "token", "value": {"stringValue": shop_token}},
+                     {"key": "key", "value": {"stringValue": pem}}]}}},
             ]}],
         }]}
         check(post_json("/v1/logs", logs, token=None) == 401,
@@ -259,8 +279,13 @@ def main() -> int:
                 "traceId": uuid.uuid4().hex, "spanId": uuid.uuid4().hex[:16],
                 "name": f"span-{marker}", "kind": 2,
                 "startTimeUnixNano": now, "endTimeUnixNano": now,
+                "status": {"code": 2, "message": f"refused {jwt} for {email}"},
                 "attributes": [{"key": "http.request.header.cookie",
                                 "value": {"stringValue": f"session=secret-{marker}"}},
+                               {"key": "http.request.header.x-api-key",
+                                "value": {"arrayValue": {"values": [
+                                    {"stringValue": header_secret}]}}},
+                               {"key": "evidence.url", "value": {"stringValue": presigned}},
                                {"key": "http.url", "value": {"stringValue": launch}},
                                {"key": "url.full", "value": {"stringValue": launch}},
                                {"key": "url.query",
@@ -268,7 +293,9 @@ def main() -> int:
                                {"key": "enduser.email", "value": {"stringValue": email}}],
                 "events": [{"timeUnixNano": now, "name": "exception",
                             "attributes": [{"key": "exception.message",
-                                            "value": {"stringValue": f"bad {launch}"}}]}],
+                                            "value": {"stringValue": f"bad {launch}"}},
+                                           {"key": "exception.stacktrace",
+                                            "value": {"stringValue": f"key {pem}"}}]}],
             }]}],
         }]}) == 200, "the collector refused the services' traces")
         check(post_json("/v1/metrics", {"resourceMetrics": [{
@@ -297,6 +324,8 @@ def main() -> int:
 
         wait_for("a log object in the archive",
                  lambda: any(f"log-{marker}".encode() in body for _, body in archived()))
+        wait_for("the structured log in the archive",
+                 lambda: any(f"maplog-{marker}".encode() in body for _, body in archived()))
         with lock:
             authorizations = {auth for _, auth, _ in received_otlp}
             grafana_bodies = [body for _, _, body in received_otlp]

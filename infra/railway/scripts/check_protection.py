@@ -39,8 +39,10 @@ def problems(environment: dict[str, Any], policies: dict[str, Any], reviewer: bo
     if not (isinstance(policy, dict) and policy.get("custom_branch_policies") is True):
         found.append("deployments are not limited to selected branches")
     else:
+        # `type` is optional in GitHub's schema: a rule without it is refused, never read as a
+        # branch, so a tag named `main` cannot pass.
         branches = [
-            (item.get("name"), item.get("type", "branch"))
+            (item.get("name"), item.get("type"))
             for item in policies.get("branch_policies") or []
             if isinstance(item, dict)
         ]

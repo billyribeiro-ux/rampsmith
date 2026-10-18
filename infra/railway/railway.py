@@ -53,7 +53,8 @@ IMAGE_REPOSITORIES = {
     "egress": f"{REGISTRY}/rampsmith-egress",
 }
 IMAGE_INPUTS = {name: f"RAMPSMITH_IMAGE_{name.upper()}" for name in IMAGE_REPOSITORIES}
-# The upstream collector, pinned by its index digest (ADR-184); Renovate refreshes it.
+# The upstream collector, pinned by its index digest (ADR-184). Updated by hand: renovate.json
+# has no rule that reads this constant yet (integration note in docs/evidence/ws-9-deploy.md).
 # opentelemetry-collector-contrib:0.163.1, digest read from GHCR and Docker Hub (identical) by
 # release.yml on 2026-10-18 (run 39088737207). GHCR: no anonymous pull limits.
 COLLECTOR_IMAGE = (
@@ -93,11 +94,13 @@ SERVICES = ("web", "api", "ctl", "engine", "egress", "collector", "postgres")
 
 MIGRATIONS = "/usr/local/share/rampsmith/migrations"
 # Railway runs a Docker image's start and pre-deploy commands in exec form, so anything that
-# needs a variable runs through `/bin/sh -c` (ADR-183).
+# needs a variable runs through `/bin/sh -c` (ADR-183). `--ignore-missing` lets a rollback to an
+# older image start on a database that already has newer (expand-only) migrations; a changed
+# migration still fails its checksum.
 PRE_DEPLOY_COMMANDS = {
     "api": (
         '/bin/sh -c "DATABASE_URL=$MIGRATION_DATABASE_URL '
-        f'exec /usr/local/bin/sqlx migrate run --source {MIGRATIONS}"'
+        f'exec /usr/local/bin/sqlx migrate run --ignore-missing --source {MIGRATIONS}"'
     ),
 }
 START_COMMANDS = {

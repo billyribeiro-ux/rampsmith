@@ -269,6 +269,7 @@ class EnvironmentProtection(unittest.TestCase):
             policies(("*", "branch")),
             policies(("main", "tag")),
             policies(("mai*", "branch")),
+            {"branch_policies": [{"id": 1, "name": "main"}]},  # no type: never read as a branch
         ):
             with self.subTest(selected=selected):
                 code, out = self.check(environment("production", 1, True), selected, True)
@@ -384,6 +385,21 @@ class RailwayPlan(unittest.TestCase):
         expected = json.loads((directory / "phase1.expected.json").read_text(encoding="utf-8"))
         self.assertEqual(expected["web"], NOW["web"])
 
+    def test_changes_are_refused_by_kind_whatever_their_severity(self) -> None:
+        for change in (
+            {"kind": "variable.delete", "summary": "delete RAMPSMITH_MASTER_KEYS"},
+            {"kind": "resource.delete", "summary": "delete postgres", "severity": "safe"},
+            {"kind": "volume.detach", "summary": "detach data", "severity": "safe"},
+            {"kind": "resource.replace", "summary": "?", "severity": "safe"},
+            {"summary": "no kind", "severity": "safe"},
+        ):
+            with self.subTest(change=change):
+                self.assertTrue(plan.problems(a_plan(NOW, NEW, changes=[change]), NEW))
+        allowed = [{"kind": kind, "summary": kind, "severity": "safe"}
+                   for kind in ("resource.create", "resource.update", "variable.set",
+                                "service.create", "volume.create")]
+        self.assertEqual(plan.problems(a_plan(NOW, NEW, changes=allowed), NEW), [])
+
     def test_destructive_changes_errors_and_failures_are_refused(self) -> None:
         destructive = [{"summary": "delete service ctl", "severity": "destructive",
                         "kind": "delete"}]
@@ -496,13 +512,16 @@ class EnsureNetwork(unittest.TestCase):
         changes = [c for c in fake.calls if c[1] not in ("list",) and c[0] == "domain"]
         self.assertEqual(changes, [])
 
-    def test_a_wrong_port_is_corrected(self) -> None:
+    def test_a_wrong_port_is_corrected_and_still_fails(self) -> None:
+        """Until the correction the webhook host reached the api's private API."""
         fake = FakeRailway({"api": [custom("hooks.rampsmith.example", 8080)]})
         problems, notes = self.run_all(fake, create=True)
-        self.assertEqual(problems, [])
+        self.assertTrue(any("targeted port 8080, not 8081" in p for p in problems), problems)
         self.assertIn(["domain", "update", "hooks.rampsmith.example", "--port", "8081",
                        "--service", "api", "--environment", "staging"], fake.calls)
         self.assertTrue(any("now targets port 8081" in n for n in notes))
+        problems, _ = self.run_all(fake, create=False)
+        self.assertFalse(any("hooks.rampsmith.example" in p for p in problems), problems)
 
     def test_other_exposure_is_refused_and_never_deleted(self) -> None:
         fake = FakeRailway(
@@ -519,6 +538,73 @@ class EnsureNetwork(unittest.TestCase):
         self.assertIn("unexpected custom domain old.rampsmith.example", joined)
         self.assertIn("postgres has a public TCP proxy", joined)
         self.assertFalse([c for c in fake.calls if "delete" in c])
+
+
+WORKFLOWS = Path(__file__).resolve().parents[3] / ".github" / "workflows"
+
+
+def steps(workflow: str) -> list[tuple[str, list[str]]]:
+    """Each `uses:` step of a workflow with its lines, read as text (no YAML parser needed)."""
+    lines = (WORKFLOWS / workflow).read_text(encoding="utf-8").splitlines()
+    found: list[tuple[str, list[str]]] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not (stripped.startswith("- uses:") or stripped.startswith("uses:")):
+            continue
+        indent = len(line) - len(line.lstrip(" - "))
+        body = [line]
+        for following in lines[index + 1:]:
+            if following.strip() and (len(following) - len(following.lstrip())) < indent:
+                break
+            if following.lstrip().startswith("- "):
+                break
+            body.append(following)
+        found.append((stripped.split("uses:", 1)[1].strip(), body))
+    return found
+
+
+def job(workflow: str, name: str) -> str:
+    text = (WORKFLOWS / workflow).read_text(encoding="utf-8")
+    start = text.index(f"\n  {name}:\n")
+    end = text.find("\n  ", start + 1)
+    while end != -1 and text[end + 3] == " ":
+        end = text.find("\n  ", end + 1)
+    return text[start:] if end == -1 else text[start:end]
+
+
+class WorkflowHygiene(unittest.TestCase):
+    """What the security reviews of release.yml and deploy.yml require, checked on every run."""
+
+    FILES = ("release.yml", "deploy.yml")
+
+    def test_actions_are_pinned_by_commit(self) -> None:
+        for workflow in self.FILES:
+            for uses, _ in steps(workflow):
+                with self.subTest(workflow=workflow, uses=uses):
+                    if uses.startswith("./"):
+                        continue
+                    self.assertRegex(uses, r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}(\s+#.*)?$")
+
+    def test_no_shared_tool_cache(self) -> None:
+        for workflow in self.FILES:
+            for uses, body in steps(workflow):
+                text = "\n".join(body)
+                with self.subTest(workflow=workflow, uses=uses):
+                    self.assertFalse(uses.startswith("actions/cache"))
+                    if uses.startswith("jdx/mise-action"):
+                        self.assertIn("cache: false", text)
+
+    def test_the_signing_build_reads_no_cache(self) -> None:
+        publish = job("release.yml", "publish")
+        self.assertIn("id-token: write", publish)
+        self.assertNotIn("cache-from", publish)
+        self.assertNotIn("cache-to", publish)
+
+    def test_no_floating_tags(self) -> None:
+        for workflow in self.FILES:
+            text = (WORKFLOWS / workflow).read_text(encoding="utf-8")
+            with self.subTest(workflow=workflow):
+                self.assertNotRegex(text, r":latest\b")
 
 
 if __name__ == "__main__":

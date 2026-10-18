@@ -242,7 +242,7 @@ class HealthAndCommands(unittest.TestCase):
         self.assertEqual(
             argv[2],
             "DATABASE_URL=$MIGRATION_DATABASE_URL exec /usr/local/bin/sqlx migrate run "
-            "--source /usr/local/share/rampsmith/migrations",
+            "--ignore-missing --source /usr/local/share/rampsmith/migrations",
         )
         for name in SERVICES - {"api"}:
             with self.subTest(service=name):

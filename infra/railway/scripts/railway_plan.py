@@ -13,9 +13,10 @@ service's source (`diff_top_level_field` in src/iac/change_set.rs), and its JSON
       moves the api alone and keeps every other service, ctl included, on what it runs now;
       phase `all` moves every service to the new release.
   railway_plan.py check <plan.json> <expected.json>
-      refuses the plan unless it is ok, has no error diagnostic and no destructive change,
-      every image service's desired source is exactly the expected image (null only for a
-      service that has no source yet), and no service loses a source it has.
+      refuses the plan unless it is ok, has no error diagnostic, every change is a create, an
+      update or a set (by its kind, whatever severity Railway gives it), nothing is labelled
+      destructive, every image service's desired source is exactly the expected image (null
+      only for a service that has no source yet), and no service loses a source it has.
 
 It never prints the plan itself: the graphs carry variable names and Railway's redacted values.
 """
@@ -34,6 +35,9 @@ REPOSITORIES = {
     name: f"{REGISTRY}/rampsmith-{'api' if name == 'ctl' else name}" for name in IMAGE_SERVICES
 }
 _DIGEST_REF = re.compile(r"^(?P<repository>[a-z0-9][a-z0-9./_-]*)@sha256:[0-9a-f]{64}$")
+# The kinds a deploy may apply. Railway's preview returns the change set that is applied, with
+# its own severities, so deletions and anything unknown are refused by kind as well.
+_ALLOWED_KIND = re.compile(r"^[a-z]+(?:\.[a-z]+)*\.(?:create|update|set)$")
 
 
 def _resources(graph: Any) -> dict[str, dict[str, Any]]:
@@ -98,8 +102,15 @@ def problems(plan: dict[str, Any], expected: dict[str, str | None]) -> list[str]
         if isinstance(diagnostic, dict) and diagnostic.get("severity") == "error":
             found.append(f"diagnostic at {diagnostic.get('path')}: {diagnostic.get('message')}")
     for change in (plan.get("changeSet") or {}).get("changes") or []:
-        if isinstance(change, dict) and change.get("severity") == "destructive":
+        if not isinstance(change, dict):
+            found.append("a change that is not an object")
+            continue
+        kind = change.get("kind")
+        if change.get("severity") == "destructive":
             found.append(f"destructive change: {change.get('summary')}")
+        elif not (isinstance(kind, str) and _ALLOWED_KIND.fullmatch(kind)):
+            found.append(f"change of kind {kind!r} is not a create, update or set: "
+                         f"{change.get('summary')}")
     current = _resources(plan.get("currentGraph"))
     desired = _resources(plan.get("desiredGraph"))
     for name in IMAGE_SERVICES:

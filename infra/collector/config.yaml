@@ -62,42 +62,55 @@ processors:
     error_mode: ignore
     trace_statements:
       - statements:
+          # Header attributes are dropped whole: their values can be string arrays,
+          # which the patterns below do not reach.
+          - delete_matching_keys(span.attributes, "^http\\.(request|response)\\.header\\.")
           # Query strings carry Shopify's id_token, hmac and session (embedded app launch).
           - replace_pattern(span.name, "\\?.*", "")
           - replace_pattern(span.attributes["http.url"], "\\?.*", "")
           - replace_pattern(span.attributes["url.full"], "\\?.*", "")
           - replace_pattern(span.attributes["http.target"], "\\?.*", "")
-          - replace_all_patterns(span.attributes, "value", "(?i)([?&#;](?:id_token|hmac|session|code|state|token|access_token|refresh_token|signature|password|secret|key)=)[^&#;\\s]*", "$${1}[REDACTED]")
-          - replace_all_patterns(span.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}", "[REDACTED]")
-          - replace_all_patterns(span.attributes, "value", "(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}", "[REDACTED]")
-          - replace_all_patterns(span.attributes, "value", "sk-ant-[A-Za-z0-9_-]{16,}", "[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)((?:^|[?&#;\\s])(?:id_token|hmac|session|code|state|token|access_token|refresh_token|client_secret|api_key|apikey|signature|password|secret|key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
           - replace_all_patterns(span.attributes, "value", "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
           - replace_all_patterns(span.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
-          - replace_all_patterns(resource.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}", "[REDACTED]")
+          - replace_pattern(span.status.message, "(?i)((?:^|[?&#;\\s])(?:id_token|hmac|session|code|state|token|access_token|refresh_token|client_secret|api_key|apikey|signature|password|secret|key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_pattern(span.status.message, "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_pattern(span.status.message, "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_pattern(span.status.message, "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
+          - replace_pattern(span.status.message, "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
+          - replace_all_patterns(resource.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(instrumentation_scope.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
       - statements:
-          - replace_all_patterns(spanevent.attributes, "value", "(?i)([?&#;](?:id_token|hmac|session|code|state|token|access_token|refresh_token|signature|password|secret|key)=)[^&#;\\s]*", "$${1}[REDACTED]")
-          - replace_all_patterns(spanevent.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}", "[REDACTED]")
-          - replace_all_patterns(spanevent.attributes, "value", "(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}", "[REDACTED]")
-          - replace_all_patterns(spanevent.attributes, "value", "sk-ant-[A-Za-z0-9_-]{16,}", "[REDACTED]")
+          - delete_matching_keys(spanevent.attributes, "^http\\.(request|response)\\.header\\.")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)((?:^|[?&#;\\s])(?:id_token|hmac|session|code|state|token|access_token|refresh_token|client_secret|api_key|apikey|signature|password|secret|key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
           - replace_all_patterns(spanevent.attributes, "value", "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
           - replace_all_patterns(spanevent.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
     log_statements:
       - statements:
-          - replace_all_patterns(log.attributes, "value", "(?i)([?&#;](?:id_token|hmac|session|code|state|token|access_token|refresh_token|signature|password|secret|key)=)[^&#;\\s]*", "$${1}[REDACTED]")
-          - replace_all_patterns(log.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}", "[REDACTED]")
-          - replace_all_patterns(log.attributes, "value", "(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}", "[REDACTED]")
-          - replace_all_patterns(log.attributes, "value", "sk-ant-[A-Za-z0-9_-]{16,}", "[REDACTED]")
+          - delete_matching_keys(log.attributes, "^http\\.(request|response)\\.header\\.")
+          - replace_all_patterns(log.attributes, "value", "(?i)((?:^|[?&#;\\s])(?:id_token|hmac|session|code|state|token|access_token|refresh_token|client_secret|api_key|apikey|signature|password|secret|key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
           - replace_all_patterns(log.attributes, "value", "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
           - replace_all_patterns(log.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
-          - replace_pattern(log.body, "(?i)([?&#;](?:id_token|hmac|session|code|state|token|access_token|refresh_token|signature|password|secret|key)=)[^&#;\\s]*", "$${1}[REDACTED]") where IsString(log.body)
-          - replace_pattern(log.body, "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}", "[REDACTED]") where IsString(log.body)
-          - replace_pattern(log.body, "(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}", "[REDACTED]") where IsString(log.body)
-          - replace_pattern(log.body, "sk-ant-[A-Za-z0-9_-]{16,}", "[REDACTED]") where IsString(log.body)
+          - replace_all_patterns(resource.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(instrumentation_scope.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          # A map or bytes body becomes its string form, so the patterns below reach it.
+          - set(log.body, log.body.string) where log.body != nil and not IsString(log.body)
+          - replace_pattern(log.body, "(?i)((?:^|[?&#;\\s])(?:id_token|hmac|session|code|state|token|access_token|refresh_token|client_secret|api_key|apikey|signature|password|secret|key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]") where IsString(log.body)
           - replace_pattern(log.body, "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@") where IsString(log.body)
           - replace_pattern(log.body, "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]") where IsString(log.body)
     metric_statements:
       - statements:
           - replace_all_patterns(datapoint.attributes, "value", "\\?.*", "")
+          - replace_all_patterns(datapoint.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(datapoint.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
   batch:
     send_batch_size: 8192
     timeout: 5s
