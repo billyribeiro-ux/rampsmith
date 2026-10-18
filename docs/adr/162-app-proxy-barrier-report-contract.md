@@ -292,8 +292,9 @@ off per shop (step 3).
   modules and the extension; the re-verification at commit 7fed777 found 14 of 15 resolved,
   one low (tab and line breaks in the embed's URL checks) open and four new lows (the replay
   cache's body cap, the order of the shop-wide cap, literal matching for the compliance search,
-  and wording). Those five were fixed in the commit after it; see
-  docs/evidence/ws-7-theme-app-ext.md for the final check.
+  and wording). Those were fixed, a third round found two more lows (a `/` proxy path, email
+  matches inside longer addresses), and the fourth round, at `9dda025`, passed with every
+  finding resolved; docs/evidence/ws-7-theme-app-ext.md has each round.
 
 ## Plan correction
 
