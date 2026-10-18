@@ -53,6 +53,8 @@ CI on draft PR #7 (`release.yml` dry run and `ci.yml`):
 | [39088737207](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39088737207) | `33534e4` | collector digest read from GHCR and Docker Hub (identical), then pinned |
 | [39088925433](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39088925433) / [39088925438](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39088925438) | `193b2f1` | release failed in the collector smoke test (archive key encoding, fixed in `6eb19b9`); ci success |
 | [39092884913](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39092884913) / [39092884844](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39092884844) | `77a751e` | `deploy config` passed (unit tests, actionlint, shellcheck, the Railway CLI pin matched GitHub's asset digest, the Shopify lockfile, the LTS guard refused 26.12.0 and held the 26 line against a real 24.22.0 binary); collector failed as above |
+| [39093283782](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39093283782) / [39093283794](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39093283794) | `af2100e` | release success (collector smoke passed with the bearer token and the scrub checks) and ci success |
+| [39096492374](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39096492374) | `afe6e76` | `deploy config` and `collector config` passed with the second review's fixes (75 unit tests at the next commit); BuildKit digest read for the pin |
 | final rows | see "Final state" | |
 
 ## Pins
@@ -65,6 +67,7 @@ CI on draft PR #7 (`release.yml` dry run and `ci.yml`):
 | `@shopify/cli` | 4.9.4 (lockfile v3, `npm ci --ignore-scripts`) | npm registry |
 | OpenTelemetry Collector contrib | 0.163.1, `ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib@sha256:1175b03003053962012f5a231f5567f66a3e8fdb960c7835c0e48f7aa1555806` | GHCR and Docker Hub index digests (run 39088737207) |
 | PostgreSQL on Railway | `ghcr.io/railwayapp-templates/postgres-ssl:18` (major tag, the one unpinned image: PITR requires it, ADR-183) | `railway-sdk` 0.7.0 `postgres()` |
+| BuildKit daemon | `moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c` | Docker Hub index digest read by `release.yml` run 39096492374 (18 Oct 2026); v0.34.0 released 7 Oct 2026, past Renovate's 7-day minimum age |
 | PostgreSQL in CI | `postgres:18.6-bookworm@sha256:afc7e2d4…a647c` | same as `ci.yml` |
 | actionlint | v1.7.12 via `go install` (sum.golang.org); Go 1.27.2 | newest tag |
 | Python, mise | 3.15.0 (`actions/setup-python`), mise 2026.10.12 | same as `ci.yml` |

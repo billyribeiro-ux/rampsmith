@@ -600,6 +600,17 @@ class WorkflowHygiene(unittest.TestCase):
         self.assertNotIn("cache-from", publish)
         self.assertNotIn("cache-to", publish)
 
+    def test_buildkit_is_pinned_by_digest(self) -> None:
+        text = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+        self.assertRegex(text, r"\n  BUILDKIT_IMAGE: moby/buildkit:v[\d.]+@sha256:[0-9a-f]{64}\n")
+        buildx = [body for uses, body in steps("release.yml")
+                  if uses.startswith("docker/setup-buildx-action")]
+        self.assertTrue(buildx)
+        for body in buildx:
+            text = "\n".join(body)
+            self.assertIn("driver-opts: image=${{ env.BUILDKIT_IMAGE }}", text)
+            self.assertIn("cache-binary: false", text)
+
     def test_no_floating_tags(self) -> None:
         for workflow in self.FILES:
             text = (WORKFLOWS / workflow).read_text(encoding="utf-8")
