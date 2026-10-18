@@ -39,7 +39,8 @@ cannot pass.
 it):
 - Every string a person will see is checked for hidden characters: controls, format
   characters (bidirectional controls, zero-width characters, the tag block), default-ignorable
-  code points and lone surrogates; one-line copy also may not hold a line break.
+  code points, lone surrogates and the blank Braille cell U+2800; one-line copy also may not
+  hold a line break.
 - Alt text: within the merchant's limit (40 to 300 characters, default 150, counted in
   graphemes); not opening with "image of" and its equivalents in seven languages; no `<`, `>`,
   `"`, `'`, backtick, backslash or Liquid delimiters (a theme that prints `{{ image.alt }}`
@@ -62,7 +63,8 @@ it):
   are ARIA attributes, `role`, `tabindex` (-1 or 0), `hidden`, `id`, `for`, `lang`, `alt`, a
   button's `type`, and an added `span` whose only class is `visually-hidden` or `sr-only`; no
   element may be added otherwise or removed, no new parse error may appear, and the visible
-  text must not change. Entities, case tricks, split tokens and markup-building filters cannot
+  text must not change. A `template`'s content is compared like any other markup, because a
+  widget that clones it puts it on the page. Entities, case tricks, split tokens and markup-building filters cannot
   pass a comparison of the parsed result, where a list of forbidden spellings could be
   bypassed. Replacement text and the summary may not hold hidden characters, and the summary
   may not hold a link or URL. Survivors are labelled "AI-proposed"; the engine still
@@ -74,8 +76,10 @@ it):
 **What may be sent** (PLAN §19), enforced by the input types and by building each request
 field by field, never by spreading caller objects:
 - Alt text: the resized image, the product title and type, the primary locale, the limit.
-  An image that still carries EXIF, XMP, IPTC, a JPEG comment, PNG text chunks or a GIF
-  comment is refused (`ai_input_invalid`); the engine strips metadata when it resizes.
+  An image that still carries EXIF, XMP, IPTC, a JPEG comment, PNG text chunks, or a GIF
+  comment, plain-text or application extension other than the animation loop and colour
+  profile is refused (`ai_input_invalid`), and a GIF that does not parse fails closed; the
+  engine strips metadata when it resizes.
 - Rewrites: the page title, the headings' text and levels, the flagged links' current text,
   their targets reduced to scheme, host and path (`safeLinkTarget`: query strings, fragments
   and `;` parameters dropped, token-like path segments replaced by `[token]`, personal data
@@ -89,7 +93,7 @@ field by field, never by spreading caller objects:
 - Never: customer data, order data, tokens, storefront passwords, other product fields.
 All merchant text goes through `untrustedField`: NFKC-normalized (which folds fullwidth and
 other look-alike characters), stripped of every control, format and default-ignorable code
-point and lone surrogate except tab and newline, scrubbed of email addresses (also spelled
+point, lone surrogate and U+2800 except tab and newline, scrubbed of email addresses (also spelled
 out with "at" and "dot"), IBANs, phone numbers and long digit runs in any script, and only
 then cut to the field limit in graphemes (a grapheme longer than 12 code units keeps its first
 code point), so a cut never leaves half an address behind. Every pattern is bounded and runs

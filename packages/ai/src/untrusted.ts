@@ -12,11 +12,12 @@
 /**
  * Characters that render as nothing or reorder text: controls, format characters (bidi
  * controls, zero-width characters, the Unicode tag block), default-ignorable code points
- * (variation selectors, soft hyphens, Hangul fillers) and lone surrogates. All have been used
- * to hide text from human reviewers while a model still reads it.
+ * (variation selectors, soft hyphens, Hangul fillers), lone surrogates and the blank Braille
+ * cell U+2800. All have been used to hide text from human reviewers while a model still reads
+ * it.
  */
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}]/u;
-const INVISIBLE_GLOBAL = /[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu;
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}\u2800]/u;
+const INVISIBLE_GLOBAL = /[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}\u2800]/gu;
 
 /** Tab, newline and carriage return: layout in code and prose, not hidden text. */
 const LAYOUT = new Set(['\t', '\n', '\r']);

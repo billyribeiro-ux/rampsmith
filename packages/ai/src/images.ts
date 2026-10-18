@@ -98,8 +98,8 @@ export function readImageSize(
 
 /**
  * Whether the image carries embedded metadata that can hold personal data: EXIF, XMP, IPTC or
- * comments in JPEG; text or EXIF chunks in PNG; EXIF or XMP chunks in WebP; comment extensions
- * in GIF. The engine's `sharp` resize drops metadata unless told otherwise; this check holds
+ * comments in JPEG; text or EXIF chunks in PNG; EXIF or XMP chunks in WebP; comment,
+ * plain-text and application extensions (XMP) in GIF. The engine's `sharp` resize drops metadata unless told otherwise; this check holds
  * it to that (security audit LOW-11). Colour profiles are allowed.
  */
 export function hasEmbeddedMetadata(bytes: Buffer, mediaType: ImageMediaType): boolean {
@@ -146,8 +146,74 @@ export function hasEmbeddedMetadata(bytes: Buffer, mediaType: ImageMediaType): b
       return false;
     }
     case 'image/gif':
-      return bytes.includes(Buffer.from([0x21, 0xfe]));
+      return gifHasMetadata(bytes);
   }
+}
+
+/** Application extensions that hold no personal data: animation loops and colour profiles. */
+const GIF_APPLICATIONS = new Set(['NETSCAPE2.0', 'ANIMEXTS1.0', 'ICCRGBG1012']);
+
+/** The offset after a run of GIF data sub-blocks, or -1 if the file ends inside it. */
+function skipGifSubBlocks(bytes: Buffer, from: number): number {
+  let at = from;
+  while (at < bytes.length) {
+    const size = bytes[at] ?? 0;
+    at += 1;
+    if (size === 0) {
+      return at;
+    }
+    at += size;
+  }
+  return -1;
+}
+
+function gifColourTableSize(packed: number): number {
+  return (packed & 0x80) === 0 ? 0 : 3 * 2 ** ((packed & 0x07) + 1);
+}
+
+/**
+ * Walks a GIF's blocks. Graphic control extensions, image data and the animation and
+ * colour-profile application extensions are allowed; a comment, plain-text or any other
+ * application extension (XMP lives in one) is metadata, and a file that does not parse to its
+ * trailer fails closed (security re-audit LOW-B).
+ */
+function gifHasMetadata(bytes: Buffer): boolean {
+  if (bytes.length < 13) {
+    return true;
+  }
+  let at = 13 + gifColourTableSize(bytes[10] ?? 0);
+  while (at < bytes.length) {
+    const introducer = bytes[at];
+    if (introducer === 0x3b) {
+      return false;
+    }
+    let next: number;
+    if (introducer === 0x21) {
+      const label = bytes[at + 1];
+      if (label === 0xff) {
+        const identifier = bytes.subarray(at + 3, at + 14).toString('latin1');
+        if (bytes[at + 2] !== 11 || !GIF_APPLICATIONS.has(identifier)) {
+          return true;
+        }
+      } else if (label !== 0xf9) {
+        return true;
+      }
+      next = skipGifSubBlocks(bytes, at + 2);
+    } else if (introducer === 0x2c) {
+      if (at + 11 > bytes.length) {
+        return true;
+      }
+      // Descriptor (10 bytes), local colour table, LZW code size (1 byte), then data.
+      next = skipGifSubBlocks(bytes, at + 10 + gifColourTableSize(bytes[at + 9] ?? 0) + 1);
+    } else {
+      return true;
+    }
+    if (next === -1) {
+      return true;
+    }
+    at = next;
+  }
+  return true;
 }
 
 /**

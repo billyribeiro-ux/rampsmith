@@ -99,6 +99,17 @@ function errorCounts(html: string): Map<string, number> {
   return counts;
 }
 
+/**
+ * A node's children for comparison. parse5 keeps a `template`'s markup in `content`, not in
+ * `childNodes`; it is compared like any other markup, because a widget that clones it puts it
+ * on the page (security re-audit HIGH-1).
+ */
+function childrenOf(node: Element): readonly Node[] {
+  return 'content' in node
+    ? (node as DefaultTreeAdapterTypes.Template).content.childNodes
+    : node.childNodes;
+}
+
 function elements(html: string): Element[] {
   const out: Element[] = [];
   const stack: Node[] = [...parseFragment(html).childNodes].reverse();
@@ -106,7 +117,7 @@ function elements(html: string): Element[] {
     const node = stack.pop();
     if (node !== undefined && 'tagName' in node) {
       out.push(node);
-      const children = node.tagName === 'template' ? [] : node.childNodes;
+      const children = childrenOf(node);
       for (let i = children.length - 1; i >= 0; i -= 1) {
         const child = children[i];
         if (child !== undefined) {
@@ -128,9 +139,10 @@ function textContent(html: string, placeholder: RegExp): string {
     }
     if (node.nodeName === '#text') {
       out += (node as DefaultTreeAdapterTypes.TextNode).value;
-    } else if ('tagName' in node && node.tagName !== 'template') {
-      for (let i = node.childNodes.length - 1; i >= 0; i -= 1) {
-        const child = node.childNodes[i];
+    } else if ('tagName' in node) {
+      const children = childrenOf(node);
+      for (let i = children.length - 1; i >= 0; i -= 1) {
+        const child = children[i];
         if (child !== undefined) {
           stack.push(child);
         }

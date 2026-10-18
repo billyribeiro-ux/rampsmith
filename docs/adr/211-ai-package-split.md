@@ -57,7 +57,7 @@ with a narrow, testable surface.
 
 ## Consequences
 
-- The AI subsystem is tested end to end without a database or network: 344 unit tests on
+- The AI subsystem is tested end to end without a database or network: 359 unit tests on
   fakes, recorded responses and a fake `fetch` behind the real SDK, plus 3 live checks that
   run only with `ANTHROPIC_API_KEY` (ADR-217).
 - The engine owns persistence and orchestration, so a schema change for `ai_calls` or a budget

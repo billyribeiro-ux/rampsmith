@@ -15,6 +15,7 @@ import { collectBatch, submitBatch } from '../src/batch.ts';
 import { runCall, type PreparedCall } from '../src/calls.ts';
 import { bannedClaims } from '../src/claims.ts';
 import { hasEmbeddedMetadata, validateImage } from '../src/images.ts';
+import { patchViolations } from '../src/patch-safety.ts';
 import { AiError } from '../src/errors.ts';
 import { CircuitBreaker } from '../src/resilience.ts';
 import { prepareAltText, type AltTextDraft, type AltTextInput } from '../src/tasks/alt-text.ts';
@@ -22,6 +23,11 @@ import { checkExplanation } from '../src/tasks/explain.ts';
 import { prepareRewrite } from '../src/tasks/rewrite.ts';
 import { checkTieBreak } from '../src/tasks/tie-break.ts';
 import { createAnthropicTransport } from '../src/transport.ts';
+import {
+  containsInvisible,
+  hasHiddenOrBreakingCharacters,
+  sanitizeUntrustedText,
+} from '../src/untrusted.ts';
 import { FakeTransport, TENANT, TINY_JPEG, message, testDeps } from './fakes.ts';
 
 const input: AltTextInput = {
@@ -343,5 +349,108 @@ describe('LOW-12: explanation copy is plain text', () => {
   ])('rejects %s', (reason, change) => {
     const result = checkExplanation({ ...out, ...change }, ctx);
     expect(result.status === 'needs_review' && result.reasons).toContain(reason);
+  });
+});
+
+describe('Re-audit HIGH-1: template content is compared like any other markup', () => {
+  const slide = '<li class="slide"><img class="slide-img" alt=""></li>';
+  const span = `<slider-carousel><template>${slide}</template></slider-carousel>`;
+
+  it.each([
+    [
+      'a script',
+      '<li class="slide"><img class="slide-img" alt=""><script>alert(1)</script></li>',
+      'forbidden_element',
+    ],
+    [
+      'an event handler',
+      '<li class="slide"><img class="slide-img" alt="" onerror="fetch(1)"></li>',
+      'forbidden_attribute',
+    ],
+    [
+      'an external source',
+      '<li class="slide"><img class="slide-img" alt="" src="https://evil.example/x.gif"></li>',
+      'forbidden_attribute',
+    ],
+    [
+      'a style element',
+      '<li class="slide"><style>*{}</style><img class="slide-img" alt=""></li>',
+      'forbidden_element',
+    ],
+    [
+      'an iframe',
+      '<li class="slide"><iframe src="https://evil.example"></iframe><img class="slide-img" alt=""></li>',
+      'forbidden_element',
+    ],
+    [
+      'visible text',
+      '<li class="slide">Pay here<img class="slide-img" alt=""></li>',
+      'changed_text',
+    ],
+    ['a removed element', '<li class="slide"></li>', 'removed_element'],
+  ])('refuses %s inside a template', (_label, replacement, code) => {
+    expect(patchViolations(span, span.replace(slide, replacement))).toContain(code);
+  });
+
+  it('refuses the same inside a nested template', () => {
+    const nested = `<div><template><template>${slide}</template></template></div>`;
+    const patched = nested.replace('alt=""', 'alt="" onerror="x()"');
+    expect(patchViolations(nested, patched)).toContain('forbidden_attribute');
+  });
+
+  it('still allows an ARIA change inside a template', () => {
+    expect(patchViolations(span, span.replace('alt=""', 'alt="" aria-hidden="true"'))).toEqual([]);
+  });
+});
+
+describe('Re-audit LOW-B: GIF metadata is found by walking the blocks', () => {
+  const header = Buffer.concat([Buffer.from('GIF89a'), Buffer.from([1, 0, 1, 0, 0, 0, 0])]);
+  const loop = Buffer.concat([
+    Buffer.from([0x21, 0xff, 0x0b]),
+    Buffer.from('NETSCAPE2.0'),
+    Buffer.from([0x03, 0x01, 0x00, 0x00, 0x00]),
+  ]);
+  const control = Buffer.from([0x21, 0xf9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  // Image data whose bytes happen to contain 0x21 0xFE, which is not a comment.
+  const image = Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0x02, 0x02, 0x21, 0xfe, 0x00]);
+  const trailer = Buffer.from([0x3b]);
+  const gif = (...blocks: Buffer[]) => Buffer.concat([header, ...blocks, trailer]);
+
+  it('accepts a plain animated GIF', () => {
+    expect(hasEmbeddedMetadata(gif(loop, control, image), 'image/gif')).toBe(false);
+  });
+
+  it.each([
+    [
+      'XMP',
+      Buffer.concat([
+        Buffer.from([0x21, 0xff, 0x0b]),
+        Buffer.from('XMP DataXMP'),
+        Buffer.from([0x03, 0x61, 0x62, 0x63, 0x00]),
+      ]),
+    ],
+    ['a comment', Buffer.from([0x21, 0xfe, 0x03, 0x61, 0x62, 0x63, 0x00])],
+    [
+      'plain text',
+      Buffer.concat([Buffer.from([0x21, 0x01, 0x0c]), Buffer.alloc(12), Buffer.from([0x00])]),
+    ],
+  ])('refuses %s', (_label, block) => {
+    expect(hasEmbeddedMetadata(gif(loop, block, control, image), 'image/gif')).toBe(true);
+  });
+
+  it('fails closed on a truncated or malformed file', () => {
+    expect(hasEmbeddedMetadata(Buffer.concat([header, control.subarray(0, 4)]), 'image/gif')).toBe(
+      true,
+    );
+    expect(hasEmbeddedMetadata(gif(Buffer.from([0x99])), 'image/gif')).toBe(true);
+  });
+});
+
+describe('Re-audit LOW-C: blank Braille cells count as hidden', () => {
+  it('flags and strips U+2800', () => {
+    const blank = String.fromCharCode(0x2800);
+    expect(containsInvisible(`Size${blank}guide`)).toBe(true);
+    expect(hasHiddenOrBreakingCharacters(`Size${blank}guide`)).toBe(true);
+    expect(sanitizeUntrustedText(`Size${blank}guide`, 100)).toBe('Sizeguide');
   });
 });
