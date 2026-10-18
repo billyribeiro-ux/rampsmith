@@ -4,6 +4,7 @@
  */
 import { scanText } from '@rampsmith/claims-lint/src/scan.ts';
 import type { Block } from '../document.ts';
+import { skeleton } from '../sanitize.ts';
 import {
   bool,
   instant,
@@ -114,9 +115,15 @@ function operatorText(max: number): Schema<string, string> {
       if (/claims-lint-allow/iu.test(text)) {
         throw new InputError(path, 'must not contain a claims-lint allow marker');
       }
-      // Scan one line with invisible format characters removed, so a phrase split by a hard
-      // line break or a hidden character is still found. The joiners stay: scripts need them.
-      const flat = text.replace(/\s+/gu, ' ').replace(/(?![\u200C\u200D])\p{Cf}/gu, '');
+      // Letters from two scripts in one word ("cоmpliant" with a Cyrillic o) only disguise.
+      for (const word of text.match(/[\p{L}\p{M}]+/gu) ?? []) {
+        if (/\p{Script=Latin}/u.test(word) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(word)) {
+          throw new InputError(path, 'must not mix Latin with Cyrillic or Greek letters in a word');
+        }
+      }
+      // Scan one line in skeleton form: a word hyphenated across a line break is rejoined, and
+      // look-alike letters, hidden characters and other dashes cannot split a banned phrase.
+      const flat = skeleton(text.replace(/\p{Pd}\n/gu, '')).replace(/\s+/gu, ' ');
       const found = scanText(path, flat).violations[0];
       if (found !== undefined) {
         throw new InputError(path, `contains a banned claim (${found.rule}): ${found.message}`);

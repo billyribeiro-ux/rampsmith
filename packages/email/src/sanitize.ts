@@ -16,11 +16,13 @@ export function isControlCharacter(c: string): boolean {
 /** Explicit embeddings, overrides and isolates (LRE, RLE, PDF, LRO, RLO, LRI, RLI, FSI, PDI). */
 const BIDI_CONTROL = /[\u202A-\u202E\u2066-\u2069]/gu;
 /**
- * Invisible characters that carry no meaning in a name or notice and can split a word past a
- * filter: byte order mark, soft hyphen, zero-width space and word joiner. The zero-width
- * joiner and non-joiner stay, because emoji sequences and several scripts need them.
+ * Invisible format characters (Unicode category Cf: soft hyphen, zero-width space, word joiner,
+ * byte order mark, invisible operators, tag characters) carry no meaning in a name or notice and
+ * can split a word past a filter. Five stay because text needs them: the zero-width non-joiner
+ * and joiner (several scripts, emoji sequences) and the left-to-right, right-to-left and Arabic
+ * letter marks.
  */
-const INVISIBLE = /[\uFEFF\u00AD\u200B\u2060]/gu;
+const INVISIBLE = /(?![\u200C-\u200F\u061C])\p{Cf}/gu;
 /** More than this many combining marks in a row is never language, only a size attack. */
 const MARK_RUN = /(\p{M}{8})\p{M}+/gu;
 /** Line breaks in every form JavaScript and Unicode know. */
@@ -59,6 +61,24 @@ export function multiLine(value: string): string {
     .join('\n')
     .replace(/\n{3,}/gu, '\n\n')
     .trim();
+}
+
+/** Dots that read as a full stop: ideographic and halfwidth ideographic full stops. */
+const OTHER_DOTS = /[\u3002\uFF61]/gu;
+
+/**
+ * A comparison form for filters, never for display: compatibility-decomposed (fullwidth and
+ * styled letters become plain ones), without marks or invisible characters, with every dash
+ * as "-" and every full stop as ".". A filter that tests this form cannot be passed by
+ * spelling a word with look-alike or hidden characters.
+ */
+export function skeleton(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\p{M}\p{Cf}]/gu, '')
+    .replace(OTHER_DOTS, '.')
+    .replace(/\p{Pd}/gu, '-')
+    .normalize('NFKC');
 }
 
 const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });

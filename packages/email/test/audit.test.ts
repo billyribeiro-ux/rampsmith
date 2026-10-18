@@ -58,13 +58,13 @@ describe('finding 1: names chosen by someone other than the recipient', () => {
     expect(invitation.text).toContain('“Northwind Studio”');
   });
 
-  it('applies the same rule to the store name in a store-link code and the agency in a link notice', () => {
-    expect(() =>
-      renderer.render('store_link_code', {
-        ...fixture('store_link_code'),
-        storeName: 'Claim your prize at prize.example',
-      }),
-    ).toThrow(InputError);
+  it('leaves a link-like store name out of a store-link code and rejects such an agency name', () => {
+    const email = renderer.render('store_link_code', {
+      ...fixture('store_link_code'),
+      storeName: 'Claim your prize at prize.example',
+    });
+    expect(email.text).not.toContain('prize.example');
+    expect(email.html).not.toContain('prize.example');
     expect(() =>
       renderer.render('store_linked', {
         ...fixture('store_linked'),
@@ -219,5 +219,76 @@ describe('finding 7: smaller checks', () => {
 
   it('drops Unicode extensions from language tags', () => {
     expect(localeTag().parse('en-GB-u-nu-arab-ca-islamic', 'input', ctx)).toBe('en-GB');
+  });
+});
+
+describe('re-audit 1: link-like names written with hidden or look-alike characters', () => {
+  it.each([
+    'evil⁢.example',
+    'evil‍.example',
+    'evil.͏example',
+    'evil̳.example',
+    'evil．example',
+    'evil。example',
+    'Visit 203.0.113.7/login',
+    'Share \\\\203.0.113.7\\share',
+    'evil\u{E002E}example.com',
+    'ｅｖｉｌ．ｅｘａｍｐｌｅ',
+  ])('rejects the agency name %j', (organizationName) => {
+    expect(() =>
+      renderer.render('agency_invitation', { ...fixture('agency_invitation'), organizationName }),
+    ).toThrow(InputError);
+  });
+
+  it('strips invisible format characters but keeps joiners and direction marks', () => {
+    const name = label(100).parse('A⁢B\u{E0041}C‍D‌E‏F؜G', 'input', ctx);
+    expect(name).toBe('AB C‍D‌E‏F؜G'.replace(' ', ''));
+  });
+});
+
+describe('re-audit 2: Shopify store names that look like domains', () => {
+  it.each(['J.Crew', 'Dr.Martens', 'Acme.com', 'St.Ives Organics'])(
+    'sends the store-link code for %j without naming the store',
+    (storeName) => {
+      const email = renderer.render('store_link_code', {
+        ...fixture('store_link_code'),
+        storeName,
+      });
+      expect(email.text).not.toContain(storeName);
+      expect(email.text).toContain('The owner of a Shopify store shared a one-time code');
+      expect(email.text).toContain('TEST-K7QX-M2PL');
+    },
+  );
+
+  it('names an ordinary store', () => {
+    const email = renderer.render('store_link_code', fixture('store_link_code'));
+    expect(email.text).toContain('“Example Outfitters”');
+  });
+});
+
+describe('re-audit 3: disguised banned claims in operator text', () => {
+  it.each([
+    'Your store is com‍pliant.',
+    'Your store is com‌pliant.',
+    'Your store is com͏pliant.',
+    'Your store is com️pliant.',
+    'Your store is cоmpliant.',
+    'Your store is ｃｏｍｐｌｉａｎｔ.',
+    'Your store is now lawsuit‑proof.',
+    'Your store is now lawsuit–proof.',
+    'Your store is com-\npliant.',
+    'We are cer­ti­fied.',
+  ])('rejects %j', (whatWeAreDoing) => {
+    expect(() =>
+      renderer.render('incident_notice', { ...fixture('incident_notice'), whatWeAreDoing }),
+    ).toThrow(InputError);
+  });
+
+  it('accepts ordinary text with accents, dashes and other scripts', () => {
+    const whatWeAreDoing =
+      'We rotated keys – all of them – and notified our café partner.\nСпасибо. Ευχαριστώ.';
+    expect(() =>
+      renderer.render('incident_notice', { ...fixture('incident_notice'), whatWeAreDoing }),
+    ).not.toThrow();
   });
 });

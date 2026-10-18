@@ -2,10 +2,20 @@
  * Agency emails (PLAN §16): an invitation to an agency organization, the one-time store-link
  * code a store owner sends to an agency, and the notice to the owner once a link is made.
  * Agency names, and store names sent to an agency, are chosen by someone other than the
- * recipient: they stay out of subjects and preview text, appear in quotes, and may not look
- * like a link, address or domain (`displayName`, ADR-193).
+ * recipient: they stay out of subjects and preview text and appear in quotes. An agency name
+ * may not look like a link, address or domain (`displayName`, ADR-193); a store name that does
+ * is left out of the email instead, because Shopify allows such names.
  */
-import { displayName, instant, label, link, object, oneOf, pattern } from '../schema.ts';
+import {
+  displayName,
+  instant,
+  label,
+  link,
+  looksLinkLike,
+  object,
+  oneOf,
+  pattern,
+} from '../schema.ts';
 import type { MessageKey } from '../translator.ts';
 import { action, COMMON, defineTemplate, msg, paragraph } from '../template.ts';
 import { STORE_NAME_MAX } from './store.ts';
@@ -63,7 +73,8 @@ export const storeLinkCode = defineTemplate({
   category: 'security',
   schema: object({
     ...COMMON,
-    storeName: displayName(STORE_NAME_MAX),
+    /** The store's name from Shopify; left out of the email when it reads like a link. */
+    storeName: label(STORE_NAME_MAX),
     code: pattern(
       /^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){1,3}$/u,
       'groups of 4 to 8 capital letters or digits joined by hyphens',
@@ -74,12 +85,19 @@ export const storeLinkCode = defineTemplate({
   }),
   build(input, t) {
     const store = input.storeName;
+    // Store names come from Shopify, where "J.Crew" or "Acme.com" are ordinary. Such a name
+    // could also be a planted link, so the email then says "a Shopify store" instead.
+    const named = !looksLinkLike(store);
     return {
       subject: t.text('store_link_code_subject'),
       preheader: t.text('store_link_code_preheader'),
       title: t.text('store_link_code_title'),
       blocks: [
-        paragraph(msg(t, 'store_link_code_intro', { store })),
+        paragraph(
+          named
+            ? msg(t, 'store_link_code_intro', { store })
+            : msg(t, 'store_link_code_intro_unnamed'),
+        ),
         { type: 'code', label: msg(t, 'store_link_code_label'), code: input.code },
         paragraph(msg(t, 'store_link_code_steps')),
         action(t, t.text('store_link_code_button'), input.enterCodeUrl, false),
@@ -87,7 +105,9 @@ export const storeLinkCode = defineTemplate({
         paragraph(msg(t, 'store_link_code_scope')),
         paragraph(msg(t, 'store_link_code_not_expected')),
       ],
-      reason: msg(t, 'store_link_code_reason', { store }),
+      reason: named
+        ? msg(t, 'store_link_code_reason', { store })
+        : msg(t, 'store_link_code_reason_unnamed'),
     };
   },
 });

@@ -6,7 +6,7 @@
  * rule, never the value, because a value may be a token.
  */
 import { parseLink, type OriginName, type Origins, type SafeUrl } from './links.ts';
-import { graphemeLength, multiLine, singleLine, truncate } from './sanitize.ts';
+import { graphemeLength, multiLine, singleLine, skeleton, truncate } from './sanitize.ts';
 
 declare const inputType: unique symbol;
 
@@ -81,7 +81,16 @@ export function label(max: number): Schema<string, string> {
  * Looks like a link, an address or a domain: `scheme://`, `www.`, `@`, or a dotted name
  * ending in letters (`example.com`). Mail clients turn such text into links.
  */
-const LINK_LIKE = /[a-z][a-z0-9+.-]*:\/\/|\bwww\.|@|[\p{L}\p{N}-]\.\p{L}{2,}(?![\p{L}\p{N}])/iu;
+const LINK_LIKE =
+  /[a-z][a-z0-9+.-]*:\/\/|\bwww\.|@|[\p{L}\p{N}-]\.\p{L}{2,}(?![\p{L}\p{N}])|\b\d{1,3}(?:\.\d{1,3}){3}\b|\\\\/iu;
+
+/**
+ * Whether `text` reads as a link, an address, a domain, an IPv4 address or a network path,
+ * judged on its {@link skeleton}, so look-alike dots and hidden characters do not hide one.
+ */
+export function looksLinkLike(text: string): boolean {
+  return LINK_LIKE.test(skeleton(text));
+}
 
 /**
  * A name another user chose, shown to someone who did not ask for the email: an agency name in
@@ -93,7 +102,7 @@ export function displayName(max: number): Schema<string, string> {
   const inner = label(max);
   return schema((value, path, ctx) => {
     const text = inner.parse(value, path, ctx);
-    if (LINK_LIKE.test(text)) {
+    if (looksLinkLike(text)) {
       throw new InputError(path, 'must not contain a link, an email address or a domain name');
     }
     return text;
