@@ -102,6 +102,10 @@ export class ReportDocument {
   }
 }
 
+// Frozen, so no one can override the getters or `is` for a genuine document.
+Object.freeze(ReportDocument.prototype);
+Object.freeze(ReportDocument);
+
 export function reportDocument(options: {
   readonly lang: string;
   readonly title: string;

@@ -16,7 +16,9 @@ const FORMULA_START = /^\s*[=+\-@\t\r\n\uFF1D\uFF0B\uFF0D\uFF20]/u;
  * spreadsheet that splits on its locale's list separator without honouring quotes (Excel in
  * many EU locales uses ";") would start a new cell there, so those get an apostrophe too.
  */
-const FORMULA_AFTER_SEPARATOR = /([,;\t\n])(\s*)([=+\-@\uFF1D\uFF0B\uFF0D\uFF20])/gu;
+// The blank run excludes tab and line feed, which are separators themselves, so the pattern
+// cannot backtrack over a long run of them (security audit: the overlap was quadratic).
+const FORMULA_AFTER_SEPARATOR = /([,;\t\n])([^\S\t\n]*)([=+\-@\uFF1D\uFF0B\uFF0D\uFF20])/gu;
 
 export function csvCell(value: string): string {
   const clean = sanitizeText(value).replace(FORMULA_AFTER_SEPARATOR, "$1$2'$3");

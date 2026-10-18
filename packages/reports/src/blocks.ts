@@ -33,6 +33,9 @@ export class Link {
   }
 }
 
+Object.freeze(Link.prototype);
+Object.freeze(Link);
+
 /** A link to an absolute https or http URL; `undefined` for anything else. */
 export function webLink(url: string, label?: string): Link | undefined {
   const href = safeWebUrl(url);

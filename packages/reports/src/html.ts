@@ -30,6 +30,10 @@ export class Html {
   }
 }
 
+// Neither the class nor its prototype can be changed, so `Html.is` and `toString` stay ours.
+Object.freeze(Html.prototype);
+Object.freeze(Html);
+
 /** A value a `markup` template accepts. `false`, `null` and `undefined` render as nothing. */
 export type HtmlValue = Html | string | number | false | null | undefined | readonly HtmlValue[];
 
@@ -41,7 +45,8 @@ function render(value: unknown): string {
     return value.toString();
   }
   if (Array.isArray(value)) {
-    return value.map(render).join('');
+    // Array.from, not the array's own `map`, which a caller could have replaced.
+    return Array.from(value as readonly unknown[], render).join('');
   }
   if (typeof value === 'string' || typeof value === 'number') {
     return escapeHtml(sanitizeText(String(value)));
@@ -73,5 +78,5 @@ export function text(value: string): Html {
 
 /** Joins fragments; a part that is not genuine `Html` is refused. */
 export function join(parts: readonly Html[], separator = ''): Html {
-  return new Html(KEY, parts.map(render).join(separator));
+  return new Html(KEY, Array.from(parts, render).join(separator));
 }

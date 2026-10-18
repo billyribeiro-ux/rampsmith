@@ -63,3 +63,14 @@ describe('toCsv', () => {
     expect(() => toCsv(['a', 'b'], [['only one']])).toThrow(/row 1 has 1 field/u);
   });
 });
+
+describe('csvCell on long runs of separators', () => {
+  it('stays linear: 32,000 tabs or line feeds take milliseconds, not seconds', () => {
+    for (const ch of ['\t', '\n', ';', ' ']) {
+      const started = performance.now();
+      csvCell(ch.repeat(32_000));
+      csvCell(`${ch.repeat(32_000)}=`);
+      expect(performance.now() - started, JSON.stringify(ch)).toBeLessThan(100);
+    }
+  });
+});

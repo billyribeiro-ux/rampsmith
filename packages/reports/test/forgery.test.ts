@@ -105,3 +105,25 @@ describe('error messages', () => {
     );
   });
 });
+
+describe('the trusted classes cannot be patched', () => {
+  it('freezes the classes and their prototypes', () => {
+    for (const cls of [Html, Link, ReportDocument]) {
+      expect(Object.isFrozen(cls)).toBe(true);
+      expect(Object.isFrozen(cls.prototype)).toBe(true);
+    }
+    expect(() => {
+      (ReportDocument as unknown as { is: () => boolean }).is = () => true;
+    }).toThrow(TypeError);
+  });
+
+  it('renders an array through Array.from, ignoring a replaced map', () => {
+    const items = ['<b>'] as string[] & { map?: unknown };
+    Object.defineProperty(items, 'map', { value: () => ['<script>alert(1)</script>'] });
+    expect(markup`<p>${items}</p>`.toString()).toBe('<p>&lt;b&gt;</p>');
+  });
+
+  it('escapes bidirectional and invisible characters in quoted values', () => {
+    expect(quote('a\u202Eb\u2066c\u200Bd')).toBe('"a\\u202eb\\u2066c\\u200bd"');
+  });
+});

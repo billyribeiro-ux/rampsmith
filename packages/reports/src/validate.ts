@@ -16,13 +16,13 @@ export class ReportInputError extends Error {
 
 /**
  * A short, single-line, quoted form of an offending value for an error message: at most 40
- * characters, with control characters and line breaks escaped, so an error never carries a
- * forged log line or a whole hostile input.
+ * characters, with control, line-break, bidirectional and invisible characters escaped, so an
+ * error never carries a forged or reordered log line or a whole hostile input.
  */
 export function quote(value: string): string {
   const short = value.length > 40 ? `${value.slice(0, 40)}…` : value;
   return JSON.stringify(short).replace(
-    /[\u007f-\u009f\u2028\u2029]/gu,
+    /[\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/gu,
     (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`,
   );
 }
