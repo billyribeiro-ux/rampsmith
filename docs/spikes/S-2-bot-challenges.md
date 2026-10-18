@@ -3,8 +3,9 @@
 - Date: 2026-10-17
 - Question (PLAN §11, risk table §25): how often does a public Shopify store answer headless
   Chromium with a bot challenge? Above 5% of stores, the headed-browser fallback is needed.
-- Status: answered. **0 of 50 stores challenged.** The run also showed that the engine's
-  challenge detector was wrong for 70% of stores; it is fixed (ADR-027).
+- Status: answered. **0 of 50 stores challenged**, in two runs a day apart. The runs also showed
+  two ways the engine's challenge detector misread ordinary storefronts; both are fixed
+  (ADR-027).
 
 ## Method
 
@@ -62,7 +63,37 @@ median 16 failing elements per home page, p95 153. Rules failing on the most sto
    the crawler; treating it as unreachable is the cautious reading).
 4. The load-and-settle p95 of 13.6 s fits PLAN §11's 20-second budget per page-state.
 
-## Still to observe
+## Rerun with the ADR-027 detector
 
-A rerun with the fixed detector, at least 24 hours after this run so no store is loaded twice
-in a day, confirms the detector on live pages: label `run-spike-s2` on the pull request.
+[Run 39175521572](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39175521572), job
+`s2`, on 18 October at 23:13–23:21 UTC (more than 24 hours after the first run), commit 4fdfb3b,
+same method and candidates. Spikes now abort top-level navigation that leaves the store.
+
+| Measure | Value |
+| --- | --- |
+| Confirmed Shopify, loaded, all HTTP 200 | 50 (same 50) |
+| `cf-mitigated: challenge`, Cloudflare title, `/challenge` path, `/password` path, HTTP 429 | 0 |
+| **True challenges** | **0 of 50 (0%)** |
+| Pages with hCaptcha markup | 40, none flagged (the ADR-027 fix holds) |
+| Flagged by the ADR-027 detector | 1 (2%): a false positive, below |
+| Navigation blocked when the store tried to leave its domain | 1 |
+| Load-to-settled duration p50 / p95 / max | 9.1 s / 15.6 s / 16.2 s |
+
+The one flag was a headless storefront (HTTP 200, 298 links, no Shopify sections) that embeds
+Cloudflare Turnstile for a form. Turnstile's widget markup carries `cf-chl-` ids, which the
+detector read as Cloudflare's interstitial. The detector now applies the same test to Cloudflare
+markup as to CAPTCHA markup: it counts only on a page with fewer than five links and no
+Shopify sections, while the `cf-mitigated` header and the interstitial title count anywhere
+(ADR-027, amended). Replayed on both runs' recorded signals, it flags 0 of 50.
+
+Aggregate axe results over 49 home pages (one of them Chrome's error page after the blocked
+navigation; the spike now skips axe there): median 10 failing elements, p95 87. Rules failing on
+the most stores: `color-contrast` (25), `link-name` (22), `target-size` (16),
+`label-content-name-mismatch` (14), `image-alt` (12).
+
+## Conclusion
+
+Two runs a day apart found no bot challenge on 50 Shopify home pages, so the 5% threshold for a
+headed-browser fallback is far off. Both runs found a different false-positive pattern in the
+detector; each is fixed with a test built from the recorded signals. The blocked-scan rate stays
+a production metric (Decision 1).

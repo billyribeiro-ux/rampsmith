@@ -52,7 +52,7 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /** Whether `host` is `site` or one of its subdomains (www., us. and the like). */
-function onSite(host: string, site: string): boolean {
+export function onSite(host: string, site: string): boolean {
   return host === site || host.endsWith(`.${site}`) || site.endsWith(`.${host}`);
 }
 

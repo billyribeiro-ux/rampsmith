@@ -14,7 +14,7 @@ import process from 'node:process';
 import { AxeBuilder } from '@axe-core/playwright';
 import { detectChallenge } from '../src/challenge.ts';
 import { WCAG_TAGS, settle } from '../src/scan-page.ts';
-import { UA, checkRobots, keepOnSite, launch, percentile, sleep } from './shared.ts';
+import { UA, checkRobots, keepOnSite, launch, onSite, percentile, sleep } from './shared.ts';
 
 const TARGET = Number(process.env['S2_STORES'] ?? '50');
 const candidates = readFileSync(new URL('./stores.txt', import.meta.url), 'utf8')
@@ -107,7 +107,10 @@ for (const domain of candidates) {
       status429: status === 429,
       links: String(html.match(/<a\s[^>]*href=/gi)?.length ?? 0),
     };
-    if (row.verdict === undefined && status < 400) {
+    // A navigation that tried to leave the store ends on Chrome's error page: nothing to scan.
+    if (!onSite(finalUrl.hostname, domain)) {
+      row.error = 'navigation left the store and was blocked';
+    } else if (row.verdict === undefined && status < 400) {
       const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
       violationTotals.push(results.violations.reduce((n, r) => n + r.nodes.length, 0));
       for (const r of results.violations) ruleStores.set(r.id, (ruleStores.get(r.id) ?? 0) + 1);
