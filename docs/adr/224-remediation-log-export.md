@@ -25,8 +25,11 @@ guard against that list.
 1. **CSV**: RFC 4180, every field double-quoted with quotes doubled, CRLF row endings, a UTF-8
    byte-order mark so Excel reads the encoding. A field whose first non-blank character is `=`,
    `+`, `-`, `@`, tab, carriage return, line feed, or the full-width `＝ ＋ － ＠` gets a leading
-   apostrophe. Values longer than 32,000 characters are cut with "…" (a cell holds 32,767);
-   JSON keeps them whole.
+   apostrophe. The same characters after a comma, semicolon, tab or line break inside a field
+   get one too, because Excel in many EU locales splits on `;` and a parser that ignores quotes
+   would start a new cell there (security audit; LibreOffice 24.2.7 keeps quote state and is
+   not affected). Values longer than 32,000 characters are cut with "…" (a cell holds 32,767);
+   JSON keeps every value exactly.
 2. One CSV row per finding a fix resolves, oldest fix first (ties by fix id), 22 columns:
    fix id, type, channel, written by, AI model, fix status, rule, finding id, WCAG criteria,
    impact, finding, what changed, before, after, proposed, approved by, approved, applied,
@@ -39,7 +42,8 @@ guard against that list.
 4. **Verification result** from the fix status: verified → `passed`, failed → `failed`,
    applied → `pending`, proposed/approved/applying → `not_applied`, reverted → `reverted`,
    rejected → `rejected`. A verified fix must name its verification scan and time.
-5. The approver is `{kind: "user", name}` or `{kind: "system"}`; the caller supplies the display
+5. The approver is `{kind: "user", name}` or `{kind: "system"}`, rebuilt field by field so no
+   other property the caller attached reaches the export; the caller supplies the display
    name. The export is the merchant's own record, so it carries the name, which is personal data
    of the merchant's staff; it is never logged.
 

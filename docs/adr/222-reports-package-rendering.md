@@ -20,16 +20,27 @@ bans `{@html}` except one sanitized report component.
    it) and returns strings, or a PDF through a browser the caller passes in (ADR-223).
 2. **Escaping by construction.** HTML is only built with the `markup` tagged template: every
    interpolated string is sanitized and escaped, and only `Html` values built by the package
-   pass through. `Html`, `Link` and `ReportDocument` can only be constructed inside the package
-   (a private symbol key), so callers cannot smuggle markup in. Links exist only as `Link` values
-   from `webLink` (absolute https/http without credentials), `emailLink` (a strict address with
+   pass through; any other object is refused with a `TypeError`. `Html`, `Link` and
+   `ReportDocument` can only be constructed inside the package (a private symbol key), are
+   frozen, keep their content in private fields, and are recognized by a private-field brand
+   check (`#field in value`), so neither a look-alike object nor
+   `Object.create(Html.prototype)` passes, and a document's HTML cannot be swapped after
+   rendering. Links exist only as `Link` values
+   from `webLink` (absolute https/http without credentials, at most 2,048 characters both as
+   typed and as serialized, since percent-encoding can grow a URL ninefold), `emailLink` (a strict address with
    nothing that alters a `mailto:` link) and `phoneLink` (digits and a leading plus). The tag
    is called `markup`, not `html`, because Prettier reformats `html`-tagged templates, which
    changed the output and broke the style hash of ADR-223.
 3. **Sanitizing.** Every input string loses C0 and C1 controls (tab and line feed kept),
    explicit bidirectional embedding, override and isolate characters (U+202A–U+202E,
-   U+2066–U+2069) and lone surrogates, and line endings become LF. Field lengths and list sizes
-   are capped, so hostile input cannot stall the printer.
+   U+2066–U+2069), the invisible zero width space, word joiner and invisible operators
+   (U+200B, U+2060–U+2064) and the byte-order mark; lone surrogates become U+FFFD. Line
+   endings, including U+2028 and U+2029, become LF, so a single-line field cannot hide a line
+   break. The joiners U+200C and U+200D and the implicit direction marks stay, because Persian,
+   Indic scripts, emoji and right-to-left text need them. Field lengths, URL lengths and list
+   sizes are capped, so hostile input cannot stall the printer. Error messages quote an
+   offending value in at most 40 characters on one line (`quote`), so they cannot forge log
+   lines or carry a whole hostile input.
 4. **Validation.** Each renderer validates its whole input first and throws `ReportInputError`
    naming the field (for example `contact.email` or `entries[3].approver`), never rendering a
    report that misstates its data: counts are whole numbers, passed never exceeds run, dates are

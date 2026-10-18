@@ -42,12 +42,21 @@ The CI `node` job installs no Playwright browser, and this stream may not change
      font-src 'none'; base-uri 'none'; form-action 'none'`, allowing only its own style sheet by
      hash, and contains no script, image, link, font, frame or inline style (tested);
    - the context has JavaScript off, is offline, blocks service workers and downloads, keeps the
-     CSP, and aborts every routed request;
+     CSP, sends everything through a proxy nothing listens on (`http://127.0.0.1:9` with
+     `<-loopback>`, which removes Chromium's implicit loopback bypass), and aborts every routed
+     request;
    - any `request` event, any navigation away from `about:blank`, or any extra frame discards
      the PDF and raises `ReportRenderError`. The error carries counts only, never the URL, which
      could hold merchant data;
-   - one deadline covers the load and one the print (default 30 s each); Playwright's own
-     timeout is off so the error is always `ReportRenderError`; the context always closes.
+   - one deadline (default 60 s) covers the whole print, from opening the context to the PDF;
+     a context that opens after the deadline is closed at once, and closing has its own 5 s
+     limit. Every failure, including a browser crash, becomes a `ReportRenderError` naming the
+     step and the error's class only, never the browser's log;
+   - the layers do not depend on one another: tests turn all but one off and send an image, a
+     style sheet, a font, an iframe and a prefetch at a local server. The policy alone, the
+     offline flag alone and the dead proxy alone each stop all five with zero requests reaching
+     the server; routing alone stops all but the prefetch, which Chromium issues outside
+     Playwright's request interception (found by the security audit).
 3. The output is A4 by the document's `@page` rule, or Letter on request, with `tagged: true`,
    `outline: true` and backgrounds printed. Chromium writes `/MarkInfo /Marked true`, a
    structure tree (H1–H3, P, L/LI, Table/TR/TH/TD/Caption, and a Figure per chart whose `/Alt`
@@ -56,8 +65,10 @@ The CI `node` job installs no Playwright browser, and this stream may not change
    and the raw catalog.
 4. Tests launch Chromium 153 from `@sparticuz/chromium` 153.0.0 (a devDependency: an npm tarball
    with no lifecycle scripts, so `ci.yml`'s node job runs the browser suites after its frozen
-   install), with `--no-sandbox` only, **never with `chromium.args`**. `CHROMIUM_EXECUTABLE_PATH`
-   overrides it. Production printing uses the engine's Playwright Chromium (1.64.1 bundles
+   install), with `--no-sandbox` only, **never with `chromium.args`**. The package reuses any
+   `chromium` already in the temporary directory without checking it, so the test setup
+   unpacks it into a fresh private directory (mode 0700) for each run and removes it after.
+   `CHROMIUM_EXECUTABLE_PATH` overrides it. Production printing uses the engine's Playwright Chromium (1.64.1 bundles
    Chromium 156.0.8078.4), which the engine already launches with `chromiumSandbox: true`.
 5. Hostile-markup tests feed the isolated printer images, style sheets, CSS imports and
    backgrounds, fonts, iframes, objects and SVG images pointing at a local HTTP server and at a
