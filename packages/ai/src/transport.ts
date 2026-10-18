@@ -81,6 +81,11 @@ export function createAnthropicTransport(options: AnthropicTransportOptions): Ai
   const client = new Anthropic({
     apiKey: options.apiKey,
     maxRetries: 0,
+    // Fixed here so that no environment variable can make the SDK put prompts or answers in
+    // spans or logs (PLAN §19; security audit MEDIUM-4): metadata-only spans, no trace
+    // headers sent to Anthropic, and no SDK logging. Failures surface as AiError instead.
+    openTelemetry: { propagation: false, traces: { enabled: true, contentMode: 'metadata_only' } },
+    logLevel: 'off',
     ...(options.baseURL === undefined ? {} : { baseURL: options.baseURL }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });

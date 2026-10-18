@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "rocket-launch",
-  "request_sha256": "001f13a8d38e655a13303bab1f715d9fafc1433f158e437c841d1245b0266b21",
+  "image_id": "size-chart",
+  "request_sha256": "4e888365fd859c07d906030103ab0702955fa2888c58c089b3f09ad7cc7335b1",
   "response": {
-    "id": "msg_eval_rocket_launch_claude_haiku_5_5",
+    "id": "msg_eval_size_chart_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Falcon 9 rocket on a lit launch pad between tall towers at dusk\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.91}",
+        "text": "{\"alt\":\"Hoodie size chart with chest and length measurements\",\"decorative\":false,\"contains_text\":true,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.8}",
         "citations": null
       }
     ],
@@ -27,7 +27,7 @@
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
       "input_tokens": 956,
-      "output_tokens": 66,
+      "output_tokens": 62,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

@@ -20,6 +20,7 @@ import { estimateTextTokens } from '../cost.ts';
 import { AiError } from '../errors.ts';
 import type { PatchProposalOutput } from '../outputs.ts';
 import { prompt } from '../prompts.ts';
+import { patchViolations } from '../patch-safety.ts';
 import { routeFor } from '../routing.ts';
 import {
   containsInvisible,
@@ -27,6 +28,7 @@ import {
   encodeDataBlock,
   sanitizeUntrustedText,
   scrubPersonalData,
+  untrustedField,
 } from '../untrusted.ts';
 
 export interface PatchProposalInput {
@@ -63,51 +65,21 @@ export const MAX_SPAN_CHARS = 20_000;
 export const MAX_CHANGED_CHARS = 4000;
 const FORMAT_OVERHEAD_TOKENS = 400;
 
-/** Constructs a patch may never add (PLAN §12; ADR-213). */
-const FORBIDDEN: readonly { readonly id: string; readonly pattern: RegExp }[] = [
-  { id: 'script', pattern: /<\s*script\b/giu },
-  { id: 'style', pattern: /<\s*style\b|\bstyle\s*=/giu },
-  { id: 'embed', pattern: /<\s*(?:iframe|object|embed|link|meta|base|form|input|frame)\b/giu },
-  { id: 'event-handler', pattern: /\son[a-z]+\s*=/giu },
-  { id: 'javascript-url', pattern: /javascript\s*:/giu },
-  { id: 'data-url', pattern: /\bdata\s*:[^\s"']*[;,]/giu },
-  { id: 'url', pattern: /(?:https?:)?\/\/[\w.-]+/giu },
-  { id: 'srcdoc', pattern: /\bsrcdoc\s*=/giu },
-];
-
-const ALLOWED_TAGS = new Set(['if', 'elsif', 'else', 'endif', 'unless', 'endunless']);
-const LIQUID_TAG = /\{%-?\s*([a-z_]+)/giu;
-
-function count(text: string, pattern: RegExp): number {
-  return [...text.matchAll(pattern)].length;
-}
-
+/** Positions of `needle` in `haystack`; two are enough to know it is not unique. */
 function occurrences(haystack: string, needle: string): number[] {
   const found: number[] = [];
-  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+  for (
+    let at = haystack.indexOf(needle);
+    at !== -1 && found.length < 2;
+    at = haystack.indexOf(needle, at + 1)
+  ) {
     found.push(at);
   }
   return found;
 }
 
-/** Constructs that `replace` adds beyond what `find` already had. */
-export function addedConstructs(find: string, replace: string): string[] {
-  const added = FORBIDDEN.filter(
-    ({ pattern }) => count(replace, pattern) > count(find, pattern),
-  ).map(({ id }) => id);
-  const tags = (text: string) =>
-    [...text.matchAll(LIQUID_TAG)].map((m) => (m[1] ?? '').toLowerCase());
-  const before = tags(find);
-  for (const tag of tags(replace)) {
-    const i = before.indexOf(tag);
-    if (i !== -1) {
-      before.splice(i, 1);
-    } else if (!ALLOWED_TAGS.has(tag)) {
-      added.push(`liquid-${tag}`);
-    }
-  }
-  return added;
-}
+/** Links or URLs in the reviewer-facing summary, which is rendered as plain text only. */
+const SUMMARY_LINK = /\]\(|https?:\/\/|\bwww\.|javascript:|data:/iu;
 
 interface Context {
   readonly input: PatchProposalInput;
@@ -137,8 +109,8 @@ export function checkPatchProposal(
     if (edit.find === edit.replace) {
       reasons.add('no_op_edit');
     }
-    for (const construct of addedConstructs(edit.find, edit.replace)) {
-      reasons.add(`forbidden_${construct}`);
+    if (containsInvisible(edit.replace)) {
+      reasons.add('hidden_characters');
     }
     changed += edit.find.length + edit.replace.length;
     local.push({ start: at[0], end: at[0] + edit.find.length, replacement: edit.replace });
@@ -156,6 +128,19 @@ export function checkPatchProposal(
   }
   if (detectInstructionLikeText(out.summary).length > 0) {
     reasons.add('instruction_like_output');
+  }
+  if (SUMMARY_LINK.test(out.summary) || containsInvisible(out.summary)) {
+    reasons.add('unsafe_summary');
+  }
+  if (reasons.size === 0) {
+    // The decisive check: the whole span before and after, against the allowlist.
+    let patched = ctx.input.spanText;
+    for (const e of [...local].reverse()) {
+      patched = patched.slice(0, e.start) + e.replacement + patched.slice(e.end);
+    }
+    for (const violation of patchViolations(ctx.input.spanText, patched)) {
+      reasons.add(violation);
+    }
   }
   if (reasons.size > 0) {
     return { status: 'needs_review', reasons: [...reasons], flags };
@@ -210,9 +195,8 @@ export function preparePatchProposal(
     wcag_criterion: sanitizeUntrustedText(input.criterion, 16),
     description: sanitizeUntrustedText(input.ruleDescription, 1000),
   });
-  const element = encodeDataBlock('rendered_element', {
-    html: scrubPersonalData(sanitizeUntrustedText(input.renderedElement, 2000)),
-  });
+  const renderedHtml = untrustedField(input.renderedElement, 2000);
+  const element = encodeDataBlock('rendered_element', { html: renderedHtml });
   const source = encodeDataBlock('theme_source', { file: input.file, span: input.spanText });
   const text = `${rule}\n${element}\n${source}`;
   return {
@@ -223,7 +207,7 @@ export function preparePatchProposal(
     estimatedInputTokens:
       estimateTextTokens(p.text) + estimateTextTokens(text) + FORMAT_OVERHEAD_TOKENS,
     inputFlags:
-      detectInstructionLikeText(`${input.spanText}\n${input.renderedElement}`).length > 0
+      detectInstructionLikeText(`${input.spanText}\n${renderedHtml}`).length > 0
         ? ['suspected_prompt_injection']
         : [],
     accept: (output) => checkPatchProposal(output as PatchProposalOutput, { input }),

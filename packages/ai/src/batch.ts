@@ -11,6 +11,7 @@
 import { budgetPeriod } from './budget.ts';
 import {
   interpret,
+  requestFingerprint,
   observe,
   outcomeOf,
   usageOf,
@@ -38,6 +39,9 @@ export const MAX_BATCH_REQUESTS = 100_000;
 
 const TIMEOUT: CallOptions = { timeoutMs: 120_000 };
 
+/** Failures after which the batch may nevertheless have been created. */
+const AMBIGUOUS_CREATE = new Set(['ai_timeout', 'ai_connection', 'ai_aborted']);
+
 export interface BatchItem<T> {
   /** Unique within the batch; the engine uses the job or fix id without separators. */
   readonly customId: string;
@@ -57,6 +61,8 @@ export interface BatchTicket {
     readonly promptVersion: string;
     readonly reservationId: string;
     readonly reservedMicroUsd: number;
+    /** `requestFingerprint` of the submitted request; collection refuses any other. */
+    readonly requestSha256: string;
   }[];
 }
 
@@ -176,11 +182,18 @@ export async function submitBatch<T>(
     } catch (thrown: unknown) {
       const error = classifyError(thrown, now());
       deps.breaker.failure(error);
+      if (AMBIGUOUS_CREATE.has(error.code)) {
+        // The batch may exist upstream: never create a second one, and keep every item's worst
+        // case as spent, because an orphaned batch is billed (security audit LOW-8). It
+        // expires within 24 hours; the runbook lists and deletes orphans.
+        await Promise.all(accepted.map((a) => deps.ledger.settle(a.reservationId, a.reserved)));
+        throw error;
+      }
       const wait = retriesInCall(error.code)
         ? retryDelayMs(attempt, policy, deps.random ?? Math.random, error.retryAfterMs)
         : null;
       if (wait === null) {
-        // Creating a batch bills nothing; give every reservation back.
+        // The API refused the batch, so nothing was billed; give every reservation back.
         await Promise.all(accepted.map((a) => deps.ledger.release(a.reservationId)));
         throw error;
       }
@@ -199,6 +212,7 @@ export async function submitBatch<T>(
         promptVersion: item.call.prompt.version,
         reservationId,
         reservedMicroUsd: reserved,
+        requestSha256: requestFingerprint(item.call.params),
       })),
     },
     refused,
@@ -289,7 +303,11 @@ export async function collectBatch<T>(
         observe(r);
         return r;
       };
-      if (call?.prompt.version !== item.promptVersion || call.task !== item.task) {
+      if (
+        call?.prompt.version !== item.promptVersion ||
+        call.task !== item.task ||
+        requestFingerprint(call.params) !== item.requestSha256
+      ) {
         const r = record('error', 'ai_input_invalid');
         await deps.sink.record(r);
         outcomes.push({

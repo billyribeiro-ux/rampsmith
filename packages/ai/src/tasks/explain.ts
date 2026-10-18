@@ -19,7 +19,12 @@ import { isLanguageTag, languageMatches } from '../language.ts';
 import type { ExplainOutput } from '../outputs.ts';
 import { prompt } from '../prompts.ts';
 import { routeFor } from '../routing.ts';
-import { detectInstructionLikeText, encodeDataBlock, sanitizeUntrustedText } from '../untrusted.ts';
+import {
+  containsInvisible,
+  detectInstructionLikeText,
+  encodeDataBlock,
+  sanitizeUntrustedText,
+} from '../untrusted.ts';
 
 export interface ExplainInput {
   /** The axe-core or Rampsmith rule id, for example `image-alt`. */
@@ -49,6 +54,8 @@ export function checkExplanation(out: ExplainOutput, input: ExplainInput): TaskR
   if (fields.some((f) => f.trim() === '')) reasons.push('empty_field');
   if (bannedClaims(all).length > 0) reasons.push('banned_claim');
   if (/[<>]|\{\{|\{%/u.test(all)) reasons.push('markup_characters');
+  if (/\]\(|https?:\/\/|\bwww\.|javascript:/iu.test(all)) reasons.push('link_or_url');
+  if (containsInvisible(all) || /[\t\r\u2028\u2029]/u.test(all)) reasons.push('hidden_characters');
   if (detectInstructionLikeText(all).length > 0) reasons.push('instruction_like_output');
   if (!isLanguageTag(out.language) || !languageMatches(all, out.language, input.locale)) {
     reasons.push('language_mismatch');

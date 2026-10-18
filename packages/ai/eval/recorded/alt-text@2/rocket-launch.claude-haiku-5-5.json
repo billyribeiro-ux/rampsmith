@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "astronaut-portrait",
-  "request_sha256": "6eda46f477d2f183287a2fb957213f01d56150868d3a1133b0a06b26c4bba8f2",
+  "image_id": "rocket-launch",
+  "request_sha256": "e91e59814bde7b7d7ccfd34cba0433577ce9dc2a12af4817498e4168d515cfee",
   "response": {
-    "id": "msg_eval_astronaut_portrait_claude_haiku_5_5",
+    "id": "msg_eval_rocket_launch_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Smiling astronaut in an orange flight suit holding a white helmet, with a US flag and a shuttle model behind\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.9}",
+        "text": "{\"alt\":\"Falcon 9 rocket on a lit launch pad between tall towers at dusk\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.91}",
         "citations": null
       }
     ],
@@ -26,8 +26,8 @@
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
-      "input_tokens": 1036,
-      "output_tokens": 80,
+      "input_tokens": 956,
+      "output_tokens": 66,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

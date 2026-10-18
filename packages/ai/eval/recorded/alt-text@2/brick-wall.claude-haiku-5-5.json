@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "orange-dahlia",
-  "request_sha256": "787fb75c170c499711bacc04438d3ccea068b127abcac5b9245ec68b1e4cd4fe",
+  "image_id": "brick-wall",
+  "request_sha256": "068c49421220d5d89e335b5a04d3dc6bbd30e930a91adccc83a6b795f88eb64f",
   "response": {
-    "id": "msg_eval_orange_dahlia_claude_haiku_5_5",
+    "id": "msg_eval_brick_wall_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Peach-orange dahlia in full bloom against dark green foliage\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.9}",
+        "text": "{\"alt\":\"Grey brick-effect pattern of long, narrow bricks laid in staggered rows\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.88}",
         "citations": null
       }
     ],
@@ -26,8 +26,8 @@
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
-      "input_tokens": 956,
-      "output_tokens": 62,
+      "input_tokens": 1036,
+      "output_tokens": 66,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

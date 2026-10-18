@@ -119,6 +119,30 @@ const durationHistogram = meter.createHistogram('rampsmith.ai.call.duration', {
  * An opaque per-tenant id for the API's `metadata.user_id`, which Anthropic uses to detect
  * abuse and which must hold nothing identifying (API reference).
  */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonical);
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * SHA-256 of a request in canonical JSON. Batch tickets keep it, so a result is only ever
+ * read with the exact request that produced it (security audit MEDIUM-5).
+ */
+export function requestFingerprint(params: MessageCreateParamsNonStreaming): string {
+  return createHash('sha256')
+    .update(JSON.stringify(canonical(params)), 'utf8')
+    .digest('hex');
+}
+
 function opaqueUserId(tenantId: string): string {
   return createHash('sha256')
     .update(`rampsmith-tenant:${tenantId}`, 'utf8')
@@ -217,7 +241,14 @@ export function interpret<T>(call: PreparedCall<T>, message: Message): TaskResul
   if (!checked.ok) {
     throw new AiError('ai_output_malformed', `the ${call.task} output ${checked.reason}`);
   }
-  const result = call.accept(checked.value);
+  let result: TaskResult<T>;
+  try {
+    result = call.accept(checked.value);
+  } catch {
+    // A check that cannot evaluate the output fails closed and permanently; retrying would pay
+    // for the same answer again (security audit LOW-6).
+    throw new AiError('ai_output_malformed', `the ${call.task} output could not be checked`);
+  }
   return call.inputFlags.length === 0
     ? result
     : { ...result, flags: [...new Set([...call.inputFlags, ...result.flags])] };
@@ -345,7 +376,7 @@ async function runCallInSpan<T>(
   };
 
   let attempts = 0;
-  let ambiguousSeen = false;
+  let ambiguousAttempts = 0;
   let response;
   for (;;) {
     attempts += 1;
@@ -360,7 +391,7 @@ async function runCallInSpan<T>(
     } catch (thrown: unknown) {
       const error = classifyError(thrown, now());
       deps.breaker.failure(error);
-      ambiguousSeen ||= AMBIGUOUS.has(error.code);
+      ambiguousAttempts += AMBIGUOUS.has(error.code) ? 1 : 0;
       const wait = retriesInCall(error.code)
         ? retryDelayMs(attempts, policy, random, error.retryAfterMs)
         : null;
@@ -373,10 +404,11 @@ async function runCallInSpan<T>(
         }
       }
       // A timeout or a dropped connection may still have been billed: keep the worst case.
-      const ambiguous = ambiguousSeen;
+      const ambiguous = ambiguousAttempts > 0;
+      const estimate = worst * ambiguousAttempts;
       const reachedProvider = error.code !== 'ai_unavailable' || attempts > 1;
       if (ambiguous) {
-        await deps.ledger.settle(reservationId, worst);
+        await deps.ledger.settle(reservationId, estimate);
       } else {
         await deps.ledger.release(reservationId);
       }
@@ -385,7 +417,7 @@ async function runCallInSpan<T>(
           ...base,
           usage: ZERO,
           thinkingTokens: 0,
-          costMicroUsd: ambiguous ? worst : 0,
+          costMicroUsd: estimate,
           costIsEstimate: ambiguous,
           requestId: error.requestId ?? null,
           outcome: 'error',
@@ -402,14 +434,16 @@ async function runCallInSpan<T>(
 
   const { usage, thinking } = usageOf(response.message, route.cacheTtl);
   const cost = costMicroUsd(route.model, 'sync', usage);
-  await deps.ledger.settle(reservationId, cost);
+  // Earlier attempts that timed out may have been billed too; count their worst case.
+  const charged = cost + worst * ambiguousAttempts;
+  await deps.ledger.settle(reservationId, charged);
   const finish = async (outcome: AiCallOutcome, errorCode: AiErrorCode | null) => {
     const record: AiCallRecord = {
       ...base,
       usage,
       thinkingTokens: thinking,
-      costMicroUsd: cost,
-      costIsEstimate: false,
+      costMicroUsd: charged,
+      costIsEstimate: ambiguousAttempts > 0,
       requestId: response.requestId ?? null,
       outcome,
       errorCode,

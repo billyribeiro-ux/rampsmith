@@ -43,7 +43,9 @@ export {
   containsInvisible,
   sanitizeUntrustedText,
   scrubPersonalData,
-  stripQueryAndFragment,
+  hasHiddenOrBreakingCharacters,
+  safeLinkTarget,
+  untrustedField,
   type DataTag,
 } from './untrusted.ts';
 export {
@@ -55,6 +57,7 @@ export {
   type ReserveResult,
 } from './budget.ts';
 export {
+  requestFingerprint,
   runCall,
   type AiCallOutcome,
   type AiCallRecord,
@@ -137,7 +140,6 @@ export {
 export {
   MAX_CHANGED_CHARS,
   MAX_SPAN_CHARS,
-  addedConstructs,
   checkPatchProposal,
   preparePatchProposal,
   proposePatch,
@@ -152,3 +154,5 @@ export {
   type ExplainInput,
   type Explanation,
 } from './tasks/explain.ts';
+export { isAllowedLiquid, patchViolations } from './patch-safety.ts';
+export { HTML_LIMITS, HtmlLimitError } from './html.ts';

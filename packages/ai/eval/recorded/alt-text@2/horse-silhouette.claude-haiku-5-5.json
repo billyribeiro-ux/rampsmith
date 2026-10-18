@@ -1,9 +1,9 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
   "image_id": "horse-silhouette",
-  "request_sha256": "d6a4f04dbbcc9d07f2afb9f494ad282804ad53b78de0f08bee21edf192a1a44f",
+  "request_sha256": "906cb66007203a6f93faba279818a45d0e9585df94f11f373fdbe89c5a09809f",
   "response": {
     "id": "msg_eval_horse_silhouette_claude_haiku_5_5",
     "container": null,

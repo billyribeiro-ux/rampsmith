@@ -8,7 +8,7 @@ import { imageBlock, validateImage, type ImageInput } from '../images.ts';
 import type { GradeOutput } from '../outputs.ts';
 import { prompt } from '../prompts.ts';
 import { routeFor } from '../routing.ts';
-import { encodeDataBlock, sanitizeUntrustedText } from '../untrusted.ts';
+import { encodeDataBlock, sanitizeUntrustedText, untrustedField } from '../untrusted.ts';
 import type { GraderVerdict } from './metrics.ts';
 
 export function prepareGrade(
@@ -24,8 +24,8 @@ export function prepareGrade(
   const route = routeFor('grade_alt_text', { interactive: true });
   const p = prompt('grade-alt-text');
   const data = encodeDataBlock('merchant_data', {
-    product_title: sanitizeUntrustedText(input.productTitle, 255),
-    product_type: sanitizeUntrustedText(input.productType, 255),
+    product_title: untrustedField(input.productTitle, 255),
+    product_type: untrustedField(input.productType, 255),
   });
   const draft = encodeDataBlock('alt_text_under_review', {
     alt: sanitizeUntrustedText(input.alt, 300),

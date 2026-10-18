@@ -142,6 +142,11 @@ export class CircuitBreaker {
   }
 
   failure(error: AiError): void {
+    if (error.code === 'ai_unavailable') {
+      // Raised by this breaker itself: it says nothing new and must not release a probe that
+      // another caller holds (security audit LOW-7).
+      return;
+    }
     if (NEUTRAL.has(error.code)) {
       this.#probeInFlight = false;
       return;

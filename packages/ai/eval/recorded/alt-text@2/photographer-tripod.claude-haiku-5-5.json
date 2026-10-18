@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "garden-gravel",
-  "request_sha256": "e5f5fb02d08b5682c158d27eefa6c94639e110cc22a0920ed2e2ab99b89999e0",
+  "image_id": "photographer-tripod",
+  "request_sha256": "6be62d2c80f5405ed3559564410682bad972220ff7b5d509e39fdcf19ee1702e",
   "response": {
-    "id": "msg_eval_garden_gravel_claude_haiku_5_5",
+    "id": "msg_eval_photographer_tripod_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Close-up of grey angular gravel stones\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.9}",
+        "text": "{\"alt\":\"Black-and-white photo of a man in a long dark coat using a camera on a tripod in a grassy field\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.92}",
         "citations": null
       }
     ],
@@ -27,7 +27,7 @@
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
       "input_tokens": 1036,
-      "output_tokens": 56,
+      "output_tokens": 76,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

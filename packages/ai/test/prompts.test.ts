@@ -66,8 +66,9 @@ describe('prompt content', () => {
       encoding: 'utf8',
       env: { ...process.env, GITHUB_ACTIONS: 'false' },
     });
-    expect(output).toMatch(
-      new RegExp(`${String(PROMPT_IDS.length)} files scanned, no banned claims`, 'u'),
-    );
+    const files = PROMPT_IDS.flatMap((id) =>
+      readdirSync(new URL(`../prompts/${id}/`, import.meta.url)),
+    ).length;
+    expect(output).toMatch(new RegExp(`${String(files)} files scanned, no banned claims`, 'u'));
   });
 });

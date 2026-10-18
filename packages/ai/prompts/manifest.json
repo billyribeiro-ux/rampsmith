@@ -1,7 +1,7 @@
 {
   "alt-text": {
-    "version": 1,
-    "sha256": "b2c884f521c771ee15343f540845823eabb364debc0233f730f4e063872d5ed9"
+    "version": 2,
+    "sha256": "5528de350601702fe7aa0bc849e29c5c53148f4c42aadacd8d27d1d735028866"
   },
   "rewrite": {
     "version": 1,
@@ -12,8 +12,8 @@
     "sha256": "6f51ae44a603471972b64ceb6076b64e7add42566d7fc4ce3c31c6e4c9aab0ca"
   },
   "patch-proposal": {
-    "version": 1,
-    "sha256": "49aae75ab617290e2a55b51a08ffe18796cdd23607e9807024648f7cb7e34fae"
+    "version": 2,
+    "sha256": "0537eeeea03ffd662d41d5344a21f45655603c72ff0350931839c33b1e0015ac"
   },
   "explain": {
     "version": 1,

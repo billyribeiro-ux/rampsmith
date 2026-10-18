@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "tabby-cat",
-  "request_sha256": "a34442a46086afcd67a6838db781001d4533b60649279f00d8d95f553d7b6967",
+  "image_id": "striped-tshirt",
+  "request_sha256": "f9156a61a3aff6f541c6455b2cdccf731f2ab04a6c2cc317bc31e7f60628d137",
   "response": {
-    "id": "msg_eval_tabby_cat_claude_haiku_5_5",
+    "id": "msg_eval_striped_tshirt_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Close-up of a brown striped tabby cat with green eyes looking at the camera\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.94}",
+        "text": "{\"alt\":\"Short-sleeved white T-shirt with horizontal navy Breton stripes, laid flat\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.93}",
         "citations": null
       }
     ],
@@ -26,8 +26,8 @@
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
-      "input_tokens": 956,
-      "output_tokens": 68,
+      "input_tokens": 1036,
+      "output_tokens": 66,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

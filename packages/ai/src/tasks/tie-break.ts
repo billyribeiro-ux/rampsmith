@@ -22,8 +22,9 @@ import { routeFor } from '../routing.ts';
 import {
   detectInstructionLikeText,
   encodeDataBlock,
+  hasHiddenOrBreakingCharacters,
   sanitizeUntrustedText,
-  scrubPersonalData,
+  untrustedField,
 } from '../untrusted.ts';
 
 export interface TieBreakCandidate {
@@ -61,9 +62,21 @@ function renderedAttributes(html: string): Map<string, string> {
   return new Map(attrs.map((a) => [a.name.toLowerCase(), a.value]));
 }
 
+/** Whether `snippet` sets attribute `name` (case-insensitively) and contains `value`. */
 function mentions(snippet: string, name: string, value: string): boolean {
-  const attribute = new RegExp(`(?:^|[\\s"'<])${name.replace(/[.:]/gu, '\\$&')}\\s*=`, 'iu');
-  return attribute.test(snippet) && snippet.includes(value);
+  if (!snippet.includes(value)) {
+    return false;
+  }
+  const haystack = snippet.toLowerCase();
+  const needle = name.toLowerCase();
+  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+    const before = at === 0 ? ' ' : (haystack[at - 1] ?? ' ');
+    const rest = haystack.slice(at + needle.length, at + needle.length + 8).trimStart();
+    if (/[\s"'<]/u.test(before) && rest.startsWith('=')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 interface Context {
@@ -87,6 +100,7 @@ export function checkTieBreak(out: TieBreakOutput, ctx: Context): TaskResult<Tie
   const rendered = renderedAttributes(ctx.input.renderedElement).get(name.toLowerCase());
   if (
     !ATTRIBUTE_NAME.test(name) ||
+    hasHiddenOrBreakingCharacters(value) ||
     value.trim() === '' ||
     rendered === undefined ||
     !rendered.includes(value) ||
@@ -126,11 +140,11 @@ export function prepareTieBreak(
   if (!/^[a-z0-9-]{1,64}$/u.test(input.ruleId)) {
     throw new AiError('ai_input_invalid', 'the rule id is not an axe rule id');
   }
-  const element = scrubPersonalData(sanitizeUntrustedText(input.renderedElement, 2000));
+  const element = untrustedField(input.renderedElement, 2000);
   const candidates = input.candidates.map((c) => ({
     id: c.id,
     file: sanitizeUntrustedText(c.file, 200),
-    source: scrubPersonalData(sanitizeUntrustedText(c.snippet, 4000)),
+    source: untrustedField(c.snippet, 4000),
   }));
   const route = routeFor('tie_break', { interactive: false });
   const p = prompt('tie-break');
@@ -139,7 +153,7 @@ export function prepareTieBreak(
     failed_rule: input.ruleId,
   });
   const listed = encodeDataBlock('candidates', candidates);
-  const all = [input.renderedElement, ...input.candidates.map((c) => c.snippet)].join('\n');
+  const all = [element, ...candidates.map((c) => c.source)].join('\n');
   return {
     task: 'tie_break',
     route,

@@ -41,8 +41,8 @@ describe('submitBatch', () => {
     expect(refused).toEqual([]);
     expect(ticket?.batchId).toBe('msgbatch_1');
     expect(ticket?.items.map((i) => [i.customId, i.task, i.model, i.promptVersion])).toEqual([
-      ['a1', 'alt_text', 'claude-haiku-5-5', 'alt-text@1'],
-      ['a2', 'alt_text', 'claude-haiku-5-5', 'alt-text@1'],
+      ['a1', 'alt_text', 'claude-haiku-5-5', 'alt-text@2'],
+      ['a2', 'alt_text', 'claude-haiku-5-5', 'alt-text@2'],
     ]);
     const reserved = ticket?.items.reduce((s, i) => s + i.reservedMicroUsd, 0) ?? 0;
     expect(deps.ledger.usage(TENANT, '2026-10').reservedMicroUsd).toBe(reserved);

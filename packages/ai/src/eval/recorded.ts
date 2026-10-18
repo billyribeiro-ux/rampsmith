@@ -4,7 +4,6 @@
  * prompt, schema, image or model finds no recording and fails loudly instead of replaying a
  * stale answer. `RecordingTransport` wraps the live transport and writes those files.
  */
-import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -12,6 +11,7 @@ import type {
   Message,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/messages/messages';
+import { requestFingerprint } from '../calls.ts';
 import { AiError } from '../errors.ts';
 import { loadPrompts } from '../prompts.ts';
 import type {
@@ -33,27 +33,11 @@ export interface Recording {
   readonly response: Message;
 }
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(canonical);
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
-    );
-  }
-  return value;
-}
-
 /** The key of a request: everything that shapes the answer, nothing tenant-specific. */
 export function requestKey(params: MessageCreateParamsNonStreaming): string {
-  const rest: Partial<MessageCreateParamsNonStreaming> = { ...params };
+  const rest: MessageCreateParamsNonStreaming = { ...params };
   delete rest.metadata;
-  return createHash('sha256')
-    .update(JSON.stringify(canonical(rest)), 'utf8')
-    .digest('hex');
+  return requestFingerprint(rest);
 }
 
 /** The prompt version a request was built from, found by its system prompt. */

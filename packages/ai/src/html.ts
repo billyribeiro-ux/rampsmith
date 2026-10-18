@@ -116,18 +116,58 @@ function collapse(text: string): string {
   return text.replace(/\s+/gu, ' ').trim();
 }
 
-function textOf(node: Node): string {
-  if (node.nodeName === '#text') {
-    return (node as DefaultTreeAdapterTypes.TextNode).value;
+/** Thrown when a fragment is too deep or has too many headings or links to rewrite. */
+export class HtmlLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HtmlLimitError';
   }
-  if (!isElement(node)) {
-    return '';
+}
+
+/** Bounds that keep analysis linear in the size of the HTML (security audit HIGH-2). */
+export const HTML_LIMITS = {
+  maxDepth: 256,
+  maxHeadings: 100,
+  maxLinks: 200,
+  /** Characters of heading text, link names and link context kept per item. */
+  maxItemText: 300,
+} as const;
+
+/**
+ * Text content with image alt text, collapsed. Iterative, so depth cannot overflow the stack;
+ * stops collecting once `max` characters are certain.
+ */
+function textOf(roots: readonly Node[], max: number = Number.POSITIVE_INFINITY): string {
+  let out = '';
+  const stack: Node[] = [...roots].reverse();
+  while (stack.length > 0 && out.length <= max * 4 + 64) {
+    const node = stack.pop();
+    if (node === undefined) {
+      break;
+    }
+    if (node.nodeName === '#text') {
+      out += (node as DefaultTreeAdapterTypes.TextNode).value;
+    } else if (isElement(node)) {
+      if (node.tagName === 'img') {
+        out += ` ${node.attrs.find((a) => a.name === 'alt')?.value ?? ''} `;
+      } else if (node.tagName === 'br') {
+        out += ' ';
+      } else if (node.tagName !== 'template') {
+        for (let i = node.childNodes.length - 1; i >= 0; i -= 1) {
+          const child = node.childNodes[i];
+          if (child !== undefined) {
+            stack.push(child);
+          }
+        }
+      }
+    }
   }
-  if (node.tagName === 'img') {
-    return ` ${node.attrs.find((a) => a.name === 'alt')?.value ?? ''} `;
-  }
-  const children = node.tagName === 'template' ? [] : node.childNodes;
-  return children.map(textOf).join(node.tagName === 'br' ? ' ' : '');
+  const text = collapse(out);
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+function childrenText(element: Element, max: number): string {
+  return textOf(element.childNodes, max);
 }
 
 function attr(element: Element, name: string): string | undefined {
@@ -138,15 +178,23 @@ function attr(element: Element, name: string): string | undefined {
 function linkName(element: Element): string {
   const label = attr(element, 'aria-label');
   if (label !== undefined && collapse(label) !== '') {
-    return collapse(label);
+    return collapse(label).slice(0, HTML_LIMITS.maxItemText);
   }
-  return collapse(element.childNodes.map(textOf).join(''));
+  return childrenText(element, HTML_LIMITS.maxItemText);
 }
 
 function hasNonInlineChildren(element: Element): boolean {
-  return element.childNodes.some(
-    (child) => isElement(child) && (!INLINE.has(child.tagName) || hasNonInlineChildren(child)),
-  );
+  const stack: Node[] = [...element.childNodes];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node !== undefined && isElement(node)) {
+      if (!INLINE.has(node.tagName)) {
+        return true;
+      }
+      stack.push(...node.childNodes);
+    }
+  }
+  return false;
 }
 
 export function isVagueLinkText(name: string): boolean {
@@ -162,23 +210,52 @@ function span(location: { startOffset: number; endOffset: number } | undefined):
   return location === undefined ? null : { start: location.startOffset, end: location.endOffset };
 }
 
-/** Lists the headings and links of an HTML fragment with their source spans and issues. */
+/**
+ * Lists the headings and links of an HTML fragment with their source spans and issues. Throws
+ * `HtmlLimitError` past `HTML_LIMITS`, before doing work that grows with them.
+ */
 export function analyzeDescription(html: string, baseLevel = 2): DescriptionAnalysis {
   const fragment = parseFragment(html, { sourceCodeLocationInfo: true });
   const headings: HeadingTarget[] = [];
   const links: LinkTarget[] = [];
-  const walk = (node: Node, block: Element | null): void => {
+  const blockText = new Map<Element, string>();
+  const contextOf = (block: Element | null): string => {
+    if (block === null) {
+      return '';
+    }
+    let text = blockText.get(block);
+    if (text === undefined) {
+      text = childrenText(block, HTML_LIMITS.maxItemText);
+      blockText.set(block, text);
+    }
+    return text;
+  };
+  const stack: { node: Node; block: Element | null; depth: number }[] = [...fragment.childNodes]
+    .reverse()
+    .map((node) => ({ node, block: null, depth: 1 }));
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (item === undefined) {
+      break;
+    }
+    const { node, block, depth } = item;
     if (!isElement(node)) {
-      return;
+      continue;
+    }
+    if (depth > HTML_LIMITS.maxDepth) {
+      throw new HtmlLimitError('the HTML is nested too deeply');
     }
     const nearest = BLOCK.has(node.tagName) ? node : block;
     const location = node.sourceCodeLocation;
     const heading = /^h([1-6])$/u.exec(node.tagName);
     if (heading !== null && location?.startTag !== undefined) {
+      if (headings.length === HTML_LIMITS.maxHeadings) {
+        throw new HtmlLimitError('the HTML has too many headings');
+      }
       headings.push({
         index: headings.length,
         level: Number(heading[1]),
-        text: collapse(node.childNodes.map(textOf).join('')),
+        text: childrenText(node, HTML_LIMITS.maxItemText),
         startTag: { start: location.startTag.startOffset, end: location.startTag.endOffset },
         endTag: span(location.endTag),
       });
@@ -188,24 +265,28 @@ export function analyzeDescription(html: string, baseLevel = 2): DescriptionAnal
       attr(node, 'href') !== undefined &&
       location?.startTag !== undefined
     ) {
+      if (links.length === HTML_LIMITS.maxLinks) {
+        throw new HtmlLimitError('the HTML has too many links');
+      }
       links.push({
         index: links.length,
         name: linkName(node),
         href: attr(node, 'href') ?? '',
-        context: collapse(nearest === null ? '' : nearest.childNodes.map(textOf).join('')),
+        context: contextOf(nearest),
         hasElementChildren: hasNonInlineChildren(node),
         startTag: { start: location.startTag.startOffset, end: location.startTag.endOffset },
         endTag: span(location.endTag),
         ariaLabel: span(location.attrs?.['aria-label']),
       });
     }
-    const children = node.tagName === 'template' ? [] : node.childNodes;
-    for (const child of children) {
-      walk(child, nearest);
+    if (node.tagName !== 'template') {
+      for (let i = node.childNodes.length - 1; i >= 0; i -= 1) {
+        const child = node.childNodes[i];
+        if (child !== undefined) {
+          stack.push({ node: child, block: nearest, depth: depth + 1 });
+        }
+      }
     }
-  };
-  for (const child of fragment.childNodes) {
-    walk(child, null);
   }
   const headingIssues: number[] = [];
   let previous = baseLevel - 1;
@@ -313,7 +394,11 @@ export function applyRewrite(
   for (let i = 1; i < edits.length; i += 1) {
     const later = edits[i - 1];
     const earlier = edits[i];
-    if (later !== undefined && earlier !== undefined && earlier.end > later.start) {
+    if (
+      later !== undefined &&
+      earlier !== undefined &&
+      (earlier.end > later.start || earlier.start === later.start)
+    ) {
       throw new Error('edits overlap');
     }
   }
@@ -361,7 +446,7 @@ function verify(
     for (const s of spans) {
       text = text.slice(0, s.start) + text.slice(s.end);
     }
-    return collapse(parseFragment(text).childNodes.map(textOf).join(''));
+    return textOf(parseFragment(text).childNodes);
   };
   if (strip(before, analysis) !== strip(after, result)) {
     throw new Error('the rewrite changed text outside its targets');

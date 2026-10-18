@@ -12,6 +12,7 @@ def font(size, bold=False):
 
 def save(im, name):
     im = im.copy()
+    im.info = {}  # drop comments and other metadata carried over from the source file
     im.thumbnail((LONG, LONG), Image.LANCZOS)
     if im.mode not in ('RGB', 'L'):
         bg = Image.new('RGB', im.size, 'white')

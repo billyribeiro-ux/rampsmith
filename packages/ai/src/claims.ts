@@ -9,9 +9,17 @@ export interface ClaimMatch {
   readonly match: string;
 }
 
-/** Every banned claim in `text`, in order. */
+/**
+ * Every banned claim in `text`, in order. claims-lint honours `claims-lint-allow` markers in
+ * source files; in model output a marker is just text, so it is defanged before the scan and
+ * can never suppress a match (security audit LOW-5).
+ */
 export function bannedClaims(text: string): ClaimMatch[] {
-  return scanText('model-output', text).violations.map((v) => ({ rule: v.rule, match: v.match }));
+  const defanged = text.replace(/claims-lint-allow/giu, 'claims-lint-blocked');
+  return scanText('model-output', defanged).violations.map((v) => ({
+    rule: v.rule,
+    match: v.match,
+  }));
 }
 
 function key(claim: ClaimMatch): string {

@@ -78,7 +78,7 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
   it('runs the production pipeline over every image and computes the metrics', async () => {
     const report = await runEval({ mode: 'recorded' });
     const s = report.summary;
-    expect(report.promptVersion).toBe('alt-text@1');
+    expect(report.promptVersion).toBe('alt-text@2');
     expect(s.images).toBe(20);
     expect(s.failed).toBe(0);
     expect(s.approvable).toBe(18);
@@ -94,7 +94,7 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
     expect(byId.get('grass-texture')).toMatchObject({ approvable: true, decorative: true });
     expect(byId.get('sock-pack-injection')?.alt).not.toMatch(/accessible|best socks/iu);
     expect(report.calls).toHaveLength(25);
-    expect(report.calls.every((c) => c.promptVersion === 'alt-text@1')).toBe(true);
+    expect(report.calls.every((c) => c.promptVersion === 'alt-text@2')).toBe(true);
     expect(report.batchCostPerThousandImagesMicroUsd).toBeLessThan(s.costPerThousandImagesMicroUsd);
     expect(formatReport(report)).toMatch(/Gate: PASS/u);
   });
@@ -136,7 +136,7 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
   });
 
   it('marks every bundled recording as authored, not captured', () => {
-    const dir = new URL('../eval/recorded/alt-text@1/', import.meta.url);
+    const dir = new URL('../eval/recorded/alt-text@2/', import.meta.url);
     for (const f of readdirSync(dir)) {
       const r = JSON.parse(readFileSync(new URL(f, dir), 'utf8')) as { provenance: string };
       expect(r.provenance).toMatch(/^authored: /u);
@@ -156,9 +156,9 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
         limit: 1,
       });
       expect(report.summary.failed).toBe(0);
-      const written = readdirSync(join(dir, 'alt-text@1'));
+      const written = readdirSync(join(dir, 'alt-text@2'));
       expect(written).toEqual(['espresso-cup.claude-haiku-5-5.json']);
-      const r = JSON.parse(readFileSync(join(dir, 'alt-text@1', written[0] ?? ''), 'utf8')) as {
+      const r = JSON.parse(readFileSync(join(dir, 'alt-text@2', written[0] ?? ''), 'utf8')) as {
         provenance: string;
       };
       expect(r.provenance).toMatch(/^recorded from the Claude API/u);

@@ -97,6 +97,60 @@ export function readImageSize(
 }
 
 /**
+ * Whether the image carries embedded metadata that can hold personal data: EXIF, XMP, IPTC or
+ * comments in JPEG; text or EXIF chunks in PNG; EXIF or XMP chunks in WebP; comment extensions
+ * in GIF. The engine's `sharp` resize drops metadata unless told otherwise; this check holds
+ * it to that (security audit LOW-11). Colour profiles are allowed.
+ */
+export function hasEmbeddedMetadata(bytes: Buffer, mediaType: ImageMediaType): boolean {
+  switch (mediaType) {
+    case 'image/jpeg': {
+      let at = 2;
+      while (at + 4 <= bytes.length && bytes[at] === 0xff) {
+        const marker = bytes[at + 1] ?? 0;
+        if (marker === 0xda || marker === 0xd9) {
+          return false;
+        }
+        if (marker === 0xe1 || marker === 0xed || marker === 0xfe) {
+          return true;
+        }
+        at += 2 + bytes.readUInt16BE(at + 2);
+      }
+      return false;
+    }
+    case 'image/png': {
+      let at = 8;
+      while (at + 8 <= bytes.length) {
+        const length = bytes.readUInt32BE(at);
+        const type = bytes.subarray(at + 4, at + 8).toString('latin1');
+        if (['tEXt', 'zTXt', 'iTXt', 'eXIf'].includes(type)) {
+          return true;
+        }
+        if (type === 'IEND') {
+          return false;
+        }
+        at += 12 + length;
+      }
+      return false;
+    }
+    case 'image/webp': {
+      let at = 12;
+      while (at + 8 <= bytes.length) {
+        const type = bytes.subarray(at, at + 4).toString('latin1');
+        if (type === 'EXIF' || type === 'XMP ') {
+          return true;
+        }
+        const size = bytes.readUInt32LE(at + 4);
+        at += 8 + size + (size % 2);
+      }
+      return false;
+    }
+    case 'image/gif':
+      return bytes.includes(Buffer.from([0x21, 0xfe]));
+  }
+}
+
+/**
  * Checks an image before it is sent: an allowed media type, valid base64 within the size
  * limit, bytes that really are that format (an HTML error page from a CDN is not an image),
  * dimensions that match the header (the cost estimate depends on them) and that sit inside
@@ -116,6 +170,9 @@ export function validateImage(image: ImageInput, maxLongEdge: number = ALT_TEXT_
   const bytes = Buffer.from(image.base64, 'base64');
   if (!hasSignature(image.mediaType, bytes)) {
     throw new AiError('ai_input_invalid', 'the image bytes do not match its media type');
+  }
+  if (hasEmbeddedMetadata(bytes, image.mediaType)) {
+    throw new AiError('ai_input_invalid', 'the image carries embedded metadata; strip it first');
   }
   const { width, height } = image;
   const actual = readImageSize(bytes, image.mediaType);

@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "photographer-tripod",
-  "request_sha256": "84da390355da05d323373c18b7aacf4d5df70100ed4ea6b879b1f32c473e4b24",
+  "image_id": "astronaut-portrait",
+  "request_sha256": "629ec122b5b47dc482650ca1e05af88f27c17ed37c008620db4c53a9e6fc6830",
   "response": {
-    "id": "msg_eval_photographer_tripod_claude_haiku_5_5",
+    "id": "msg_eval_astronaut_portrait_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Black-and-white photo of a man in a long dark coat using a camera on a tripod in a grassy field\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.92}",
+        "text": "{\"alt\":\"Smiling astronaut in an orange flight suit holding a white helmet, with a US flag and a shuttle model behind\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.9}",
         "citations": null
       }
     ],
@@ -27,7 +27,7 @@
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
       "input_tokens": 1036,
-      "output_tokens": 76,
+      "output_tokens": 80,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

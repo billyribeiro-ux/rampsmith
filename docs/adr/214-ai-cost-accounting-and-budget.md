@@ -27,7 +27,9 @@ Rust function, and the merchant can set an AI budget in `/settings` (§14).
    `ai_budget_exhausted` (permanent) and is never sent. After the call the reservation settles
    at the actual cost. HTTP errors are unbilled and release it; a timeout, dropped connection
    or abort may have been billed, so the worst case is kept and the record says
-   `costIsEstimate: true`. Batches reserve per item at batch prices when submitted and settle
+   `costIsEstimate: true`; when such an attempt is followed by a retry that succeeds, the call
+   settles at the success's cost plus the worst case of each ambiguous attempt (ADR-215).
+   Batches reserve per item at batch prices when submitted and settle
    per item when collected; `errored`, `expired` and `canceled` items are released.
 3. **The limit is a parameter** (`AiDeps.budgetLimit(tenantId)`), read from the entitlements
    function and the merchant's own lower setting. Proposed defaults for that function, about

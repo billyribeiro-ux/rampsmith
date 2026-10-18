@@ -1,16 +1,16 @@
 {
   "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
-  "prompt_version": "alt-text@1",
+  "prompt_version": "alt-text@2",
   "model": "claude-haiku-5-5",
-  "image_id": "linen-swatches",
-  "request_sha256": "534eb0bf6d191761c6684e87ebfd9d0618a4f7f355b52b2df91261660c07a39e",
+  "image_id": "orange-dahlia",
+  "request_sha256": "95710cd3f5309c55253b9b257b5bd5df12d1cae943e9313f99881a0850419116",
   "response": {
-    "id": "msg_eval_linen_swatches_claude_haiku_5_5",
+    "id": "msg_eval_orange_dahlia_claude_haiku_5_5",
     "container": null,
     "content": [
       {
         "type": "text",
-        "text": "{\"alt\":\"Six linen fabric swatches labelled terracotta, olive, mustard, navy, cream and charcoal\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.94}",
+        "text": "{\"alt\":\"Peach-orange dahlia in full bloom against dark green foliage\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.9}",
         "citations": null
       }
     ],
@@ -26,8 +26,8 @@
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
       "inference_geo": "global",
-      "input_tokens": 972,
-      "output_tokens": 70,
+      "input_tokens": 956,
+      "output_tokens": 62,
       "output_tokens_details": null,
       "server_tool_use": null,
       "service_tier": "standard",

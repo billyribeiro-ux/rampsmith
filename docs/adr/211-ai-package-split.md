@@ -34,16 +34,32 @@ with a narrow, testable surface.
    `@anthropic-ai/sdk` 0.135.0 (MIT; peer `zod` optional; published 2026-10-15),
    `ajv` 8.20.0 (MIT), `parse5` 8.0.1 (MIT; ADR-216), `@opentelemetry/api` 1.9.1
    (Apache-2.0, already in the workspace), the workspace's `@rampsmith/claims-lint` (its rules
-   guard model output, ADR-213), and `vitest` 5.0.5 for tests. `sharp` stays in the engine:
-   its install script would need an entry in `pnpm-workspace.yaml`'s `allowBuilds`, a shared
-   file this stream does not own.
-4. **Prompts move with the logic** to `packages/ai/prompts/<task>/v<N>.txt`, pinned by
+   guard model output, ADR-213), and, for tests only, `vitest` 5.0.5 and
+   `@opentelemetry/sdk-trace-base` 2.12.0 (Apache-2.0; peer `@opentelemetry/api` >=1.3.0
+   <1.10.0; published 2026-10-06), which records the SDK's spans to prove they carry no
+   content. `sharp` stays in the engine: its install script would need an entry in
+   `pnpm-workspace.yaml`'s `allowBuilds`, a shared file this stream does not own.
+4. **Release-age exception for the SDK.** `renovate.json` waits 7 days before proposing an
+   upgrade (PLAN §18, compromised dependency). `@anthropic-ai/sdk` 0.135.0 was 2 days old when
+   this stream adopted it; it is the version PLAN §7 pins, the current registry version, and
+   has no advisories, and the security audit (LOW-9) asked for it to be pinned to 0.133.0 or
+   recorded here. It stays at 0.135.0 because the rule governs Renovate's upgrades and PLAN §7
+   chose this version; it qualifies under the rule from 2026-10-22, before this stream merges.
+   The integrator re-checks the registry for an advisory before merging.
+5. **The SDK is configured, not left to the environment.** The transport passes
+   `openTelemetry: { propagation: false, traces: { enabled: true, contentMode:
+   'metadata_only' } }` and `logLevel: 'off'`, so neither
+   `ANTHROPIC_OPEN_TELEMETRY_TRACES_CONTENT_MODE` nor `ANTHROPIC_LOG` can put merchant text or
+   model output into spans or logs, and no trace context leaves for Anthropic (security audit
+   MEDIUM-4).
+6. **Prompts move with the logic** to `packages/ai/prompts/<task>/v<N>.txt`, pinned by
    `prompts/manifest.json` (ADR-213).
 
 ## Consequences
 
-- The AI subsystem is tested end to end without a database or network: 266 unit tests on
-  fakes, recorded responses and a fake `fetch` behind the real SDK.
+- The AI subsystem is tested end to end without a database or network: 344 unit tests on
+  fakes, recorded responses and a fake `fetch` behind the real SDK, plus 3 live checks that
+  run only with `ANTHROPIC_API_KEY` (ADR-217).
 - The engine owns persistence and orchestration, so a schema change for `ai_calls` or a budget
   table is one migration by the main builder (integration notes in
   `docs/evidence/ws-12-ai.md`).

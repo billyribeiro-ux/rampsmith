@@ -7,8 +7,8 @@
 import {
   encodeDataBlock,
   detectInstructionLikeText,
-  sanitizeUntrustedText,
-  scrubPersonalData,
+  hasHiddenOrBreakingCharacters,
+  untrustedField,
 } from '../untrusted.ts';
 import { estimateTextTokens, imageTokens } from '../cost.ts';
 import { AiError } from '../errors.ts';
@@ -60,7 +60,12 @@ const FORMAT_OVERHEAD_TOKENS = 400;
 
 const OPENERS =
   /^\s*(?:(?:an?|the)\s+)?(?:image|picture|photo|photograph|graphic|illustration|screenshot|imagen|imagem|immagine|bild|foto|afbeelding)\s+(?:of|showing|shows|de|des|du|von|di|van|del|da|do)\b/iu;
-const MARKUP = /[<>"`]|\{\{|\{%|\}\}|%\}/u;
+/**
+ * Characters that could break out of an attribute or a script string if a theme prints the
+ * alt text unescaped (`alt="{{ image.alt }}"`, `alt='…'`, or inside JavaScript); the prompt
+ * asks for ’ instead of ' (alt-text@2).
+ */
+const MARKUP = /[<>"'`\\]|\{\{|\{%|\}\}|%\}/u;
 const URL_OR_EMAIL = /https?:\/\/|\bwww\.|[\w.+-]+@[\w-]+\.[\w.]+|\.(?:com|net|org|shop|store)\b/iu;
 
 const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
@@ -107,6 +112,7 @@ export function checkAltText(out: AltTextOutput, ctx: CheckContext): TaskResult<
     if (length(alt) > ctx.maxCharacters) reasons.push('too_long');
     if (OPENERS.test(alt)) reasons.push('starts_with_image_of');
     if (MARKUP.test(alt)) reasons.push('markup_characters');
+    if (hasHiddenOrBreakingCharacters(out.alt)) reasons.push('hidden_characters');
     if (URL_OR_EMAIL.test(alt)) reasons.push('url_or_email');
     if (detectInstructionLikeText(alt).length > 0) reasons.push('instruction_like_output');
     if (introducedClaims(alt, [ctx.productTitle, ctx.productType]).length > 0) {
@@ -145,8 +151,8 @@ export function prepareAltText(
   if (!isLanguageTag(input.primaryLocale)) {
     throw new AiError('ai_input_invalid', 'the primary locale is not a BCP 47 language tag');
   }
-  const productTitle = scrubPersonalData(sanitizeUntrustedText(input.productTitle, 255));
-  const productType = scrubPersonalData(sanitizeUntrustedText(input.productType, 255));
+  const productTitle = untrustedField(input.productTitle, 255);
+  const productType = untrustedField(input.productType, 255);
   const route = routeFor(options.escalated === true ? 'alt_text_escalated' : 'alt_text', {
     interactive: options.interactive === true,
   });
@@ -158,7 +164,7 @@ export function prepareAltText(
     max_characters: maxCharacters,
   });
   const inputFlags =
-    detectInstructionLikeText(`${input.productTitle}\n${input.productType}`).length > 0
+    detectInstructionLikeText(`${productTitle}\n${productType}`).length > 0
       ? ['suspected_prompt_injection']
       : [];
   const ctx: CheckContext = {

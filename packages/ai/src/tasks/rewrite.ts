@@ -17,6 +17,7 @@ import { introducedClaims } from '../claims.ts';
 import { estimateTextTokens } from '../cost.ts';
 import { AiError } from '../errors.ts';
 import {
+  HtmlLimitError,
   analyzeDescription,
   applyRewrite,
   isVagueLinkText,
@@ -30,9 +31,9 @@ import { routeFor } from '../routing.ts';
 import {
   detectInstructionLikeText,
   encodeDataBlock,
-  sanitizeUntrustedText,
-  scrubPersonalData,
-  stripQueryAndFragment,
+  hasHiddenOrBreakingCharacters,
+  safeLinkTarget,
+  untrustedField,
 } from '../untrusted.ts';
 
 export interface RewriteInput {
@@ -59,21 +60,15 @@ export interface RewriteDraft {
 
 /** Larger fields go to review untouched; a description this long is not a quick fix. */
 export const MAX_REWRITE_HTML = 100_000;
-const MAX_HEADINGS = 100;
-const MAX_LINKS = 200;
 const FORMAT_OVERHEAD_TOKENS = 400;
 
-const MARKUP = /[<>"`]|\{\{|\{%/u;
+const MARKUP = /[<>"`\\]|\{\{|\{%/u;
 const URL_LIKE = /https?:\/\/|\bwww\./iu;
 
 const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
 
 function length(text: string): number {
   return [...graphemes.segment(text)].length;
-}
-
-function clean(text: string, max: number): string {
-  return scrubPersonalData(sanitizeUntrustedText(text, max));
 }
 
 interface Context {
@@ -118,6 +113,7 @@ export function checkRewrite(out: RewriteOutput, ctx: Context): TaskResult<Rewri
     if (length(text) < 2 || length(text) > 100) reasons.push('link_text_length');
     if (isVagueLinkText(text)) reasons.push('vague_link_text');
     if (MARKUP.test(text) || URL_LIKE.test(text)) reasons.push('markup_or_url');
+    if (hasHiddenOrBreakingCharacters(text)) reasons.push('hidden_characters');
     if (detectInstructionLikeText(text).length > 0) reasons.push('instruction_like_output');
     if (introducedClaims(text, ctx.sources).length > 0) reasons.push('banned_claim');
     if (!languageMatches(text, ctx.primaryLocale, ctx.primaryLocale))
@@ -179,38 +175,52 @@ export function prepareRewrite(
   if (!Number.isInteger(baseLevel) || baseLevel < 1 || baseLevel > 6) {
     throw new AiError('ai_input_invalid', 'the base heading level must be 1 to 6');
   }
-  const analysis = analyzeDescription(input.html, baseLevel);
+  let analysis: DescriptionAnalysis;
+  try {
+    analysis = analyzeDescription(input.html, baseLevel);
+  } catch (error: unknown) {
+    if (error instanceof HtmlLimitError) {
+      throw new AiError('ai_input_invalid', error.message);
+    }
+    throw error;
+  }
   if (analysis.headingIssues.length === 0 && analysis.linkIssues.length === 0) {
     return null;
   }
-  if (analysis.headings.length > MAX_HEADINGS || analysis.links.length > MAX_LINKS) {
-    throw new AiError('ai_input_invalid', 'the HTML has too many headings or links to rewrite');
-  }
   const route = routeFor('rewrite', { interactive: options.interactive === true });
   const p = prompt('rewrite');
-  const data = encodeDataBlock('merchant_data', {
-    page_title: clean(input.pageTitle, 255),
+  const fields = {
+    page_title: untrustedField(input.pageTitle, 255),
     primary_locale: input.primaryLocale,
     base_level: baseLevel,
     headings: analysis.headings.map((h) => ({
       index: h.index,
       level: h.level,
-      text: clean(h.text, 200),
+      text: untrustedField(h.text, 200),
     })),
     links: analysis.linkIssues.map((i) => {
       const link = analysis.links[i];
       return {
         index: i,
-        current_text: clean(link?.name ?? '', 200),
-        target: stripQueryAndFragment(link?.href ?? ''),
-        surrounding_text: clean(link?.context ?? '', 300),
+        current_text: untrustedField(link?.name ?? '', 200),
+        target: safeLinkTarget(link?.href ?? ''),
+        surrounding_text: untrustedField(link?.context ?? '', 300),
       };
     }),
-  });
+  };
+  const data = encodeDataBlock('merchant_data', fields);
+  // Detection runs on exactly what the model receives.
+  const sent = [
+    fields.page_title,
+    ...fields.headings.map((h) => h.text),
+    ...fields.links.flatMap((l) => [l.current_text, l.target, l.surrounding_text]),
+  ];
   const visible = [
-    input.pageTitle,
-    ...analysis.headings.map((h) => h.text),
-    ...analysis.links.map((l) => `${l.name} ${l.context}`),
+    ...new Set([
+      input.pageTitle,
+      ...analysis.headings.map((h) => h.text),
+      ...analysis.links.flatMap((l) => [l.name, l.context]),
+    ]),
   ];
   const ctx: Context = {
     html: input.html,
@@ -227,9 +237,7 @@ export function prepareRewrite(
     estimatedInputTokens:
       estimateTextTokens(p.text) + estimateTextTokens(data) + FORMAT_OVERHEAD_TOKENS,
     inputFlags:
-      detectInstructionLikeText(visible.join('\n')).length > 0
-        ? ['suspected_prompt_injection']
-        : [],
+      detectInstructionLikeText(sent.join('\n')).length > 0 ? ['suspected_prompt_injection'] : [],
     accept: (output) => checkRewrite(output as RewriteOutput, ctx),
   };
 }

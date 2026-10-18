@@ -30,7 +30,7 @@ Package Index, whose licences are stated in those packages, plus images drawn he
    Thirteen photos: eleven CC0 or public-domain images from the scikit-image 0.25.2 wheel
    (`coffee`, `chelsea`, `astronaut`, `rocket`, `clock_motion`, `camera`, `horse`, `brick`,
    `grass`, `gravel`, `hubble_deep_field`; licences quoted from scikit-image's own data
-   documentation) and two CC BY 2.0 photos from the scikit-learn 1.7.2 wheel (`china.jpg` by
+   documentation; every file is saved without metadata, which `validateImage` now requires) and two CC BY 2.0 photos from the scikit-learn 1.7.2 wheel (`china.jpg` by
    danielbuechele, `flower.jpg` by vultilion). Seven CC0 images drawn by
    `eval/dataset/make_images.py`: a size chart, a tea box with ingredients, a sock pack printed
    with an instruction to the model, a striped T-shirt, a fabric swatch card, a mug and a
@@ -49,8 +49,9 @@ Package Index, whose licences are stated in those packages, plus images drawn he
 5. **Recorded mode now, live mode with the key.** The runner drives the production pipeline
    (same prompts, schemas, checks, escalation). Recorded mode answers from
    `eval/recorded/<prompt version>/`, keyed by the SHA-256 of each request without its
-   metadata, so a changed prompt, schema, image or model finds no recording and fails instead
-   of replaying a stale answer. The 25 bundled recordings are **authored**: written by this
+   metadata (the same `requestFingerprint` batch tickets store), so a changed prompt, schema,
+   image or model finds no recording and fails instead of replaying a stale answer. The 25
+   bundled recordings, in `eval/recorded/alt-text@2/`, are **authored**: written by this
    stream in the documented response shape, marked `authored:` in their provenance, not
    captured from the API. They make the recorded run a substitute test of the pipeline and the
    metrics (90% approvable, 0% unsupported, 25% escalated), not a measurement of the model.

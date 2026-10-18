@@ -32,16 +32,26 @@ errors) from ones no retry fixes (400, 401, 403, 404, 413, spend caps).
    seconds, doubling after each failed probe up to 10 minutes; a spend limit or a rejected key
    opens it at once for an hour. While open, calls fail fast with `ai_unavailable` and
    `retryAfterMs`, and `pausedUntil()` tells the ai worker to stop claiming `ai.*` jobs. Half
-   open, one probe goes through. Any answer from the API (even a 400 or a refusal) proves it is
-   up and closes the circuit.
-5. **Batches.** `submitBatch` checks `custom_id`s, refuses a batch over the documented limits
+   open, exactly one probe goes through: callers turned away with `ai_unavailable` do not
+   release it (security audit LOW-7). Any answer from the API (even a 400 or a refusal) proves
+   it is up and closes the circuit.
+5. **Billing that may have happened is counted** (security audit LOW-8). A timeout, a dropped
+   connection or an abort after the request left may still be billed. Each such attempt is
+   charged at the route's worst case on top of what the final attempt cost, and the call's
+   `ai_calls` row is marked `costIsEstimate`, so the budget guard errs towards stopping.
+6. **Batches.** `submitBatch` checks `custom_id`s, refuses a batch over the documented limits
    (`chunkBatchItems` splits by 100,000 requests and 200 MB), reserves each item's budget and
-   creates the batch with the same retry policy, releasing every reservation if creation
-   fails. It returns a `BatchTicket` (plain JSON, no prompt content) for the job payload.
-   `pollBatch` reads the status; `collectBatch` streams the results in any order, matches them
-   by `custom_id`, settles and records each item, interprets it with the call the engine
-   rebuilds from stored input (refusing a rebuild whose prompt version or task differs), and
-   treats a missing result like an expired one. `retireBatch` then deletes the batch, so
+   creates the batch with the same retry policy. A creation the API refused releases every
+   reservation; a creation that timed out or lost its connection is never retried, because the
+   batch may exist upstream, and every item's worst case stays spent (an orphan expires within
+   24 hours; the runbook in `docs/evidence/ws-12-ai.md` lists and deletes orphans). It returns a
+   `BatchTicket` (plain JSON, no prompt content) for the job payload, holding each item's
+   tenant, reservation, prompt version and the SHA-256 of its exact request. `pollBatch` reads
+   the status; `collectBatch` streams the results in any order, matches them by `custom_id`,
+   settles and records each item, and interprets it with the call the engine rebuilds from
+   stored input, refusing a rebuild whose task, prompt version or request hash differs (another
+   tenant's call, or content edited during the batch window; security audit MEDIUM-5). A
+   missing result counts as an expired one. `retireBatch` then deletes the batch, so
    Anthropic does not keep its inputs and outputs for 29 days; deleting twice is harmless.
 
 ## Consequences
@@ -49,6 +59,8 @@ errors) from ones no retry fixes (400, 401, 403, 404, 413, spend caps).
 - During an outage each engine process makes a handful of calls, then pauses AI work; scans,
   recipes and data fixes carry on.
 - A malformed answer is a dead job, visible in queue metrics, never a silent retry loop.
+- Ambiguous failures overstate spend rather than understate it; a store near its budget may be
+  paused one call early.
 - The breaker is per process; with several engine replicas each opens on its own, which bounds
   wasted calls at a few per replica.
 
@@ -60,6 +72,8 @@ errors) from ones no retry fixes (400, 401, 403, 404, 413, spend caps).
   seconds, doubling up to 10 minutes; while it is open the ai worker stops claiming AI jobs and
   scans continue without AI drafts. Batches are deleted from Anthropic as soon as their
   results are stored."
+- PLAN §13 "Cost model", add: "A timed-out or disconnected attempt is charged at its worst
+  case, because it may have been billed (ADR-215)."
 
 ## Rejected alternatives
 
