@@ -1,0 +1,319 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "automation_limit": "Automated testing finds only part of all accessibility barriers. Deque, the maker of the axe-core engine these checks use, reports that axe-core finds on average 57% of WCAG issues. The rest need a person to check.",
+  "coverage_heading": "What the automated checks cover",
+  "coverage_intro": "WCAG 2.2 has 55 success criteria at Level A and AA. Each one below is either tested by automated checks, tested only in part, or not tested by automated checks at all.",
+  "coverage_automated_heading": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tested by automated checks: {count} criterion",
+        "countPlural=*": "Tested by automated checks: {count} criteria"
+      }
+    }
+  ],
+  "coverage_partial_heading": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tested in part; a person must check the rest: {count} criterion",
+        "countPlural=*": "Tested in part; a person must check the rest: {count} criteria"
+      }
+    }
+  ],
+  "coverage_manual_heading": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Not tested by automated checks; a person must check: {count} criterion",
+        "countPlural=*": "Not tested by automated checks; a person must check: {count} criteria"
+      }
+    }
+  ],
+  "coverage_none": "None.",
+  "coverage_ruleset": "Checks used: {ruleset}.",
+  "coverage_criterion": "{id} {name} (Level {level})",
+  "coverage_review_queue": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} result that the automated checks could not decide is waiting for a person to review. It is counted neither as a failure nor as a pass.",
+        "countPlural=*": "{count} results that the automated checks could not decide are waiting for a person to review. They are counted neither as failures nor as passes."
+      }
+    }
+  ],
+  "coverage_review_queue_empty": "Results that the automated checks cannot decide go to a person for review. They are counted neither as failures nor as passes.",
+  "statement_title": "Accessibility statement for {site}",
+  "statement_intro": "{organization} wants everyone, including people with disabilities, to be able to use {site}. This statement explains the standard we work to, what we have checked, the barriers we know about, and how to contact us.",
+  "statement_scope": "This statement covers {site} at {url}.",
+  "statement_measures_heading": "Measures we take",
+  "statement_measure_scans_daily": "We run automated accessibility checks on {site} every day.",
+  "statement_measure_scans_weekly": "We run automated accessibility checks on {site} every week.",
+  "statement_measure_source": "We fix barriers where they start, in our store data and theme code, and keep a dated record of every fix.",
+  "statement_measure_fixed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Since {date}, we have fixed {count} barrier found by these checks, and a later scan showed it was gone.",
+        "countPlural=*": "Since {date}, we have fixed {count} barriers found by these checks, and later scans showed they were gone."
+      }
+    }
+  ],
+  "statement_status_heading": "Status against WCAG 2.2 Level AA",
+  "statement_standard": "The Web Content Accessibility Guidelines (WCAG) 2.2, published by the W3C, describe how to make web content more accessible to people with disabilities. We use WCAG 2.2 Level AA as our standard.",
+  "statement_status_not_evaluated": "We have not yet evaluated {site} against WCAG 2.2 Level AA. We will update this statement with the results of the first evaluation.",
+  "statement_status_known_barriers": "{site} partially meets WCAG 2.2 Level AA: some of its content does not meet the standard yet. The barriers we know about are listed under Known limitations.",
+  "statement_status_no_known_barriers": "Our latest automated checks, on {date}, found no failures. Automated checks cannot test every WCAG 2.2 Level AA success criterion, so this does not show that {site} meets the standard in full. The criteria that need a person to check are listed under How we checked.",
+  "statement_checks_passed": [
+    {
+      "declarations": ["input total", "local totalPlural = total: plural"],
+      "selectors": ["totalPlural"],
+      "match": {
+        "totalPlural=one": "In the scan on {date}, {site} passed {passed} of {total} automated WCAG 2.2 Level AA check.",
+        "totalPlural=*": "In the scan on {date}, {site} passed {passed} of {total} automated WCAG 2.2 Level AA checks."
+      }
+    }
+  ],
+  "statement_scan_partial": "Some pages could not be checked in that scan, so its results cover only the pages that were.",
+  "statement_limitations_heading": "Known limitations",
+  "statement_limitations_intro": "These are the accessibility barriers we know about on {site}. We are working to remove them.",
+  "statement_limitations_none": "We do not know of any barriers on {site} at the moment. If you find one, please tell us.",
+  "statement_limitations_unknown": "We have not evaluated {site} yet, so we cannot list the barriers on it. If you find one, please tell us.",
+  "statement_limitation_criteria": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "WCAG 2.2 success criterion: {criteria}.",
+        "countPlural=*": "WCAG 2.2 success criteria: {criteria}."
+      }
+    }
+  ],
+  "statement_limitation_places": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Found in {count} place in the latest scan.",
+        "countPlural=*": "Found in {count} places in the latest scan."
+      }
+    }
+  ],
+  "statement_limitation_reason": "Why: {reason}",
+  "statement_limitation_alternative": "Alternative: {alternative}",
+  "statement_limitation_planned": "We plan to fix this by {date}.",
+  "statement_limitations_more": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} more barrier found by the automated checks is not listed here.",
+        "countPlural=*": "{count} more barriers found by the automated checks are not listed here."
+      }
+    }
+  ],
+  "statement_third_party_shopify": "Shopify provides the checkout pages, and some features come from third-party apps. We report barriers we find in them to their providers.",
+  "statement_third_party_generic": "Some features come from third-party services. We report barriers we find in them to their providers.",
+  "statement_feedback_heading": "Feedback and contact",
+  "statement_feedback_intro": "If you find an accessibility barrier on {site}, or need information in a different format, please tell us:",
+  "statement_feedback_email": "Email: {email}",
+  "statement_feedback_phone": "Phone: {phone}",
+  "statement_feedback_post": "Post: {address}",
+  "statement_feedback_form": "Online form: {form}",
+  "statement_feedback_form_link": "report a barrier",
+  "statement_feedback_response": "We aim to reply within {responseTime}.",
+  "statement_technical_heading": "Technical information",
+  "statement_technical": "{site} relies on HTML, CSS, JavaScript and WAI-ARIA to work with your web browser and any assistive technology you use.",
+  "statement_assessment_heading": "How we checked",
+  "statement_assessment_automated": [
+    {
+      "declarations": ["input pages", "local pagesPlural = pages: plural"],
+      "selectors": ["pagesPlural"],
+      "match": {
+        "pagesPlural=one": "We evaluate {site} ourselves, with Rampsmith's automated checks of WCAG 2.2 Level A and AA. The latest scan finished on {date} and checked {pages} page.",
+        "pagesPlural=*": "We evaluate {site} ourselves, with Rampsmith's automated checks of WCAG 2.2 Level A and AA. The latest scan finished on {date} and checked {pages} pages."
+      }
+    }
+  ],
+  "statement_assessment_none": "No evaluation has been completed yet.",
+  "statement_assessment_other_dated": "{description} ({date})",
+  "statement_complaints_heading": "If you are not satisfied with our response",
+  "statement_complaints_link": "More information: {link}",
+  "statement_prepared": "This statement was prepared on {date}.",
+  "statement_reviewed": "It was last reviewed on {date}.",
+  "log_title": "Remediation log for {site}",
+  "log_column_fix_id": "Fix ID",
+  "log_column_kind": "Fix type",
+  "log_column_channel": "Delivered through",
+  "log_column_origin": "Written by",
+  "log_column_model": "AI model",
+  "log_column_status": "Fix status",
+  "log_column_finding_id": "Finding ID",
+  "log_column_rule": "Rule",
+  "log_column_criteria": "WCAG 2.2 success criteria",
+  "log_column_impact": "Impact",
+  "log_column_finding": "Finding",
+  "log_column_change": "What changed",
+  "log_column_before": "Before",
+  "log_column_after": "After",
+  "log_column_proposed_at": "Proposed",
+  "log_column_approved_by": "Approved by",
+  "log_column_approved_at": "Approved",
+  "log_column_applied_at": "Applied",
+  "log_column_verification": "Verification result",
+  "log_column_verification_scan": "Verification scan",
+  "log_column_verified_at": "Verified",
+  "log_column_reverts": "Undoes fix",
+  "label_kind_data": "Store data",
+  "label_kind_code": "Theme code",
+  "label_channel_admin_api": "Shopify Admin API",
+  "label_channel_github_pr": "GitHub pull request",
+  "label_channel_theme_package": "Patched theme package",
+  "label_origin_rule": "Rampsmith rule",
+  "label_origin_ai": "AI draft, approved by a person",
+  "label_origin_human": "A person",
+  "label_status_proposed": "Proposed",
+  "label_status_approved": "Approved",
+  "label_status_applying": "Being applied",
+  "label_status_applied": "Applied",
+  "label_status_verified": "Verified",
+  "label_status_failed": "Failed",
+  "label_status_reverted": "Undone",
+  "label_status_rejected": "Declined",
+  "label_verification_passed": "Passed: a later scan no longer found the barrier",
+  "label_verification_failed": "Failed: the fix could not be applied, or a later scan still found the barrier or a new one",
+  "label_verification_pending": "Waiting for a verification scan",
+  "label_verification_not_applied": "Not applied",
+  "label_verification_reverted": "Undone",
+  "label_verification_rejected": "Declined",
+  "label_impact_critical": "Critical",
+  "label_impact_serious": "Serious",
+  "label_impact_moderate": "Moderate",
+  "label_impact_minor": "Minor",
+  "label_approver_system": "Rampsmith (automatic)",
+  "label_change_data": "{resource}, field {field}",
+  "label_change_code": "Theme code change {reference}",
+  "summary_title": "Accessibility summary for {site}",
+  "summary_period": "Results from {from} to {to}.",
+  "summary_generated": "Prepared on {date}.",
+  "summary_key_figures_heading": "Key figures",
+  "summary_latest_pass": [
+    {
+      "declarations": ["input total", "local totalPlural = total: plural"],
+      "selectors": ["totalPlural"],
+      "match": {
+        "totalPlural=one": "Latest scan, {date}: passed {passed} of {total} automated WCAG 2.2 Level AA check ({rate}).",
+        "totalPlural=*": "Latest scan, {date}: passed {passed} of {total} automated WCAG 2.2 Level AA checks ({rate})."
+      }
+    }
+  ],
+  "summary_no_scans": "No scan has finished yet, so there are no results to show.",
+  "summary_open_findings_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} open finding",
+        "countPlural=*": "{count} open findings"
+      }
+    }
+  ],
+  "summary_fixes_verified": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} fix verified in this period",
+        "countPlural=*": "{count} fixes verified in this period"
+      }
+    }
+  ],
+  "summary_fixes_waiting": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} proposed fix waiting for approval",
+        "countPlural=*": "{count} proposed fixes waiting for approval"
+      }
+    }
+  ],
+  "summary_pass_rate_heading": "Automated pass rate over time",
+  "summary_pass_rate_caption": "Share of automated WCAG 2.2 Level AA checks passed in each scan",
+  "summary_pass_rate_alt_single": "Line chart of one scan, on {date}: {rate} of automated checks passed.",
+  "summary_pass_rate_alt": "Line chart of {count} scans from {first} to {last}. The pass rate went from {firstRate} to {lastRate}, with a low of {minRate} and a high of {maxRate}. The table below lists every scan.",
+  "summary_pass_rate_axis": "Pass rate",
+  "summary_column_scan_date": "Scan date",
+  "summary_column_passed": "Checks passed",
+  "summary_column_run": "Checks run",
+  "summary_column_rate": "Pass rate",
+  "summary_impact_heading": "Open findings by impact",
+  "summary_impact_caption": "Open findings from the latest scan, by impact",
+  "summary_impact_alt": "Bar chart of open findings by impact: {critical} critical, {serious} serious, {moderate} moderate and {minor} minor. The table below has the same numbers.",
+  "summary_column_impact": "Impact",
+  "summary_column_open": "Open findings",
+  "summary_impact_total": "Total",
+  "summary_about_heading": "About these results",
+  "summary_about_rate": "A check is one automated rule for WCAG 2.2 Level A or AA, tested on one page in one state. The pass rate is the checks passed divided by the checks run in that scan. Results waiting for a person to review are not counted.",
+  "summary_about_impact": "Impact is the severity the checks assign: critical and serious barriers block tasks for some people; moderate and minor ones make tasks harder.",
+  "wcag_1_1_1": "Non-text Content",
+  "wcag_1_2_1": "Audio-only and Video-only (Prerecorded)",
+  "wcag_1_2_2": "Captions (Prerecorded)",
+  "wcag_1_2_3": "Audio Description or Media Alternative (Prerecorded)",
+  "wcag_1_2_4": "Captions (Live)",
+  "wcag_1_2_5": "Audio Description (Prerecorded)",
+  "wcag_1_3_1": "Info and Relationships",
+  "wcag_1_3_2": "Meaningful Sequence",
+  "wcag_1_3_3": "Sensory Characteristics",
+  "wcag_1_3_4": "Orientation",
+  "wcag_1_3_5": "Identify Input Purpose",
+  "wcag_1_4_1": "Use of Color",
+  "wcag_1_4_2": "Audio Control",
+  "wcag_1_4_3": "Contrast (Minimum)",
+  "wcag_1_4_4": "Resize Text",
+  "wcag_1_4_5": "Images of Text",
+  "wcag_1_4_10": "Reflow",
+  "wcag_1_4_11": "Non-text Contrast",
+  "wcag_1_4_12": "Text Spacing",
+  "wcag_1_4_13": "Content on Hover or Focus",
+  "wcag_2_1_1": "Keyboard",
+  "wcag_2_1_2": "No Keyboard Trap",
+  "wcag_2_1_4": "Character Key Shortcuts",
+  "wcag_2_2_1": "Timing Adjustable",
+  "wcag_2_2_2": "Pause, Stop, Hide",
+  "wcag_2_3_1": "Three Flashes or Below Threshold",
+  "wcag_2_4_1": "Bypass Blocks",
+  "wcag_2_4_2": "Page Titled",
+  "wcag_2_4_3": "Focus Order",
+  "wcag_2_4_4": "Link Purpose (In Context)",
+  "wcag_2_4_5": "Multiple Ways",
+  "wcag_2_4_6": "Headings and Labels",
+  "wcag_2_4_7": "Focus Visible",
+  "wcag_2_4_11": "Focus Not Obscured (Minimum)",
+  "wcag_2_5_1": "Pointer Gestures",
+  "wcag_2_5_2": "Pointer Cancellation",
+  "wcag_2_5_3": "Label in Name",
+  "wcag_2_5_4": "Motion Actuation",
+  "wcag_2_5_7": "Dragging Movements",
+  "wcag_2_5_8": "Target Size (Minimum)",
+  "wcag_3_1_1": "Language of Page",
+  "wcag_3_1_2": "Language of Parts",
+  "wcag_3_2_1": "On Focus",
+  "wcag_3_2_2": "On Input",
+  "wcag_3_2_3": "Consistent Navigation",
+  "wcag_3_2_4": "Consistent Identification",
+  "wcag_3_2_6": "Consistent Help",
+  "wcag_3_3_1": "Error Identification",
+  "wcag_3_3_2": "Labels or Instructions",
+  "wcag_3_3_3": "Error Suggestion",
+  "wcag_3_3_4": "Error Prevention (Legal, Financial, Data)",
+  "wcag_3_3_7": "Redundant Entry",
+  "wcag_3_3_8": "Accessible Authentication (Minimum)",
+  "wcag_4_1_2": "Name, Role, Value",
+  "wcag_4_1_3": "Status Messages"
+}

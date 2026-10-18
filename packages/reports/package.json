@@ -1,0 +1,23 @@
+{
+  "name": "@rampsmith/reports",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure renderers for Rampsmith's reports (PLAN §16): the merchant accessibility statement, the remediation log export, the executive summary, and their tagged PDFs.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@rampsmith/claims-lint": "workspace:*",
+    "@rampsmith/tsconfig": "workspace:*",
+    "@sparticuz/chromium": "153.0.0",
+    "axe-core": "4.14.0",
+    "pdfjs-dist": "6.4.299",
+    "playwright-core": "1.64.1",
+    "vitest": "5.0.5"
+  }
+}
