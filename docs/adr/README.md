@@ -33,6 +33,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [025](025-egress-guard-and-scan-tokens.md) | The egress guard, scan tokens and the engine skeleton | Accepted |
 | [026](026-design-system-primitives.md) | Design-system primitives in `packages/ui` | Accepted |
 | [027](027-challenge-detection-from-s2.md) | Challenge detection calibrated by spike S-2 | Accepted |
+| [028](028-service-images.md) | Images for web, engine and egress | Accepted |
 
 ## Template
 
