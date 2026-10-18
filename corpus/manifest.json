@@ -158,6 +158,54 @@
           }
         }
       ]
+    },
+    {
+      "name": "cedar",
+      "kind": "failing",
+      "path": "themes/cedar",
+      "store": "harbor",
+      "golden": "golden/cedar.json",
+      "description": "A current theme built on theme blocks: sections that render {% content_for 'blocks' %}, blocks in blocks/ with their own schema, {% stylesheet %} in sections, {% liquid %}, a password layout, and the custom widgets (carousel dots, listbox variant picker, accordion) where hand-written ARIA goes wrong.",
+      "variety": [
+        "theme blocks rendered with {% content_for 'blocks' %}",
+        "{% stylesheet %} inside a section",
+        "icons inlined with inline_asset_content",
+        "srcset images in a block",
+        "a password layout with no landmarks",
+        "custom widgets with misused ARIA roles and states",
+        "an embedded video iframe",
+        "pagination with small targets"
+      ],
+      "pages": [
+        {
+          "id": "index",
+          "template": "index",
+          "path": "/"
+        },
+        {
+          "id": "product",
+          "template": "product",
+          "path": "/products/linen-shirt",
+          "resource": {
+            "type": "product",
+            "handle": "linen-shirt"
+          }
+        },
+        {
+          "id": "collection",
+          "template": "collection",
+          "path": "/collections/summer-edit",
+          "resource": {
+            "type": "collection",
+            "handle": "summer-edit"
+          }
+        },
+        {
+          "id": "password",
+          "template": "password",
+          "path": "/password"
+        }
+      ]
     }
   ]
 }

@@ -365,7 +365,10 @@ export class ThemeRenderer {
     return ids.map((blockId) => {
       const raw = asRecord(blocks[blockId], `${owner} block ${blockId}`);
       const type = asString(raw['type'], `${owner} block ${blockId}.type`);
-      const local = schemas.find((s) => isRecord(s) && s['type'] === type);
+      // A local block has a name; `{ "type": "slide" }` alone refers to a theme block.
+      const local = schemas.find(
+        (s) => isRecord(s) && s['type'] === type && typeof s['name'] === 'string',
+      );
       const themeBlockPath = `blocks/${type}.liquid`;
       let schemaSettings: unknown = isRecord(local) ? local['settings'] : undefined;
       let childSchemas: readonly unknown[] = [];

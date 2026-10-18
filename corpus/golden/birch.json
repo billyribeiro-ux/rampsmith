@@ -111,6 +111,7 @@
       "span": {
         "kind": "css-declaration",
         "file": "assets/theme.css.liquid",
+        "selector": ".product-card__vendor",
         "start": 2679,
         "end": 2693,
         "property": "color",
@@ -611,6 +612,7 @@
       "span": {
         "kind": "css-declaration",
         "file": "assets/theme.css.liquid",
+        "selector": ".btn:focus",
         "start": 755,
         "end": 765,
         "property": "outline",

@@ -120,7 +120,7 @@
       "minimum": 0
     },
     "anchor": {
-      "description": "The source text that starts at the span's start offset: for an element, its start tag up to the first line end; for a CSS declaration or data, the whole span. It keeps the file reviewable and lets the tooling re-find the span after an edit. Mappers ignore it.",
+      "description": "The source text at the span's start: for an element, the start of its start tag, long enough to occur once in the file; for a CSS declaration, the whole declaration, occurring once in its rule; for data, the whole span. It keeps the file reviewable and lets the tooling re-find the span after an edit. Mappers ignore it.",
       "type": "string",
       "minLength": 2
     },
@@ -186,7 +186,7 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "file", "start", "end", "property", "anchor"],
+          "required": ["kind", "file", "selector", "start", "end", "property", "anchor"],
           "properties": {
             "kind": {
               "const": "css-declaration"
@@ -195,6 +195,11 @@
               "$ref": "#/$defs/themePath",
               "type": "string",
               "pattern": "\\.(?:css|liquid)$"
+            },
+            "selector": {
+              "description": "The selector of the one rule in the file that holds the declaration, written as in the file.",
+              "type": "string",
+              "minLength": 1
             },
             "start": {
               "$ref": "#/$defs/offset"

@@ -1,0 +1,21 @@
+{%- if block.settings.image != blank -%}
+  <div class="image-block" {{ block.shopify_attributes }}>
+    <img
+      srcset="{{ block.settings.image | image_url: width: 400 }} 400w, {{ block.settings.image | image_url: width: 800 }} 800w"
+      src="{{ block.settings.image | image_url: width: 800 }}"
+      sizes="(min-width: 990px) 50vw, 100vw"
+      width="{{ block.settings.image.width }}"
+      height="{{ block.settings.image.height }}"
+      loading="lazy"
+      class="image-block__img"
+    >
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Image",
+  "settings": [{ "type": "image_picker", "id": "image", "label": "Image" }],
+  "presets": [{ "name": "Image" }]
+}
+{% endschema %}

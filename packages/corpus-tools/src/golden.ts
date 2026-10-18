@@ -73,6 +73,8 @@ export type Span =
       /** A CSS declaration, in a CSS asset or in a Liquid file's `{% stylesheet %}` or `<style>`. */
       readonly kind: 'css-declaration';
       readonly file: string;
+      /** The selector of the one rule in the file that holds the declaration. */
+      readonly selector: string;
       readonly start: number;
       readonly end: number;
       readonly property: string;

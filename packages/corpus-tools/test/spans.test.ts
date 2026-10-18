@@ -3,6 +3,7 @@ import type { Span } from '../src/golden.ts';
 import { loadStore } from '../src/render/store.ts';
 import type { Theme } from '../src/render/theme.ts';
 import {
+  cssDeclaration,
   elementStarts,
   jsonValueAt,
   occurrencesOf,
@@ -57,6 +58,21 @@ describe('elementStarts', () => {
   });
 });
 
+describe('cssDeclaration', () => {
+  it('finds a declaration inside the one rule with the selector', () => {
+    const source =
+      '.x a { color: red; }\n.y a { color: red; text-decoration: none; }\n.y a:hover { color: blue; }';
+    expect(cssDeclaration(source, '.y a', 'color: red')).toBe(source.indexOf('color: red', 20));
+    expect(cssDeclaration(source, '.y a', 'outline: 0')).toMatch(/has no declaration/);
+    expect(cssDeclaration('.a{color:red}.a{color:red}', '.a', 'color:red')).toMatch(
+      /more than one rule/,
+    );
+    expect(cssDeclaration('.a { color: red; color: red; }', '.a', 'color: red')).toMatch(
+      /more than once/,
+    );
+  });
+});
+
 describe('occurrencesOf', () => {
   it('finds overlapping matches', () => {
     expect(occurrencesOf('aaa', 'aa')).toEqual([0, 1]);
@@ -107,6 +123,7 @@ describe('spanProblem and relocate', () => {
     const decl: Span = {
       kind: 'css-declaration',
       file: 'assets/base.css',
+      selector: '.a',
       start,
       end: start + 'color: #a3a3a3'.length,
       property: 'color',

@@ -163,9 +163,11 @@ export function spanProblem(
       if (!new RegExp(`^${span.property}\\s*:`).test(span.anchor)) {
         return `the declaration does not set ${span.property}`;
       }
-      return occurrencesOf(source, span.anchor).length === 1
+      const found = cssDeclaration(source, span.selector, span.anchor);
+      if (typeof found === 'string') return found;
+      return found === span.start
         ? null
-        : 'the anchor occurs more than once in the file';
+        : `the declaration in ${span.selector} starts at ${String(found)}`;
     }
     case 'json-value': {
       const value = jsonValueAt(source, span.pointer);
@@ -201,9 +203,40 @@ export function relocate(span: Span, theme: Theme | null, store: StoreFixture | 
     const value = jsonValueAt(source, span.pointer);
     return value === null ? null : { ...span, ...value };
   }
+  if (span.kind === 'css-declaration') {
+    const start = cssDeclaration(source, span.selector, span.anchor);
+    return typeof start === 'string' ? null : { ...span, start, end: start + span.anchor.length };
+  }
   const [start, ...rest] = occurrencesOf(source, span.anchor);
   if (start === undefined || rest.length > 0) return null;
-  return span.kind === 'element'
-    ? { ...span, start }
-    : { ...span, start, end: start + span.anchor.length };
+  return { ...span, start };
+}
+
+/**
+ * The offset of `declaration` inside the one rule whose selector is `selector`, or why there
+ * is none. The selector must begin the rule (after the file start, a `}` or whitespace) and be
+ * followed by `{`; the rule must occur once, and the declaration once inside it.
+ */
+export function cssDeclaration(
+  source: string,
+  selector: string,
+  declaration: string,
+): number | string {
+  const rules = occurrencesOf(source, selector).filter((i) => {
+    const before = i === 0 ? '' : source.charAt(i - 1);
+    return (
+      (before === '' || /[\s}]/.test(before)) && /^\s*\{/.test(source.slice(i + selector.length))
+    );
+  });
+  const [rule, ...others] = rules;
+  if (rule === undefined) return `no rule with the selector ${selector}`;
+  if (others.length > 0) return `the selector ${selector} begins more than one rule`;
+  const open = source.indexOf('{', rule + selector.length);
+  const close = source.indexOf('}', open);
+  if (close === -1) return `the rule ${selector} is not closed`;
+  const body = source.slice(open + 1, close);
+  const [hit, ...more] = occurrencesOf(body, declaration);
+  if (hit === undefined) return `the rule ${selector} has no declaration ${declaration}`;
+  if (more.length > 0) return `the declaration ${declaration} occurs more than once in ${selector}`;
+  return open + 1 + hit;
 }
