@@ -1,5 +1,5 @@
-"""Builds the WS-12 evaluation images: resized openly licensed photos plus synthetic CC0 ones.
-Run with: python3 -I make_images.py <raw dir> <out dir>"""
+"""Builds the WS-12 evaluation images (ADR-217): the resized openly licensed photos and the
+synthetic CC0 images. Usage: python3 -I make_images.py <raw dir> <out dir>; LICENSES.md lists the inputs."""
 import sys, os
 from PIL import Image, ImageDraw, ImageFont
 
