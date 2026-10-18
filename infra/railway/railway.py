@@ -49,11 +49,12 @@ IMAGE_REPOSITORIES = {
     "egress": f"{REGISTRY}/rampsmith-egress",
 }
 IMAGE_INPUTS = {name: f"RAMPSMITH_IMAGE_{name.upper()}" for name in IMAGE_REPOSITORIES}
-# The upstream collector, pinned by digest (ADR-184); Renovate refreshes it.
-# otel/opentelemetry-collector-contrib:0.163.1
+# The upstream collector, pinned by its index digest (ADR-184); Renovate refreshes it.
+# opentelemetry-collector-contrib:0.163.1, digest read from GHCR and Docker Hub (identical) by
+# release.yml on 2026-10-18 (run 39088737207). GHCR: no anonymous pull limits.
 COLLECTOR_IMAGE = (
-    "otel/opentelemetry-collector-contrib"
-    "@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib"
+    "@sha256:1175b03003053962012f5a231f5567f66a3e8fdb960c7835c0e48f7aa1555806"
 )
 COLLECTOR_CONFIG = Path(__file__).resolve().parent.parent / "collector" / "config.yaml"
 

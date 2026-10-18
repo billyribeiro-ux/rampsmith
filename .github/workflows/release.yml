@@ -117,20 +117,6 @@ jobs:
           docker pull "$image"
           python infra/collector/tests/smoke.py "$image"
 
-  # Temporary, removed once its output is pinned: read the collector image's index digest.
-  pins:
-    name: resolve the collector digest
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - run: |
-          for ref in otel/opentelemetry-collector-contrib:0.163.1 ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1; do
-            docker buildx imagetools inspect "$ref" | head -5
-          done
-
   # Pull requests: build and smoke-test each image locally; nothing leaves the runner.
   images:
     name: image ${{ matrix.service }} (dry run)

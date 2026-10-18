@@ -445,7 +445,9 @@ class Images(unittest.TestCase):
     def test_the_collector_image_is_pinned(self) -> None:
         module = load_module()
         self.assertRegex(
-            module.COLLECTOR_IMAGE, r"^otel/opentelemetry-collector-contrib@sha256:[0-9a-f]{64}$"
+            module.COLLECTOR_IMAGE,
+            r"^ghcr\.io/open-telemetry/opentelemetry-collector-releases/"
+            r"opentelemetry-collector-contrib@sha256:[0-9a-f]{64}$",
         )
         self.assertNotRegex(module.COLLECTOR_IMAGE, r"@sha256:0{64}$", "pin the real digest")
 

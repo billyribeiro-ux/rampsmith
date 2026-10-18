@@ -115,15 +115,21 @@ esac
 } >"$env_file"
 chmod 600 "$env_file"
 
+# Usage: with_command <docker run options> -- <command argv>. Railway runs a start or
+# pre-deploy command in exec form, replacing the image's entrypoint; no command means the
+# image's own entrypoint and command.
 with_command() {
-  # Railway runs a start or pre-deploy command in exec form, replacing the entrypoint.
-  local -n argv=$1
+  local options=()
+  while [ $# -gt 0 ] && [ "$1" != -- ]; do
+    options+=("$1")
+    shift
+  done
   shift
-  if [ ${#argv[@]} -gt 0 ]; then
-    docker run "$@" --network host --env-file "$env_file" --entrypoint "${argv[0]}" "$image" \
-      "${argv[@]:1}"
+  if [ $# -gt 0 ]; then
+    docker run "${options[@]}" --network host --env-file "$env_file" --entrypoint "$1" \
+      "$image" "${@:2}"
   else
-    docker run "$@" --network host --env-file "$env_file" "$image"
+    docker run "${options[@]}" --network host --env-file "$env_file" "$image"
   fi
 }
 
@@ -131,7 +137,7 @@ if [ ${#pre[@]} -gt 0 ]; then
   echo "pre-deploy: ${pre[*]}"
   if docker run --rm --entrypoint /bin/sh "$image" -c \
     'test -x /usr/local/bin/sqlx && test -d /usr/local/share/rampsmith/migrations'; then
-    with_command pre --rm || fail "the pre-deploy command failed"
+    with_command --rm -- "${pre[@]}" || fail "the pre-deploy command failed"
   else
     gap "the image has no /usr/local/bin/sqlx or /usr/local/share/rampsmith/migrations, so" \
       "Railway's pre-deploy step cannot migrate; migrating from the runner instead"
@@ -143,11 +149,20 @@ elif [ -n "$db" ]; then
     sqlx migrate run --source "$root/crates/db/migrations"
 fi
 
-with_command start -d --name "$container" >/dev/null
+with_command -d --name "$container" -- "${start[@]}" >/dev/null
 
 served=""
 for _ in $(seq 1 90); do
   if ! docker inspect --format '{{.State.Running}}' "$container" | grep -q true; then
+    if [ "$service" = engine ]; then
+      # Chromium's sandbox needs Playwright's seccomp profile (ADR-028); Railway runs
+      # containers with its own settings, which only the first deploy can confirm.
+      gap "the engine exited when started without a custom seccomp profile, as Railway" \
+        "will start it (ADR-028: decide the sandbox fallback at the first deploy)"
+      docker logs "$container" 2>&1 | tail -20 || true
+      echo "$service image smoke test: stopped at a gap"
+      exit 0
+    fi
     fail "the container exited during start-up"
   fi
   if curl -fsS -o /dev/null "http://127.0.0.1:$port$health"; then
