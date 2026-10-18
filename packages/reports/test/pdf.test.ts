@@ -10,9 +10,16 @@ import { join } from 'node:path';
 import { getDocument, type PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { Browser } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { renderPdf, ReportRenderError, type ReportDocument } from '../src/index.ts';
+import {
+  renderPdf,
+  renderStatement,
+  renderSummary,
+  ReportRenderError,
+  type ReportDocument,
+} from '../src/index.ts';
 import { printIsolated } from '../src/pdf.ts';
 import { launch } from './support/browser.ts';
+import { hostileStatement, hostileSummary } from './support/hostile.ts';
 import { outputs } from './support/outputs.ts';
 
 interface Node {
@@ -177,6 +184,25 @@ describe('every report prints to a tagged PDF with an outline', () => {
   it('refuses anything but a document this package rendered', async () => {
     const forged = { lang: 'en', title: 't', html: '<p>x</p>' } as unknown as ReportDocument;
     await expect(renderPdf(forged, browser)).rejects.toThrow(TypeError);
+  });
+});
+
+describe('hostile merchant data reaches the PDF only as text', () => {
+  it.each([
+    ['the statement', () => renderStatement(hostileStatement(origin)).document],
+    ['the summary', () => renderSummary(hostileSummary(origin)).document],
+  ])('%s prints, fetches nothing, and shows the markup as text', async (_what, build) => {
+    const before = hits.length;
+    const doc = await open(await renderPdf(build(), browser));
+    const text = await allText(doc);
+    expect(hits.slice(before)).toEqual([]);
+    // Text extraction splits lines at wrap points (and drops the colon at a wrap after the
+    // host), so compare the pieces without whitespace.
+    const compact = text.replace(/\s/gu, '');
+    expect(compact).toContain('<imgsrc="http://127.0.0.1');
+    expect(compact).toContain('/escaped-img">');
+    expect(compact).toContain('<iframesrc="file:///etc/hostname"></iframe>');
+    expect(text).not.toContain(SECRET);
   });
 });
 
