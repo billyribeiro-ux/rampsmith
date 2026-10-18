@@ -92,10 +92,15 @@ Checked on 17–18 Oct 2026:
    **string** values of span, span-event and log attributes, span status messages and log
    bodies (a structured body is turned into its string form first): sensitive query and form
    parameters (including `client_secret`, `api_key` and presigned-URL `X-Amz-Signature` and
-   `X-Amz-Credential`), JWTs, Shopify, GitHub, Stripe and Anthropic token shapes, PEM private
-   keys, `Bearer`/`Basic` credentials, passwords in URLs, and email addresses; resource and
-   scope attributes get the token patterns. Values inside arrays or nested maps of other
-   attributes are not rewritten. Services are written not to record any of this; the collector
+   `X-Amz-Credential`), the same names as JSON keys, environment-style assignments
+   (`AWS_SECRET_ACCESS_KEY=...`, `RAMPSMITH_MASTER_KEYS: ...`), header lines written as text
+   (`x-api-key: ...`, `cookie: ...`), JWTs, Shopify, GitHub, Stripe and Anthropic token
+   shapes, PEM private keys, `Bearer`/`Basic` credentials, passwords in URLs, and email
+   addresses; resource and scope attributes get the token patterns, metric attributes the
+   token and email patterns. Not rewritten: values inside arrays or nested maps of other
+   attributes, span links and event names. The generic query names (`code`, `state`, `key`,
+   `session`) are masked only after `?`, `&`, `#`, `;` or at the start of a value, so log text
+   such as `status code=503` survives. Services are written not to record any of this; the collector
    is the second line, not the first.
 7. **Health**: the `health_check` extension on `[::]:13133/healthz`, Railway's health check.
 8. **Verification now** (LAUNCH.md E substitute): `infra/collector/tests/smoke.py` runs the

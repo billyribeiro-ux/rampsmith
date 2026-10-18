@@ -133,7 +133,21 @@ One high, one medium and nine low findings, each fixed:
 
 The review also noted that a rollback across a migration would fail at `sqlx migrate run`
 (now `--ignore-missing`, ADR-183) and that no Renovate rule reads `COLLECTOR_IMAGE` (the
-comment no longer claims one; integration note 11). The third review is under "Final state".
+comment no longer claims one; integration note 11).
+
+### Third review (effort max, on `9c9f3cd`)
+
+Verdict PASS (no critical, high or medium finding), with three low findings, each fixed:
+
+| Finding | Fix |
+| --- | --- |
+| R3-1: CLI 5.70.0 exits 0 on a pinned apply even when Railway reports `failed` or `partially_applied` | `apply --json` into a runner file; `railway_plan.py applied` refuses anything but `applied` or `noop` and any failed change, without printing outputs |
+| R3-2: the kind allowlist accepted any `*.create`/`*.update`/`*.set`; destructive `resource.update`s relied on the label | exactly `resource.create`, `resource.update`, `variable.set`; database moves and volume resizes or detaches refused by summary and details too |
+| R3-3: JSON-key secrets, environment-style assignments and header text were not masked; `code=503` was over-masked | three more patterns; generic query names only after `?`, `&`, `#`, `;` or at the start; smoke test plants the new shapes |
+
+It also confirmed that the api's `/readyz` already accepts a newer schema
+(`crates/api/src/health.rs` refuses only `applied < expected`), so integration note 12 is
+met. The final run is under "Final state".
 
 ## Integration notes (for the integrator and the main builder)
 
@@ -164,8 +178,9 @@ comment no longer claims one; integration note 11). The third review is under "F
 11. `renovate.json`: a regex manager for `COLLECTOR_IMAGE` in `infra/railway/railway.py`, for
     `BUILDKIT_IMAGE` in `release.yml`, for `railway-cli.sha256` (with `RAILWAY_CLI_VERSION`)
     and for `infra/railway/tools/shopify-cli`; until then they are updated by hand.
-12. The api's `/readyz` must accept a database whose newest migration is newer than the
-    build's own (a rollback, ADR-183), while still refusing an older one.
+12. The api's `/readyz` must keep accepting a database whose newest migration is newer than the
+    build's own (a rollback, ADR-183), while refusing an older one; `crates/api/src/health.rs`
+    does today.
 
 ## Founder setup (to merge into `docs/FOUNDER_SETUP.md`)
 

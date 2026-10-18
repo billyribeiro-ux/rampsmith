@@ -111,9 +111,13 @@ one job:
      the api alone and passes every other service the image it runs (an empty `ctl` image on
      the first deploy, so ctl starts only after the migrations); phase 2 moves every service.
      Each phase is `railway config plan --json --out`, then `railway_plan.py check` (the plan
-     succeeded, no error diagnostic, every change's kind is a create, an update or a set and
-     none is labelled destructive, every image exactly as expected, no source removed), then
-     `railway config apply --plan --yes`. The JSON and the `.plan` file come from one CLI call
+     succeeded, no error diagnostic, every change's kind is exactly `resource.create`,
+     `resource.update` or `variable.set`, the only non-deleting kinds CLI 5.70.0 emits, none
+     labelled destructive or summarised as a database move or a volume resize or detach, every
+     image exactly as expected, no source removed), then `railway config apply --plan --yes
+     --json` and `railway_plan.py applied`, which refuses any status but `applied` or `noop`
+     and any failed change: the CLI exits 0 on a pinned apply whatever Railway reports
+     (`src/commands/config/runner.rs`, `apply_pinned_plan`). The JSON and the `.plan` file come from one CLI call
      and carry the change set Railway's own preview returned (`src/iac/engine.rs`), with
      Railway's severities, which is why kinds are checked too; so the change set applied is
      the one checked and a dashboard edit in between fails the apply. `--environment` must

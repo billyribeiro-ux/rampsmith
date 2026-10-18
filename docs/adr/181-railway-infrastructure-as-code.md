@@ -47,7 +47,9 @@ as the `v5.70.0` tag of railwayapp/cli, 16 Oct 2026):
 - `src/iac/saved_plan.rs`: `railway config plan --out <file>` pins the change set together
   with the environment's config etag and a hash of `./.railway`; `railway config apply --plan
   <file>` applies exactly that change set and fails if the environment changed since, or if
-  `./.railway` hashes differently.
+  `./.railway` hashes differently. Unlike a plain apply, a pinned apply does not turn a
+  `failed` or `partially_applied` result into an error (`runner.rs`, `apply_pinned_plan`), so
+  `deploy.yml` reads the result itself (ADR-185).
 - `railway config plan --json` prints `ok`, `changeSet.changes` (summary, severity, kind),
   `diagnostics`, `currentGraph` and `desiredGraph`, with variable values redacted.
 
