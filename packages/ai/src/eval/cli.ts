@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `pnpm --filter @rampsmith/ai run eval [-- --live] [--record] [--no-grade] [--limit N] [--out file]`
+ * `pnpm --filter @rampsmith/ai run eval [--live] [--record] [--no-grade] [--limit N] [--out file]`
  *
  * Recorded mode needs nothing. Live mode needs `ANTHROPIC_API_KEY` (LAUNCH.md section C,
  * row 5); without it the command explains what is missing and exits 2. The key is never
@@ -12,7 +12,10 @@ import { parseArgs } from 'node:util';
 import { createAnthropicTransport } from '../transport.ts';
 import { formatReport, runEval } from './runner.ts';
 
+// pnpm 12 forwards a literal `--` separator to the script; it is not an argument.
+const argv = process.argv.slice(2);
 const { values } = parseArgs({
+  args: argv[0] === '--' ? argv.slice(1) : argv,
   options: {
     live: { type: 'boolean', default: false },
     record: { type: 'boolean', default: false },

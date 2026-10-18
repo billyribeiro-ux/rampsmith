@@ -55,7 +55,7 @@ Package Index, whose licences are stated in those packages, plus images drawn he
    stream in the documented response shape, marked `authored:` in their provenance, not
    captured from the API. They make the recorded run a substitute test of the pipeline and the
    metrics (90% approvable, 0% unsupported, 25% escalated), not a measurement of the model.
-   `pnpm --filter @rampsmith/ai run eval -- --live --record` replaces them with real responses
+   `pnpm --filter @rampsmith/ai run eval --live --record` replaces them with real responses
    once the key exists; then run `pnpm format`.
 6. **Live checks** (`test/live.test.ts`) run whenever `ANTHROPIC_API_KEY` is set and otherwise
    skip with a notice naming LAUNCH.md section C, row 5.
