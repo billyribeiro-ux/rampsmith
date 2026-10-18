@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { Link } from '@rampsmith/ui';
   import StandaloneShell from '#lib/components/StandaloneShell.svelte';
   import { m } from '#lib/paraglide/messages.js';
 </script>
@@ -13,7 +14,7 @@
   <h1>{m.home_heading()}</h1>
   <p class="lede">{m.home_lede()}</p>
   <p>{m.home_note()}</p>
-  <p><a href={resolve('dashboard')}>{m.home_sign_in()}</a></p>
+  <p><Link href={resolve('dashboard')}>{m.home_sign_in()}</Link></p>
 </StandaloneShell>
 
 <style>

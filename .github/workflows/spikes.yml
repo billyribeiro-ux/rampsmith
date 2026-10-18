@@ -1,0 +1,96 @@
+# Spikes and registry evidence (PLAN §11, §27). Runs only when a label is added to a pull
+# request (`run-spikes` for all, or `run-spike-s1`, `run-spike-s2`, `run-digests`), or by hand
+# once this file is on main. The spikes load third-party pages inside the free scanner's limits,
+# so a store is loaded at most once a day (docs/bot.md); their JSON goes to the log and an
+# artifact for the record in docs/spikes. Nothing here gates a merge.
+name: spikes
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: 'false'
+  MISE_VERSION: '2026.10.12'
+  BOT_INFO_URL: https://github.com/${{ github.repository }}/blob/${{ github.head_ref || github.ref_name }}/docs/bot.md
+
+jobs:
+  digests:
+    # Base images whose digests the sandbox registry mirror cannot serve (ADR-014, ADR-020).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["run-spikes","run-digests"]'), github.event.label.name)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve index digests and check what the images contain
+        run: |
+          set -eu
+          for ref in mcr.microsoft.com/playwright:v1.64.1-noble \
+                     gcr.io/distroless/cc-debian13:nonroot \
+                     node:26.12.0-trixie-slim; do
+            echo "== $ref"
+            docker buildx imagetools inspect "$ref" | head -n 20
+            digest=$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)
+            echo "DIGEST $ref $digest"
+          done
+          image="mcr.microsoft.com/playwright:v1.64.1-noble"
+          docker pull -q "$image"
+          docker run --rm "$image" sh -c 'node --version; ls /ms-playwright; id pwuser; cat /etc/os-release | head -n 2'
+
+  s1:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["run-spikes","run-spike-s1"]'), github.event.label.name)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node pnpm
+      - run: mise run setup
+      - run: pnpm --filter @rampsmith/engine exec playwright install --with-deps chromium
+      - name: S-1 axe-core tag set and target-size on Dawn
+        run: node packages/engine/spikes/s1-dawn.ts | tee s1.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spike-s1
+          path: s1.json
+          retention-days: 30
+
+  s2:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["run-spikes","run-spike-s2"]'), github.event.label.name)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: node pnpm
+      - run: mise run setup
+      - run: pnpm --filter @rampsmith/engine exec playwright install --with-deps chromium
+      - name: S-2 bot-challenge rate across 50 public Shopify stores
+        run: node packages/engine/spikes/s2-challenges.ts | tee s2.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spike-s2
+          path: s2.json
+          retention-days: 30

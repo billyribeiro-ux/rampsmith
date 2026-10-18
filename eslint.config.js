@@ -19,6 +19,7 @@ export default defineConfig(
     'apps/web/src/lib/paraglide/',
     'apps/web/test-results/',
     'apps/web/playwright-report/',
+    'packages/ui/.vitest/',
   ]),
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
@@ -59,7 +60,7 @@ export default defineConfig(
   },
   {
     // Code that runs in the browser.
-    files: ['apps/web/src/**/*.{ts,svelte}'],
+    files: ['apps/web/src/**/*.{ts,svelte}', 'packages/ui/{src,test}/**/*.{ts,svelte}'],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {
       // PLAN §8: {@html} is banned outside the one sanitized report component.

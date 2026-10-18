@@ -29,6 +29,13 @@ test('the home page is accessible and cannot be framed', async ({ page }) => {
   await axe(page);
 });
 
+test('the platform health check answers without touching the api', async ({ request }) => {
+  const response = await request.get('/healthz');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['cache-control']).toBe('no-store');
+  expect(await response.json()).toEqual({ status: 'ok' });
+});
+
 test('the skip link moves focus to the main content', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Tab');
