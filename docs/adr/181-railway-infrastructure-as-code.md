@@ -38,7 +38,18 @@ as the `v5.70.0` tag of railwayapp/cli, 16 Oct 2026):
   Railway deploys.
 - `src/iac/compiler.rs`: a shared-variable reference compiles to the string
   `${{shared.NAME}}` and a service reference to `${{service.NAME}}`; `preserve()` leaves the
-  existing value alone; a service without `source` keeps its current source.
+  existing value alone.
+- `src/iac/change_set.rs` (`diff_top_level_field`): a service declared **without** `source`
+  is planned as removing the source it has, not as keeping it. The same file reports custom
+  domains as an error diagnostic ("cannot be created through IaC") and leaves
+  `customDomains`, `serviceDomains` and a database's TCP proxy out of the diff, so a domain's
+  target port is never applied.
+- `src/iac/saved_plan.rs`: `railway config plan --out <file>` pins the change set together
+  with the environment's config etag and a hash of `./.railway`; `railway config apply --plan
+  <file>` applies exactly that change set and fails if the environment changed since, or if
+  `./.railway` hashes differently.
+- `railway config plan --json` prints `ok`, `changeSet.changes` (summary, severity, kind),
+  `diagnostics`, `currentGraph` and `desiredGraph`, with variable values redacted.
 
 The repository's gates rule out a TypeScript file outside the pnpm workspace. A probe on this
 branch (17 Oct 2026, Node 26.12.0, pnpm 12.14.0) put two files in `infra/railway/`: `eslint .`
@@ -54,24 +65,36 @@ rules in the `node` job.
    The package "mirrors `railway/iac` (TypeScript)" and "compiles to the same RailwayGraph
    shape" (its module docstring), so the file can be moved to TypeScript later without a
    change in meaning (`railway config pull` renders TypeScript).
-2. **Pinned CLI**: Railway CLI 5.70.0, installed in CI with
-   `cargo install railwayapp --version 5.70.0 --locked` (crates.io checksums), never the npm
-   wrapper, whose postinstall downloads a binary without checking it.
+2. **Pinned CLI**: Railway CLI 5.70.0 from its official release tarball
+   (`railway-v5.70.0-x86_64-unknown-linux-musl.tar.gz`), checked against the SHA-256 in
+   `infra/railway/tools/railway-cli.sha256` by `install_railway_cli.sh`. `release.yml` checks
+   that pin against the digest GitHub records for the release asset on every run. No source
+   build and no shared cache (a cache written by one job could be read as a binary by the
+   deploy job), and never the npm wrapper, whose postinstall downloads a binary unchecked.
 3. **Images come in through the environment.** `release.yml` builds each image once and passes
-   its digest to `deploy.yml`, which sets `RAMPSMITH_IMAGE_<SERVICE>` for `railway config apply`.
-   `railway.py` accepts only `ghcr.io/billyribeiro-ux/rampsmith-<service>@sha256:<64 hex>` and
-   raises on anything else, so a tag can never reach Railway. A service whose variable is unset
-   keeps its source, which is how a deploy moves the api first (ADR-185).
-4. **Environments.** `staging` and `production` run images. `preview` is the base Railway
+   its digest to `deploy.yml`, which sets `RAMPSMITH_IMAGE_<SERVICE>` for every service on each
+   plan. `railway.py` accepts only `ghcr.io/billyribeiro-ux/rampsmith-<service>@sha256:<64 hex>`
+   and raises on anything else, so a tag can never reach Railway. Because a missing source
+   means "remove the source", `deploy.yml` always passes every image (the one running now for a
+   service a phase does not move), and `railway_plan.py check` refuses a plan that would change
+   or drop any source it did not ask for (ADR-185).
+4. **Every apply is a pinned plan.** `deploy.yml` runs `railway config plan --json --out`,
+   checks the JSON with `railway_plan.py`, and applies with `railway config apply --plan`, so
+   what was checked is what is applied, and a change made in the dashboard in between makes
+   the apply fail instead of being overwritten. The CLI runs from a scratch directory whose
+   `.railway/release` names the release and the git trees of `infra/railway` and
+   `infra/collector`, which is what the plan's `./.railway` hash binds to.
+5. **Environments.** `staging` and `production` run images. `preview` is the base Railway
    copies for each pull request when PR environments are switched on: its services build from
    the repository with `infra/<service>.Dockerfile` and watch patterns, because a PR
    environment copied from an image-based environment would only redeploy the old image.
    `railway.py` refuses any other environment name.
-5. **What the file does not do**: create the project or environments, switch on
-   point-in-time recovery or PR environments, or set any secret value. Those are founder steps
+6. **What the file does not do**: create the project or environments, switch on
+   point-in-time recovery or PR environments, register custom domains (`ensure_network.py`
+   does, ADR-182), or set any secret value. Those are founder steps
    (`docs/evidence/ws-9-deploy.md`, "Founder setup"); every secret is a reference to a Railway
    shared variable that the founder sets (ADR-182).
-6. **Tests** (`infra/railway/tests/test_railway.py`) run the exact evaluation script copied
+7. **Tests** (`infra/railway/tests/test_railway.py`) run the exact evaluation script copied
    from the CLI 5.70.0 source and check health checks, the pre-deploy step, public exposure,
    egress isolation, least privilege for every secret, image pinning and the fields the CLI
    accepts (`IAC_RESOURCE_FIELDS`).
@@ -84,8 +107,8 @@ rules in the `node` job.
   applies to their updates like any other dependency.
 - Python 3.15.0 joins the CI toolchains (it is already on every runner image; CI pins it with
   `actions/setup-python`). No Python runs in production.
-- Building the CLI takes several minutes the first time; `deploy.yml` caches the binary by
-  version.
+- Upgrading the CLI means a new pin in `railway-cli.sha256` and `RAILWAY_CLI_VERSION`, and
+  re-reading `change_set.rs` and `saved_plan.rs` for the behaviours above.
 
 ## Rejected alternatives
 
@@ -96,6 +119,10 @@ rules in the `node` job.
   and a second description of the same settings.
 - `railway up` from CI: Railway would rebuild the image, breaking "build once, promote the same
   digest" (PLAN §24).
+- `cargo install railwayapp --locked` (the first version of this ADR): sound checksums, but a
+  several-minute build that invited a binary cache shared between jobs.
+- Plain `railway config apply` after a separate plan: the apply re-evaluates the file and the
+  environment, so the checked plan and the applied one could differ.
 
 ## Plan correction
 
@@ -103,8 +130,9 @@ PLAN §22, "Deploys", step 2. Replace "Railway's pre-deploy command runs `sqlx m
 with:
 
 > 2. `deploy.yml` applies `infra/railway/railway.py` (Railway infrastructure as code, ADR-181)
->    with the digests from step 1; the api's pre-deploy command runs `sqlx migrate run` as the
->    migration role (ADR-183).
+>    with the digests from step 1, as pinned plans checked before they are applied: the api
+>    first, whose pre-deploy command runs `sqlx migrate run` as the migration role (ADR-183),
+>    then every other service (ADR-185).
 
 PLAN §22, "Environments" table, Preview row. Replace the second cell with:
 

@@ -103,7 +103,7 @@ processors:
     timeout: 5s
 
 exporters:
-  otlphttp/grafana:
+  otlp_http/grafana:
     endpoint: ${env:GRAFANA_CLOUD_OTLP_ENDPOINT}
     auth:
       authenticator: basicauth/grafana
@@ -136,15 +136,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource/environment, attributes/scrub, transform/scrub, batch]
-      exporters: [otlphttp/grafana]
+      exporters: [otlp_http/grafana]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource/environment, transform/scrub, batch]
-      exporters: [otlphttp/grafana]
+      exporters: [otlp_http/grafana]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource/environment, attributes/scrub, transform/scrub, batch]
-      exporters: [otlphttp/grafana, awss3/logs]
+      exporters: [otlp_http/grafana, awss3/logs]
   telemetry:
     logs:
       level: info

@@ -30,6 +30,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -102,11 +103,13 @@ class FakeS3(Handler):
     def do_PUT(self) -> None:
         body = self.read_body()
         prefix = f"/{BUCKET}/"
-        if not self.path.startswith(prefix):
+        # The AWS SDK percent-encodes the key and adds `?x-id=PutObject`; keep the object key.
+        path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if not path.startswith(prefix):
             self.reply(404, b"NoSuchBucket")
             return
         with lock:
-            received_objects[self.path[len(prefix) :]] = body
+            received_objects[path[len(prefix) :]] = body
         self.reply(200)
 
     def do_POST(self) -> None:

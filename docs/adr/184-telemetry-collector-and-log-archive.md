@@ -17,8 +17,9 @@ Checked on 17–18 Oct 2026:
 - **Collector.** `opentelemetry-collector-releases` v0.163.1 (16 Oct 2026, the newest tag) ships
   `otelcol-contrib`, whose manifest (`distributions/otelcol-contrib/manifest.yaml` at that tag)
   includes `otlpreceiver`, `memorylimiterprocessor`, `batchprocessor`, `resourceprocessor`,
-  `attributesprocessor`, `otlphttpexporter`, `awss3exporter`, `basicauthextension`,
-  `healthcheckextension` and the `env` config provider (all v0.163.0). The image's
+  `attributesprocessor`, `transformprocessor`, `otlphttpexporter`, `awss3exporter`,
+  `basicauthextension`, `bearertokenauthextension`, `healthcheckextension` and the `env` config
+  provider (all v0.163.0). The image's
   `ENTRYPOINT` is `/otelcol-contrib`, `CMD` is the default config file, and it runs as UID
   10001.
 - **S3 exporter** (`exporter/awss3exporter/README.md` and `s3_writer.go` at contrib v0.163.0):
@@ -42,41 +43,63 @@ Checked on 17–18 Oct 2026:
   `https://otlp-gateway-<region>.grafana.net/otlp` for metrics, logs and traces over HTTP;
   Basic authentication with the "Instance ID on the OpenTelemetry card" as user name and an
   access-policy token with `metrics:write`, `logs:write` and `traces:write` as password.
+- **Receiver authentication** (`extension/bearertokenauthextension/README.md`, v0.163.0): a
+  server authenticator for receivers; `token` is compared with the `Authorization` header
+  after the `Bearer` scheme (both names configurable). The OTTL functions `replace_pattern` and
+  `replace_all_patterns` (`pkg/ottl/ottlfuncs/README.md`) rewrite matching parts of strings and
+  of every attribute value; in the collector's configuration `$$` is a literal `$`.
+- **The image** comes from GHCR
+  (`ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib`),
+  whose 0.163.1 index digest equals Docker Hub's (`release.yml` run 39088737207); GHCR has no
+  anonymous pull limit.
 - **The services today** (ADR-019): Rust and TypeScript export traces and metrics over OTLP/HTTP
   when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; logs go to standard output as JSON, not over OTLP.
 
 ## Decision
 
-1. **One collector service** on Railway runs the stock `otel/opentelemetry-collector-contrib`
-   image pinned by digest (`COLLECTOR_IMAGE` in `railway.py`). Its configuration is
+1. **One collector service** on Railway runs the stock `opentelemetry-collector-contrib`
+   image from GHCR pinned by digest (`COLLECTOR_IMAGE` in `railway.py`). Its configuration is
    `infra/collector/config.yaml`, passed in the `OTELCOL_CONFIG` variable and read with
    `--config=env:OTELCOL_CONFIG`, so no image is built for it. The file holds only `${env:...}`
    references, never a credential.
-2. **In**: OTLP/HTTP on `[::]:4318`, private network only (no public domain, ADR-182). Every
-   service points `OTEL_EXPORTER_OTLP_ENDPOINT` at it and carries no Grafana credential.
-3. **Out to Grafana Cloud**: `otlphttp` with gzip and the `basicauth` extension
+2. **In**: OTLP/HTTP on `[::]:4318`, private network only (no public domain, ADR-182), and only
+   with `Authorization: Bearer <RAMPSMITH_OTLP_TOKEN>` (`bearertokenauth/services`). Every
+   service points `OTEL_EXPORTER_OTLP_ENDPOINT` at it, sends the token in
+   `OTEL_EXPORTER_OTLP_HEADERS` (ADR-182), and carries no Grafana credential. Railway's private
+   network has no per-service rules, so without the token any process in the environment could
+   write telemetry, including forged security events.
+3. **Out to Grafana Cloud**: the `otlp_http` exporter (0.163.1 logs `"otlphttp" alias is
+   deprecated; use "otlp_http" instead`) with gzip and the `basicauth` extension
    (`GRAFANA_CLOUD_OTLP_INSTANCE_ID` and `GRAFANA_CLOUD_OTLP_TOKEN`, collector only).
 4. **Archive to R2**: the logs pipeline also feeds `awss3` with `region: auto`, the account
    endpoint, path-style addressing, gzip-compressed OTLP JSON under
    `<environment>/logs/year=…/month=…/day=…/hour=…/` (UTC), and UUIDv7 object keys. The SDK's
    checksum behaviour is set to `when_required`, so no checksum type R2 rejects is ever sent;
    TLS protects the upload. Only logs are archived.
-5. **Its own bucket and token**: `R2_BUCKET_LOGS`, written with `R2_LOGS_ACCESS_KEY_ID` and
-   `R2_LOGS_SECRET_ACCESS_KEY` (an R2 token scoped to that bucket, Object Read & Write), so a
-   compromised collector cannot touch evidence or backups and the evidence token cannot touch
-   logs. The founder adds a lifecycle rule that deletes objects after 30 days (prefix empty),
+5. **Its own bucket and token, per environment**: `R2_BUCKET_LOGS`, written with
+   `R2_LOGS_ACCESS_KEY_ID` and `R2_LOGS_SECRET_ACCESS_KEY` (an R2 token scoped to that one
+   bucket, Object Read & Write), with a separate bucket and token for staging, production and
+   preview, so a compromised collector cannot touch evidence, backups or another environment's
+   logs, and the evidence token cannot touch logs. The founder adds a lifecycle rule that deletes objects after 30 days (prefix empty),
    in the dashboard or with `npx wrangler r2 bucket lifecycle add`.
-6. **Hygiene**: `memory_limiter` first, the environment as `deployment.environment.name`, and
-   an `attributes` processor that deletes authorization, cookie and webhook-signature header
-   attributes from spans and logs if a service ever records them (PLAN §21: no tokens in logs).
+6. **Hygiene** (PLAN §21: no personal data or tokens): `memory_limiter` first, the environment
+   as `deployment.environment.name`; an `attributes` processor deletes authorization, cookie,
+   Shopify token and webhook-signature header attributes and `url.query`; a `transform`
+   processor strips query strings (Shopify's embedded-app `id_token`, `hmac` and `session`
+   arrive there) from span names, `http.url`, `url.full`, `http.target` and metric attributes,
+   and masks, in every span, span-event and log attribute and in log bodies: sensitive query
+   parameters, JWTs, Shopify, GitHub, Stripe and Anthropic token shapes, `Bearer`/`Basic`
+   credentials and email addresses. Services are written not to record these; the collector is
+   the second line, not the first.
 7. **Health**: the `health_check` extension on `[::]:13133/healthz`, Railway's health check.
 8. **Verification now** (LAUNCH.md E substitute): `infra/collector/tests/smoke.py` runs the
    pinned image with the real config the way Railway starts it, against a fake Grafana gateway
    that accepts only the expected Basic credentials and a fake path-style S3 endpoint. It checks
-   that `validate` accepts the config and rejects a broken one, the health check, that traces,
-   metrics and logs reach "Grafana" with credentials and the environment attribute, that only
-   logs reach the archive as gzip OTLP JSON under the expected prefix, and that scrubbed headers
-   never leave. The live checks are listed in `docs/evidence/ws-9-deploy.md`.
+   that `validate` accepts the config and rejects a broken one, the health check, that the
+   receiver answers 401 without the token or with a wrong one, that traces, metrics and logs
+   reach "Grafana" with credentials and the environment attribute, that only logs reach the
+   archive as gzip OTLP JSON under the expected prefix, and that a planted JWT, Shopify token,
+   email address, bearer credential and signed query string never leave unmasked. The live checks are listed in `docs/evidence/ws-9-deploy.md`.
 
 ## Consequences
 
@@ -99,6 +122,9 @@ Checked on 17–18 Oct 2026:
 - A custom collector image: one more image to build and scan for a config file.
 - Services sending straight to Grafana Cloud: every service would hold the Grafana token, and
   there would be no place to archive logs.
+- An unauthenticated receiver (the first version of this ADR): see decision 2.
+- TLS on the receiver: Railway's private network is already encrypted (WireGuard), and a
+  certificate for `collector.railway.internal` would need a private CA in every service.
 
 ## Plan correction
 
@@ -123,9 +149,13 @@ and its "How the code proves it works" cell with:
 
 > A trace and a log visible in Grafana Cloud, and the log in the R2 archive
 
-LAUNCH.md C row 6. Append to "You create": "a third bucket for logs with a 30-day lifecycle
-rule, and a second token scoped to it", and to "Variables": `R2_BUCKET_LOGS`,
-`R2_LOGS_ACCESS_KEY_ID`, `R2_LOGS_SECRET_ACCESS_KEY` (ADR-184).
+LAUNCH.md C row 6. Append to "You create": "per environment, a bucket for logs with a 30-day
+lifecycle rule and a token scoped to it; the evidence token scoped to the evidence bucket
+only", and to "Variables": `R2_BUCKET_LOGS`, `R2_LOGS_ACCESS_KEY_ID`,
+`R2_LOGS_SECRET_ACCESS_KEY` (ADR-184).
+
+LAUNCH.md C row 12, "Variables" cell: `RAMPSMITH_OTLP_TOKEN` (`openssl rand -hex 32`, per
+environment; ADR-182 carries the full row 12 addition).
 
 `docs/FOUNDER_SETUP.md` section 9 then copies the endpoint, the Instance ID and the token instead
 of the `OTEL_EXPORTER_OTLP_*` environment-variable block.

@@ -45,10 +45,18 @@ also sits in the environment of the internet-facing api process.
    - `rampsmith_api` (member of `rampsmith_app`), `rampsmith_ctl` and `rampsmith_engine`
      (members of `rampsmith_worker`): LOGIN, nothing else. None owns a table or bypasses
      row-level security.
-   - Passwords are the shared variables `RAMPSMITH_DB_PASSWORD_*` (64 hex digits, read with
-     psql's `\getenv`, never typed on a command line). The script sets `log_statement = 'none'`
-     for its session so they stay out of the server log, refuses malformed or repeated
-     passwords, and is safe to run again, which is how passwords rotate.
+   - Passwords are the shared variables `RAMPSMITH_DB_PASSWORD_*` (64 hex digits). The founder
+     enters each with `read -rsp` (no echo, no shell history, not in a process list) and psql
+     reads them with `\getenv`. The script turns statement logging off for its session
+     (`log_statement`, `log_min_error_statement`, `log_min_duration_statement`) and
+     `pg_stat_statements.track_utility`, so the `ALTER ROLE ... PASSWORD` statements stay out of
+     the server log and statistics; it refuses a missing, malformed or repeated password and a
+     non-superuser session, and is safe to run again, which is how passwords rotate.
+   - `rampsmith_engine` is, for now, as broad as `rampsmith_ctl` (both are `rampsmith_worker`).
+     The engine only needs the job queue and its own results, so a narrower `rampsmith_engine`
+     group role belongs in a migration (`crates/db/migrations`, owned by the database stream);
+     until it lands, a compromised engine can read what ctl can. Open item in
+     `docs/evidence/ws-9-deploy.md`.
 2. **The api's pre-deploy step migrates as `rampsmith_migrator`:**
    `/bin/sh -c "DATABASE_URL=$MIGRATION_DATABASE_URL exec /usr/local/bin/sqlx migrate run --source /usr/local/share/rampsmith/migrations"`,
    with a 900 s timeout. `MIGRATION_DATABASE_URL` is a template over the migrator's shared
@@ -61,9 +69,13 @@ also sits in the environment of the internet-facing api process.
    `deploy.yml` moves the api first and waits for it before any other service gets new code
    (ADR-185).
 5. **PostgreSQL** is Railway's template on its major tag, `postgres-ssl:18`, because PITR
-   requires a major tag; Railway manages the minor version. PITR is switched on once per
-   environment by the founder (`railway postgres pitr enable --service postgres`). The database
-   has no TCP proxy.
+   requires a major tag; Railway manages the minor version. This is the one image not pinned by
+   digest, an explicit exception to CLAUDE.md's floating-tag rule that Railway's PITR forces:
+   the tag names a major version, not `latest`, and the image is Railway's own template, which
+   Railway updates in place. PITR is switched on once per environment by the founder
+   (`railway postgres pitr enable --service postgres`). The database has no TCP proxy:
+   Railway's template may add one, which the founder removes, and `ensure_network.py` fails
+   every deploy while one exists (ADR-182).
 
 ## Consequences
 
@@ -90,6 +102,8 @@ also sits in the environment of the internet-facing api process.
 - A separate always-on `migrate` service: Railway's documented deploy gate is the pre-deploy
   command; a run-to-completion service has no documented "finished successfully" state.
 - Migrating from CI over a public TCP proxy: exposes the database to the internet.
+- `postgres-ssl:18@sha256:...`: Railway documents PITR only for major tags, and a digest would
+  stop the minor-version updates that PITR's base backups expect.
 - Pinning PostgreSQL's minor version: not supported with PITR.
 
 ## Plan correction
