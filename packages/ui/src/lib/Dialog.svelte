@@ -2,6 +2,7 @@
   // A modal dialog on native <dialog> (APG Dialog pattern): showModal() makes the rest of the
   // page inert and Escape closes it. Focus moves to the first focusable element inside (or to
   // the dialog) on open, and back to whatever had it before on close.
+  import XIcon from 'phosphor-svelte/lib/XIcon';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -65,9 +66,7 @@
         open = false;
       }}
     >
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-        <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2" fill="none" />
-      </svg>
+      <XIcon size={16} weight="bold" aria-hidden="true" />
     </button>
   </header>
   <div class="rs-dialog-body">
