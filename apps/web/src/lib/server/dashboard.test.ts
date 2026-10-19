@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { apiClient } from './api.ts';
 import {
   SESSION_COOKIE,
+  clearSession,
   currentUser,
   finishCeremony,
   signOut,
@@ -29,8 +30,14 @@ function api(handler: (request: Request) => Response | Promise<Response>) {
 
 function cookieJar(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
-  const set = vi.fn((name: string, value: string) => values.set(name, value));
-  const del = vi.fn((name: string) => values.delete(name));
+  const set = vi.fn<(name: string, value: string, options: Record<string, unknown>) => void>(
+    (name, value) => {
+      values.set(name, value);
+    },
+  );
+  const del = vi.fn<(name: string, options: Record<string, unknown>) => void>((name) => {
+    values.delete(name);
+  });
   const cookies = {
     get: (name: string) => values.get(name),
     set,
@@ -66,7 +73,7 @@ describe('finishCeremony', () => {
       Response.json({ token: 'secret-token', expires_at: expires, user: USER }, { status: 201 }),
     );
     const jar = cookieJar();
-    const response = await finishCeremony(client, 'sign-in', answer, jar.cookies, true);
+    const response = await finishCeremony(client, 'sign-in', answer, jar.cookies);
     expect(response.status).toBe(201);
     const body = await response.text();
     expect(body).not.toContain('secret-token');
@@ -80,6 +87,23 @@ describe('finishCeremony', () => {
       sameSite: 'lax',
       expires: new Date(expires),
     });
+  });
+
+  it('sets a cookie a browser accepts under the __Host- prefix, whatever the request scheme', async () => {
+    // The prefix needs Secure, Path=/ and no Domain (audit L8, ADR-055); a cookie that breaks
+    // any rule is dropped by the browser and the user is never signed in.
+    const { client } = api(() =>
+      Response.json(
+        { token: 't', expires_at: '2026-11-16T12:00:00Z', user: USER },
+        { status: 201 },
+      ),
+    );
+    const jar = cookieJar();
+    await finishCeremony(client, 'register', answer, jar.cookies);
+    expect(SESSION_COOKIE).toBe('__Host-rs_session');
+    const options = jar.set.mock.calls[0]?.[2];
+    expect(options).toMatchObject({ secure: true, path: '/', httpOnly: true, sameSite: 'lax' });
+    expect(options).not.toHaveProperty('domain');
   });
 
   it('relays a verification failure without setting a cookie', async () => {
@@ -99,7 +123,7 @@ describe('finishCeremony', () => {
         ),
     );
     const jar = cookieJar();
-    const response = await finishCeremony(client, 'register', answer, jar.cookies, true);
+    const response = await finishCeremony(client, 'register', answer, jar.cookies);
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: 'bad_request' });
     expect(jar.set).not.toHaveBeenCalled();
@@ -113,7 +137,7 @@ describe('finishCeremony', () => {
       { ceremony_id: 1, credential: {} },
       { ceremony_id: 'x', credential: 'y' },
     ]) {
-      const response = await finishCeremony(client, 'register', body, cookieJar().cookies, true);
+      const response = await finishCeremony(client, 'register', body, cookieJar().cookies);
       expect(response.status).toBe(400);
     }
     expect(seen).toHaveLength(0);
@@ -152,6 +176,37 @@ describe('signOut', () => {
     await signOut(client, jar.cookies);
     expect(seen[0]?.method).toBe('DELETE');
     expect(seen[0]?.headers.get('authorization')).toBe('Session tok');
-    expect(jar.del).toHaveBeenCalledWith(SESSION_COOKIE, { path: '/' });
+    expect(jar.del).toHaveBeenCalledWith(SESSION_COOKIE, {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+    });
+  });
+
+  it('clears the cookie even without one, with the attributes the prefix needs', async () => {
+    // A `Set-Cookie` for a `__Host-` name that lacks Secure is ignored, so a bare
+    // `delete(name, { path: '/' })` on http://localhost would leave the session in the browser.
+    const { client, seen } = api(() => new Response(null, { status: 204 }));
+    const jar = cookieJar();
+    await signOut(client, jar.cookies);
+    expect(seen).toHaveLength(0);
+    expect(jar.del).toHaveBeenCalledTimes(1);
+    const options = jar.del.mock.calls[0]?.[1];
+    expect(options).toMatchObject({ secure: true, path: '/' });
+    expect(options).not.toHaveProperty('domain');
+  });
+});
+
+describe('clearSession', () => {
+  it('deletes the session cookie with the same attributes it was set with', () => {
+    const jar = cookieJar({ [SESSION_COOKIE]: 'tok' });
+    clearSession(jar.cookies);
+    expect(jar.del).toHaveBeenCalledWith(SESSION_COOKIE, {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+    });
   });
 });

@@ -139,3 +139,24 @@ Built app, real Chromium (`app.spec.ts`, 10 of 10 in the `embedded` project;
 Not proven here: the real App Bridge and Polaris scripts under this policy (`cdn.shopify.com` is
 unreachable from the sandbox). ADR-054 lists what to read in the browser console on the first
 development-store load, and which directive to widen, narrowly, if a violation shows.
+
+## L8 session cookie and caching, `web` half (ADR-055)
+
+What changed: the dashboard session cookie is `__Host-rs_session` (always `Secure`, `HttpOnly`,
+`SameSite=Lax`, `Path=/`, no `Domain`); `finishCeremony` lost its `secure` argument; the new
+`clearSession` deletes it with the same attributes and is used by sign-out and by the dashboard
+layout. `securityHeaders` adds `cache-control: private, no-store` to every `/dashboard` response.
+
+Chromium accepts the cookie on `http://localhost`: in `tests/dashboard.spec.ts` (dashboard
+project, real api, `http://localhost:3996`, 5 of 5) the cookie is in the browser after
+registering with `secure: true`, `path: '/'`, `httpOnly: true`, `sameSite: 'Lax'`; the
+`Set-Cookie` header has no `Domain`; and the next request is signed in.
+
+Negative proofs: with `clearSession` reduced to `cookies.delete(name, { path: '/' })` (what
+SvelteKit would send on localhost, `Secure` off), two tests fail with the cookie still in the
+browser after sign-out and after the api ended the session (`Received: {"name":
+"__Host-rs_session", "secure": true, ...}`). With the `cache-control` line removed, two
+`headers.test.ts` tests fail. Unit totals: `dashboard.test.ts` 12, `headers.test.ts` 6, web 37.
+
+Not in this change (Rust lane): revoking earlier sessions on sign-in and redacting
+`SessionCreated`'s `Debug`.
