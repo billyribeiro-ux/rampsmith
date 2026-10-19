@@ -217,6 +217,11 @@ Pull request #12 (draft) runs the repository's `ci` workflow on every push. Runs
 | --- | --- | --- |
 | `e20b335` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39297475376 | failure: only the `node-pins` step (the two package manifests lacked `engines.node`); ESLint, Prettier, tsc, knip and claims-lint passed |
 | `9681dfa` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39300221517 | success: all eight jobs, node job 2m49s with the corpus-tools and liquid-patch tests |
+| `de0fa9b` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39301477850 | success: all eight jobs (additive DOM check, evidence file) |
+| `81ccd13` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39302246800 | success: all eight jobs (multi-background contrast planning; liquid-patch 262 tests, corpus-tools 175 tests) |
+
+A commit that only edits this table starts a run of its own, so the run on the very last head is
+given in the hand-off note to the integrator rather than here.
 
 ## ADRs
 
