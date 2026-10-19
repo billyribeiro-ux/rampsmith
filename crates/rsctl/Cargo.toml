@@ -27,15 +27,23 @@ serde_json.workspace = true
 sha2.workspace = true
 shopify.workspace = true
 thiserror.workspace = true
-time.workspace = true
+time = { workspace = true, features = ["parsing"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
 url.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
 aws-lc-rs = "1.18.2"
+base64.workspace = true
+libtest-mimic = "0.8.2"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 wiremock.workspace = true
+
+# The live checks use their own harness so that a check whose founder input is absent is
+# reported as ignored, by name, instead of passing silently (LAUNCH.md section E).
+[[test]]
+name = "live"
+harness = false
 
 [lints]
 workspace = true

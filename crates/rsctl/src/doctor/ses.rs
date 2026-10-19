@@ -56,10 +56,14 @@ fn address(from: &str) -> Option<&str> {
     }
     .trim();
     let (local, domain) = candidate.split_once('@')?;
+    // Plain address characters only: the address is printed, so it must not be able to carry
+    // anything else (SES identities are domains and ordinary addresses).
     let valid = !local.is_empty()
         && domain.contains('.')
-        && !candidate.contains(char::is_whitespace)
-        && !domain.contains('@');
+        && !domain.contains('@')
+        && candidate.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'+' | b'%' | b'@')
+        });
     valid.then_some(candidate)
 }
 
@@ -170,7 +174,7 @@ impl Session<'_> {
                 ))
                 .await?;
             if reply.status == 404 {
-                seen.push(safe_token(identity));
+                seen.push(identity.to_owned());
                 continue;
             }
             if !reply.is_success() {
@@ -184,13 +188,11 @@ impl Session<'_> {
             return Ok(if found.verified_for_sending_status {
                 Outcome::pass(format!(
                     "out of the sandbox in {}; identity {} is verified for sending",
-                    self.region,
-                    safe_token(identity)
+                    self.region, identity
                 ))
             } else {
                 Outcome::fail(format!(
-                    "identity {} exists but is not verified for sending (status {})",
-                    safe_token(identity),
+                    "identity {identity} exists but is not verified for sending (status {})",
                     found
                         .verification_status
                         .as_deref()

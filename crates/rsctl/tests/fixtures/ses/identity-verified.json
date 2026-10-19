@@ -1,0 +1,1 @@
+{"IdentityType":"DOMAIN","FeedbackForwardingStatus":true,"VerifiedForSendingStatus":true,"DkimAttributes":{"SigningEnabled":true,"Status":"SUCCESS","Tokens":["a","b","c"]},"VerificationStatus":"SUCCESS"}

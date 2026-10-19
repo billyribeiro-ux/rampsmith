@@ -371,7 +371,13 @@ fn selected(def: &CheckDef, options: &Options) -> bool {
 
 /// Runs every selected check concurrently and collects the findings in registry order.
 pub async fn run(ctx: Arc<Ctx>) -> Report {
-    let defs: Vec<&'static CheckDef> = CHECKS
+    run_checks(ctx, CHECKS).await
+}
+
+/// [`run`] over a given set of checks. A check that panics is reported as failed, with the
+/// panic's payload dropped: it could hold anything.
+pub async fn run_checks(ctx: Arc<Ctx>, checks: &'static [CheckDef]) -> Report {
+    let defs: Vec<&'static CheckDef> = checks
         .iter()
         .filter(|def| selected(def, &ctx.options))
         .collect();

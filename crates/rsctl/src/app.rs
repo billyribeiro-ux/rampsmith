@@ -60,6 +60,22 @@ impl Runtime {
     }
 }
 
+/// Replaces the default panic message, which prints the panic's payload, with the place of
+/// the panic only. A payload can quote data (a failed `unwrap` on a value, a slice of a
+/// request), and in this program that data may be a secret.
+pub fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let place = info
+            .location()
+            .map_or_else(String::new, |at| format!(" at {}:{}", at.file(), at.line()));
+        // A closed standard error leaves nowhere to report to.
+        let _ = writeln!(
+            std::io::stderr(),
+            "rsctl: internal error{place}; the details are withheld because they could contain a secret"
+        );
+    }));
+}
+
 /// Runs a parsed command line and returns the exit code.
 pub async fn run(cli: Cli, runtime: Runtime, io: &mut Io<'_>) -> u8 {
     match cli.command {

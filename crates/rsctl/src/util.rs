@@ -73,22 +73,27 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
-/// A vendor-supplied identifier made safe to print: only `A-Z a-z 0-9 _ - . : /` survive
-/// (anything else becomes `_`), cut to 64 characters. Probes print vendor error codes through
-/// this and never print vendor free text.
+/// What [`safe_token`] prints for a value that is not a plain identifier.
+pub const UNRECOGNISED: &str = "(unrecognised)";
+
+/// A vendor-supplied identifier (an error code, a zone or project name) made safe to print.
+///
+/// Only a plain identifier of at most 64 characters, `A-Z a-z 0-9 _ - .`, is returned as it
+/// is. Anything else becomes [`UNRECOGNISED`], whole: it is never cut or cleaned up, because a
+/// cut copy of an echoed request could hold the front half of a secret that the redactor,
+/// which looks for whole values, would then miss.
 #[must_use]
 pub fn safe_token(input: &str) -> String {
-    input
-        .chars()
-        .take(64)
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ':' | '/') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    let plain = !input.is_empty()
+        && input.len() <= 64
+        && input
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'));
+    if plain {
+        input.to_owned()
+    } else {
+        UNRECOGNISED.to_owned()
+    }
 }
 
 /// `YYYYMMDDTHHMMSSZ`, as `SigV4`'s `x-amz-date` and the probe object names use.
@@ -149,13 +154,25 @@ mod tests {
     }
 
     #[test]
-    fn safe_token_keeps_codes_and_drops_everything_else() {
+    fn safe_token_keeps_plain_identifiers_and_replaces_everything_else_whole() {
         assert_eq!(
             safe_token("invalid-input-response"),
             "invalid-input-response"
         );
-        assert_eq!(safe_token("sk_live_abc def\n<x>"), "sk_live_abc_def__x_");
-        assert_eq!(safe_token(&"a".repeat(200)).len(), 64);
+        assert_eq!(safe_token("example.com"), "example.com");
+        assert_eq!(safe_token("INTERNAL_SERVER_ERROR"), "INTERNAL_SERVER_ERROR");
+        // Nothing is cut or cleaned: a partial echo would defeat the redactor.
+        for odd in [
+            "sk_live_abc def\n<x>",
+            "a/b",
+            "a:b",
+            "",
+            &"a".repeat(65),
+            "é",
+        ] {
+            assert_eq!(safe_token(odd), UNRECOGNISED, "{odd:?}");
+        }
+        assert_eq!(safe_token(&"a".repeat(64)).len(), 64);
     }
 
     #[test]
