@@ -64,6 +64,8 @@ jobs:
           install_args: cargo-binstall cargo:cargo-nextest cargo:cargo-deny cargo:cargo-machete cargo:sqlx-cli
       - name: rustfmt
         run: mise run check:rust-fmt
+      - name: Report rustc and Clippy diagnostics as annotations
+        run: echo "::add-matcher::.github/matchers/rust.json"
       - name: Clippy (-D warnings)
         run: mise run check:clippy
       - name: cargo-deny

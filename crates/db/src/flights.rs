@@ -108,7 +108,11 @@ mod tests {
         let second = queued.await.unwrap();
         drop(second);
         drop(other);
-        assert!(flights.slots.lock().unwrap().is_empty());
+        let slots = flights.slots.lock().unwrap();
+        assert!(
+            slots.is_empty(),
+            "every slot must be released, got {slots:?}"
+        );
     }
 
     #[tokio::test]
@@ -136,6 +140,10 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(50), flights.enter("a.myshopify.com")).await;
         assert!(cancelled.is_err());
         drop(holder);
-        assert!(flights.slots.lock().unwrap().is_empty());
+        let slots = flights.slots.lock().unwrap();
+        assert!(
+            slots.is_empty(),
+            "every slot must be released, got {slots:?}"
+        );
     }
 }
