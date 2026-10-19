@@ -231,7 +231,7 @@ test('exported telemetry carries no launch parameter, token or shop name (audit 
       HOST: '127.0.0.1',
       PORT: appPort.toString(),
       API_URL: 'http://127.0.0.1:3998',
-      SHOPIFY_CLIENT_ID: 'e2e-client-id',
+      SHOPIFY_API_KEY: 'e2e-client-id',
       OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${collectorPort.toString()}`,
       OTEL_METRICS_EXPORTER: 'none',
       OTEL_BSP_SCHEDULE_DELAY: '200',
