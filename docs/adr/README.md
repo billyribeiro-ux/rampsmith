@@ -42,6 +42,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [034](034-merge-commits-for-branches-others-build-on.md) | Merge commits for branches that other branches build on | Accepted |
 | [035](035-r1-pipeline-placement.md) | Where the R1 scan-and-fix pipeline runs | Accepted |
 | [036](036-r1-job-contracts.md) | Job contracts of the R1 pipeline | Accepted |
+| [037](037-r1-schema.md) | The R1 schema, expand only | Accepted |
 | [101](101-span-patch-engine.md) | Span patch engine: offsets, overlap rule, re-parse gate and diffs | Accepted |
 | [102](102-recipe-contract.md) | Recipe contract and the rules of the six markup recipes | Accepted |
 | [103](103-translation-keys-in-locale-files.md) | Translation keys for recipe labels, and what each locale file receives | Accepted |
