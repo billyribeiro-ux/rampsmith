@@ -1,0 +1,22 @@
+{
+  "accessibility": {
+    "skip_to_text": "コンテンツへ移動"
+  },
+  "general": {
+    "search": {
+      "label": "検索",
+      "reset": "検索をクリア"
+    },
+    "social": {
+      "facebook": "Facebook",
+      "pinterest": "Pinterest"
+    }
+  },
+  "products": {
+    "quantity": {
+      "label": "数量",
+      "decrease": "数量を減らす",
+      "increase": "数量を増やす"
+    }
+  }
+}

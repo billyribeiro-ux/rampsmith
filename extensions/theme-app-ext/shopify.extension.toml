@@ -1,0 +1,7 @@
+# Shopify theme app extension (PLAN §14, ADR-161). One app embed block, blocks/accessibility.liquid,
+# which merchants enable under Theme settings > App embeds; Shopify ships embeds deactivated.
+# Shopify CLI deploys only files one level inside assets/, blocks/, locales/ and snippets/, so
+# the root-level tsconfig.json and .theme-check.yml never reach the theme.
+name = "rampsmith-accessibility"
+type = "theme"
+handle = "rampsmith-accessibility"

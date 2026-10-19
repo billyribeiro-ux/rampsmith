@@ -1,0 +1,306 @@
+:root {
+  --cedar-ink: #262626;
+  --cedar-paper: #ffffff;
+  --cedar-accent: #24594a;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--cedar-ink);
+  background: var(--cedar-paper);
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+}
+
+.visually-hidden,
+.visually-hidden-focusable:not(:focus) {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+}
+
+.skip-link:focus {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 12px 16px;
+  color: #ffffff;
+  background: #000000;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--cedar-accent);
+  border-radius: 22px;
+  font: inherit;
+  color: var(--cedar-accent);
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.button--primary {
+  color: #ffffff;
+  background: var(--cedar-accent);
+}
+
+.field {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #707070;
+  font: inherit;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 32px;
+}
+
+.site-header__logo {
+  display: inline-block;
+  padding: 8px 0;
+  font-size: 22px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.menu-list,
+.footer-menu,
+.grid,
+.pagination__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu-list {
+  display: flex;
+  gap: 16px;
+}
+
+.menu-list__link,
+.footer-menu__link {
+  display: inline-block;
+  padding: 10px 2px;
+  text-decoration: none;
+}
+
+.site-header__menu {
+  margin-right: auto;
+}
+
+.header-icon,
+.wishlist-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.header-icon__count {
+  font-size: 12px;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+}
+
+.carousel {
+  padding: 40px 32px;
+  background: #eef3f1;
+}
+
+.carousel__track {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.carousel__dots {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.carousel__dot {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--cedar-ink);
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.image-with-text {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  padding: 40px 32px;
+}
+
+.text-block a {
+  color: #3b6ea5;
+  text-decoration: underline;
+}
+
+.video-section {
+  padding: 40px 32px;
+}
+
+.product {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 40px;
+  padding: 40px 32px;
+}
+
+.variant-picker__list {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.variant-picker__option {
+  min-width: 44px;
+  padding: 10px 12px;
+  border: 1px solid #707070;
+  text-align: center;
+}
+
+.variant-picker__option.is-selected {
+  color: #ffffff;
+  background: var(--cedar-ink);
+}
+
+.buy-buttons__form {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.accordion {
+  margin-top: 24px;
+  border-top: 1px solid #d0d0d0;
+}
+
+.accordion__toggle {
+  padding: 12px 0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.collection {
+  padding: 40px 32px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 320px));
+  gap: 24px;
+}
+
+.grid__link {
+  display: block;
+  text-decoration: none;
+}
+
+.grid__title {
+  display: block;
+  margin-top: 8px;
+}
+
+.pagination__list {
+  display: flex;
+  gap: 2px;
+  margin-top: 32px;
+}
+
+.pagination__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.pagination__item--current {
+  font-weight: 700;
+}
+
+.site-footer {
+  padding: 32px;
+  border-top: 1px solid #d0d0d0;
+}
+
+.footer-menu {
+  display: flex;
+  gap: 16px;
+}
+
+.password {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+}
+
+.password__brand {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.password__form {
+  display: flex;
+  gap: 8px;
+}
+
+.password__form input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #707070;
+  font: inherit;
+}
+
+.password__admin-link {
+  display: inline-block;
+  padding: 8px 0;
+}

@@ -1,0 +1,32 @@
+{%- comment -%}
+  Styles for the Rampsmith app embed, inlined so the embed costs no extra request and no
+  render-blocking stylesheet. Every rule is scoped to .rs-a11y. The "theme" scheme inherits
+  the theme's text colour and background; the fixed schemes are checked at 4.5:1 or better
+  for text and 3:1 for control borders (packages/theme-app-ext-test). Targets are 44 px tall,
+  focus rings use currentColor, and nothing animates.
+{%- endcomment -%}
+<style>
+  .rs-a11y{box-sizing:border-box;margin:0;padding:1rem;font:inherit;line-height:1.5;text-align:center}
+  .rs-a11y *,.rs-a11y *::before,.rs-a11y *::after{box-sizing:border-box}
+  .rs-a11y--light{color:#1f1f1f;background:#fff}
+  .rs-a11y--dark{color:#fff;background:#1f1f1f}
+  .rs-a11y p{margin:0}
+  .rs-a11y a{color:inherit;text-decoration:underline;text-underline-offset:.2em}
+  .rs-a11y__link{display:inline-flex;align-items:center;min-height:44px;padding:0 .5rem}
+  .rs-a11y__report{display:inline-block;width:100%;max-width:40rem;text-align:start}
+  .rs-a11y__toggle{min-height:44px;padding:.625rem .5rem;cursor:pointer;text-align:center}
+  .rs-a11y__form{padding:.5rem}
+  .rs-a11y__label{display:block;margin-top:.5rem;font-weight:700}
+  .rs-a11y__qualifier{font-weight:400}
+  .rs-a11y__hint{margin:.25rem 0}
+  .rs-a11y__control{display:block;width:100%;min-height:44px;margin:0;padding:.5rem;font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px}
+  .rs-a11y__control[aria-invalid="true"]{border-width:3px}
+  .rs-a11y__error,.rs-a11y__status{min-height:1.5em;margin:.25rem 0;font-weight:700}
+  .rs-a11y--light .rs-a11y__error{color:#b3261e}
+  .rs-a11y--dark .rs-a11y__error{color:#ffb4ab}
+  .rs-a11y__inline-link{display:inline-block;min-height:24px;margin-inline-start:.25em}
+  .rs-a11y__submit{min-height:44px;margin-top:.5rem;padding:.5rem 1rem;font:inherit;font-weight:700;color:inherit;background:transparent;border:2px solid currentColor;border-radius:4px;cursor:pointer}
+  .rs-a11y__submit[aria-disabled="true"]{cursor:progress}
+  .rs-a11y__hp{display:none !important}
+  .rs-a11y :focus-visible{outline:3px solid currentColor;outline-offset:2px}
+</style>

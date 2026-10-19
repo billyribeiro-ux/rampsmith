@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout guard: the theme opens checkout in a popup</title>
+    <!--
+      After adding, the theme calls window.open on a checkout URL. The popup must be closed and
+      its request stopped.
+    -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form id="f" action="/cart/add" method="post">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+    <script>
+      document.getElementById('f').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await fetch('/cart/add.js', { method: 'POST', body: new FormData(event.target) });
+        window.open('/checkouts/cn/popup-token');
+      });
+    </script>
+  </body>
+</html>

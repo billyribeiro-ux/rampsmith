@@ -1,0 +1,13 @@
+<div class="buy-buttons" {{ block.shopify_attributes }}>
+  {%- form 'product', product, class: 'buy-buttons__form' -%}
+    <input type="hidden" name="id" value="{{ product.selected_or_first_available_variant.id }}">
+    <button type="submit" name="add" class="button button--primary">{{ 'products.product.add_to_cart' | t }}</button>
+    <button type="button" class="wishlist-button" data-product="{{ product.id }}">
+      {{- 'icon-heart.svg' | inline_asset_content -}}
+    </button>
+  {%- endform -%}
+</div>
+
+{% schema %}
+{ "name": "Buy buttons", "settings": [] }
+{% endschema %}

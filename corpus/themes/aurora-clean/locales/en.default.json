@@ -1,0 +1,79 @@
+{
+  "general": {
+    "social": {
+      "links": {
+        "facebook": "Facebook",
+        "instagram": "Instagram"
+      }
+    }
+  },
+  "newsletter": {
+    "subscribe": "Subscribe",
+    "label": "Email"
+  },
+  "blogs": {
+    "article": {
+      "back_to_blog": "Back to {{ title }}"
+    }
+  },
+  "customer": {
+    "login_page": {
+      "title": "Sign in",
+      "email": "Email",
+      "forgot_password": "Forgot your password?",
+      "sign_in": "Sign in",
+      "create_account": "Create account",
+      "password": "Password"
+    },
+    "account_fallback": "Account"
+  },
+  "products": {
+    "product": {
+      "add_to_cart": "Add to cart",
+      "price": {
+        "regular_price": "Regular price",
+        "sale_price": "Sale price"
+      },
+      "quantity": {
+        "label": "Quantity",
+        "decrease": "Decrease quantity",
+        "increase": "Increase quantity"
+      }
+    }
+  },
+  "sections": {
+    "header": {
+      "announcement": "Announcement",
+      "menu": "Menu"
+    },
+    "footer": {
+      "links": "Quick links"
+    },
+    "cart": {
+      "title": "Your cart",
+      "empty": "Your cart is empty",
+      "subtotal": "Subtotal",
+      "checkout": "Check out",
+      "headings": {
+        "product": "Product",
+        "quantity": "Quantity",
+        "total": "Total"
+      },
+      "remove": "Remove"
+    }
+  },
+  "templates": {
+    "search": {
+      "title": "Search results",
+      "results_count": {
+        "one": "{{ count }} result for “{{ terms }}”",
+        "other": "{{ count }} results for “{{ terms }}”"
+      },
+      "label": "Search",
+      "submit": "Search"
+    },
+    "cart": {
+      "cart": "Cart"
+    }
+  }
+}

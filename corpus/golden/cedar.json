@@ -1,0 +1,463 @@
+{
+  "$schema": "../schema/golden.schema.json",
+  "subject": "cedar",
+  "kind": "failing",
+  "alignment": {
+    "axeCore": "4.14.0",
+    "a11yRules": "b79ba2f",
+    "liquidPatch": "551b200"
+  },
+  "findings": [
+    {
+      "id": "password-html-lang",
+      "ruleId": "html-has-lang",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["3.1.1"],
+      "category": "document-language",
+      "description": "The password layout's <html> element has no lang attribute; the main layout sets one.",
+      "occurrences": [
+        {
+          "page": "password",
+          "selector": "html"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "layout/password.liquid",
+        "start": 16,
+        "tag": "html",
+        "anchor": "<html>"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "document-language",
+        "outcome": "fixed",
+        "targeted": true,
+        "note": "All layouts are accepted, not only theme.liquid (ADR-102)."
+      }
+    },
+    {
+      "id": "password-bypass",
+      "ruleId": "bypass",
+      "engine": "axe",
+      "outcome": "incomplete",
+      "impact": "serious",
+      "criteria": ["2.4.1"],
+      "category": "skip-link",
+      "description": "The password page has no landmark, no heading and no skip link, so axe-core cannot find a way to bypass repeated content and asks for review.",
+      "occurrences": [
+        {
+          "page": "password",
+          "selector": "html"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "layout/password.liquid",
+        "start": 259,
+        "tag": "body",
+        "anchor": "<body class=\"password\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "skip-link",
+        "outcome": "refused",
+        "refusal": "main-landmark-not-found",
+        "targeted": false,
+        "note": "The skip-link recipe needs a <main> landmark to point at; adding one is a structural change for a person or an AI proposal."
+      }
+    },
+    {
+      "id": "search-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The header search link, a theme block, holds only an SVG inlined with inline_asset_content.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".header-icon--search"
+        },
+        {
+          "page": "product",
+          "selector": ".header-icon--search"
+        },
+        {
+          "page": "collection",
+          "selector": ".header-icon--search"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "blocks/search-link.liquid",
+        "start": 0,
+        "tag": "a",
+        "anchor": "<a href=\"{{ routes.search_url }}\" class=\"header-icon header-icon--search\" {{ block.shopify_attributes }}>"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "general.search.title",
+            "text": "Search"
+          }
+        },
+        "note": "Attributes printed by {{ block.shopify_attributes }} are invisible to the recipe and ignored (ADR-102)."
+      }
+    },
+    {
+      "id": "newsletter-note-contrast",
+      "ruleId": "color-contrast",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.4.3"],
+      "category": "low-contrast",
+      "description": "The newsletter note is #9e9e9e at 13px on white, set in the section's own {% stylesheet %}: about 2.7:1.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".newsletter__note"
+        },
+        {
+          "page": "product",
+          "selector": ".newsletter__note"
+        },
+        {
+          "page": "collection",
+          "selector": ".newsletter__note"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "css-declaration",
+        "file": "sections/newsletter.liquid",
+        "selector": ".newsletter__note",
+        "start": 155,
+        "end": 169,
+        "property": "color",
+        "anchor": "color: #9e9e9e"
+      },
+      "rendersFrom": {
+        "kind": "element",
+        "file": "sections/newsletter.liquid",
+        "start": 744,
+        "tag": "p",
+        "anchor": "<p class=\"newsletter__note\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "contrast",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "minimumRatio": 4.5
+        },
+        "note": "The declaration sits inside {% stylesheet %} in a Liquid section file, not in a CSS asset."
+      }
+    },
+    {
+      "id": "story-image-alt",
+      "ruleId": "image-alt",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-theme-image",
+      "description": "The image block prints a responsive image (srcset and src) with no alt attribute.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".image-block__img"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "blocks/image.liquid",
+        "start": 104,
+        "tag": "img",
+        "anchor": "<img\n      srcset=\"{{ block.settings.image | image_url: width: 400 }} 400w"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "image-alt",
+        "outcome": "fixed",
+        "targeted": true,
+        "note": "The image object is block.settings.image, read from srcset or src."
+      }
+    },
+    {
+      "id": "story-link-in-text",
+      "ruleId": "link-in-text-block",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.4.1"],
+      "category": "other",
+      "description": "A link inside the text block's paragraph is told apart from the text by colour alone: no underline, and #3b6ea5 against #262626 text is under 3:1.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".text-block a"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "css-declaration",
+        "file": "assets/cedar.css",
+        "selector": ".text-block a",
+        "start": 2599,
+        "end": 2620,
+        "property": "text-decoration",
+        "anchor": "text-decoration: none"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "ai-proposal",
+        "outcome": "review",
+        "targeted": false,
+        "note": "Restoring the underline in the stylesheet fixes it; no deterministic recipe exists for 1.4.1."
+      }
+    },
+    {
+      "id": "carousel-dot-parent",
+      "ruleId": "aria-required-parent",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.3.1"],
+      "category": "widget-roles",
+      "description": "Carousel dots are buttons with role=\"tab\" outside any tablist, rendered once per slide.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".carousel__dot",
+          "count": 3
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/carousel.liquid",
+        "start": 262,
+        "tag": "button",
+        "anchor": "<button type=\"button\" class=\"carousel__dot\" role=\"tab\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "ai-proposal",
+        "outcome": "review",
+        "targeted": false,
+        "note": "A custom widget (PLAN §12): span patch proposed by AI, reviewed by a developer."
+      }
+    },
+    {
+      "id": "video-frame-title",
+      "ruleId": "frame-title",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["4.1.2"],
+      "category": "other",
+      "description": "The embedded video iframe has no title, so screen readers announce it without a purpose.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".video-section iframe"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/video.liquid",
+        "start": 155,
+        "tag": "iframe",
+        "anchor": "<iframe\n      src=\"{{ section.settings.video_url }}\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "ai-proposal",
+        "outcome": "review",
+        "targeted": false,
+        "note": "A title from the section heading setting would name it; no deterministic recipe exists for frame titles."
+      }
+    },
+    {
+      "id": "variant-listbox-children",
+      "ruleId": "aria-required-children",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.3.1"],
+      "category": "widget-roles",
+      "description": "The variant picker is a role=\"listbox\" whose children are plain list items, not options.",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": ".variant-picker__list"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "blocks/variant-picker.liquid",
+        "start": 225,
+        "tag": "ul",
+        "anchor": "<ul class=\"variant-picker__list\" role=\"listbox\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "ai-proposal",
+        "outcome": "review",
+        "targeted": false
+      }
+    },
+    {
+      "id": "variant-option-listitem",
+      "ruleId": "listitem",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.3.1"],
+      "category": "widget-roles",
+      "description": "Because their list has role=\"listbox\", the variant <li> elements are list items outside a list.",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": ".variant-picker__option",
+          "count": 3
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "blocks/variant-picker.liquid",
+        "start": 374,
+        "tag": "li",
+        "anchor": "<li class=\"variant-picker__option{% if forloop.first %} is-selected{% endif %}\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "ai-proposal",
+        "outcome": "review",
+        "targeted": false,
+        "note": "The same defect as variant-listbox-children, reported on each option; one proposal fixes both."
+      }
+    },
+    {
+      "id": "accordion-expanded-value",
+      "ruleId": "aria-valid-attr-value",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "widget-roles",
+      "description": "The accordion toggle sets aria-expanded=\"yes\", which is not a valid value (true or false).",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": ".accordion__toggle"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "blocks/accordion.liquid",
+        "start": 57,
+        "tag": "div",
+        "anchor": "<div class=\"accordion__toggle\" role=\"button\" tabindex=\"0\" aria-expanded=\"yes\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "ai-proposal",
+        "outcome": "review",
+        "targeted": false
+      }
+    },
+    {
+      "id": "wishlist-button-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The wishlist button in the buy-buttons block holds only an inlined SVG.",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": ".wishlist-button"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "blocks/buy-buttons.liquid",
+        "start": 338,
+        "tag": "button",
+        "anchor": "<button type=\"button\" class=\"wishlist-button\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "products.product.add_to_wishlist",
+            "text": "Add to wishlist"
+          }
+        }
+      }
+    },
+    {
+      "id": "pagination-target-size",
+      "ruleId": "target-size",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.5.8"],
+      "category": "target-size",
+      "description": "Pagination links are 16 by 16 CSS pixels with 2 pixels between them.",
+      "occurrences": [
+        {
+          "page": "collection",
+          "selector": "a.pagination__item",
+          "count": 3
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "css-declaration",
+        "file": "assets/cedar.css",
+        "selector": ".pagination__item",
+        "start": 3730,
+        "end": 3741,
+        "property": "width",
+        "anchor": "width: 16px"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "target-size",
+        "outcome": "fixed",
+        "targeted": false,
+        "params": {
+          "minimumSize": 24
+        },
+        "note": "A planned deterministic recipe (PLAN §12, small targets): a 24 by 24 hit area through padding. Outside the six top categories."
+      }
+    }
+  ]
+}

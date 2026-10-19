@@ -1,0 +1,29 @@
+<footer class="site-footer" role="contentinfo">
+	<div class="site-footer__newsletter">
+		<h2 class="site-footer__title">{{ section.settings.newsletter_title | escape }}</h2>
+    {% form 'customer' %}
+			<input type="hidden" name="contact[tags]" value="newsletter">
+			<label for="NewsletterEmail" class="sr-only">{{ 'general.newsletter.label' | t }}</label>
+			<input type="email" name="contact[email]" id="NewsletterEmail" autocomplete="email">
+			<button type="submit" class="btn">{{ 'general.newsletter.submit' | t }}</button>
+    {% endform %}
+	</div>
+
+  {% render 'social-icons' %}
+
+	<ul class="payment-icons">
+		<li><img src="{{ 'payment-visa.svg' | asset_url }}" class="payment-icon" width="38" height="24" alt="Visa"></li>
+		<li><img src="{{ 'payment-mastercard.svg' | asset_url }}" class="payment-icon" width="38" height="24" alt="Mastercard"></li>
+	</ul>
+
+	<p class="site-footer__copyright">&copy; {{ 'now' | date: '%Y' }} {{ shop.name }}</p>
+</footer>
+
+{% schema %}
+{
+  "name": "Footer",
+  "settings": [
+    { "type": "text", "id": "newsletter_title", "label": "Newsletter title", "default": "Join our list" }
+  ]
+}
+{% endschema %}

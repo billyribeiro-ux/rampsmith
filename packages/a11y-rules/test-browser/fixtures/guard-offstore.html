@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Navigation guard: menu toggles that leave the store</title>
+    <!--
+      A link styled as a menu button points off the store (never a trigger), and a real button
+      whose script navigates off the store (stopped by the network guard).
+    -->
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <a role="button" aria-expanded="false" href="https://evil.example/menu">Menu</a>
+        <button type="button" aria-expanded="false" id="scripted">Shop</button>
+      </nav>
+    </header>
+    <script>
+      document.getElementById('scripted').addEventListener('click', () => {
+        location.href = 'https://evil.example/';
+      });
+    </script>
+  </body>
+</html>

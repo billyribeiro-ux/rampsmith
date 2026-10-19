@@ -1,0 +1,38 @@
+Rampsmith
+
+New issues found
+================
+
+Rampsmith's scan of Example Outfitters on October 17, 2026 found 5 issues
+that were not there before.
+
+They appeared after the theme “Dawn copy, autumn sale” was published.
+
+New issues
+----------
+
+- Button without an accessible name (WCAG 4.1.2, Critical)
+- Form field without a label (WCAG 1.3.1, Serious)
+
+And 3 more.
+
+See the new issues:
+https://admin.shopify.com/store/fixture-store/apps/rampsmith/findings?filter=new
+
+____________________________________________________________________________
+
+You received this email because notifications for Example Outfitters are
+sent to this address.
+
+Manage email preferences:
+https://app.rampsmith.example/settings/email
+
+Turn off emails like this one:
+https://app.rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

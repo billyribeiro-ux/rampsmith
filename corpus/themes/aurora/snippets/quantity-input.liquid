@@ -1,0 +1,23 @@
+{%- comment -%}
+  Quantity selector with decrease and increase buttons.
+  Accepts:
+  - input_id: {String} id of the number input, unique on the page
+  - value: {Number} starting quantity
+  - name: {String} input name, defaults to "quantity"
+{%- endcomment -%}
+<div class="quantity">
+  <button class="quantity__button" name="minus" type="button">
+    {% render 'icon-minus' %}
+  </button>
+  <input
+    class="quantity__input"
+    type="number"
+    name="{{ name | default: 'quantity' }}"
+    id="{{ input_id }}"
+    value="{{ value | default: 1 }}"
+    min="0"
+  >
+  <button class="quantity__button" name="plus" type="button">
+    {% render 'icon-plus' %}
+  </button>
+</div>

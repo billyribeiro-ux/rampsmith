@@ -1,0 +1,16 @@
+{%- comment -%}
+  Renders a product card.
+  Accepts:
+  - card_product: {Object} Product Liquid object
+{%- endcomment -%}
+<div class="card">
+  <a href="{{ card_product.url }}" class="card__media">
+    {{ card_product.featured_media | image_url: width: 600 | image_tag: loading: 'lazy', class: 'card__image' }}
+  </a>
+  <div class="card__content">
+    <h3 class="card__heading">
+      <a href="{{ card_product.url }}" class="card__link">{{ card_product.title | escape }}</a>
+    </h3>
+    {% render 'price', product: card_product %}
+  </div>
+</div>

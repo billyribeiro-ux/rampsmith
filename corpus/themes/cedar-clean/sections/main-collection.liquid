@@ -1,0 +1,24 @@
+<section class="collection">
+  <h1 class="collection__title">{{ collection.title | escape }}</h1>
+  {%- paginate collection.products by section.settings.per_page -%}
+    <ul class="grid" role="list">
+      {%- for product in collection.products -%}
+        <li class="grid__item">
+          <a class="grid__link" href="{{ product.url }}">
+            {{ product.featured_media | image_url: width: 500 | image_tag: loading: 'lazy', class: 'grid__image', alt: '' }}
+            <span class="grid__title">{{ product.title | escape }}</span>
+          </a>
+          <p class="grid__price">{{ product.price | money }}</p>
+        </li>
+      {%- endfor -%}
+    </ul>
+    {% render 'pagination', paginate: paginate %}
+  {%- endpaginate -%}
+</section>
+
+{% schema %}
+{
+  "name": "Collection",
+  "settings": [{ "type": "range", "id": "per_page", "min": 1, "max": 24, "step": 1, "label": "Products per page", "default": 12 }]
+}
+{% endschema %}

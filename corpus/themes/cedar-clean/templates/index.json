@@ -1,0 +1,48 @@
+{
+  "sections": {
+    "carousel": {
+      "type": "carousel",
+      "blocks": {
+        "s1": {
+          "type": "slide",
+          "settings": { "heading": "Linen season", "text": "Washed, soft and cool." }
+        },
+        "s2": {
+          "type": "slide",
+          "settings": { "heading": "Kitchen goods", "text": "Thrown and glazed nearby." }
+        },
+        "s3": {
+          "type": "slide",
+          "settings": { "heading": "Warm layers", "text": "Wool for cool evenings." }
+        }
+      },
+      "block_order": ["s1", "s2", "s3"],
+      "settings": {}
+    },
+    "story": {
+      "type": "image-with-text",
+      "blocks": {
+        "picture": {
+          "type": "image",
+          "settings": { "image": "shopify://shop_images/workshop.jpg" }
+        },
+        "copy": {
+          "type": "text",
+          "settings": {
+            "text": "<p>Everything we sell is made within a day's drive of the studio. Read <a href=\"/pages/about\">how we work</a> before you buy.</p>"
+          }
+        }
+      },
+      "block_order": ["picture", "copy"],
+      "settings": {}
+    },
+    "video": {
+      "type": "video",
+      "settings": {
+        "heading": "Inside the studio",
+        "video_url": "https://www.youtube-nocookie.com/embed/corpus-studio"
+      }
+    }
+  },
+  "order": ["carousel", "story", "video"]
+}

@@ -1,0 +1,5 @@
+# Railway's Python IaC helpers, read by the Railway CLI when it evaluates railway.py (ADR-181).
+# Install with: pip install --require-hashes -r infra/railway/requirements.txt
+# Hash read from PyPI and checked against the downloaded wheel on 2026-10-18.
+railway-sdk==0.7.0 \
+    --hash=sha256:2cabab22864dd36ea4538a5d14bc6c41f871cbfd05344182ec1a8a98b836b06c

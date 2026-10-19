@@ -1,0 +1,30 @@
+{
+  "name": "@rampsmith/a11y-rules",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Rampsmith's custom checks (PLAN §11): the data audit of store content, the browser checks axe-core cannot run, and the interactive-state scripts.",
+  "type": "module",
+  "engines": {
+    "node": ">=26.12.0 <27"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "parse5": "8.0.1"
+  },
+  "devDependencies": {
+    "@rampsmith/tsconfig": "workspace:*",
+    "fast-check": "4.10.2",
+    "playwright-core": "1.64.1",
+    "vitest": "5.0.5"
+  },
+  "peerDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}

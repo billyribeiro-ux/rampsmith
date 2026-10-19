@@ -1,0 +1,246 @@
+{
+  "shop": {
+    "name": "Harbor & Pine",
+    "url": "https://harbor-and-pine.example",
+    "domain": "harbor-and-pine.example",
+    "currency": "USD",
+    "money_format": "${{amount}}",
+    "money_with_currency_format": "${{amount}} USD",
+    "description": "Everyday goods for slow mornings and long weekends."
+  },
+  "locale": { "iso_code": "en", "primary": true, "name": "English" },
+  "images": {
+    "logo-harbor-pine.png": {
+      "src": "logo-harbor-pine.png",
+      "alt": "Harbor & Pine",
+      "width": 320,
+      "height": 96
+    },
+    "hero-linen.jpg": {
+      "src": "hero-linen.jpg",
+      "alt": "Folded linen shirts on a wooden bench",
+      "width": 1600,
+      "height": 900
+    },
+    "workshop.jpg": {
+      "src": "workshop.jpg",
+      "alt": "A sewing table with spools of thread and a pair of shears",
+      "width": 1200,
+      "height": 800
+    },
+    "pattern-wave.png": {
+      "src": "pattern-wave.png",
+      "alt": "",
+      "width": 600,
+      "height": 120
+    }
+  },
+  "menus": {
+    "main-menu": [
+      { "title": "Shop all", "url": "/collections/all", "links": [] },
+      {
+        "title": "Summer edit",
+        "url": "/collections/summer-edit",
+        "links": [
+          { "title": "Shirts", "url": "/collections/summer-edit/shirts", "links": [] },
+          { "title": "Home", "url": "/collections/summer-edit/home", "links": [] }
+        ]
+      },
+      { "title": "Journal", "url": "/blogs/journal", "links": [] },
+      { "title": "About", "url": "/pages/about", "links": [] }
+    ],
+    "footer": [
+      { "title": "Search", "url": "/search", "links": [] },
+      { "title": "Contact", "url": "/pages/contact", "links": [] },
+      { "title": "Shipping and returns", "url": "/pages/shipping", "links": [] }
+    ]
+  },
+  "products": [
+    {
+      "id": 7001,
+      "handle": "linen-shirt",
+      "title": "Linen Field Shirt",
+      "vendor": "Harbor & Pine",
+      "type": "Shirts",
+      "price": 6800,
+      "compare_at_price": null,
+      "available": true,
+      "description": "<p>A relaxed shirt cut from washed European linen.</p><h2>Details</h2><ul><li>Corozo buttons</li><li>Single chest pocket</li></ul><h4>Care</h4><p>Machine wash cold and hang to dry.</p><p><a href=\"/pages/care\">Click here</a></p>",
+      "media": [
+        {
+          "id": 9101,
+          "alt": "Linen field shirt in sand, front view",
+          "src": "linen-shirt-front.jpg",
+          "width": 1200,
+          "height": 1500
+        },
+        {
+          "id": 9102,
+          "alt": "Linen field shirt in sand, back view",
+          "src": "linen-shirt-back.jpg",
+          "width": 1200,
+          "height": 1500
+        }
+      ],
+      "options": ["Size"],
+      "variants": [
+        { "id": 8001, "title": "S", "option1": "S", "price": 6800, "available": true },
+        { "id": 8002, "title": "M", "option1": "M", "price": 6800, "available": true },
+        { "id": 8003, "title": "L", "option1": "L", "price": 6800, "available": false }
+      ]
+    },
+    {
+      "id": 7002,
+      "handle": "canvas-tote",
+      "title": "Canvas Market Tote",
+      "vendor": "Harbor & Pine",
+      "type": "Bags",
+      "price": 4200,
+      "compare_at_price": null,
+      "available": true,
+      "description": "<p>Heavy cotton canvas with leather handles. Holds a week of groceries.</p>",
+      "media": [
+        {
+          "id": 9201,
+          "alt": "IMG_2041.JPG",
+          "src": "canvas-tote.jpg",
+          "width": 1200,
+          "height": 1500
+        }
+      ],
+      "options": ["Title"],
+      "variants": [
+        {
+          "id": 8101,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "price": 4200,
+          "available": true
+        }
+      ]
+    },
+    {
+      "id": 7003,
+      "handle": "stoneware-mug",
+      "title": "Stoneware Mug",
+      "vendor": "Harbor & Pine",
+      "type": "Home",
+      "price": 2400,
+      "compare_at_price": null,
+      "available": true,
+      "description": "<p>Speckled stoneware, glazed inside. Holds 350 ml.</p>",
+      "media": [
+        {
+          "id": 9301,
+          "alt": "",
+          "src": "stoneware-mug.jpg",
+          "width": 1200,
+          "height": 1500
+        }
+      ],
+      "options": ["Title"],
+      "variants": [
+        {
+          "id": 8201,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "price": 2400,
+          "available": true
+        }
+      ]
+    },
+    {
+      "id": 7004,
+      "handle": "wool-throw",
+      "title": "Wool Throw Blanket",
+      "vendor": "Harbor & Pine",
+      "type": "Home",
+      "price": 12000,
+      "compare_at_price": 15000,
+      "available": true,
+      "description": "<p>Brushed lambswool in a herringbone weave, 130 by 180 cm.</p>",
+      "media": [
+        {
+          "id": 9401,
+          "alt": "Grey herringbone wool throw folded over a chair",
+          "src": "wool-throw.jpg",
+          "width": 1200,
+          "height": 1500
+        }
+      ],
+      "options": ["Title"],
+      "variants": [
+        {
+          "id": 8301,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "price": 12000,
+          "available": true
+        }
+      ]
+    }
+  ],
+  "collections": [
+    {
+      "id": 6001,
+      "handle": "all",
+      "title": "Shop all",
+      "description": "",
+      "products": ["linen-shirt", "canvas-tote", "stoneware-mug", "wool-throw"]
+    },
+    {
+      "id": 6002,
+      "handle": "summer-edit",
+      "title": "Summer edit",
+      "description": "<p>Light layers and things for the table.</p>",
+      "image": "workshop.jpg",
+      "products": ["linen-shirt", "canvas-tote", "stoneware-mug", "wool-throw"]
+    }
+  ],
+  "pages": [
+    {
+      "id": 5001,
+      "handle": "about",
+      "title": "About us",
+      "content": "<p>Harbor &amp; Pine started as a market stall in 2019. We make a small range of goods in batches and keep them in stock for years.</p><h2>How we work</h2><p>Every piece is sewn or thrown within a day's drive of our studio.</p>"
+    },
+    {
+      "id": 5002,
+      "handle": "contact",
+      "title": "Contact",
+      "content": "<p>Write to us and we will answer within two working days.</p>"
+    },
+    {
+      "id": 5003,
+      "handle": "faq",
+      "title": "Questions",
+      "content": "<p>Answers to the questions we hear most.</p>"
+    }
+  ],
+  "blogs": [
+    {
+      "id": 4001,
+      "handle": "journal",
+      "title": "Journal",
+      "articles": [
+        {
+          "id": 3001,
+          "handle": "caring-for-linen",
+          "title": "Caring for linen",
+          "author": "Mara Lind",
+          "published_at": "2026-05-04",
+          "image": "hero-linen.jpg",
+          "content": "<p>Linen softens with every wash. Use cold water and skip the dryer.</p><p><img src=\"/cdn/shop/files/linen-drying.jpg\" width=\"800\" height=\"500\"></p><p>Iron it damp, or not at all.</p>"
+        }
+      ]
+    }
+  ],
+  "cart": {
+    "items": [{ "product": "linen-shirt", "variant": 8002, "quantity": 1 }],
+    "note": ""
+  },
+  "search": {
+    "terms": "linen",
+    "results": ["linen-shirt", "wool-throw"]
+  }
+}

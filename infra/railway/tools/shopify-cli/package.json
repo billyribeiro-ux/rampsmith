@@ -1,0 +1,9 @@
+{
+  "name": "rampsmith-deploy-shopify-cli",
+  "private": true,
+  "description": "Shopify CLI for deploy.yml, installed from this lockfile with npm ci --ignore-scripts (ADR-185)",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@shopify/cli": "4.9.4"
+  }
+}

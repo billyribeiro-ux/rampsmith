@@ -1,0 +1,31 @@
+{
+  "name": "@rampsmith/ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Rampsmith's AI subsystem (PLAN §13): model routing, prompts, structured outputs, cost and budgets, data handling and the evaluation harness. The engine's ai worker calls it.",
+  "type": "module",
+  "engines": {
+    "node": ">=26.12.0 <27"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./eval": "./src/eval/index.ts"
+  },
+  "scripts": {
+    "eval": "node src/eval/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "@rampsmith/tsconfig": "workspace:*",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
+    "@opentelemetry/api": "1.9.1",
+    "@rampsmith/claims-lint": "workspace:*",
+    "ajv": "8.20.0",
+    "parse5": "8.0.1"
+  }
+}

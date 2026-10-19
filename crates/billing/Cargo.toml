@@ -1,0 +1,28 @@
+[package]
+name = "rampsmith-billing"
+version = "0.0.0"
+description = "Plans, entitlements and Shopify App Pricing plan state for Rampsmith: pure logic, no I/O."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "billing"
+
+[dependencies]
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shopify.workspace = true
+thiserror.workspace = true
+time = { workspace = true, features = ["parsing"] }
+
+[dev-dependencies]
+# The workspace table has proptest 1.12.0 with default features; this crate keeps `std` only (ADR-134),
+# which a workspace-inherited entry cannot do.
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+time = { workspace = true, features = ["macros"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seeded text spacing failures</title>
+    <!--
+      Seeded: #clipped-box has a fixed height and overflow hidden, so its two lines are cut off
+      once line height rises to 1.5; #spill-box has a fixed height and visible overflow, so its
+      text spills out. Must NOT be reported: a visually hidden label, a box that scrolls, and
+      ordinary paragraphs.
+    -->
+    <style>
+      body {
+        margin: 16px;
+        font:
+          16px/1.2 system-ui,
+          sans-serif;
+      }
+      #clipped-box {
+        width: 300px;
+        height: 40px;
+        overflow: hidden;
+      }
+      #spill-box {
+        width: 300px;
+        height: 40px;
+        border: 1px solid #999;
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      .scroller {
+        width: 300px;
+        height: 40px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <p>An ordinary paragraph grows with its text.</p>
+    <div id="clipped-box">Free shipping over $50. Returns accepted within 30 days.</div>
+    <div id="spill-box">Order by noon for same-day dispatch on weekdays.</div>
+    <span class="visually-hidden">Hidden label text for screen readers</span>
+    <div class="scroller">This box scrolls, so longer text stays reachable when spacing grows.</div>
+  </body>
+</html>

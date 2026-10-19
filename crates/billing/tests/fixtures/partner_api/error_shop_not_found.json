@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "message": "Shop not found",
+      "locations": [
+        {
+          "line": 2,
+          "column": 3
+        }
+      ],
+      "path": ["activeSubscription"]
+    }
+  ],
+  "data": {
+    "activeSubscription": null
+  }
+}

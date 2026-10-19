@@ -1,0 +1,2 @@
+# The CSV snapshot keeps the CRLF line endings RFC 4180 requires; never normalize it.
+test/__snapshots__/*.csv.snap -text
