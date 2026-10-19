@@ -116,6 +116,11 @@ function atRuleContext(rule: Container): Tri | 'skip' {
   return result;
 }
 
+/** postcss leaves `important` undefined (despite its typings) when there is no `!important`. */
+export function isImportant(d: Declaration): boolean {
+  return (d as { important?: boolean }).important === true;
+}
+
 function declarationOf(
   file: string,
   base: number,
@@ -129,7 +134,7 @@ function declarationOf(
   const valueStart = start + d.prop.length + (raws.between ?? ':').length;
   const rawValue = raws.value?.raw ?? d.value;
   const valueEnd = valueStart + rawValue.trimEnd().length;
-  const end = d.important
+  const end = isImportant(d)
     ? valueEnd + (raws.important ?? ' !important').trimEnd().length
     : valueEnd;
   const text = source.slice(start, end);
@@ -141,7 +146,7 @@ function declarationOf(
     end: start + text.trimEnd().length,
     valueStart,
     valueEnd,
-    important: d.important,
+    important: isImportant(d),
   };
 }
 

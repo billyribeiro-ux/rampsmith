@@ -13,7 +13,7 @@ import { findAttribute, elementAt } from '../html.ts';
 import { locateJsonValue } from '../json.ts';
 import type { CssDeclarationSpan } from '../recipes/contrast.ts';
 import { cascade, type Cascade } from './css/cascade.ts';
-import { sanitizeLiquid, type CssDeclaration, type CssIndex } from './css/index.ts';
+import { isImportant, sanitizeLiquid, type CssDeclaration, type CssIndex } from './css/index.ts';
 import type { MatchOptions } from './css/selector.ts';
 import type { SectionInstance, ThemeIndex } from './theme.ts';
 import type { ElementSpan, FindingToMap, MappedJsonValue, RenderedNode } from './types.ts';
@@ -77,7 +77,7 @@ function inlineDeclarations(index: ThemeIndex, source: ElementSpan | null): CssD
       end: valueEnd,
       valueStart,
       valueEnd,
-      important: d.important,
+      important: isImportant(d),
     });
   });
   return out;
