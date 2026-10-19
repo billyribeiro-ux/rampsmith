@@ -1,0 +1,33 @@
+{
+  "data": {
+    "activeSubscription": {
+      "shop": {
+        "id": "gid://shopify/Shop/5678",
+        "myshopifyDomain": "example.myshopify.com"
+      },
+      "billingPeriod": "EVERY_30_DAYS",
+      "cancelAtEndOfCycle": false,
+      "trialEndsAt": null,
+      "currentBillingCycle": {
+        "startTime": "2026-04-01T00:00:00Z",
+        "endTime": "2026-05-01T00:00:00Z"
+      },
+      "items": [
+        {
+          "handle": "pro_plan",
+          "description": "Pro plan",
+          "price": {
+            "__typename": "FlatRatePrice",
+            "active": true,
+            "currency": "USD",
+            "amount": "29.00"
+          },
+          "discount": null,
+          "usage": null
+        }
+      ],
+      "pendingUpdate": null,
+      "legacySubscriptionId": "gid://shopify/AppSubscription/987654321"
+    }
+  }
+}

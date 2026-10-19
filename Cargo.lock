@@ -1959,6 +1959,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rampsmith-billing"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "rampsmith-shopify",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "time",
+]
+
+[[package]]
 name = "rampsmith-contracts"
 version = "0.0.0"
 dependencies = [
