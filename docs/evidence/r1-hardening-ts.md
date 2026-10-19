@@ -186,3 +186,50 @@ $ pnpm add -E is-odd     # same, plus minimumReleaseAgeStrict: false
 `node_modules/.pnpm-workspace-state-v1.json` records `"minimumReleaseAge": 1440` and
 `"minimumReleaseAgeStrict": true` after the install, and `~/.cache/pnpm/lockfile-verified.jsonl`
 holds a verification of this lockfile under `"minimumReleaseAge":1440`.
+
+## Gate results (head of `r1-hardening-ts`, Node 26.12.0, pnpm 12.14.0)
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Install | `pnpm install --frozen-lockfile` | passes, `Lockfile passes supply-chain policies` |
+| ESLint | `pnpm run lint` (`--max-warnings=0`) | clean |
+| Prettier | `pnpm run format:check` | clean |
+| Types | `pnpm run typecheck` (`tsc`, `svelte-check --fail-on-warnings`) | 0 errors, 0 warnings in every package |
+| Knip | `pnpm run knip` | clean |
+| Claims | `node packages/claims-lint/src/main.ts` | 14 files scanned, no banned claims |
+| Node pins | `node packages/node-pins/src/main.ts` | every pin agrees with `.mise.toml` |
+| Unit tests | `DATABASE_URL=… pnpm run test` | claims-lint 50, node-pins 11, contracts-ts 9, telemetry 24, queue 18, web 37, engine 91; all pass |
+| Engine browser tests | `pnpm --filter @rampsmith/engine run test:e2e` (real Chromium and `egress`) | 12 of 12 |
+| Web browser tests | `pnpm --filter @rampsmith/web run test:e2e` (build, e2e database, real `api`) | 15 of 15 (`embedded` 10, `dashboard` 5) |
+
+Not run in this lane: the Rust gates (no Rust file changed) and GitHub Actions on the pinned
+toolchains; the release gate and `release-verifier` belong to the architect.
+
+Commits on the branch: `75c734c` (M1, L2), `a0b8f0a` (L10), `637d5f5` (M4), `18697a7` (M2),
+`554e5fd` (M3), `565cd45` (L8 web), `909f570` (L15). ADRs 050 to 056.
+
+## For the architect
+
+1. **Plan corrections, all written in the ADRs' "Plan correction" sections**: PLAN §18's `script-src`
+   bullet (ADR-054); the "minimum release age" row has a value, one day for pnpm and seven for
+   Renovate (ADR-056); ADR-024 item 4 names the old cookie `rs_session`, now `__Host-rs_session`
+   (ADR-055). ADRs 050 to 053 carry theirs.
+2. **A live check for LAUNCH §E**: the content security policy has never run against the real App
+   Bridge and Polaris scripts (`cdn.shopify.com` is unreachable from the sandbox). On the first
+   development-store load, read the browser console for `Content Security Policy` errors and widen
+   the narrowest directive that fits (ADR-054, "Unverified"). It extends the check ADR-023 already
+   puts in the dev-store runbook. The substitute test passes now.
+3. **Rust half of L8** is not here: revoke earlier sessions on sign-in and redact `SessionCreated`'s
+   `Debug` (`crates/api`).
+4. **Deploy-time item from M1** (ADR-050): Railway has no egress filter, so the engine's UDP
+   containment relies on the Chromium switch; restricting the engine service's network is an
+   operations step to put in the deploy runbook.
+5. **Outside the lane**: `routes/app/+layout.svelte` still loads `polaris-1.1.js`; Shopify now
+   publishes `polaris-2.0-rc.js` in the same directory, so the policy covers either. `app.html`
+   (SvelteKit's default `<div style="display: contents">`) also needs inline styles, but Polaris
+   is the reason `style-src` keeps `'unsafe-inline'`, so changing `app.html` alone would not let
+   it be tightened (ADR-054).
+6. **Environment**: the root filesystem had about 40 MB free twice during this lane and tool
+   output was lost. To continue I removed regenerable or scratch data only: the contents of
+   `/tmp/node-compile-cache`, and the scratchpad directories `cdn`, `shopify-pkg`, `shopify-pkgs`,
+   `webrtc-test`, `pnpm-age` and `tmp.*`. `/home/claude/rampsmith/target` was not touched.
