@@ -29,6 +29,16 @@ TypeScript generated from the schemas and drift failing CI.
    Ajv validation enforces them. The TypeScript generator ignores them (`ignoreMinAndMaxItems`),
    so arrays stay arrays instead of unions of tuples.
 
+6. **The engine validates every payload against the generated JSON Schema** with Ajv 2020
+   (`packages/engine/src/jobs/payload.ts`), so the Rust producer and the TypeScript consumer
+   cannot drift. A mismatch fails the job permanently with `payload_invalid` and the failing
+   keyword, never the value. `uuid`, `uri` (https only) and `uint32` are the formats the
+   schemas use.
+7. **One worker per queue** (`packages/engine/src/queues.ts`). A queue R1 has not built yet
+   validates its payload and tenant, then fails permanently with `not_implemented`, so a job
+   enqueued early stays visible as dead instead of disappearing. Each lane replaces its own
+   stub in `packages/engine/src/jobs/`.
+
 ## Consequences
 
 - Each job keeps its tenant in `jobs.tenant_id`; the ids in a payload must belong to it, and the

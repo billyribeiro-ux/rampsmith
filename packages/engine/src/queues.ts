@@ -1,0 +1,38 @@
+/**
+ * Every queue the engine serves, with its handler (PLAN §10, ADR-035, ADR-036). `ctl` serves
+ * the queues that need a Shopify token; the engine never does. An R1 lane builds a queue by
+ * replacing its stub in `jobs/` and, when the handler needs dependencies, its line below.
+ */
+import { altTextHandler } from './jobs/alt-text.ts';
+import { auditDataHandler } from './jobs/audit-data.ts';
+import { scanFinalizeHandler } from './jobs/finalize.ts';
+import type { JobHandler } from './jobs/payload.ts';
+import { scanPlanHandler } from './jobs/plan.ts';
+import { verifyScanHandler } from './jobs/verify.ts';
+import { scanPageHandler, type EngineDeps } from './worker.ts';
+
+export const ENGINE_QUEUES = [
+  'scan.plan',
+  'scan.page',
+  'scan.finalize',
+  'audit.data',
+  'ai.alt_text',
+  'verify.scan',
+] as const;
+export type EngineQueue = (typeof ENGINE_QUEUES)[number];
+
+/** The handlers that need neither the browser nor egress yet. */
+export function stubHandlers(): Record<Exclude<EngineQueue, 'scan.page'>, JobHandler> {
+  return {
+    'scan.plan': scanPlanHandler(),
+    'scan.finalize': scanFinalizeHandler(),
+    'audit.data': auditDataHandler(),
+    'ai.alt_text': altTextHandler(),
+    'verify.scan': verifyScanHandler(),
+  };
+}
+
+/** Each engine queue's handler. */
+export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
+  return { ...stubHandlers(), 'scan.page': scanPageHandler(deps) };
+}
