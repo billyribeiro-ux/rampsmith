@@ -1,0 +1,26 @@
+/*
+ * Page-level styles for the standalone pages; colours, spacing, motion and the focus ring come
+ * from @rampsmith/ui's tokens (PLAN §16). The embedded app uses Polaris.
+ */
+:root {
+  color: var(--rs-color-text);
+  background: var(--rs-color-surface);
+  font-family: var(--rs-font);
+  font-size: var(--rs-font-size);
+  line-height: var(--rs-line-height);
+}
+
+body {
+  margin: 0;
+}
+
+/* Whatever a component forgets, reduced motion still stops it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
