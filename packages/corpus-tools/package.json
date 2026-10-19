@@ -4,6 +4,9 @@
   "private": true,
   "description": "Checks for the theme test corpus (PLAN §23): golden files validate, spans exist, rule ids are known, and each theme page rendered statically and checked by axe-core in Chromium fires exactly its golden findings.",
   "type": "module",
+  "engines": {
+    "node": ">=26.12.0 <27"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

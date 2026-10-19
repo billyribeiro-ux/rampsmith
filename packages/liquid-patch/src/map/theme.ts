@@ -211,11 +211,17 @@ export function settingText(
   return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
 }
 
-/** The layout file a template renders in: its `layout` key, else `theme`. */
-export function layoutFor(index: ThemeIndex, template: string): string {
+/**
+ * The layout file a template renders in: its `layout` key, "the filename of the layout to use"
+ * (shopify.dev, JSON templates; the default is `theme`, with or without `.liquid`), or `null`
+ * when the key is `false`, which renders the template without a layout.
+ */
+export function layoutFor(index: ThemeIndex, template: string): string | null {
   const root = index.json(`templates/${template}.json`);
   const layout = isRecord(root) ? root['layout'] : undefined;
-  return `layout/${typeof layout === 'string' ? layout : 'theme'}.liquid`;
+  if (layout === false) return null;
+  const name = typeof layout === 'string' ? layout.replace(/\.liquid$/u, '') : 'theme';
+  return `layout/${name}.liquid`;
 }
 
 export interface Closure {

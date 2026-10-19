@@ -148,15 +148,23 @@ describe('settingText', () => {
 });
 
 describe('layoutFor', () => {
-  it('uses the template layout key, else theme', () => {
+  it('uses the template layout key, with or without .liquid, else theme', () => {
     const index = theme({
       'templates/password.json': '{"layout":"password"}',
+      'templates/gift.json': '{"layout":"gift.liquid"}',
+      'templates/bare.json': '{"layout":false,"sections":{}}',
       'templates/index.json': '{"sections":{}}',
       'templates/page.liquid': '',
     });
     expect(layoutFor(index, 'password')).toBe('layout/password.liquid');
+    expect(layoutFor(index, 'gift')).toBe('layout/gift.liquid');
     expect(layoutFor(index, 'index')).toBe('layout/theme.liquid');
     expect(layoutFor(index, 'page')).toBe('layout/theme.liquid');
+  });
+
+  it('is null for a template that renders without a layout', () => {
+    const index = theme({ 'templates/bare.json': '{"layout":false,"sections":{}}' });
+    expect(layoutFor(index, 'bare')).toBeNull();
   });
 });
 

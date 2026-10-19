@@ -98,6 +98,25 @@ describe('page-wide rules map to the layout', () => {
     expect(outcome.status).toBe('unmapped');
   });
 
+  it('is unmapped for a template that renders without a layout', () => {
+    const files = new Map(tarn());
+    files.set('templates/bare.json', '{"layout":false,"sections":{}}');
+    const m = new Mapper(files);
+    const outcome = m.map({
+      rule: 'html-has-lang',
+      template: 'bare',
+      element: rendered('html', {}, '', []),
+    });
+    expect(outcome.status).toBe('unmapped');
+    // A style finding on such a page has no layout CSS to read, and says so by not mapping.
+    const style = m.map({
+      rule: 'color-contrast',
+      template: 'bare',
+      element: rendered('p', { class: 'plain' }, 'x', pageAbove()),
+    });
+    expect(style.status).not.toBe('mapped');
+  });
+
   it('uses the layout a template names', () => {
     const files = new Map(tarn());
     files.set('layout/password.liquid', '<html><body></body></html>');
@@ -313,7 +332,7 @@ describe('rich text', () => {
     const files = new Map(tarn());
     files.set(
       'sections/main-page.liquid',
-      '<div class="rte">{{ article.content }}</div><div class="intro">{{ article.excerpt }}</div><div class="d">{{ product.description }}</div><div class="c">{{ collection.description }}</div>',
+      '<div class="rte">{{ article.content }}</div><div class="intro">{{ article.excerpt }}</div><div class="d">{{ product.description }}</div><div class="k">{{ product.content }}</div><div class="c">{{ collection.description }}</div>',
     );
     const m = new Mapper(files);
     const probe = (className: string, type: RenderedResource['type'], field: string) =>
@@ -329,6 +348,9 @@ describe('rich text', () => {
     expect(mapped(probe('rte', 'article', 'body')).span).toMatchObject({ field: 'body' });
     expect(mapped(probe('intro', 'article', 'summary')).span).toMatchObject({ field: 'summary' });
     expect(mapped(probe('d', 'product', 'descriptionHtml')).span).toMatchObject({
+      field: 'descriptionHtml',
+    });
+    expect(mapped(probe('k', 'product', 'descriptionHtml')).span).toMatchObject({
       field: 'descriptionHtml',
     });
     expect(mapped(probe('c', 'collection', 'descriptionHtml')).span).toMatchObject({

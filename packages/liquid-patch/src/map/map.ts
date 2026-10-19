@@ -110,6 +110,9 @@ export class Mapper {
   /** The layout element a page-wide rule is fixed on. */
   private mapLayout(finding: FindingToMap, tag: string): MapOutcome {
     const layout = layoutFor(this.index, finding.template);
+    if (layout === null) {
+      return { status: 'unmapped', reason: `the ${finding.template} template has no layout` };
+    }
     if (this.index.liquid(layout) === null) {
       return { status: 'unmapped', reason: `${layout} is missing or does not parse` };
     }
@@ -141,7 +144,10 @@ export class Mapper {
     instances: readonly SectionInstance[],
     inSection: boolean,
   ): Closure {
-    if (!inSection) return renderClosure(this.index, [layoutFor(this.index, template)]);
+    if (!inSection) {
+      const layout = layoutFor(this.index, template);
+      return layout === null ? { files: [], dynamic: false } : renderClosure(this.index, [layout]);
+    }
     const roots = instances.map((i) => i.file);
     const blockTypes = instances.flatMap((i) => i.blocks.map((b) => b.type));
     if (roots.length === 0) return { files: [], dynamic: false };
@@ -262,7 +268,7 @@ export class Mapper {
     const cached = this.pageCache.get(template);
     if (cached !== undefined) return cached;
     const layout = layoutFor(this.index, template);
-    const roots = [layout];
+    const roots = layout === null ? [] : [layout];
     const blockTypes: string[] = [];
     const addInstances = (jsonFile: string): void => {
       const json = this.index.json(jsonFile);
@@ -281,7 +287,7 @@ export class Mapper {
       }
     };
     addInstances(`templates/${template}.json`);
-    const file = this.index.liquid(layout);
+    const file = layout === null ? null : this.index.liquid(layout);
     if (file !== null) {
       walk(file.ast, (node) => {
         if (node.type === NodeTypes.LiquidTag && node.name === 'sections') {
@@ -302,7 +308,7 @@ export class Mapper {
     const layout = layoutFor(this.index, template);
     const css = buildCssIndex(
       this.index,
-      layout,
+      layout ?? '',
       page.files.filter((f) => f !== layout),
     );
     this.cssCache.set(template, css);

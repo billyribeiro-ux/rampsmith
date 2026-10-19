@@ -17,6 +17,7 @@ const RICH_TEXT: Readonly<Record<string, { type: RenderedResource['type']; field
   'article.excerpt': { type: 'article', field: 'summary' },
   'page.content': { type: 'page', field: 'body' },
   'product.description': { type: 'product', field: 'descriptionHtml' },
+  'product.content': { type: 'product', field: 'descriptionHtml' },
   'collection.description': { type: 'collection', field: 'descriptionHtml' },
 };
 
