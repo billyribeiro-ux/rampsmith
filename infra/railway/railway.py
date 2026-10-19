@@ -271,10 +271,9 @@ R2_EVIDENCE = {
     "R2_BUCKET_EVIDENCE": shared("R2_BUCKET_EVIDENCE"),
 }
 SHOPIFY_APP = {
-    # LAUNCH.md C row 1 names the app's credentials SHOPIFY_API_KEY and SHOPIFY_API_SECRET;
-    # the code reads Shopify's current names (ADR-182).
-    "SHOPIFY_CLIENT_ID": shared("SHOPIFY_API_KEY"),
-    "SHOPIFY_CLIENT_SECRET": shared("SHOPIFY_API_SECRET"),
+    # LAUNCH.md C row 1's names, which the api and ctl read since R0 renamed them (ADR-031).
+    "SHOPIFY_API_KEY": shared("SHOPIFY_API_KEY"),
+    "SHOPIFY_API_SECRET": shared("SHOPIFY_API_SECRET"),
 }
 SHOPIFY_PARTNER = {
     "SHOPIFY_PARTNER_API_TOKEN": shared("SHOPIFY_PARTNER_API_TOKEN"),
@@ -288,7 +287,7 @@ def _web(env: str, inputs: Inputs) -> Any:
         **_common("web"),
         "HOST": "::",
         "API_URL": private_url("api", PORTS["api"]),
-        "SHOPIFY_CLIENT_ID": shared("SHOPIFY_API_KEY"),
+        "SHOPIFY_API_KEY": shared("SHOPIFY_API_KEY"),
         "TURNSTILE_SITE_KEY": shared("TURNSTILE_SITE_KEY"),
         "TURNSTILE_SECRET_KEY": shared("TURNSTILE_SECRET_KEY"),
     }

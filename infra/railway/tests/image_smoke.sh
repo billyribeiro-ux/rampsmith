@@ -83,8 +83,8 @@ esac
       echo "WEBHOOK_BIND_ADDR=[::]:$webhook_port"
       echo "DATABASE_URL=$(database_url rampsmith_api "$RAMPSMITH_DB_PASSWORD_API")"
       echo "MIGRATION_DATABASE_URL=$(database_url rampsmith_migrator "$RAMPSMITH_DB_PASSWORD_MIGRATOR")"
-      echo "SHOPIFY_CLIENT_ID=smoke"
-      echo "SHOPIFY_CLIENT_SECRET=smoke"
+      echo "SHOPIFY_API_KEY=smoke"
+      echo "SHOPIFY_API_SECRET=smoke"
       echo "RAMPSMITH_MASTER_KEYS=smoke:$(head -c 32 /dev/urandom | base64 -w0)"
       echo "WEBAUTHN_RP_ID=localhost"
       echo "WEBAUTHN_RP_ORIGIN=http://localhost:3000"
@@ -92,8 +92,8 @@ esac
     ctl)
       echo "BIND_ADDR=[::]:$port"
       echo "DATABASE_URL=$(database_url rampsmith_ctl "$RAMPSMITH_DB_PASSWORD_CTL")"
-      echo "SHOPIFY_CLIENT_ID=smoke"
-      echo "SHOPIFY_CLIENT_SECRET=smoke"
+      echo "SHOPIFY_API_KEY=smoke"
+      echo "SHOPIFY_API_SECRET=smoke"
       echo "RAMPSMITH_MASTER_KEYS=smoke:$(head -c 32 /dev/urandom | base64 -w0)"
       ;;
     engine)
@@ -108,7 +108,7 @@ esac
     web)
       echo "HOST=::"
       echo "API_URL=http://127.0.0.1:9"
-      echo "SHOPIFY_CLIENT_ID=smoke"
+      echo "SHOPIFY_API_KEY=smoke"
       ;;
     *) fail "unknown service $service" ;;
   esac
