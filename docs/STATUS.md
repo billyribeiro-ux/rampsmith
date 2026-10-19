@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 16:40 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
+Last updated: 2026-10-19 18:47 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
 
 ## Active builder
 
@@ -41,6 +41,25 @@ and never edits this file; the architect merges their branches and keeps this se
 | S1 R0 gate fixes           | `r0-gate-fixes` (into `r0-foundations`) | `packages/ui/src/lib/{Dialog,Toaster,Disclosure,MenuButton,DataTable}.svelte`, `packages/ui/package.json`; the Shopify variable rename (audit L13) in `crates/api/src/config.rs`, `crates/ctl/src/config.rs`, `apps/web/src/env.ts`, `.env.example`, `docs/runbooks/shopify-dev-store.md`, `infra/smoke/`, CI env names; audit L9 in `crates/api/src/config.rs`; all of `crates/shopify/` (the live check `tests/live_dev_store.rs`, and audit L3, L4 and the L7 lines in `src/token.rs`), `.config/nextest.toml` | 030–039 | Done at `f1ec552` (ADR-030–033), merged into `r0-foundations` (`7ac4568`); PR #1 CI running |
 | S2 Audit fixes, Rust       | `r1-hardening`                          | `crates/{egress,crypto,shopify-auth,identity}/`, `crates/db/` (migrations `20261101*` only), `crates/api/src/` and `crates/ctl/src/` except the two `config.rs` files: M4 (api, ctl), M5, M6, L1, L5, L6 (library and ctl rewrap job), L7 (outside `crates/shopify`), L8 (Rust), L12, L14, and `jobs` in the isolation suite                                                                                                                                                                                      | 040–049 | Built at `f15fdcb` (ADR-040–047), clippy and sqlx check clean; most suites not run locally (disk full); CI on draft PR #15 |
 | S3 Audit fixes, TypeScript | `r1-hardening-ts`                       | `packages/engine/`, `packages/telemetry/`, `apps/web/{vite.config.ts,src/instrumentation.server.ts,src/hooks.server.ts,src/lib/server/headers*,src/lib/server/dashboard*,src/routes/dashboard/}`, `pnpm-workspace.yaml`: M1, M2, M3, M4 (engine), L2, L8 (web), L10, L15                                                                                                                                                                                                                                          | 050–059 | Done at `4d5edb0` (ADR-050–056); engine e2e 12/12, web e2e 15/15 locally; CI on draft PR #16 |
+
+**Follow-ups from lane S1's security audit (`docs/evidence/r0-s1-security-audit-2026-10-19.md`, PASS):**
+lane S2 (`r1-hardening`) now also owns `crates/shopify/` and `crates/telemetry/` for F1 (keep
+`reqwest`, `hyper_util`, `h2` and `rustls` at `info` unless `RUST_LOG` names them, so no shop
+domain reaches DEBUG logs), F2 (classify token errors by Shopify's OAuth `error` code, never
+deleting tokens on `invalid_client`; the live probe then requires `invalid_subject_token`), F3
+(compile the test-only `TokenEndpoint::Base` only for tests), F4 (one rule for whitespace around
+`SHOPIFY_API_SECRET` in the live test and in production config) and F6 (a body-read failure
+after a 2xx is transient, and the ctl leader re-arms missing keep-alives). F5 and O1 are fixed;
+F7 is already fixed on `r1-hardening`.
+
+**Before the founder enters any input (security review owed):** the R0 verifier noted that O1's
+reasoning (a public repository's workflows, pushed to any branch, can read repository secrets)
+applies to every value `docs/FOUNDER_SETUP.md` sends to GitHub as "GH" or "Both", for example
+`GITHUB_APP_PRIVATE_KEY`, `ANTHROPIC_API_KEY`, `R2_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`,
+`SHOPIFY_DEV_STORE_PASSWORD` and `SHOPIFY_PARTNER_API_TOKEN`. The builder runs the
+`security-auditor` on FOUNDER_SETUP's secret placement (environment secrets on protected
+environments instead of repository secrets) before the founder starts; W1's plan to pass founder
+inputs into CI's `rust` job is part of that review.
 
 Deferred to R1 lanes: L11 (a narrower engine database role) and the rewrap job's operator side
 (W1's `rsctl`). Audit L4 is confirmed by Shopify's documentation (a refresh answering 401 means
