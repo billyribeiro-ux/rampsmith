@@ -207,10 +207,11 @@ Pull request #13: <https://github.com/billyribeiro-ux/rampsmith/pull/13>.
 | `9fb9758` list-backups, ADR-178, 179 | [39301423151](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39301423151) success | [39301422880](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39301422880) success |
 | `0b6fd16` eight runbooks | [39302841893](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39302841893) success | [39302841858](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39302841858) success |
 | `d482001` incident runbook, index, audit-window (58 runbook-SQL checks) | [39303834178](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39303834178) success | [39303834332](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39303834332) success (8 jobs: rust, node, contracts, e2e, four images) |
+| `7f8c247` this file, the R2 file tests (156 backup assertions), ADR-172's note on them | [39304928512](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39304928512) success | [39304928770](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39304928770) success |
 
-The head after `d482001` adds this file, the R2 file tests (156 backup assertions) and ADR-172's note on
-them. Its runs are the checks on pull request #13 and are named in the stream's hand-back; a file
-cannot name the CI run of the commit that contains it.
+The head after `7f8c247` changes two wording details in the incident runbook (no code). A file cannot name
+the CI run of the commit that contains it, so the runs of the final head are the checks on pull request
+#13 and are named in the stream's hand-back.
 
 The job `live restore (staging)` is `skipped` in every run, as designed (no secrets; Section E).
 Earlier heads include two that were fixed within the stream's paths (the drill role fixtures; the
@@ -220,7 +221,7 @@ mixed post-quantum recipient list). No failure was outside the stream's paths.
 
 | Item | State |
 | --- | --- |
-| CI green on the PR head, including the restore drill | Met on every head through `d482001` (section 4); the final head's runs are in the hand-back |
+| CI green on the PR head, including the restore drill | Met on every head through `7f8c247` (section 4); the final head's runs are in the hand-back |
 | actionlint and ShellCheck clean | Met (local and the `lint` job) |
 | The drill fails on each negative case and tests prove it | Met: 15 cases, 0 failed |
 | Nine runbooks present, accurate to the code | Met as to the code on the branches listed in each runbook; every piece that does not exist is marked "not built" (README, "Not built") |
