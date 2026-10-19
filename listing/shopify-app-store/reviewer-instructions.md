@@ -23,7 +23,7 @@ descriptions, pages and menus) with one-click undo. It keeps a dated record of e
 fix, approval and verification scan, and generates an accessibility statement the merchant can
 edit and publish.
 
-## How Rampsmith treats the theme (requirement 5.1.1)
+## How Rampsmith treats the theme (requirements 5.1.1 and 1.1.3)
 
 - Rampsmith never creates, changes or deletes theme files. It reads theme files only, with
   `read_themes`, to locate where a finding comes from.
@@ -35,8 +35,15 @@ edit and publish.
   with the changes, which the developer can review and install as an unpublished theme.
   Rampsmith never merges, never installs and never publishes a theme. The app's scanning, data
   fixes, record and statement work without these optional handoffs.
+- Rampsmith is not a way to obtain themes. Requirement 1.1.3 says "Your app must not allow
+  merchants to download themes" and "Themes can only be installed via the Shopify Theme Store".
+  The theme copy in step 8 is a fixed copy of the merchant's own theme, not a theme from
+  elsewhere, but it is a theme the merchant downloads, so it is the first thing to remove if the
+  founder decides 1.1.3 applies.
 - `[Founder: confirm this section after the ADR-141 decision. If the App Store build hides the
-  code handoffs, delete the third point and steps 7 and 8.]`
+  code handoffs, delete the third and fourth points and steps 7 and 8. If only the theme copy
+  goes, delete the fourth point, the theme-copy half of the third point and step 8, and keep
+  step 7.]`
 
 ## Test store and access
 
@@ -45,7 +52,7 @@ edit and publish.
 | Demo store | `[DEMO STORE URL]` |
 | Storefront password | In the submission form |
 | GitHub test account with access to the test theme repository (step 7) | In the submission form |
-| Plans | Paid plans are marked "Free for partners and developers", so a review store can use every plan at no charge `[Founder: confirm in FOUNDER_SETUP.md step 6]` |
+| Plans | Paid plans are marked "Free for partners and developers", so a review store can use every plan at no charge `[Founder: confirm in FOUNDER_SETUP.md step 5]` |
 | Support contact during review | `[SUPPORT EMAIL]`; emergency developer contact set in the Partner Dashboard |
 
 ## Steps to test
@@ -74,7 +81,7 @@ edit and publish.
    and choose the test theme repository and branch. Approve a theme code fix: Rampsmith opens a
    pull request with one commit per fix and a "Rampsmith verification" check. It does not merge
    it. **Not built yet (R2).**
-8. **Theme copy (Starter plan, optional handoff).** In Code, download the theme copy with fixes.
+8. **Theme copy (Starter plan, optional handoff; the step requirement 1.1.3 puts at risk, ADR-141).** In Code, download the theme copy with fixes.
    After it is uploaded as an unpublished theme, Rampsmith scans its preview and shows the result
    before anyone publishes. **Not built yet (R2).**
 9. **Plans.** Open Plan: the app redirects to Shopify's hosted plan page, where the plan can be
@@ -111,6 +118,7 @@ Rampsmith requests no customer or order scopes and opts out of protected custome
 | GraphQL Admin API only (2.2.4) | API version 2026-10 | Not built yet (R0 step 7) |
 | Shopify App Pricing for all charges (1.2.1) | Four plans; no external payment | Not built yet (R2) |
 | Theme changes only through a theme app extension (5.1.1) | One app embed, off by default | Not built yet (R1) |
+| Merchants are directed to the Shopify Theme Store; the app lets no merchant download a theme (1.1.3) | Pending the founder's ADR-141 decision: the theme copy (step 8) is off in the App Store build unless he decides it may stay | Decision open |
 
 ## Known limitations at submission
 

@@ -29,6 +29,9 @@ DRAFT — attorney review required. Not published.
   later release (R3).
 - Product behaviour described here (merchant approval, undo, no theme writes, preview scans) is
   PLAN §12 and ADR-004. Several parts are not built yet; publish only once they are.
+- Section 5 describes a copy of the theme that the customer installs as an unpublished theme. Shopify's
+  App Store requirement 1.1.3 ("Your app must not allow merchants to download themes") may rule that
+  channel out of the App Store build (ADR-141); if the founder retires it, delete that sentence.
 
 ---
 

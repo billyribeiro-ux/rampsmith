@@ -259,7 +259,7 @@ E elevation of privilege.
 | ID | STRIDE | Threat | Control (PLAN) | Status |
 | --- | --- | --- | --- | --- |
 | S1 | E | App holds more access than it needs | Scopes limited to PLAN §14's list; no theme write; no customer scopes; protected customer data opted out | planned (R1) |
-| S2 | T | Theme modified by the app | Never write theme files (ADR-004); storefront change only through the theme app extension; requirement 5.1.1 (ADR-141) | planned (R1), by design |
+| S2 | T | Theme modified by the app | Never write theme files (ADR-004); storefront change only through the theme app extension; requirement 5.1.1 (ADR-141); a downloadable theme is also what requirement 1.1.3 forbids | planned (R1), by design |
 | S3 | S | Shop domain spoofed in claims or rows | `dest` validated as `*.myshopify.com`; `shop_domain` constrained by a database check | built (schema check: `crates/db/migrations/20261017000002_core_tables.sql`); token check planned (R0 step 7) |
 | S4 | I | Data kept after uninstall | `app/uninstalled` revokes tokens; `shop/redact` deletes the shop's data within 30 days (§14, §19) | planned (R2) |
 | S5 | I | Customer data request unanswered | `customers/data_request` and `customers/redact` handled within 30 days, 401 on bad HMAC (§19) | planned (R2) |
@@ -283,8 +283,9 @@ E elevation of privilege.
 
 ## Residual risks and open items
 
-- The code-fix channels may conflict with App Store requirement 5.1.1 (ADR-141). Founder and
-  architect decision.
+- The code-fix channels may conflict with App Store requirements 5.1.1 and 1.1.3 (ADR-141); the
+  theme package, which the merchant downloads, is the one 1.1.3 names. Founder and architect
+  decision.
 - Shopify may never send the customer compliance topics to an app without customer or order
   access (ADR-142). Barrier-report deletion therefore also needs the merchant's delete control
   and a privacy contact; both are planned with the form in R1.

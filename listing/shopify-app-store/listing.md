@@ -3,10 +3,9 @@
 Draft for the founder. Nothing here is submitted or published. The founder submits the app
 (LAUNCH.md section E).
 
-The three listing files sit directly in `listing/` (`shopify-app-store-listing.md`,
-`shopify-app-store-reviewer-instructions.md`, `shopify-app-store-screencast-script.md`) rather
-than in a `listing/shopify-app-store/` folder: `claims-lint` currently stops with `EISDIR` when a
-folder matches its `listing/**/*` pattern. They move into the folder once the tool skips folders.
+The three listing files are `listing.md`, `reviewer-instructions.md` and `screencast-script.md` in
+this folder. `claims-lint` scans every file here through its `listing/**/*` pattern and skips the
+folder itself (the fix for its earlier `EISDIR` stop is on `r0-foundations`).
 
 ## Rules this copy follows
 
@@ -36,8 +35,8 @@ yet**. The copy may be used only once each line is true in the running app; the
 | Ranked findings with plain-language explanations | R1 | No |
 | AI-drafted alt text with approve, edit and undo | R1 | No |
 | Corrected headings and link text in descriptions and pages | R2 (Growth plan) | No |
-| Pull requests for the merchant's developer | R2 (Growth plan); App Review risk, ADR-141 | No |
-| Patched theme package (pricing section only) | R2 (Starter plan); App Review risk, ADR-141 | No |
+| Pull requests for the merchant's developer | R2 (Growth plan); App Review risk (5.1.1), ADR-141 | No |
+| Patched theme package (pricing section only) | R2 (Starter plan); App Review risk (5.1.1 and 1.1.3), ADR-141 | No |
 | Remediation record | R1 | No |
 | Accessibility statement generator | R1 | No |
 | Scheduled rescans and regression alerts | R1 (weekly), R2 (daily, alerts) | No |
@@ -126,7 +125,7 @@ sentence "Fixes in theme code are prepared for your developer to review." from t
 Billing method: recurring charge, with the Free plan marked as free (Shopify best practices,
 "Pricing details"). Prices are PLAN §20, approved by the founder on 17 October 2026, in US
 dollars through Shopify App Pricing. Plan handles and the steps to create them are in
-`docs/FOUNDER_SETUP.md`, step 6.
+`docs/FOUNDER_SETUP.md`, step 5.
 
 | Plan (handle) | Monthly | Yearly |
 | --- | --- | --- |
@@ -176,7 +175,7 @@ Requirement 4.3.8 asks listings to state specific API permissions. Draft text fo
 > only the product, file, page, blog and menu changes you approve. It never writes theme files
 > and requests no customer or order data.
 
-Scopes and their reasons are PLAN §14 and `shopify-app-store-reviewer-instructions.md`.
+Scopes and their reasons are PLAN §14 and `reviewer-instructions.md`.
 
 ## Links
 
