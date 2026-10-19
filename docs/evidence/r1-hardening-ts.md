@@ -160,3 +160,29 @@ browser after sign-out and after the api ended the session (`Received: {"name":
 
 Not in this change (Rust lane): revoking earlier sessions on sign-in and redacting
 `SessionCreated`'s `Debug`.
+
+## L15 pnpm minimum release age (ADR-056)
+
+What changed: `pnpm-workspace.yaml` sets `minimumReleaseAge: 1440` (minutes, one day) and
+`minimumReleaseAgeStrict: true`. pnpm 12.14.0 already defaults to 1440 but non-strict; setting
+the value makes it strict, which the run below shows. The lockfile is unchanged.
+
+```
+$ pnpm install --frozen-lockfile
+✓ Lockfile passes supply-chain policies (verified 40m ago)
+Lockfile is up to date, resolution step is skipped
+$ pnpm install --frozen-lockfile --config.minimumReleaseAge=1441     # cache cannot answer
+? Verifying lockfile against supply-chain policies (444 entries)...
+✓ Lockfile passes supply-chain policies (444 entries in 2.2s)
+$ pnpm install --frozen-lockfile --config.minimumReleaseAge=100000   # about 69 days
+... @inlang/paraglide-js@2.29.0 was published at 2026-10-15T18:15:19.000Z, within the
+minimumReleaseAge cutoff ... …and 150 more      (install fails)
+$ pnpm add -E is-odd     # empty project, minimumReleaseAge: 99999999
+Error: ERR_PNPM_NO_MATURE_MATCHING_VERSION
+$ pnpm add -E is-odd     # same, plus minimumReleaseAgeStrict: false
++ is-odd 3.0.1
+```
+
+`node_modules/.pnpm-workspace-state-v1.json` records `"minimumReleaseAge": 1440` and
+`"minimumReleaseAgeStrict": true` after the install, and `~/.cache/pnpm/lockfile-verified.jsonl`
+holds a verification of this lockfile under `"minimumReleaseAge":1440`.
