@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebhookProcess",
+  "description": "Payload of `webhook.process` jobs, schema `webhook.process@1`. Runs in `ctl`: handles one\nverified Shopify webhook already recorded in `webhook_events` (app uninstall, shop update,\nthe compliance topics). The body is read from that row, never from the payload.",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "description": "The `webhook_events.id` to process.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "event_id"
+  ]
+}

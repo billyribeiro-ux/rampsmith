@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditData",
+  "description": "Payload of `audit.data` jobs, schema `audit.data@1`. Runs in the engine: audits one stored\nbatch of store data (alt text, rich text, menus) with `packages/a11y-rules`' data audit,\nwithout a browser and without a token.",
+  "type": "object",
+  "properties": {
+    "input_id": {
+      "description": "The `scan_inputs.id` holding the batch.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "scan_id": {
+      "description": "The `scans.id` the findings belong to.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "description": "The `sites.id` audited.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "site_id",
+    "input_id"
+  ]
+}

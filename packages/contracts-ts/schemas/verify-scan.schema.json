@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VerifyScan",
+  "description": "Payload of `verify.scan` jobs, schema `verify.scan@1`. Runs in the engine after a fix is\napplied: rescans the pages that showed the finding and records whether it is gone and\nwhether anything new appeared (PLAN §5, \"What each fix must carry\").",
+  "type": "object",
+  "properties": {
+    "fix_id": {
+      "description": "The `fixes.id` being verified.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "input_id": {
+      "description": "The `scan_inputs.id` holding the re-read store data, when the fix changed data.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "scan_id": {
+      "description": "The verification scan's `scans.id`.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "description": "The `sites.id` verified.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "urls": {
+      "description": "The pages to rescan: `https://` URLs on the site.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "site_id",
+    "fix_id",
+    "urls"
+  ]
+}

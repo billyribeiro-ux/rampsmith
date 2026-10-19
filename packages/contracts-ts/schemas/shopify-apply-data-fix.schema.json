@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShopifyApplyDataFix",
+  "description": "Payload of `shopify.apply_data_fix` jobs, schema `shopify.apply_data_fix@1`. Runs in `ctl`:\nwrites an approved data fix through the Admin API after checking that the current value\nstill equals the snapshot taken when the fix was proposed, then re-reads it and enqueues\n`verify.scan`.",
+  "type": "object",
+  "properties": {
+    "fix_id": {
+      "description": "The approved `fixes.id`.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "shop_id": {
+      "description": "The `shopify_shops.id` whose token `ctl` uses.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "fix_id",
+    "shop_id"
+  ]
+}

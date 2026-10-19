@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScanPlan",
+  "description": "Payload of `scan.plan` jobs, schema `scan.plan@1`. Runs in the engine: chooses the pages of\nthe eight types from what `shopify.read_store` stored, writes the plan on the scan, and\nenqueues the first `scan.page@2` jobs.",
+  "type": "object",
+  "properties": {
+    "scan_id": {
+      "description": "The `scans.id` to plan.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "description": "The `sites.id` scanned; it must be verified.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "site_id"
+  ]
+}

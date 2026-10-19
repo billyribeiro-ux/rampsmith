@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShopifyReadStore",
+  "description": "Payload of `shopify.read_store` jobs, schema `shopify.read_store@1`. Runs in `ctl`: reads the\nshop (primary domain, locales) and the store data R1 audits (products' media, collections,\npages, articles, menus) through the Admin API into `scan_inputs`, then enqueues `scan.plan`\nand one `audit.data` per input.",
+  "type": "object",
+  "properties": {
+    "scan_id": {
+      "description": "The `scans.id` the read feeds.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "shop_id": {
+      "description": "The `shopify_shops.id` whose token `ctl` uses.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "description": "The `sites.id` of the store.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "site_id",
+    "shop_id"
+  ]
+}

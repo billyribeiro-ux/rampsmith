@@ -6,9 +6,15 @@
 //! regenerates both and fails on any difference. Nothing in this crate is hand-mirrored.
 
 pub mod job;
+pub mod pipeline;
 pub mod problem;
 mod registry;
 
 pub use job::{JobError, ScanPage, ShopifyTokenRefresh};
+pub use pipeline::{
+    AiAltText, AuditData, PageState, PageType, ScanFinalize, ScanPageV2, ScanPlan,
+    ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, VerifyScan, Viewport,
+    WebhookProcess,
+};
 pub use problem::{FieldError, Problem, ProblemCode};
 pub use registry::{NamedSchema, schemas};
