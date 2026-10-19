@@ -2,17 +2,39 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-18 01:15 UTC by the builder `Rampsmith builder 2026-10-18 01:09 UTC`.
+Last updated: 2026-10-19 13:45 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
 
 ## Active builder
 
-- 2026-10-18 01:12 UTC: `Rampsmith builder 2026-10-18 01:09 UTC`
-  (`session_0141ZUbL5kywLHK6UAtS2pct`), working on branch `r0-foundations`: reconcile R0 against
-  its exit criteria, finish what is missing, integrate, merge.
-- Ended: the original "Rampsmith R0 build" session stopped at 2026-10-17 23:25 UTC on a usage
-  limit; its last push to `r0-foundations` is `ce54cc6` (23:17 UTC). The eight second-wave
-  stream sessions (WS-6 to WS-13) also stopped on usage limits between 23:25 and 23:28 UTC;
-  only `ws/corpus` has commits beyond `16926b5`.
+- **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`, task
+  `trig_01VH5RUTufH5KPZLALRvbdZr`), started 2026-10-19 13:37 UTC, working on `r0-foundations`
+  (finishing R0 and merging it). Lock rule applied at 13:40 UTC: no other builder task PENDING;
+  the newest non-`ws/` push was `r0-foundations` `d825c7b` at 2026-10-18 23:55 UTC (13.7 h).
+- The original "Rampsmith R0 build" session (`session_01Q33Wmz7em3UDGwr492j6SH`) last pushed
+  `d825c7b` at 2026-10-18 23:55 UTC and its last check-in fired at 2026-10-19 00:26 UTC. If it
+  resumes and pushes to `r0-foundations`, the newer builder above yields: it stops pushing to
+  that branch and records where it stopped here.
+- The second-wave stream sessions (WS-6 to WS-13) have all ended; their rows below are final.
+
+## R0 corrections parked on `r0-corrections` (for whoever merges R0)
+
+Branch `r0-corrections` at `d1bfeab` is `r0-foundations` at `4fdfb3b` plus three commits:
+1. `0192225`: `main` merged in. `r0-foundations` now uses ADR-028 for its service images, so
+   main's Node runtime ADR became **ADR-029** (`docs/adr/029-node-26-lts-runtime.md`), with
+   every reference moved (PLAN §6 and §7, CLAUDE.md, ENVIRONMENT.md, the release-verifier, both
+   Node evidence files) and an index row. Required correction 2 below is done there.
+2. `824aab7`: the claims-lint `EISDIR` fix with a test for a matching directory.
+3. `d1bfeab`: required correction 1, `mise run check:node-pins` (`packages/node-pins`, 11
+   tests), in `verify` and CI's `node` job; every workspace `package.json` now declares
+   `engines.node`; each CI and spikes job that installs Node logs `node --version` and
+   `process.release.lts` and fails when the version differs from `.mise.toml`.
+
+Local gate on `d1bfeab` (Node 26.12.0, pnpm 12.14.0): ESLint, Prettier, tsc and svelte-check,
+knip, claims-lint (14 files), node-pins, and the claims-lint (50) and node-pins (11) tests all
+pass; no Rust changed. To apply: once the R0 session has stopped pushing, merge
+`r0-corrections` into `r0-foundations` (a fast-forward if nothing newer landed; otherwise a
+merge), let PR #1's CI run, and record its `node --version` line for correction 3. When `main`
+is merged again later, `docs/adr/016-node-26-lts-runtime.md` must stay deleted and only 029 kept.
 
 ## Parallel streams (founder request, 17 Oct 2026, 20:40 UTC)
 
@@ -92,13 +114,13 @@ first wave:
 | Stream | Branch | Owns | ADRs | Status |
 | --- | --- | --- | --- | --- |
 | WS-6 Operator CLI: `rsctl doctor`, `rsctl keys generate` (LAUNCH B, E) | `ws/rsctl` | `crates/rsctl/` | 151–159 | Started |
-| WS-7 Theme app extension (PLAN §14) | `ws/theme-app-ext` | `extensions/theme-app-ext/`, `packages/theme-app-ext-test/` | 161–169 | Started |
+| WS-7 Theme app extension (PLAN §14) | `ws/theme-app-ext` | `extensions/theme-app-ext/`, `packages/theme-app-ext-test/` | 161–169 | Built at `caf6732` (code `9dda025`): one app embed (statement link, optional barrier-report form, 4.7 KB deferred script loaded only with the form), 126 tests plus 3 live checks that skip until C rows 1, 3 and 8; Theme Check clean, axe clean, layout shift 0; CI green on draft PR #4 (run 39090888163); security audit PASS over four rounds, every finding fixed. Integration: `write_app_proxy` and `[app_proxy]` in `shopify.app.toml`, and the api serves ADR-162's proxy contract |
 | WS-8 Runbooks, nightly backup, restore drill (PLAN §22, LAUNCH B) | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Started |
 | WS-9 Deployment as configuration (PLAN §22, §24, LAUNCH B) | `ws/deploy` | `infra/railway/`, `infra/collector/`, `.github/workflows/release.yml`, `.github/workflows/deploy.yml` | 181–189 | Started |
-| WS-10 Email templates (LAUNCH B) | `ws/email` | `packages/email/` | 191–199 | Started |
-| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/`, `packages/corpus-tools/` | 201–209 | Started |
-| WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Started |
-| WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Started |
+| WS-10 Email templates (LAUNCH B) | `ws/email` | `packages/email/` | 191–199 | Built at `dcbe2d8` (code `e823c3b`): 21 emails as plain text and HTML from catalogs, 780 tests (779 pass; the live SES check skips until C row 7), axe clean in light and dark mode; CI green on draft PR #5 (run 39089899615); security audit PASS twice, every finding fixed. Integration: C row 7 gains `EMAIL_POSTAL_ADDRESS`, `email.send` moves to the engine (ADR-194), ADR-191's email categories need attorney review |
+| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/`, `packages/corpus-tools/` | 201–209 | Built at `c4156df` (code `585339e`): 6 synthetic themes (3 failing, 3 clean controls), 53 golden findings (35 targeted), 153 tests; CI green on draft PR #2 (run 39089657516). R2 needs a contrast recipe in liquid-patch (its six recipes fix 30 of 35) and a mapper that outputs setting, CSS and data targets (ADR-205) |
+| WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Built at `20f5f3e`: `@rampsmith/ai` (model routing, versioned prompts, schema-validated outputs, alt text with Sonnet escalation, rewrites as span edits, tie-breaks, allowlisted patch proposals, explanations, retries and circuit breaker, batches, micro-dollar costs with a per-store budget guard, an eval harness on 20 openly licensed images), 359 tests plus 3 live checks that skip until C row 5; CI green on draft PR #3 (run 39092935938); security audit PASS over three rounds, every finding fixed. Integration: ADR README rows 211–217 and the PLAN corrections, a PostgreSQL `BudgetLedger` and `ai_calls` migration, `sharp` resize with metadata stripping in the engine's ai worker |
+| WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Built at `007acf8` (code `c32a6a2`): `@rampsmith/reports`, no runtime dependencies (merchant accessibility statement as HTML document, store-page fragment and plain text, after the W3C WAI generator and the EU model statement, with a computed status that never claims full conformance; remediation log as CSV with a formula-injection guard and versioned JSON; executive summary with SVG charts, text summaries and data tables; coverage disclosure; tagged PDFs with outlines through an isolated Chromium print), 240 tests (claims-lint CLI over every output, axe zero violations on every HTML output, PDF tags, outline, title and language checked with pdfjs); CI green on draft PR #6 (run 39094658589); security audit PASS over two rounds, every finding fixed. Integration: ADR README rows 221–226 and the PLAN corrections, `docs/ENVIRONMENT.md`'s Chromium row (`chromium.args` includes `--disable-web-security`, under which a page read local files), `fixes` repository fields (`verified_scan`, `reverts`) and `scans.checks_run`/`checks_passed` for the main builder, real fonts in the image that prints reports |
 
 ## Coordination (founder decision, 17 Oct 2026)
 
@@ -160,7 +182,9 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
      file, the release-verifier, both Node evidence files) and add it to `docs/adr/README.md`.
   3. Record the CI log's `node --version` in `docs/evidence/`.
 
-  The release-verifier fails R0 until all three are done. Follow-up, required before anything
+  Steps 1 and 2 are done on branch `r0-corrections` (above), with ADR-029 as the new number,
+  because `r0-foundations` took 028 for its service images. The release-verifier fails R0
+  until all three are done. Follow-up, required before anything
   deploys and not before any merge: once the first 26.x release tagged LTS exists (due
   2026-10-28), pin it everywhere ADR-016 lists in one change; regenerate `pnpm-lock.yaml`; point
   ADR-014's sandbox binary at `node-linux-x64@<that version>`; replace the "first 26.x release
@@ -169,6 +193,7 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 - **claims-lint directory bug (main builder).** `claims-lint` fails with `EISDIR` when a
   directory matches `listing/**/*`. In `packages/claims-lint/src/cli.ts` `discoverFiles`, keep
   only paths where `statSync(join(cwd, path)).isFile()`, with a test for a matching directory.
+  Done on `r0-corrections` (`824aab7`).
 - **Log retention.** PLAN §21 keeps logs 30 days; Grafana Cloud Free keeps 14 and Pro keeps 30
   at a cost ([pricing](https://grafana.com/pricing/), read 17 Oct 2026). Keep Grafana Free and
   archive logs to R2 for 30 days through the collector, after verifying its S3-compatible
