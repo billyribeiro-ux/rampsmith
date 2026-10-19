@@ -161,7 +161,7 @@ bk_period_complete() {
 # public recipients are accepted. A private key in this variable would put it in CI, which
 # the design forbids, so it is refused outright.
 bk_write_recipients() {
-  local text=$1 file=$2 count=0 line
+  local text=$1 file=$2 count=0 pq=0 line
   case $text in
     *AGE-SECRET-KEY-* | *AGE-PLUGIN-*)
       bk_die "BACKUP_AGE_RECIPIENTS holds a private key; it must hold only public recipients (age1...)"
@@ -177,7 +177,13 @@ bk_write_recipients() {
     fi
     printf '%s\n' "$line" >>"$file"
     count=$((count + 1))
+    if [[ $line == age1pq1* ]]; then pq=$((pq + 1)); fi
   done <<<"$text"
+  # age v1.3 refuses to encrypt to post-quantum and classic recipients at once, because the
+  # file would only be as strong as the classic one. Say so before the dump runs.
+  if [ "$pq" -gt 0 ] && [ "$pq" -lt "$count" ]; then
+    bk_die "BACKUP_AGE_RECIPIENTS mixes post-quantum (age1pq1...) and classic (age1...) recipients; age refuses both in one file, so use one kind for every recipient"
+  fi
   if [ "$count" -lt 1 ]; then
     bk_die "BACKUP_AGE_RECIPIENTS holds no recipient"
   fi

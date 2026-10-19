@@ -153,6 +153,22 @@ assert_rc "recipients: junk is refused" 1 $?
 (bk_write_recipients "" "$work/r5.txt") >/dev/null 2>&1
 assert_rc "recipients: an empty list is refused" 1 $?
 
+# Hybrid post-quantum recipients (age v1.3.0 and later, `age-keygen -pq`) are valid recipients.
+# age refuses a file for post-quantum and classic recipients together, so a list must hold one
+# kind, and a mixed list is refused before any dump runs.
+"$AGE_KEYGEN" -pq -o "$work/pq1.key" >/dev/null 2>&1
+"$AGE_KEYGEN" -pq -o "$work/pq2.key" >/dev/null 2>&1
+pq1=$("$AGE_KEYGEN" -y "$work/pq1.key")
+pq2=$("$AGE_KEYGEN" -y "$work/pq2.key")
+res=$(bk_write_recipients "$(printf '%s\n%s\n' "$pq1" "$pq2")" "$work/r6.txt" 2>&1)
+assert_rc "recipients: two post-quantum recipients are accepted" 0 $?
+printf 'round trip' | "$AGE" -R "$work/r6.txt" -o "$work/pq.age"
+assert_eq "recipients: the first post-quantum key opens the file" "round trip" "$("$AGE" -d -i "$work/pq1.key" "$work/pq.age")"
+assert_eq "recipients: the second post-quantum key opens the file" "round trip" "$("$AGE" -d -i "$work/pq2.key" "$work/pq.age")"
+res=$( (bk_write_recipients "$(printf '%s\n%s\n' "$pq1" "$offline")" "$work/r7.txt") 2>&1)
+assert_rc "recipients: a mixed list is refused" 1 $?
+assert_contains "recipients: the refusal names the cause" "mixes post-quantum" "$res"
+
 # --- a database to back up ---------------------------------------------------------------------------------------------------
 port=$((${DRILL_PORT_BASE:-54600}))
 cl_start t "$work/t" "$port"
