@@ -266,7 +266,6 @@ impl<R: Resolve> Proxy<R> {
         let span = info_span!(
             "egress.request",
             http.request.method = %req.method(),
-            server.address = tracing::field::Empty,
             scan = tracing::field::Empty,
             outcome = tracing::field::Empty,
         );
@@ -335,7 +334,8 @@ impl<R: Resolve> Proxy<R> {
         let token = self.inner.config.key.verify(&password, now())?;
         tracing::Span::current().record("scan", token.scan.as_str());
         let (host, port) = destination(&req, &self.inner.config)?;
-        tracing::Span::current().record("server.address", host.as_str());
+        // The host is not recorded: spans and logs carry ids, never merchant domains (PLAN §19,
+        // audit L7). The scan id above is how an operator finds the page job.
         if !token.allows(&host) {
             return Err(Refusal::HostNotAllowed);
         }

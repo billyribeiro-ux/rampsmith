@@ -11,7 +11,8 @@
 use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -116,6 +117,16 @@ async fn test_network() -> Harness {
     harness(AddressPolicy::default().allowing(&["127.0.0.0/8".parse().unwrap()])).await
 }
 
+/// The expiry of a freshly signed token: the engine's two minutes (ADR-025). Egress refuses
+/// tokens that expire more than five minutes ahead (audit L14).
+fn two_minutes_from_now() -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    i64::try_from(now).unwrap() + 120
+}
+
 fn token(h: &Harness, hosts: &[&str], budget: u32) -> String {
     h.key
         .sign(&ScanToken {
@@ -123,7 +134,7 @@ fn token(h: &Harness, hosts: &[&str], budget: u32) -> String {
             scan: "test-scan".to_owned(),
             hosts: hosts.iter().map(|s| (*s).to_owned()).collect(),
             budget,
-            exp: 4_102_444_800, // 2100-01-01
+            exp: two_minutes_from_now(),
         })
         .unwrap()
 }
@@ -204,11 +215,32 @@ async fn requests_without_a_valid_token_must_authenticate() {
             scan: "x".to_owned(),
             hosts: vec!["shop.test".to_owned()],
             budget: 10,
-            exp: 4_102_444_800,
+            exp: two_minutes_from_now(),
         })
         .unwrap();
     let (status, _, _) = connect(&h, "shop.test", Some(&forged)).await;
     assert_eq!(status, 407);
+}
+
+/// Audit L14: a correctly signed token that expires more than five minutes ahead is not one
+/// the engine would have made, and gets the same 407 as a forged one.
+#[tokio::test]
+async fn a_token_that_expires_too_far_ahead_must_authenticate_again() {
+    let h = test_network().await;
+    let distant = h
+        .key
+        .sign(&ScanToken {
+            v: 1,
+            scan: "test-scan".to_owned(),
+            hosts: vec!["shop.test".to_owned()],
+            budget: 10,
+            exp: two_minutes_from_now() + 3_600,
+        })
+        .unwrap();
+    let (status, _, _) = connect(&h, "shop.test", Some(&distant)).await;
+    assert_eq!(status, 407);
+    let (status, _, _) = connect(&h, "shop.test", Some(&token(&h, &["shop.test"], 10))).await;
+    assert_eq!(status, 200);
 }
 
 #[tokio::test]
@@ -283,4 +315,102 @@ async fn the_connection_budget_is_enforced_per_token() {
     let other = token(&h, &["shop.test"], 1);
     let (status, _, _) = connect(&h, "shop.test", Some(&other)).await;
     assert_eq!(status, 200);
+}
+
+// --- Log hygiene (audit L7, PLAN §19) ------------------------------------------------------
+
+/// Records every span and event it is told about as one line of text each: the name, then each
+/// field as `name=value`.
+struct Capture {
+    lines: Arc<Mutex<Vec<String>>>,
+    next_span: AtomicU64,
+}
+
+struct Fields<'a>(&'a mut String);
+
+impl tracing::field::Visit for Fields<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        use std::fmt::Write as _;
+        let _ = write!(self.0, " {}={value:?}", field.name());
+    }
+}
+
+impl Capture {
+    fn push(&self, line: String) {
+        self.lines.lock().unwrap().push(line);
+    }
+}
+
+impl tracing::Subscriber for Capture {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, attributes: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        let mut line = format!("span {}", attributes.metadata().name());
+        attributes.record(&mut Fields(&mut line));
+        self.push(line);
+        tracing::span::Id::from_u64(self.next_span.fetch_add(1, Ordering::Relaxed))
+    }
+
+    fn record(&self, _: &tracing::span::Id, values: &tracing::span::Record<'_>) {
+        let mut line = String::from("record");
+        values.record(&mut Fields(&mut line));
+        self.push(line);
+    }
+
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        let mut line = format!("event {}", event.metadata().name());
+        event.record(&mut Fields(&mut line));
+        self.push(line);
+    }
+
+    fn enter(&self, _: &tracing::span::Id) {}
+
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
+/// The proxy serves allowed and refused requests for named hosts; what it tells `tracing` names
+/// the scan and the outcome and never a host.
+#[tokio::test]
+async fn spans_and_logs_never_contain_the_merchants_host() {
+    let lines = Arc::new(Mutex::new(Vec::new()));
+    let _guard = tracing::subscriber::set_default(Capture {
+        lines: lines.clone(),
+        next_span: AtomicU64::new(1),
+    });
+    let h = test_network().await;
+    let t = token(&h, &["shop.test", "private.test"], 20);
+
+    // Allowed: a tunnel, and a plain HTTP request.
+    let (status, _, _) = connect(&h, "shop.test", Some(&t)).await;
+    assert_eq!(status, 200);
+    let url = format!("http://shop.test:{}/products/a", h.upstream);
+    let (status, _, _) = send(
+        &h,
+        &format!(
+            "GET {url} HTTP/1.1\r\nHost: shop.test\r\nConnection: close\r\n{}\r\n",
+            auth(&t)
+        ),
+    )
+    .await;
+    assert_eq!(status, 200);
+    // Refused: a host off the token's list, a name that resolves to a private address, and a
+    // request with no token at all.
+    let (status, _, _) = connect(&h, "other.test", Some(&t)).await;
+    assert_eq!(status, 403);
+    let (status, _, _) = connect(&h, "private.test", Some(&t)).await;
+    assert_eq!(status, 403);
+    let (status, _, _) = connect(&h, "shop.test", None).await;
+    assert_eq!(status, 407);
+
+    let lines = lines.lock().unwrap().join("\n");
+    assert!(lines.contains("span egress.request"), "{lines}");
+    assert!(lines.contains("scan=\"test-scan\""), "{lines}");
+    assert!(lines.contains("outcome=\"host_not_allowed\""), "{lines}");
+    for host in ["shop.test", "other.test", "private.test"] {
+        assert!(!lines.contains(host), "{host} was recorded:\n{lines}");
+    }
 }
