@@ -1037,12 +1037,10 @@ async fn the_worker_lists_token_rows_under_other_keys_across_tenants(
     let worker = Db::from_pool(support::worker_pool(opts, conn).await);
 
     // Nothing is under another key while k1 is the active one.
+    let under_other_keys = worker.tokens_to_rewrap("k1", None, 10).await.unwrap();
     assert!(
-        worker
-            .tokens_to_rewrap("k1", None, 10)
-            .await
-            .unwrap()
-            .is_empty()
+        under_other_keys.is_empty(),
+        "nothing may be listed under another key, got {under_other_keys:?}"
     );
 
     // Both tenants' rows are listed in shop id order, with their versions and no ciphertext.
@@ -1063,12 +1061,13 @@ async fn the_worker_lists_token_rows_under_other_keys_across_tenants(
         .unwrap();
     assert_eq!(rest.len(), 1);
     assert_eq!(rest[0].shop, expected[1].1);
+    let after_last = worker
+        .tokens_to_rewrap("k2", Some(rest[0].shop), 10)
+        .await
+        .unwrap();
     assert!(
-        worker
-            .tokens_to_rewrap("k2", Some(rest[0].shop), 10)
-            .await
-            .unwrap()
-            .is_empty()
+        after_last.is_empty(),
+        "nothing may follow the last row, got {after_last:?}"
     );
     assert_eq!(
         worker.tokens_to_rewrap("k2", None, 0).await.unwrap().len(),

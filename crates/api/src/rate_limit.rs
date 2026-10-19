@@ -276,18 +276,20 @@ pub struct StartAllowed;
 impl FromRequestParts<AppState> for StartAllowed {
     type Rejection = RateLimited;
 
-    async fn from_request_parts(
+    // Nothing here awaits, so the future is ready at once (Clippy's unused async trait impl).
+    fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
         let client = client_address(&parts.headers);
-        match state.start_limiter().check(client, Instant::now()) {
+        let decision = match state.start_limiter().check(client, Instant::now()) {
             Ok(()) => Ok(Self),
             Err(limited) => {
                 warn!(scope = ?limited.scope, "passkey start rate limited");
                 Err(RateLimited(limited))
             }
-        }
+        };
+        std::future::ready(decision)
     }
 }
 
