@@ -1,0 +1,7 @@
+<a href="{{ routes.search_url }}" class="header-icon header-icon--search" {{ block.shopify_attributes }}>
+  {{- 'icon-search.svg' | inline_asset_content -}}
+</a>
+
+{% schema %}
+{ "name": "Search link", "settings": [] }
+{% endschema %}

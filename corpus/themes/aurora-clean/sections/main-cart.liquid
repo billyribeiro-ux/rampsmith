@@ -1,0 +1,45 @@
+<section class="cart page-width">
+  <h1 class="cart__title">{{ 'sections.cart.title' | t }}</h1>
+  {%- if cart.item_count > 0 -%}
+    <form action="{{ routes.cart_url }}" method="post" id="CartForm" class="cart__form">
+      <table class="cart-items">
+        <thead>
+          <tr>
+            <th scope="col">{{ 'sections.cart.headings.product' | t }}</th>
+            <th scope="col">{{ 'sections.cart.headings.quantity' | t }}</th>
+            <th scope="col">{{ 'sections.cart.headings.total' | t }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%- for item in cart.items -%}
+            {%- assign item_id = 'Quantity-' | append: forloop.index -%}
+            <tr class="cart-item">
+              <td class="cart-item__details">
+                <a href="{{ item.url }}" class="cart-item__name">{{ item.product.title | escape }}</a>
+                {%- unless item.product.has_only_default_variant -%}
+                  <p class="cart-item__variant">{{ item.variant.title | escape }}</p>
+                {%- endunless -%}
+              </td>
+              <td class="cart-item__quantity">
+                {% render 'quantity-input', input_id: item_id, value: item.quantity, name: 'updates[]' %}
+                <a href="{{ item.url_to_remove }}" class="cart-item__remove">
+                  {% render 'icon-close' %}
+                  <span class="visually-hidden">{{ 'sections.cart.remove' | t }}</span>
+                </a>
+              </td>
+              <td class="cart-item__total">{{ item.final_line_price | money }}</td>
+            </tr>
+          {%- endfor -%}
+        </tbody>
+      </table>
+      <p class="cart__subtotal">{{ 'sections.cart.subtotal' | t }} {{ cart.total_price | money_with_currency }}</p>
+      <button type="submit" name="checkout" class="button button--primary">{{ 'sections.cart.checkout' | t }}</button>
+    </form>
+  {%- else -%}
+    <p class="cart__empty">{{ 'sections.cart.empty' | t }}</p>
+  {%- endif -%}
+</section>
+
+{% schema %}
+{ "name": "Cart items", "settings": [] }
+{% endschema %}

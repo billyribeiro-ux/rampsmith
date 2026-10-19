@@ -1,0 +1,28 @@
+<div class="product-single">
+	<div class="product-single__photos">
+    {% for image in product.images %}
+			<img src="{{ image | img_url: '800x' }}" alt="{{ image.alt | escape }}" class="product-single__photo" width="400" height="500">
+    {% endfor %}
+	</div>
+	<div class="product-single__meta">
+		<h1 class="product-single__title">{{ product.title }}</h1>
+		<p class="product-single__vendor">{{ product.vendor }}</p>
+		<p class="product-single__price">{{ product.price | money }}</p>
+    {% form 'product', product %}
+			<label for="ProductSelect" class="product-single__label">{{ product.options.first }}</label>
+			<select name="id" id="ProductSelect">
+        {% for variant in product.variants %}
+					<option value="{{ variant.id }}">{{ variant.title }}</option>
+        {% endfor %}
+			</select>
+			<label for="Quantity" class="product-single__label">{{ 'products.product.quantity' | t }}</label>
+			<input type="number" id="Quantity" name="quantity" value="1" min="1">
+			<button type="submit" name="add" class="btn btn--add">{{ 'products.product.add_to_cart' | t }}</button>
+    {% endform %}
+		<div class="product-single__description rte">{{ product.description }}</div>
+	</div>
+</div>
+
+{% schema %}
+{ "name": "Product pages", "settings": [] }
+{% endschema %}

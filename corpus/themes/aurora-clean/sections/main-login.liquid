@@ -1,0 +1,28 @@
+<section class="customer login page-width">
+  <h1 class="login__title">{{ 'customer.login_page.title' | t }}</h1>
+  {%- form 'customer_login', novalidate: 'novalidate', class: 'login__form' -%}
+    <div class="field">
+      <input
+        type="email"
+        name="customer[email]"
+        id="CustomerEmail"
+        autocomplete="email"
+        autocapitalize="off"
+        placeholder="{{ 'customer.login_page.email' | t }}"
+      >
+    </div>
+    <div class="field">
+      <label for="CustomerPassword" class="visually-hidden">{{ 'customer.login_page.password' | t }}</label>
+      <input type="password" name="customer[password]" id="CustomerPassword" autocomplete="current-password">
+    </div>
+    <a href="{{ routes.account_recover_url }}" class="login__recover">{{ 'customer.login_page.forgot_password' | t }}</a>
+    <button type="submit" class="button button--primary">{{ 'customer.login_page.sign_in' | t }}</button>
+  {%- endform -%}
+  <p class="login__register">
+    <a href="{{ routes.account_register_url }}">{{ 'customer.login_page.create_account' | t }}</a>
+  </p>
+</section>
+
+{% schema %}
+{ "name": "Customer login", "settings": [] }
+{% endschema %}

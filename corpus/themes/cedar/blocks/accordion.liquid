@@ -1,0 +1,18 @@
+<div class="accordion" {{ block.shopify_attributes }}>
+  <div class="accordion__toggle" role="button" tabindex="0" aria-expanded="yes" aria-controls="Accordion-{{ block.id }}">
+    {{ block.settings.heading | escape }}
+  </div>
+  <div class="accordion__panel" id="Accordion-{{ block.id }}">
+    <p>{{ block.settings.body | escape }}</p>
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Accordion",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading" },
+    { "type": "textarea", "id": "body", "label": "Body" }
+  ]
+}
+{% endschema %}

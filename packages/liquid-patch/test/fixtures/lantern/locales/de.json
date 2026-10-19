@@ -1,0 +1,22 @@
+{
+  "accessibility": {
+    "skip_to_text": "Direkt zum Inhalt"
+  },
+  "general": {
+    "search": {
+      "label": "Suchen",
+      "reset": "Suche leeren"
+    },
+    "social": {
+      "facebook": "Facebook",
+      "pinterest": "Pinterest"
+    }
+  },
+  "products": {
+    "quantity": {
+      "label": "Menge",
+      "decrease": "Menge verringern",
+      "increase": "Menge erhöhen"
+    }
+  }
+}

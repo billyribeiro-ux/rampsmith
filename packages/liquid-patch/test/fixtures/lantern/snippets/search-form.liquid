@@ -1,0 +1,21 @@
+<form action="{{ routes.search_url }}" method="get" role="search" class="search-form">
+  <div class="search-form__field">
+    <label class="search-form__label" for="{{ input_id }}">{{ 'general.search.label' | t }}</label>
+    <input
+      id="{{ input_id }}"
+      class="search-form__input"
+      type="search"
+      name="q"
+      value="{{ search.terms | escape }}"
+      autocomplete="off"
+    >
+    <input type="hidden" name="options[prefix]" value="last">
+    <button
+      type="reset"
+      class="search-form__reset"
+      aria-label="{{ 'general.search.reset' | t }}"
+    >
+      {{ 'icon-close.svg' | inline_asset_content }}
+    </button>
+  </div>
+</form>

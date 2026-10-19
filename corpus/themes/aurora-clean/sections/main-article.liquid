@@ -1,0 +1,23 @@
+<article class="article page-width">
+  <header class="article__header">
+    <h1 class="article__title">{{ article.title | escape }}</h1>
+    <p class="article__meta">
+      <time datetime="{{ article.published_at | date: '%Y-%m-%d' }}">{{ article.published_at | date: '%B %-d, %Y' }}</time>
+      {%- if section.settings.show_author %} &middot; {{ article.author | escape }}{% endif -%}
+    </p>
+  </header>
+  {%- if article.image -%}
+    {{ article.image | image_url: width: 1200 | image_tag: class: 'article__image', alt: article.image.alt }}
+  {%- endif -%}
+  <div class="article__content rte">
+    {{ article.content }}
+  </div>
+  <a href="{{ blog.url }}" class="article__back">{{ 'blogs.article.back_to_blog' | t: title: blog.title }}</a>
+</article>
+
+{% schema %}
+{
+  "name": "Blog post",
+  "settings": [{ "type": "checkbox", "id": "show_author", "label": "Show author", "default": true }]
+}
+{% endschema %}

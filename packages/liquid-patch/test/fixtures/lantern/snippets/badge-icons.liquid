@@ -1,0 +1,14 @@
+<ul class="badges">
+  {%- for badge in badges -%}
+    <li class="badges__item">
+      <img
+        class="badges__icon"
+        src="{{ badge.icon | image_url: width: 48 }}"
+        {% if badge.alt != blank %}alt="{{ badge.alt | escape }}"{% endif %}
+        width="48"
+        height="48"
+      >
+      <span>{{ badge.title }}</span>
+    </li>
+  {%- endfor -%}
+</ul>

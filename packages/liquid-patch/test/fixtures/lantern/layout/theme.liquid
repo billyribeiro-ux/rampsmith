@@ -1,0 +1,21 @@
+<!doctype html>
+<html class="no-js" lang="{{ request.locale.iso_code }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title | escape }}</title>
+    {{ content_for_header }}
+    <link rel="stylesheet" href="{{ 'lantern.css' | asset_url }}">
+  </head>
+  <body class="template-{{ template.name }}">
+    <a class="skip-link visually-hidden" href="#MainContent">
+      {{ 'accessibility.skip_to_text' | t }}
+    </a>
+
+    {% render 'search-form', input_id: 'HeaderSearch' %}
+    <main id="MainContent" tabindex="-1">
+      {{ content_for_layout }}
+    </main>
+    {% render 'social-links' %}
+  </body>
+</html>

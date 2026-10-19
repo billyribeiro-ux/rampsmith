@@ -1,0 +1,63 @@
+{%- assign current_variant = product.selected_or_first_available_variant -%}
+{%- assign quantity_id = 'Quantity-' | append: section.id -%}
+<section class="product page-width">
+  <div class="product__media-list">
+    {%- for media in product.media -%}
+      <div class="product__media-item">
+        <img
+          src="{{ media | image_url: width: 900 }}"
+          alt="{{ media.alt | escape }}"
+          width="{{ media.width }}"
+          height="{{ media.height }}"
+          loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
+          class="product__media-image"
+        >
+      </div>
+    {%- endfor -%}
+  </div>
+
+  <div class="product__info">
+    {%- if section.settings.show_vendor -%}
+      <p class="product__vendor">{{ product.vendor | escape }}</p>
+    {%- endif -%}
+    <h1 class="product__title">{{ product.title | escape }}</h1>
+    {% render 'price', product: product %}
+
+    {%- form 'product', product, id: 'ProductForm', class: 'product-form' -%}
+      {%- unless product.has_only_default_variant -%}
+        <div class="product-form__input">
+          <label for="Option-{{ section.id }}" class="form__label">{{ product.options.first | escape }}</label>
+          <select id="Option-{{ section.id }}" name="id" class="select__select">
+            {%- for variant in product.variants -%}
+              <option value="{{ variant.id }}"{% if variant == current_variant %} selected{% endif %}{% unless variant.available %} disabled{% endunless %}>
+                {{- variant.title | escape -}}
+              </option>
+            {%- endfor -%}
+          </select>
+        </div>
+      {%- else -%}
+        <input type="hidden" name="id" value="{{ current_variant.id }}">
+      {%- endunless -%}
+
+      <div class="product-form__quantity">
+        <p class="form__label">{{ 'products.product.quantity.label' | t }}</p>
+        {% render 'quantity-input', input_id: quantity_id, value: 1 %}
+      </div>
+
+      <button type="submit" name="add" class="button button--primary product-form__submit">
+        {{ 'products.product.add_to_cart' | t }}
+      </button>
+    {%- endform -%}
+
+    <div class="product__description rte">
+      {{ product.description }}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Product information",
+  "settings": [{ "type": "checkbox", "id": "show_vendor", "label": "Show vendor", "default": false }]
+}
+{% endschema %}

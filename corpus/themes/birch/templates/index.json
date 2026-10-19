@@ -1,0 +1,27 @@
+{
+  "sections": {
+    "slideshow": {
+      "type": "slideshow",
+      "blocks": {
+        "slide-1": {
+          "type": "slide",
+          "settings": {
+            "title": "Slow mornings",
+            "text": "Stoneware, linen and wool for the week ahead."
+          }
+        },
+        "slide-2": {
+          "type": "slide",
+          "settings": { "title": "Made in small batches", "text": "Restocked every spring." }
+        }
+      },
+      "block_order": ["slide-1", "slide-2"],
+      "settings": {}
+    },
+    "featured": {
+      "type": "featured-products",
+      "settings": { "title": "Bestsellers", "collection": "summer-edit" }
+    }
+  },
+  "order": ["slideshow", "featured"]
+}

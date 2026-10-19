@@ -1,0 +1,36 @@
+{
+  "general": {
+    "navigation": { "main": "Main menu" },
+    "search": {
+      "title": "Search our store",
+      "label": "Search",
+      "submit": "Search"
+    },
+    "newsletter": {
+      "label": "Email address",
+      "submit": "Sign up"
+    }
+  },
+  "collections": {
+    "sorting": {
+      "title": "Sort by",
+      "featured": "Featured",
+      "price_ascending": "Price, low to high",
+      "price_descending": "Price, high to low"
+    }
+  },
+  "products": {
+    "product": {
+      "quantity": "Quantity",
+      "add_to_cart": "Add to cart"
+    }
+  },
+  "contact": {
+    "form": {
+      "name": "Name",
+      "email": "Email",
+      "message": "Message",
+      "send": "Send"
+    }
+  }
+}

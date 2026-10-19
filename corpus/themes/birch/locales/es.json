@@ -1,0 +1,36 @@
+{
+  "general": {
+    "navigation": { "main": "Menú principal" },
+    "search": {
+      "title": "Buscar en nuestra tienda",
+      "label": "Buscar",
+      "submit": "Buscar"
+    },
+    "newsletter": {
+      "label": "Correo electrónico",
+      "submit": "Suscribirse"
+    }
+  },
+  "collections": {
+    "sorting": {
+      "title": "Ordenar por",
+      "featured": "Destacado",
+      "price_ascending": "Precio, de menor a mayor",
+      "price_descending": "Precio, de mayor a menor"
+    }
+  },
+  "products": {
+    "product": {
+      "quantity": "Cantidad",
+      "add_to_cart": "Agregar al carrito"
+    }
+  },
+  "contact": {
+    "form": {
+      "name": "Nombre",
+      "email": "Correo electrónico",
+      "message": "Mensaje",
+      "send": "Enviar"
+    }
+  }
+}
