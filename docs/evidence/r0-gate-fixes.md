@@ -292,7 +292,9 @@ builders sharing it.
 6. **`WEBAUTHN_RP_ORIGIN` is now stricter** (ADR-033): a path, query, fragment, user info or an IP
    host is refused, and `WEBAUTHN_RP_ID` must be lowercase. `ws/deploy`'s Railway variables and
    FOUNDER_SETUP should give the origin as `https://<host>` with no path.
-7. **The live check proves less than "rows 1 and 3" if read literally.** It proves the store
+7. **The live check proves less than "rows 1 and 3" if read literally.** (Superseded by ADR-031
+   §3 as corrected on 19 Oct 2026: the live check proves neither the form nor the secret; the
+   wiremock substitute proves the form.) It proves the store
    domain, the endpoint, the request form and the error mapping live, and it fails for a rejected
    secret that shows up as a 403 or other 4xx. Shopify does not document the order in which it
    checks credentials, signature and expiry, so a wrong secret that still yields a 400 would pass.

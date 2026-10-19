@@ -25,10 +25,11 @@ founder's accounts, so they are the only part left; each takes minutes.
 
 This shows, without installing anything, that the store's domain reaches Shopify's token
 endpoint and that it answers an expired ID token with 400, not with rejected credentials or a
-token (ADR-031). It proves neither the client secret nor the form Rampsmith sends: Shopify also
-answers a wrong secret or a malformed form with 400, and the code reads only the status. CI's
-substitute tests prove the form, and the first install (section 4) proves the secret. Builders
-cannot run this check, because it needs the client secret.
+token (ADR-031). It proves neither the form Rampsmith sends nor the client secret: the code reads
+only the status, Shopify answers a malformed form with 400, and its documentation does not say
+whether a wrong secret gets that 400 or a 403 (ADR-031 §3). CI's substitute tests prove the form,
+and the first install (section 4) proves the secret. Builders cannot run this check, because it
+needs the client secret.
 
 With the app from section 1 and store A from section 2, set three variables in your shell (never
 in a file that is committed) and run one test. Run the `read` line on its own: it waits for you
@@ -61,7 +62,7 @@ Without the three variables the test passes and prints
 Actions that line is a notice annotation on the run. LAUNCH.md section E lists the check until it has
 passed against the founder's store.
 
-## 4. First install (either of us, with the credentials in place)
+## 4. First install (the founder, with the credentials in place)
 
 1. Start `api` and `ctl` with the variables in `.env.example`, and `web` (R0 step 8).
 2. Install the app on the development store from the Partner dashboard and open it.

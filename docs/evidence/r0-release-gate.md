@@ -1,7 +1,7 @@
 # Evidence: the R0 release gate
 
 R0 (PLAN §5) merges to `main` only when GitHub Actions is green on the pinned toolchains and the
-`release-verifier` subagent returns PASS (CLAUDE.md). This file records both rounds.
+`release-verifier` subagent returns PASS (CLAUDE.md). This file records every round.
 
 ## Round 1: `7165c14`, verifier FAIL (19 Oct 2026)
 
@@ -70,6 +70,25 @@ and blockers 2 to 6 passed. Three things remained, each now fixed:
 CI at `40d86e2`: [run 39300708921](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39300708921),
 8 of 8. Commits after it are documentation only.
 
-## Round 3 verdict
+## Round 3: `c6ff57d`, verifier FAIL (19 Oct 2026)
+
+CI green on the head ([run 39303565668](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39303565668),
+8 of 8); exit criteria and blockers 2 to 6 held. Six documentation items remained: the runbook
+pointed at section 2 for the first install; four places said the live check proves the form,
+which a status-only 400 cannot; the runbook said builders could run it; FOUNDER_SETUP gave
+`rsctl doctor` to builders; the S1 audit's F1–F4 and F6 had no owning lane; this file
+miscounted the S1 audit's findings. Fixed in `e94253e` (wording), `52e757d` and `2eebe07`
+(STATUS.md: lane S2 owns the follow-ups) and merged as `6711218`.
+
+## Round 4: `6711218`, verifier FAIL (19 Oct 2026)
+
+CI green on the head ([run 39305484987](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39305484987),
+8 of 8); every round 3 item passed except one sentence: the runbook stated that Shopify answers
+a wrong secret with 400, which its documentation does not say (ADR-031 §3 hedges it, ADR-032
+names 403 for bad credentials). Fixed by hedging that sentence and the test header's matching
+line; the same commit gives runbook section 4 to the founder, wraps ADR-031 §3, and marks the
+dated note in `r0-gate-fixes.md` as superseded.
+
+## Round 5 verdict
 
 Recorded below by the architect after the `release-verifier` run.

@@ -9,9 +9,9 @@
 //! That shows live that the store's domain reaches Shopify's HTTPS token endpoint and that it
 //! answers 400: not 403 (rejected credentials), not another status, not a token. It proves
 //! neither the client secret nor the form: the crate classifies a 400 by its status alone (S1
-//! audit F2), and Shopify also answers a malformed form and an ID token signed with a wrong
-//! secret with 400. The wiremock substitute in this file proves the form; the first install
-//! proves the secret (ADR-031 §3). The request has no side effects.
+//! audit F2), Shopify answers a malformed form with 400, and it may answer an ID token signed
+//! with a wrong secret with 400 as well. The wiremock substitute in this file proves the form;
+//! the first install proves the secret (ADR-031 §3). The request has no side effects.
 //!
 //! Without the inputs the live test prints a notice naming them and returns. The other tests in
 //! this file always run: they check the notice, the input handling and the probe itself
