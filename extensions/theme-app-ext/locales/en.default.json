@@ -1,0 +1,34 @@
+{
+  "embed": {
+    "landmark_label": "Accessibility information",
+    "statement_link": "Accessibility",
+    "editor_notice": "The Accessibility link appears once a statement is published in the app or a statement URL is set in this embed's settings."
+  },
+  "report": {
+    "toggle": "Report an accessibility barrier",
+    "intro": "Tell the store about anything on this site that was hard or impossible to use.",
+    "required": "(required)",
+    "optional": "(optional)",
+    "description_label": "What happened?",
+    "description_hint": "Describe the problem and the page or step where it happened, in up to 2000 characters. Please leave out payment, health and other personal details.",
+    "email_label": "Email",
+    "email_hint": "Only if you would like a reply.",
+    "honeypot_label": "Leave this field empty",
+    "privacy_notice": "Your report, and your email if you give one, go to this store.",
+    "privacy_link": "Privacy policy",
+    "submit": "Send report",
+    "status": {
+      "sending": "Sending your report…",
+      "sent": "Thank you. Your report was sent to the store.",
+      "failed": "Your report could not be sent. Please try again later.",
+      "rate_limited": "Too many reports were sent from here. Please try again later.",
+      "invalid": "Please correct the errors in the form."
+    },
+    "errors": {
+      "prefix": "Error:",
+      "description_missing": "Describe the barrier you found.",
+      "description_too_long": "Shorten the description to 2000 characters or fewer.",
+      "email_invalid": "Enter an email address like name@example.com, or leave it empty."
+    }
+  }
+}

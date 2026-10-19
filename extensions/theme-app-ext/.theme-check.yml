@@ -1,0 +1,3 @@
+# Shopify Theme Check for this theme app extension (ADR-161). The suite in
+# packages/theme-app-ext-test runs it and fails on any offense, whatever its severity.
+extends: theme-check:theme-app-extension

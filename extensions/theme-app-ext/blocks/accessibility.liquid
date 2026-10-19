@@ -1,0 +1,153 @@
+{%- comment -%}
+  Rampsmith app embed (PLAN §14, ADR-161). Off until the merchant enables it under Theme
+  settings > App embeds. It renders a small labelled region before </body>: a link to the
+  published accessibility statement and, if the merchant turns it on, a barrier-report form
+  that posts through the signed app proxy (ADR-162). Every visible string comes from
+  locales/; nothing is written to the theme, cookies or browser storage.
+
+  App-data metafields the app sets (ADR-163): rampsmith.statement_url, the published
+  statement, used when the embed's own URL setting is empty; and rampsmith.proxy_path, set
+  only if the merchant moved the app proxy away from /apps/rampsmith. Neither is trusted as
+  is: the link needs an https:// or same-site URL, and the proxy path a plain same-site path.
+{%- endcomment -%}
+{%- liquid
+  assign statement_url = block.settings.statement_url
+  if statement_url == blank
+    assign statement_url = app.metafields.rampsmith.statement_url.value
+  endif
+
+  assign url_head = statement_url | slice: 0, 8 | downcase
+  assign url_first = statement_url | slice: 0, 1
+  assign url_second = statement_url | slice: 1, 1 | url_encode
+  assign url_encoded = statement_url | url_encode
+  assign statement_ok = false
+  if url_head == 'https://'
+    assign statement_ok = true
+  elsif url_first == '/' and url_second != '%2F' and url_second != '%5C'
+    assign statement_ok = true
+  endif
+  # Browsers drop tabs and line breaks from URLs before parsing them, so "/<tab>/host" would
+  # become "//host".
+  if url_encoded contains '%09' or url_encoded contains '%0A' or url_encoded contains '%0D'
+    assign statement_ok = false
+  endif
+
+  assign show_link = false
+  if block.settings.show_statement_link and statement_ok
+    assign show_link = true
+  endif
+
+  assign show_form = block.settings.show_report_form
+  assign proxy_path = app.metafields.rampsmith.proxy_path.value | default: '/apps/rampsmith'
+  # Allowlist: only characters url_encode leaves alone, plus "/" (no tab, line break, colon,
+  # backslash, percent, space or non-ASCII), starting with one "/", no ".", at most 40 long,
+  # and two segments, the first a proxy prefix.
+  assign proxy_ok = true
+  assign proxy_first = proxy_path | slice: 0, 1
+  assign proxy_plain = proxy_path | url_encode | replace: '%2F', '/'
+  if proxy_plain != proxy_path or proxy_first != '/' or proxy_path.size > 40
+    assign proxy_ok = false
+  endif
+  if proxy_path contains '//' or proxy_path contains '.'
+    assign proxy_ok = false
+  endif
+  # The shape ADR-163 allows: /<a|apps|community|tools>/<subpath>, nothing more.
+  assign proxy_rest = proxy_path | remove_first: '/'
+  assign proxy_head = proxy_rest | split: '/' | first
+  assign proxy_tail = proxy_rest | remove_first: proxy_head | remove_first: '/'
+  if proxy_tail == blank or proxy_tail contains '/'
+    assign proxy_ok = false
+  endif
+  unless proxy_head == 'a' or proxy_head == 'apps' or proxy_head == 'community' or proxy_head == 'tools'
+    assign proxy_ok = false
+  endunless
+  unless proxy_ok
+    assign proxy_path = '/apps/rampsmith'
+  endunless
+
+  case block.settings.color_scheme
+    when 'light'
+      assign scheme = 'light'
+    when 'dark'
+      assign scheme = 'dark'
+    else
+      assign scheme = 'theme'
+  endcase
+
+  assign uid = 'rs-a11y-' | append: block.id | escape
+-%}
+{%- if show_link or show_form -%}
+  {%- render 'rampsmith-a11y-styles' -%}
+  <aside
+    class="rs-a11y rs-a11y--{{ scheme }}"
+    aria-label="{{ 'embed.landmark_label' | t }}"
+    data-rampsmith-a11y
+  >
+    {%- if show_link -%}
+      <p class="rs-a11y__links">
+        <a class="rs-a11y__link" href="{{ statement_url | escape }}">
+          {{- 'embed.statement_link' | t -}}
+        </a>
+      </p>
+    {%- endif -%}
+    {%- if show_form -%}
+      {%- render 'rampsmith-barrier-report', uid: uid, proxy_path: proxy_path -%}
+    {%- endif -%}
+  </aside>
+{%- elsif request.design_mode -%}
+  {%- render 'rampsmith-a11y-styles' -%}
+  <aside
+    class="rs-a11y rs-a11y--theme"
+    aria-label="{{ 'embed.landmark_label' | t }}"
+    data-rampsmith-a11y
+  >
+    <p class="rs-a11y__notice">{{ 'embed.editor_notice' | t }}</p>
+  </aside>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "t:embed.name",
+  "target": "body",
+  "settings": [
+    {
+      "type": "header",
+      "content": "t:embed.settings.statement_header.content"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_statement_link",
+      "label": "t:embed.settings.show_statement_link.label",
+      "default": true
+    },
+    {
+      "type": "url",
+      "id": "statement_url",
+      "label": "t:embed.settings.statement_url.label",
+      "info": "t:embed.settings.statement_url.info"
+    },
+    {
+      "type": "header",
+      "content": "t:embed.settings.report_header.content"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_report_form",
+      "label": "t:embed.settings.show_report_form.label",
+      "info": "t:embed.settings.show_report_form.info",
+      "default": false
+    },
+    {
+      "type": "select",
+      "id": "color_scheme",
+      "label": "t:embed.settings.color_scheme.label",
+      "options": [
+        { "value": "theme", "label": "t:embed.settings.color_scheme.options.theme" },
+        { "value": "light", "label": "t:embed.settings.color_scheme.options.light" },
+        { "value": "dark", "label": "t:embed.settings.color_scheme.options.dark" }
+      ],
+      "default": "theme"
+    }
+  ]
+}
+{% endschema %}
