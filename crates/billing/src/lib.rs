@@ -7,7 +7,8 @@
 //! - [`plan`] and [`entitlements()`]: the PLAN §20 catalog and the single function every
 //!   limit comes from (ADR-132).
 //! - [`usage`]: remaining alt-text drafts per monthly window (ADR-133).
-//! - [`shopify`]: validated Shopify identifiers and the hosted plan page URL.
+//! - [`shopify`]: validated Shopify identifiers and the hosted plan page URL. A shop is the
+//!   `shopify::ShopDomain` of `crates/shopify`; this crate has no copy of it.
 //! - [`partner_api`]: the `activeSubscription` operation, its parser and transport trait.
 //! - [`mod@reconcile`] and [`sweep`]: the plan-state machine and when to ask Shopify (ADR-131).
 
@@ -20,11 +21,11 @@ pub mod shopify;
 pub mod sweep;
 pub mod usage;
 
+pub use self::shopify::{
+    AppGid, AppHandle, IdError, PartnerOrganizationId, ShopGid, plan_selection_url,
+};
 pub use entitlements::{Entitlements, Feature, Gate, entitlements};
 pub use money::{Currency, Money, MoneyError};
 pub use plan::{BillingInterval, Plan, UnknownPlanHandle};
 pub use reconcile::{Action, BillingEvent, BillingState, RedirectParam, reconcile};
-pub use shopify::{
-    AppGid, AppHandle, IdError, PartnerOrganizationId, ShopDomain, ShopGid, plan_selection_url,
-};
 pub use usage::{DraftQuota, DraftUsage, UsageError, remaining_alt_text_drafts};

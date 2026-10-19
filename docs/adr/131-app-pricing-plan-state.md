@@ -157,11 +157,13 @@ returns as `shop { id }` and which the table does not hold today):
   - the `api` root route calls `sweep::on_app_load`, then the Partner API through a `reqwest`
     transport behind a process-wide limiter, then `reconcile`, then persists the state and the
     events in the audit log; `ctl` runs `sweep::in_sweep` hourly over installed shops;
-  - `crates/shopify` on `r0-foundations` (added after this stream branched at `e43f546`)
-    already has `shopify::ShopDomain` with the same rule. At integration, give it a
-    `store_handle()` method, make `billing` depend on `shopify`, and delete
-    `billing::ShopDomain`; `plan_selection_url` then takes `&shopify::ShopDomain`. The
-    app handle is `rampsmith` in that branch's `shopify.app.toml`.
+  - `crates/shopify` on `r0-foundations` (added after this stream branched at `e43f546`) has
+    `shopify::ShopDomain` with the same rule. Done on the merge of 19 October 2026 (ADR-231):
+    `billing` depends on `shopify`, `billing::ShopDomain` is deleted, and `plan_selection_url`
+    takes `&shopify::ShopDomain`. `shopify::ShopDomain` has no `store_handle()`, so billing
+    derives the handle from `as_str()` in a private function; adding the method to
+    `crates/shopify` is optional and would remove it. The app handle is `rampsmith` in that
+    branch's `shopify.app.toml`.
 - If Shopify later documents a free plan's `activeSubscription` shape or adds plan-change
   webhooks, `reconcile` gains a case; the stored state does not change shape.
 

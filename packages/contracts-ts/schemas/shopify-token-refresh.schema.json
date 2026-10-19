@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShopifyTokenRefresh",
+  "description": "Payload of `shopify.token_refresh` jobs, schema `shopify.token_refresh@1` (PLAN §10, ADR-022).\nThe job's tenant is the shop's tenant. Runs in `ctl`: refreshes the shop's offline token\nif it is within ten minutes of expiry, then schedules the next weekly run.",
+  "type": "object",
+  "properties": {
+    "shop_id": {
+      "description": "The `shopify_shops.id` to refresh.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "shop_id"
+  ]
+}

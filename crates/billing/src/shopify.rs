@@ -1,15 +1,17 @@
 //! Shopify identifiers used by plan state, validated on the way in, and the hosted plan
 //! selection page URL (<https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing/redirect-plan-selection-page>).
+//!
+//! A shop is identified by `shopify::ShopDomain` from `crates/shopify`, the one validated
+//! `*.myshopify.com` type in the workspace; this module has no copy of it (ADR-131).
 
 use std::fmt;
 use std::str::FromStr;
 
+use ::shopify::ShopDomain;
+
 /// An identifier did not have the expected shape.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IdError {
-    /// Not a `<handle>.myshopify.com` domain.
-    #[error("{0:?} is not a myshopify.com shop domain")]
-    ShopDomain(String),
     /// Not an app handle (lower-case letters, digits and hyphens).
     #[error("{0:?} is not an app handle")]
     AppHandle(String),
@@ -34,52 +36,6 @@ fn is_handle(text: &str) -> bool {
         .next()
         .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
         && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-}
-
-/// A shop's permanent `*.myshopify.com` domain, lower-cased. The accepted shape is the
-/// `shopify_shops.shop_domain` check constraint: `^[a-z0-9][a-z0-9-]*\.myshopify\.com$`.
-///
-/// `crates/shopify` on `r0-foundations` gained an equivalent `shopify::ShopDomain` after this
-/// stream branched; at integration, billing should depend on it and drop this type (ADR-131).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ShopDomain(String);
-
-impl ShopDomain {
-    /// Validates and lower-cases a shop domain.
-    pub fn parse(input: &str) -> Result<Self, IdError> {
-        let lowered = input.to_ascii_lowercase();
-        match lowered.strip_suffix(MYSHOPIFY_SUFFIX) {
-            Some(handle) if handle.len() <= 255 && is_handle(handle) => Ok(Self(lowered)),
-            _ => Err(IdError::ShopDomain(input.to_owned())),
-        }
-    }
-
-    /// The domain, such as `cool-shop.myshopify.com`.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// The store handle used in Shopify admin URLs: the domain without `.myshopify.com`,
-    /// such as `cool-shop`.
-    #[must_use]
-    pub fn store_handle(&self) -> &str {
-        self.0.strip_suffix(MYSHOPIFY_SUFFIX).unwrap_or(&self.0)
-    }
-}
-
-impl fmt::Display for ShopDomain {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl FromStr for ShopDomain {
-    type Err = IdError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s)
-    }
 }
 
 /// The app's `handle` from `shopify.app.toml`, which names it in Shopify admin URLs.
@@ -110,14 +66,22 @@ impl fmt::Display for AppHandle {
     }
 }
 
+/// The store handle used in Shopify admin URLs: the shop's domain without `.myshopify.com`,
+/// such as `cool-shop`.
+fn store_handle(shop: &ShopDomain) -> &str {
+    let domain = shop.as_str();
+    domain.strip_suffix(MYSHOPIFY_SUFFIX).unwrap_or(domain)
+}
+
 /// Shopify's hosted plan selection page for this shop and app. The embedded app must open it
 /// in the top frame (`target: "_top"`), because it is outside the app's iframe.
 #[must_use]
 pub fn plan_selection_url(shop: &ShopDomain, app: &AppHandle) -> String {
-    // Both parts are validated to [a-z0-9-], so no percent-encoding is needed.
+    // `ShopDomain` allows only [a-z0-9-] before the suffix and `AppHandle` only [a-z0-9-], so no
+    // percent-encoding is needed (the tests pin both rules).
     format!(
         "https://admin.shopify.com/store/{}/charges/{}/pricing_plans",
-        shop.store_handle(),
+        store_handle(shop),
         app.as_str()
     )
 }
@@ -211,16 +175,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shop_domains_follow_the_database_constraint() {
+    fn store_handles_drop_the_myshopify_suffix() {
         let shop = ShopDomain::parse("Cool-Shop.myshopify.com").unwrap();
         assert_eq!(shop.as_str(), "cool-shop.myshopify.com");
-        assert_eq!(shop.store_handle(), "cool-shop");
+        assert_eq!(store_handle(&shop), "cool-shop");
         assert_eq!(
-            ShopDomain::parse("9shop.myshopify.com")
-                .unwrap()
-                .store_handle(),
+            store_handle(&ShopDomain::parse("9shop.myshopify.com").unwrap()),
             "9shop"
         );
+    }
+
+    /// `plan_selection_url` puts the store handle into a URL path without encoding it, so this
+    /// pins the part of `shopify::ShopDomain`'s rule that makes that safe.
+    #[test]
+    fn shop_domains_that_could_change_the_url_are_refused() {
         for bad in [
             "",
             ".myshopify.com",
@@ -233,11 +201,7 @@ mod tests {
             "https://shop.myshopify.com",
             "shop.myshopify.com/",
         ] {
-            assert_eq!(
-                ShopDomain::parse(bad),
-                Err(IdError::ShopDomain(bad.to_owned())),
-                "{bad:?}"
-            );
+            assert!(ShopDomain::parse(bad).is_err(), "{bad:?}");
         }
     }
 

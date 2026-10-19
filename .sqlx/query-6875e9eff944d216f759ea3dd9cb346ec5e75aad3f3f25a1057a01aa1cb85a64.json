@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into webauthn_ceremonies\n             (id, kind, state, pending_user_id, pending_email, pending_display_name, expires_at)\n           values ($1, $2, $3, $4, $5, $6, $7)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6875e9eff944d216f759ea3dd9cb346ec5e75aad3f3f25a1057a01aa1cb85a64"
+}

@@ -8,9 +8,7 @@
           "column": 3
         }
       ],
-      "path": [
-        "activeSubscription"
-      ]
+      "path": ["activeSubscription"]
     }
   ],
   "data": {

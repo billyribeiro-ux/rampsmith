@@ -1,0 +1,7 @@
+import { API_URL } from '$app/env/private';
+import { apiClient } from '#lib/server/api.ts';
+import { startRegistration } from '#lib/server/dashboard.ts';
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request }) =>
+  startRegistration(apiClient(API_URL), await request.json().catch(() => undefined));

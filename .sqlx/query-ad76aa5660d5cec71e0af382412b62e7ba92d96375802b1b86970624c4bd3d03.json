@@ -1,0 +1,113 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, site_id, shop_domain, scopes, api_version, status, installed_at, uninstalled_at\n             from shopify_shops where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "shop_domain",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "shop_domain"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "api_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "api_version"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "installed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "installed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "uninstalled_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "uninstalled_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "ad76aa5660d5cec71e0af382412b62e7ba92d96375802b1b86970624c4bd3d03"
+}

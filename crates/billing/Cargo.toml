@@ -14,11 +14,13 @@ name = "billing"
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+shopify.workspace = true
 thiserror.workspace = true
 time = { workspace = true, features = ["parsing"] }
 
 [dev-dependencies]
-# move to [workspace.dependencies] at integration (ADR-134; 1.12.0 read from crates.io 2026-10-17)
+# The workspace table has proptest 1.12.0 with default features; this crate keeps `std` only (ADR-134),
+# which a workspace-inherited entry cannot do.
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 time = { workspace = true, features = ["macros"] }
 
