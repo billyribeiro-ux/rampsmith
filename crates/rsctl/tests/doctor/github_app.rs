@@ -166,7 +166,7 @@ async fn the_wrong_private_key_is_rejected_by_github_and_reported_without_the_ke
         !detail.contains("BEGIN") && !detail.contains("PRIVATE"),
         "{detail}"
     );
-    assert!(claims.lock().unwrap().is_empty());
+    assert_eq!(*claims.lock().unwrap(), Vec::<Value>::new());
 }
 
 #[tokio::test]

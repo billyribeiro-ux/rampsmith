@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use rsctl::doctor::{self, CHECKS};
+use rsctl::doctor::{self, CHECKS, CheckDef, Ctx, ProbeFuture};
 use rsctl::report::{Outcome, SkipKind, Target};
 use rsctl::vars::Var;
 
@@ -184,4 +184,61 @@ async fn optional_inputs_and_row_11_do_not_fail_strict_runs() {
     for finding in &report.findings {
         assert!(!finding.required, "{} is optional", finding.id);
     }
+}
+
+fn boom(_ctx: &Ctx) -> ProbeFuture<'_> {
+    Box::pin(async { panic!("PAYLOAD-WITH-A-SECRET") })
+}
+
+fn fine(_ctx: &Ctx) -> ProbeFuture<'_> {
+    Box::pin(async { Outcome::pass("ok") })
+}
+
+static CRASHING: [CheckDef; 3] = [
+    CheckDef {
+        id: "fine.before",
+        row: 1,
+        required: true,
+        staging_only: false,
+        reads: &[],
+        run: fine,
+    },
+    CheckDef {
+        id: "crash",
+        row: 2,
+        required: true,
+        staging_only: false,
+        reads: &[],
+        run: boom,
+    },
+    CheckDef {
+        id: "fine.after",
+        row: 3,
+        required: true,
+        staging_only: false,
+        reads: &[],
+        run: fine,
+    },
+];
+
+#[tokio::test]
+async fn a_probe_that_panics_fails_alone_and_its_payload_is_dropped() {
+    let rig = Rig::new(&[]).await;
+    let report = doctor::run_checks(rig.ctx(), &CRASHING).await;
+    let ids: Vec<&str> = report.findings.iter().map(|f| f.id).collect();
+    assert_eq!(
+        ids,
+        ["fine.before", "crash", "fine.after"],
+        "registry order is kept"
+    );
+    assert_eq!(report.findings[0].outcome, Outcome::pass("ok"));
+    assert_eq!(
+        report.findings[1].outcome,
+        Outcome::fail("the probe crashed (internal error)")
+    );
+    assert_eq!(report.findings[2].outcome, Outcome::pass("ok"));
+    assert_eq!(report.exit_code(false), 1);
+    let ctx = rig.ctx();
+    assert!(!report.render_text(&ctx.redactor, false).contains("PAYLOAD"));
+    assert!(!report.render_json(&ctx.redactor, false).contains("PAYLOAD"));
 }

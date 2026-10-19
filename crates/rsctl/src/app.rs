@@ -65,15 +65,19 @@ impl Runtime {
 /// request), and in this program that data may be a secret.
 pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
-        let place = info
-            .location()
-            .map_or_else(String::new, |at| format!(" at {}:{}", at.file(), at.line()));
+        let notice = panic_notice(info.location().map(|at| (at.file(), at.line())));
         // A closed standard error leaves nowhere to report to.
-        let _ = writeln!(
-            std::io::stderr(),
-            "rsctl: internal error{place}; the details are withheld because they could contain a secret"
-        );
+        let _ = writeln!(std::io::stderr(), "{notice}");
     }));
+}
+
+/// The line the panic hook prints: where, and that the details are withheld.
+#[must_use]
+pub fn panic_notice(place: Option<(&str, u32)>) -> String {
+    let place = place.map_or_else(String::new, |(file, line)| format!(" at {file}:{line}"));
+    format!(
+        "rsctl: internal error{place}; the details are withheld because they could contain a secret"
+    )
 }
 
 /// Runs a parsed command line and returns the exit code.

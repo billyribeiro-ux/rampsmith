@@ -1,1 +1,10 @@
-{"errors":[{"message":"Not Authorized","path":["projectToken"],"extensions":{"code":"INTERNAL_SERVER_ERROR"}}],"data":null}
+{
+  "errors": [
+    {
+      "message": "Not Authorized",
+      "path": ["projectToken"],
+      "extensions": { "code": "INTERNAL_SERVER_ERROR" }
+    }
+  ],
+  "data": null
+}

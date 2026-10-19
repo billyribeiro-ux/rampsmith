@@ -58,7 +58,7 @@ async fn a_store_that_shows_the_password_page_passes_and_the_password_is_not_che
     assert!(pass(&a).contains("no way to check it"), "{a:?}");
     for request in rig.server.received_requests().await.unwrap() {
         assert_eq!(request.method.as_str(), "GET");
-        assert!(request.body.is_empty());
+        assert_eq!(request.body, Vec::<u8>::new());
         assert!(!request.url.as_str().contains("SECRET"));
     }
 }

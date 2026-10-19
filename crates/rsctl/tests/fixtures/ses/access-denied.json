@@ -1,1 +1,3 @@
-{"message":"User: arn:aws:iam::123456789012:user/rampsmith-ses is not authorized to perform: ses:GetAccount on resource: arn:aws:ses:eu-west-1:123456789012:*"}
+{
+  "message": "User: arn:aws:iam::123456789012:user/rampsmith-ses is not authorized to perform: ses:GetAccount on resource: arn:aws:ses:eu-west-1:123456789012:*"
+}

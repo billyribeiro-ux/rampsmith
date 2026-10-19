@@ -1,1 +1,9 @@
-{"data":{"app":{"id":"gid://partners/App/1234","name":"Rampsmith","apiKey":"0123456789abcdef0123456789abcdef"}}}
+{
+  "data": {
+    "app": {
+      "id": "gid://partners/App/1234",
+      "name": "Rampsmith",
+      "apiKey": "0123456789abcdef0123456789abcdef"
+    }
+  }
+}

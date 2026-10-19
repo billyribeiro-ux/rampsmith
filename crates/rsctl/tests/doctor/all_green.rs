@@ -135,3 +135,54 @@ async fn one_failing_vendor_fails_the_run_and_only_its_line() {
     assert_eq!(report.exit_code(false), 1);
     assert!(text.contains("(exit 1)"));
 }
+
+#[tokio::test]
+async fn the_command_layer_prints_the_report_and_exits_0_against_healthy_vendors() {
+    use std::io::Cursor;
+    use std::sync::Arc;
+
+    use clap::Parser as _;
+    use rsctl::app::{self, Io, Runtime};
+    use rsctl::cli::Cli;
+    use rsctl::doctor::Endpoints;
+    use rsctl::vars::MapEnv;
+
+    let (server, env) = healthy_world().await;
+    let borrowed: Vec<(&str, &str)> = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    for (extra, json) in [("--strict", false), ("--json", true)] {
+        let runtime = Runtime {
+            env: Arc::new(MapEnv::from_pairs(&borrowed)),
+            endpoints: Endpoints::all_at(&server.uri()),
+            clock: Arc::new(crate::support::now),
+        };
+        let cli = Cli::try_parse_from(["rsctl", "doctor", extra]).unwrap();
+        let (mut stdin, mut out, mut err) = (Cursor::new(Vec::new()), Vec::new(), Vec::new());
+        let code = app::run(
+            cli,
+            runtime,
+            &mut Io {
+                stdin: &mut stdin,
+                stdout: &mut out,
+                stderr: &mut err,
+            },
+        )
+        .await;
+        let (out, err) = (
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        );
+        assert_eq!(code, 0, "{out}\n{err}");
+        assert_eq!(err, "");
+        if json {
+            let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+            assert_eq!(parsed["summary"]["pass"], 16);
+        } else {
+            assert_eq!(
+                out.lines().filter(|l| l.starts_with("PASS")).count(),
+                16,
+                "{out}"
+            );
+            assert!(out.contains("16 passed, 0 failed, 1 skipped"), "{out}");
+        }
+    }
+}

@@ -174,7 +174,7 @@ mod tests {
         let ring = KeyRing::parse(made.ring.expose()).unwrap();
         assert_eq!(ring.active().as_str(), "k20261019");
         assert_eq!(made.active, "k20261019");
-        assert!(made.kept.is_empty());
+        assert_eq!(made.kept, Vec::<String>::new());
         // 32 bytes in unpadded base64 are 43 characters.
         assert_eq!(made.ring.expose().len(), "k20261019:".len() + 43);
     }
@@ -297,7 +297,7 @@ mod tests {
         );
         let dropped = drop_keys(rotated.ring.expose(), &["k1".to_owned()]).unwrap();
         assert_eq!(dropped.active, "k2");
-        assert!(dropped.kept.is_empty());
+        assert_eq!(dropped.kept, Vec::<String>::new());
         let ring = KeyRing::parse(dropped.ring.expose()).unwrap();
         let old_ring = KeyRing::parse(old.ring.expose()).unwrap();
         let sealed = old_ring.seal(b"x", b"slot").unwrap();

@@ -128,14 +128,12 @@ mod tests {
 
     #[test]
     fn aliases_and_dated_ids_both_match() {
-        assert!(
-            missing_models(&set(&[
-                "claude-haiku-5-5",
-                "claude-sonnet-5-5-20261001",
-                "claude-opus-5-5"
-            ]))
-            .is_empty()
-        );
+        let missing = missing_models(&set(&[
+            "claude-haiku-5-5",
+            "claude-sonnet-5-5-20261001",
+            "claude-opus-5-5",
+        ]));
+        assert_eq!(missing, [] as [&str; 0]);
     }
 
     #[test]
