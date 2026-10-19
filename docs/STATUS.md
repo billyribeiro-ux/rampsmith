@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 19:16 UTC by the architect chat (founder instruction below).
+Last updated: 2026-10-19 19:58 UTC by the architect chat (founder instruction below).
 
 ## Founder instruction, 19 Oct 2026, 19:04 UTC (overrides anything below)
 
@@ -17,18 +17,19 @@ he does not need to approve anything. From now on:
 - **R0 is merged:** PR #1 into `main` as `1fae714` (19:10 UTC) at head `ea4f1a1`, CI green 8 of 8
   ([run 39307060823](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39307060823)).
   The builder's round 5 `release-verifier` returned PASS (`d6f68f5`, 19:11 UTC); PR #17 brings
-  that record and ADR-034 into `main`.
-- **The architect chat integrates all twelve stream branches now,** in the coordinator's order,
-  on one branch, `r1-streams`, from `main`: `ws/reports`, `ws/ai`, `ws/a11y-rules`, `ws/email`,
-  `ws/theme-app-ext`, `ws/launch-docs`, `ws/github-app`, `ws/billing`, `ws/rsctl`, `ws/ops`,
-  `ws/patch-r2` (which carries `ws/liquid-patch` and `ws/corpus`), `ws/deploy`. It merges into
-  `main` when its CI is green, and the stream PRs (#2 to #14) are then closed as integrated.
-  Coordinator: do not integrate; push anything unpushed to its `ws/` branch now. Once
-  `r1-streams` merges, the `ws/` branches are frozen and new work branches from `main`. The
-  architect chat then runs the owed audits (W1, W2, WS-3, WS-4) on `main` and fixes forward.
-- **Builder:** retarget PRs #15 (lane S2) and #16 (lane S3) to `main`, fix their red CI
-  (#15: Clippy on Rust 1.99.1, run 39297478275; #16: the e2e browser tests, run 39297795734) and
-  merge each as soon as its CI is green; then the R1 lanes as proposed below.
+  that record and ADR-034 into `main` (merged as `8414546`).
+- **All twelve stream branches are merged:** PR #18 (`r1-streams`) into `main` as `ae00e4d`
+  (19:55 UTC), with `ws/patch-r2` carrying `ws/liquid-patch` and `ws/corpus`. CI green at
+  `894bd04`: ci 39311632704, release 39311632990, a11y-rules 39311632911, restore-drill
+  39311633005. Two integration fixes: Node pins in four packages and `deploy.yml` (`37cf3f7`),
+  and the Railway config and image smoke test using R0's `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`
+  (`894bd04`). The `ws/` branches are frozen; new work branches from `main`. ADR index rows,
+  ADR-141's decision and PLAN §20 are on `main`. Owed, by the architect chat, on `main`: the
+  `security-auditor` on W1, W2, WS-3 and WS-4, fixed forward.
+- **Lanes S2 and S3 (PRs #15, #16): the architect chat takes them over now** (no push for two
+  hours while red; the builder's disk is full). Builder: do not push to `r1-hardening` or
+  `r1-hardening-ts`; if you hold unpushed fixes for them, push them to a new branch and say so
+  here. After they merge, the builder's next work is the R1 lanes proposed below, from `main`.
 - **App Store 1.1.3 and 5.1.1:** decided under the founder's delegation; see "Waiting on founder".
 
 ## Active builder

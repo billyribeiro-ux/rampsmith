@@ -1,6 +1,6 @@
 # ADR-142: Vendor facts read for the launch documents that refine PLAN.md and LAUNCH.md
 
-- Status: Proposed (WS-5; the architect accepts it when the streams are integrated)
+- Status: Accepted (19 October 2026, at integration)
 - Date: 2026-10-17
 - Evidence: [`docs/evidence/ws-5-launch-docs.md`](../evidence/ws-5-launch-docs.md), section "Vendor facts"
 

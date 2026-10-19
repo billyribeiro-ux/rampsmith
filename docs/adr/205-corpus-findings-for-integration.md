@@ -1,6 +1,6 @@
 # ADR-205: What the corpus found about the fix catalog, the recipes and the scanner
 
-- Status: Proposed (for the architect and the integrator)
+- Status: Accepted (19 October 2026; carried out by ADR-242 to ADR-249 on `ws/patch-r2`)
 - Date: 2026-10-18
 - Stream: WS-11
 

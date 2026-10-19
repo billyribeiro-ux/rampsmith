@@ -1,7 +1,9 @@
 # ADR-141: Shopify App Store requirements 5.1.1 and 1.1.3 and the two code-fix channels
 
-- Status: Proposed (WS-5; the architect accepts it when the streams are integrated)
-- Date: 2026-10-17; amended 2026-10-19 (requirement 1.1.3 added, per the architect ruling of 17 October)
+- Status: Accepted, with the decision below (19 October 2026, the architect, under the founder's
+  delegation of every pending approval that day at 19:04 UTC)
+- Date: 2026-10-17; amended 2026-10-19 (requirement 1.1.3 added, per the architect ruling of 17
+  October; then decided)
 - Evidence: [`docs/evidence/ws-5-launch-docs.md`](../evidence/ws-5-launch-docs.md), section "Vendor facts"
 
 ## Context
@@ -65,6 +67,28 @@ This ADR records the requirements and how the launch documents handle them. It c
    pre-submission question) how 5.1.1 applies to a pull request the merchant's developer reviews
    and merges, and whether any download of a patched theme is acceptable under 1.1.3.
 
+## Decision of 19 October 2026
+
+The founder delegated every pending approval on 19 October 2026 (19:04 UTC, architect chat), and
+this ADR's open question was one of them. Decided:
+
+1. **The patched-theme-package channel is retired.** Its core step, a merchant downloading a
+   theme, is what requirement 1.1.3 forbids, so no build offers it. R2's package work, including
+   the preview re-scan of an uploaded theme copy, is dropped.
+2. **Code fixes ship only as GitHub pull requests** to the merchant's own theme repository, which
+   the merchant's developer reviews and merges (ADR-124). PLAN §20's Starter plan keeps its price
+   and gets the six core recipes as pull requests in place of the package; Growth and Pro keep
+   every recipe.
+3. **The pull-request channel stays behind its flag, off in the App Store build,** until Shopify
+   confirms in writing that such a pull request meets 5.1.1. Only the founder's Partner account
+   can ask, so the question goes with the App Store submission (LAUNCH.md C row 13). If Shopify
+   says no, the App Store build ships without code fixes: scanning, ranked findings, store data
+   fixes with undo, the remediation log, the statement and the theme app extension.
+
+Every PLAN §5 exit criterion is unchanged: App Review passed, the patch engine fixing at least 90%
+of targeted findings on the corpus with zero render regressions, and the admin LCP, CLS and INP
+thresholds. The patch engine is measured on the corpus whichever channel delivers its output.
+
 ## Plan correction
 
 - PLAN §4, row "Apps should avoid requiring manual code changes": cite requirement 5.1.1 with
@@ -75,8 +99,9 @@ This ADR records the requirements and how the launch documents handle them. It c
   change": cite 1.1.3 as well as 5.1.1, extend the row to the GitHub pull-request channel (5.1.1
   only) and raise the likelihood from Medium to High; trigger to act: any review note citing
   requirement 5.1.1 or 1.1.3.
-- PLAN §12 and §20, wherever the patched theme package is a plan feature (the Starter plan's
-  "patched theme package"): add "subject to ADR-141" until the founder decides.
+- PLAN §20, plans table: Starter's fix channels become "Data fixes; the 6 core recipes as GitHub
+  pull requests (ADR-141)", and Growth's become "Adds every recipe, description rewrites,
+  regression alerts" (applied with the decision). PLAN §12: the patched theme package is retired.
 - PLAN §29 sources: replace the app-requirements-checklist link with the two pages above.
 
 ## Consequences

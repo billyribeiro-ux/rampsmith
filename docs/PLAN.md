@@ -1091,8 +1091,8 @@ Four Shopify plans from $0 to $499 a month place Rampsmith between overlay widge
 | Plan | Monthly | Yearly | Render scans | Fix channels | Alt-text drafts per month |
 | --- | --- | --- | --- | --- | --- |
 | Free | $0 | $0 | Monthly; home page and 5 pages | Data fixes for the first 25 images | 25, once |
-| Starter | $79 | $790 | Weekly; 3 samples per template | Data fixes; patched theme package with the 6 core recipes | 2,000 |
-| Growth | $199 | $1,990 | Daily; 10 samples per template | Adds GitHub pull requests, every recipe, description rewrites, regression alerts | 10,000 |
+| Starter | $79 | $790 | Weekly; 3 samples per template | Data fixes; the 6 core recipes as GitHub pull requests (ADR-141) | 2,000 |
+| Growth | $199 | $1,990 | Daily; 10 samples per template | Adds every recipe, description rewrites, regression alerts | 10,000 |
 | Pro | $499 | $4,990 | Daily; every template variant, 25 samples each | Adds AI proposals for custom widgets, multi-language statements, priority queue | 50,000 |
 
 Yearly prices give two months free. Plan-gated features are shown, labelled and visually disabled, as Built for Shopify 4.1 requires. Agency commercial terms are decided in the launch-strategy session; the agency dashboard itself is free.
