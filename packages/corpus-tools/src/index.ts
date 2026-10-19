@@ -80,7 +80,14 @@ export {
   type RunOptions,
   type ThemeRun,
 } from './runner/run.ts';
-export { categoryRows, jsonReport, type CategoryRow, type JsonReport } from './runner/report.ts';
+export {
+  categoryRows,
+  jsonReport,
+  runnerRecords,
+  type CategoryRow,
+  type JsonReport,
+  type RunnerRecords,
+} from './runner/report.ts';
 export {
   goldenContext,
   loadCorpus,

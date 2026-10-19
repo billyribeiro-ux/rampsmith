@@ -38,7 +38,7 @@ export const HEADER = `<header class="site-header">
 </header>
 `;
 
-export const SEARCH_FORM = `<form action="/search" class="search">
+const SEARCH_FORM = `<form action="/search" class="search">
   <input type="search" name="q" class="search__input">
 </form>
 `;
@@ -66,10 +66,10 @@ export const TWIN = `<section class="twin">
 </section>
 `;
 
-export const ELSEWHERE = `<aside class="sidebar"><button class="not-on-this-page"></button></aside>
+const ELSEWHERE = `<aside class="sidebar"><button class="not-on-this-page"></button></aside>
 `;
 
-export const MAIN_PAGE = `<article class="page">
+const MAIN_PAGE = `<article class="page">
   <h1>{{ page.title }}</h1>
   <div class="rte">{{ page.content }}</div>
 </article>
@@ -95,13 +95,13 @@ export const INDEX_JSON = `{
 }
 `;
 
-export const PAGE_JSON = `{
+const PAGE_JSON = `{
   "sections": { "main": { "type": "main-page", "settings": {} } },
   "order": ["main"]
 }
 `;
 
-export const HEADER_GROUP = `{
+const HEADER_GROUP = `{
   "type": "header",
   "name": "Header group",
   "sections": { "header": { "type": "header", "settings": {} } },

@@ -2,7 +2,7 @@
 // gates, the numbers per category, every finding's mapping and fix, the regressions, and the
 // diffs the engine produced. Pure: it reads a finished run.
 import type { Category } from '../golden.ts';
-import type { CorpusReport } from '../contract/metrics.ts';
+import type { CorpusReport, FixRecord, MappingRecord, PageScan } from '../contract/metrics.ts';
 import type { CorpusRun, FindingResult, RunOptions } from './run.ts';
 
 /** Mapping and fixing numbers for the findings of one category (or all of them). */
@@ -111,5 +111,28 @@ export function jsonReport(run: CorpusRun, options: RunOptions = {}): JsonReport
     findings: run.findings,
     problems: run.problems,
     diffs: Object.fromEntries(run.themes.map((t) => [t.theme, t.diffs])),
+  };
+}
+
+/** The records of `corpus/schema/runner-records.schema.json`, as the runner measured them. */
+export interface RunnerRecords {
+  readonly corpus: string;
+  readonly mapping: readonly MappingRecord[];
+  readonly fixes: readonly FixRecord[];
+  readonly scans: { readonly before: readonly PageScan[]; readonly after: readonly PageScan[] };
+  readonly themeCheck: readonly { readonly theme: string; readonly count: number }[];
+}
+
+/** What the runner recorded, in the shape the contract's schema defines. */
+export function runnerRecords(run: CorpusRun, corpusCommit: string): RunnerRecords {
+  return {
+    corpus: corpusCommit,
+    mapping: run.mapping,
+    fixes: run.fixes,
+    scans: {
+      before: run.themes.flatMap((t) => t.before),
+      after: run.themes.flatMap((t) => t.after),
+    },
+    themeCheck: run.themes.map((t) => ({ theme: t.theme, count: t.newThemeCheckOffenses.length })),
   };
 }

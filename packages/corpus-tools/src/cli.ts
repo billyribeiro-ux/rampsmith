@@ -6,6 +6,7 @@
 //   writes the JSON report (default test-results/corpus-report.json) and exits 1 below a gate;
 // - `spans [--write]` re-finds every golden span from its anchor or pointer after a theme or
 //   fixture edit, and with --write stores the new offsets (run Prettier afterwards).
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { launchChromium, runPage } from './browser/check.ts';
@@ -16,7 +17,7 @@ import { relocate } from './spans.ts';
 import { loadManifest, storeEntry, themeDir, type Manifest, type ThemeEntry } from './manifest.ts';
 import { ThemeRenderer } from './render/renderer.ts';
 import { loadStore, storeObjects } from './render/store.ts';
-import { jsonReport } from './runner/report.ts';
+import { jsonReport, runnerRecords } from './runner/report.ts';
 import { runCorpus } from './runner/run.ts';
 import { loadTheme } from './render/theme.ts';
 
@@ -111,6 +112,23 @@ function spans(write: boolean): void {
   if (failures > 0) process.exitCode = 1;
 }
 
+/** `corpus-report.json` is accompanied by `corpus-report.records.json`. */
+function recordsPath(reportPath: string): string {
+  return reportPath.replace(/(?:\.json)?$/u, '.records.json');
+}
+
+/** The commit the records were made against, or zeros outside a git checkout. */
+function corpusCommit(): string {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+      cwd: CORPUS_ROOT,
+    }).trim();
+  } catch {
+    return '0000000';
+  }
+}
+
 /**
  * Runs the integrated runner (ADR-247) on every failing theme, or on the named ones, writes the
  * JSON report, prints the gate numbers, and exits 1 when a gate fails.
@@ -123,6 +141,10 @@ async function runAll(outPath: string, themes: readonly string[], golden: boolea
     const run = await runCorpus(browser, corpus, options);
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, `${JSON.stringify(jsonReport(run, options), null, 2)}\n`);
+    writeFileSync(
+      recordsPath(outPath),
+      `${JSON.stringify(runnerRecords(run, corpusCommit()), null, 2)}\n`,
+    );
     const { mapping, fixes, regressions, gates } = run.report;
     process.stdout.write(
       `mapping ${String(mapping.correct)}/${String(mapping.denominator)} correct, ` +
@@ -130,7 +152,7 @@ async function runAll(outPath: string, themes: readonly string[], golden: boolea
         `fixes ${String(fixes.fixed)}/${String(fixes.targeted)} targeted fixed, ` +
         `${String(regressions.length)} regression(s)\n` +
         `gates: mapping ${gates.mapping ? 'pass' : 'FAIL'}, fixes ${gates.fixes ? 'pass' : 'FAIL'}\n` +
-        `report written to ${outPath}\n`,
+        `report written to ${outPath} and ${recordsPath(outPath)}\n`,
     );
     if (!run.report.passed) process.exitCode = 1;
   } finally {
