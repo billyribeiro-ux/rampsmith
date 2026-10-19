@@ -160,7 +160,7 @@ fn choosing_free_needs_no_paid_confirmation() {
         "Free without a subscription stays Free"
     );
     assert_eq!(later.state.standing, Standing::Free(FreeSource::Selected));
-    assert!(later.events.is_empty());
+    assert_eq!(later.events, [] as [BillingEvent; 0]);
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn a_free_plan_subscription_is_free() {
         Action::Continue,
         "a vanished free subscription stays Free"
     );
-    assert!(gone.events.is_empty());
+    assert_eq!(gone.events, [] as [BillingEvent; 0]);
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn a_pending_update_equal_to_the_current_plan_is_no_change() {
         None,
         ApiAnswer::Active(&answer),
     );
-    assert!(result.events.is_empty());
+    assert_eq!(result.events, [] as [BillingEvent; 0]);
 }
 
 #[test]
@@ -483,7 +483,7 @@ fn api_failures_never_change_or_revoke_a_stored_plan() {
     let answer = subscription(&["growth"]);
     let recovered = run(&second.state, None, ApiAnswer::Active(&answer));
     assert_eq!(recovered.state.consecutive_failures, 0);
-    assert!(recovered.events.is_empty());
+    assert_eq!(recovered.events, [] as [BillingEvent; 0]);
 }
 
 #[test]
@@ -557,7 +557,7 @@ fn an_unknown_subscription_handle_gets_free_entitlements_and_an_operator_event()
         }]
     );
     let again = run(&result.state, None, ApiAnswer::Active(&answer));
-    assert!(again.events.is_empty());
+    assert_eq!(again.events, [] as [BillingEvent; 0]);
 }
 
 #[test]
