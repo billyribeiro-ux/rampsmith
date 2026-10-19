@@ -64,3 +64,25 @@ last shows a hostile page could also make `recordPage` fail for the whole job. T
 the email pattern backtracked: the hostile-input test took 15.7 s over inputs cut to 4096
 characters and failed its 1.5 s bound; the email scan now looks outward from each `@` and the same
 test runs in milliseconds.
+
+## M4 engine role guard (ADR-052)
+
+What changed: `packages/engine/src/role-guard.ts` (`checkWorkerRole`, `assertWorkerRole`) runs in
+`main.ts` before Chromium and the worker start. The engine exits with code 1 and a message that
+names the role and every reason, unless `current_user` and `session_user` are neither superuser
+nor `BYPASSRLS`, the role owns no relation in `public`, and it is a member of `rampsmith_worker`
+that inherits the privileges. No flag disables it. The engine's test helper `test/db.ts` now
+logs in as throw-away `LOGIN` roles `IN ROLE rampsmith_worker` / `rampsmith_app` (created per test
+database and dropped with it) instead of switching role in a superuser session.
+
+Tests, against PostgreSQL 18.4 (`role-guard.test.ts`, 11 tests; `main.test.ts`, 3 tests that start
+the real `main.ts` as a child process): passing member; member through another role; the
+migration owner; a created superuser; `BYPASSRLS`; a table owner, a sequence owner and a view
+owner; a non-member; a `NOINHERIT` member; a superuser session after `SET ROLE
+rampsmith_worker`; all reasons reported together with no password in the message; a missing
+group role. After the runs `pg_roles` holds 0 `rs_t_*` roles and `pg_database` 0 `rs_engine_*`
+databases.
+
+All 25 pre-existing engine unit tests, the store tests and the 12 browser tests pass as a member
+role, which also exercises row-level security as the deployed engine will (the cross-tenant test
+in `store.test.ts` is unchanged and still passes).
