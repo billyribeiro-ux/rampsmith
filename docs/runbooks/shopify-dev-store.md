@@ -21,7 +21,39 @@ founder's accounts, so they are the only part left; each takes minutes.
 3. Set `application_url` to the deployed `web` URL (Railway) or let `shopify app dev` tunnel to a
    local `web` (it rewrites the URLs while `automatically_update_urls_on_dev = true`).
 
-## 3. First install (either of us, with the credentials in place)
+## 3. Live check against the store (either of us, no install)
+
+This proves the credentials, the store's domain and Shopify's token endpoint without installing
+anything (ADR-031). With the app from section 1 and store A from section 2, set three variables
+in your shell (never in a file that is committed) and run one test:
+
+```sh
+export SHOPIFY_API_KEY=...             # the app's client id
+export SHOPIFY_API_SECRET=...          # the app's client secret
+export SHOPIFY_DEV_STORE_DOMAIN=...    # store A, a bare *.myshopify.com host
+cargo nextest run -p rampsmith-shopify --test live_dev_store
+```
+
+The test signs an ID token for the store with the client secret, already expired, and sends a
+token exchange for it through the crate's real code to
+`https://<store>/admin/oauth/access_token`. Shopify's documented answer to an expired ID token
+is 400 Bad Request, which the crate reports as `InvalidSubjectToken`; nothing is installed and
+no token is issued. It passes on that answer. When it fails, the message says which class
+Shopify's answer fell into and never prints a secret, a token or a response body:
+
+| Message | Meaning |
+| --- | --- |
+| `Shopify rejected the client credentials` | Shopify answered 403: the id and secret do not match an app it knows. Recheck both in the Partner dashboard. |
+| `expected the stale-ID-token class ... got Rejected { status: 404 }` | Shopify answered with another client error, shown as the status. Check that the domain is store A's permanent `*.myshopify.com` host. |
+| `... got RateLimited`, `Upstream` or `Transport` | Shopify or the network failed. Run it again. |
+| `Shopify exchanged an expired ID token` | Shopify issued a token for an expired ID token. Stop and tell the architect: the probe's assumption is wrong. |
+
+Without the three variables the test passes and prints
+`Shopify dev-store live check skipped: needs LAUNCH.md section C rows 1 and 3 ...`; in GitHub
+Actions that line is a notice annotation on the run. LAUNCH.md section E lists the check until it has
+passed against the founder's store.
+
+## 4. First install (either of us, with the credentials in place)
 
 1. Start `api` and `ctl` with the variables in `.env.example`, and `web` (R0 step 8).
 2. Install the app on the development store from the Partner dashboard and open it.
