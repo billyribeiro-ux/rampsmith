@@ -45,6 +45,38 @@ he does not need to approve anything. From now on:
   patch on PR #15; the PR #16 fix (`SHOPIFY_API_KEY` in the spawned app of
   `apps/web/tests/app.spec.ts`) is on PR #16.
 
+### R1 plan (builder, 19 Oct 2026, 20:10 UTC)
+
+Scoped against `main` after PR #18 (plan by a read-only planning agent, checked by the builder).
+R1 is the embedded app only (PLAN §5); the standalone dashboard, GitHub channel, PDFs and app
+proxy stay R2. Corrections to PLAN that R1 rests on: the engine never holds Shopify tokens or
+master keys (`infra/railway/railway.py` gives it none), so every Admin API read runs in `ctl`
+and reaches the engine through a `scan_inputs` table; evidence crops sit in PostgreSQL in R1
+(ADR-035, to be written in Phase 0). Compliance webhooks are built now (PLAN §4).
+
+1. **Phase 0, the builder alone, one PR, after PRs #15 and #16 merge:** job contracts
+   (`shopify.read_store@1`, `scan.plan@1`, `scan.page@2`, `scan.finalize@1`, `audit.data@1`,
+   `ai.alt_text@1`, `verify.scan@1`, `shopify.apply_data_fix@1`, `shopify.revert_data_fix@1`,
+   `webhook.process@1`) and OpenAPI stubs; migration `20261102000001_r1_pipeline.sql`; empty
+   wired stubs so lanes edit only owned files; registry-checked dependencies. ADR-035 to 039.
+2. **Three lanes from Phase 0, in parallel**, each in its own worktree:
+
+| Lane | Branch | Owns | ADRs | Migrations |
+| --- | --- | --- | --- | --- |
+| A Fix loop (Rust; the only lane that runs cargo) | `r1-fixloop` | `crates/{shopify-admin,ctl,api,db,shopify-auth,crypto,domain}/`, `.sqlx/`, the OpenAPI document and `packages/contracts-ts/src/generated/api.ts` (additive) | 060–069 | `20261103*` |
+| B Scan pipeline (TypeScript) | `r1-scan` | `packages/engine/{src,test}/` except `src/ai/`, `src/jobs/alt-text.ts`, `test/ai/`; `packages/a11y-rules/` | 070–079 | `20261104*` |
+| C App Home and alt text (TypeScript) | `r1-apphome` | `apps/web/{src/routes/app,src/lib/app,messages}/`, `apps/web/tests/app-*`, `packages/ui/`, `packages/engine/{src/ai,test/ai}/`, `packages/engine/src/jobs/alt-text.ts` | 080–089 | `20261105*` |
+
+   Architect only: `Cargo.toml`, `Cargo.lock`, `pnpm-lock.yaml` and manifests, `crates/contracts/`,
+   `ci.yml`, `knip.json`, `shopify.app.toml`, `docs/adr/README.md`, PLAN, LAUNCH, this file, the
+   engine's queue registry and ctl's worker registry. Merge order: Phase 0, A, B, C, then the
+   builder's integration PR (journey test for the 10-minute install-to-first-fix measure,
+   Dockerfile and Railway updates, LAUNCH.md section E rows). Gates: CI green on the pinned
+   toolchains; `security-auditor` at max on A (webhooks, tokens, RLS) and on C (AI output into
+   fixes); `release-verifier` at max on R1.
+3. **Status:** contracts started on `r1-phase0` (they touch nothing #15 or #16 changes); the rest
+   of Phase 0 waits for those two merges.
+
 ### Builder team (founder instruction, 19 Oct 2026, ~14:50 UTC)
 
 The founder asked this builder to lead as architect with at most three Sonnet agents in
