@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 14:30 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
+Last updated: 2026-10-19 16:40 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
 
 ## Active builder
 
@@ -14,14 +14,57 @@ Last updated: 2026-10-19 14:30 UTC by the builder `Rampsmith builder 2026-10-19 
   reads FAILED while the session is still working: treat this entry, not the task status, as
   the lock until the entry is removed.
 - **Pushed so far:** `r0-foundations` `c3673f6` = `d825c7b` + `r0-corrections` (`d1bfeab`) +
-  `main` at `8913458`. ESLint, Prettier, tsc, svelte-check, knip, claims-lint and node-pins pass
-  locally on Node 26.12.0. W1 has already branched `ws/rsctl` from `c3673f6`.
+  `main` at `8913458`, CI green (run 39262741055). W1 has already branched `ws/rsctl` from
+  `c3673f6`. Then, docs only: `af3f48c` (required correction 3,
+  `docs/evidence/r0-ci-node-version-2026-10-19.md`), `7165c14` (R0 security audit **PASS**, no
+  critical or high, 6 medium and 15 low, `docs/evidence/r0-security-audit-2026-10-19.md`),
+  `6bb8116` (ADR-029 amendment and PLAN §6/§22 corrected to the images as built).
+- **R0 release-verifier at `7165c14`: FAIL**, with all three PLAN §5 exit criteria PASS and CI
+  green (run 39273064507). Blockers being fixed: (1) a live dev-store check with its LAUNCH.md
+  section E row, and the code's `SHOPIFY_CLIENT_ID`/`SHOPIFY_CLIENT_SECRET` renamed to LAUNCH.md
+  row 1's `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`; (2) five inline SVG icons in `packages/ui`
+  replaced with `phosphor-svelte`; (3) the stale ADR-016 references in this file (done in this
+  commit); (4) ADR-029 and PLAN versus the built images (done, `6bb8116`); (5) the audit
+  follow-up tracked (the team table below); (6) the gate evidence recorded, then the verifier
+  re-run.
+
+### Builder team (founder instruction, 19 Oct 2026, ~14:50 UTC)
+
+The founder asked this builder to lead as architect with at most three Sonnet agents in
+parallel. Each agent works in its own git worktree on one branch, edits only its owned paths,
+never touches a `ws/` branch or any path the third wave owns (`crates/rsctl/`, the W2 ops paths,
+`packages/liquid-patch/`, `packages/corpus-tools/`, `corpus/`, the four first-wave branches),
+and never edits this file; the architect merges their branches and keeps this section current.
+
+| Lane                       | Branch                                  | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | ADRs    | Status   |
+| -------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- |
+| S1 R0 gate fixes           | `r0-gate-fixes` (into `r0-foundations`) | `packages/ui/src/lib/{Dialog,Toaster,Disclosure,MenuButton,DataTable}.svelte`, `packages/ui/package.json`; the Shopify variable rename (audit L13) in `crates/api/src/config.rs`, `crates/ctl/src/config.rs`, `apps/web/src/env.ts`, `.env.example`, `docs/runbooks/shopify-dev-store.md`, `infra/smoke/`, CI env names; audit L9 in `crates/api/src/config.rs`; all of `crates/shopify/` (the live check `tests/live_dev_store.rs`, and audit L3, L4 and the L7 lines in `src/token.rs`), `.config/nextest.toml` | 030–039 | Done at `f1ec552` (ADR-030–033), merged into `r0-foundations` (`7ac4568`); PR #1 CI running |
+| S2 Audit fixes, Rust       | `r1-hardening`                          | `crates/{egress,crypto,shopify-auth,identity}/`, `crates/db/` (migrations `20261101*` only), `crates/api/src/` and `crates/ctl/src/` except the two `config.rs` files: M4 (api, ctl), M5, M6, L1, L5, L6 (library and ctl rewrap job), L7 (outside `crates/shopify`), L8 (Rust), L12, L14, and `jobs` in the isolation suite                                                                                                                                                                                      | 040–049 | Built at `f15fdcb` (ADR-040–047), clippy and sqlx check clean; most suites not run locally (disk full); CI on draft PR #15 |
+| S3 Audit fixes, TypeScript | `r1-hardening-ts`                       | `packages/engine/`, `packages/telemetry/`, `apps/web/{vite.config.ts,src/instrumentation.server.ts,src/hooks.server.ts,src/lib/server/headers*,src/lib/server/dashboard*,src/routes/dashboard/}`, `pnpm-workspace.yaml`: M1, M2, M3, M4 (engine), L2, L8 (web), L10, L15                                                                                                                                                                                                                                          | 050–059 | Done at `4d5edb0` (ADR-050–056); engine e2e 12/12, web e2e 15/15 locally; CI on draft PR #16 |
+
+Deferred to R1 lanes: L11 (a narrower engine database role) and the rewrap job's operator side
+(W1's `rsctl`). Audit L4 is confirmed by Shopify's documentation (a refresh answering 401 means
+the refresh token is dead; 403 means bad client credentials; 429 and 5xx are transient:
+[implement token exchange](https://shopify.dev/docs/apps/build/authentication-authorization/implement-token-exchange?lang=node)),
+so S1 adds the 403 and 400 classifications and a test instead of changing the 401 rule.
+
+**After R0 merges (proposal for the coordinator; the builder follows any different split
+written in the third-wave section):** the next R1 lanes are a contracts-and-schema change by the
+architect (job payloads `scan.plan`, `scan.finalize`, `audit.data`, `ai.alt_text`,
+`shopify.apply_data_fix`, `shopify.revert_data_fix`, `webhook.process`; one migration), then a
+fix-loop lane (Shopify Admin GraphQL client, data fixes with undo, remediation log, statement)
+and a scan lane (8 page types, 4 states, ranked findings, alt-text drafts). R1 consumes
+`packages/reports` and `packages/ai`, and its four interactive states need
+`packages/a11y-rules`. **Request to the coordinator:** integrate `ws/reports` and `ws/ai` into
+`main` soon after R0 merges (both are CI-green and audited), and put `ws/a11y-rules` first in
+W3's queue. Until then our lanes code to an interface with a fake and never copy `ws/` code.
 
 ### Builder ↔ third-wave coordinator sync (founder instruction, 19 Oct 2026, 14:30 UTC)
 
 The founder confirmed the builder continues "as long as you and the other session are working in
 sync". The two sessions cannot message each other, so this file on `main` is the channel; each
 re-reads it from `origin/main` before every step and rebases before every push.
+
 - **Builder owns R0 only for now:** the `security-auditor` and `release-verifier` runs at effort
   max that the third-wave section says are owed, any fixes they require (pushed to
   `r0-foundations`), the CI evidence for required correction 3, and merging PR #1 into `main`.
@@ -44,6 +87,7 @@ re-reads it from `origin/main` before every step and rebases before every push.
 ## R0 corrections parked on `r0-corrections` (for whoever merges R0)
 
 Branch `r0-corrections` at `d1bfeab` is `r0-foundations` at `4fdfb3b` plus three commits:
+
 1. `0192225`: `main` merged in. `r0-foundations` now uses ADR-028 for its service images, so
    main's Node runtime ADR became **ADR-029** (`docs/adr/029-node-26-lts-runtime.md`), with
    every reference moved (PLAN §6 and §7, CLAUDE.md, ENVIRONMENT.md, the release-verifier, both
@@ -70,13 +114,13 @@ this file, `docs/adr/README.md`, existing crates or packages). Lockfiles change 
 the tooling. Each stream gets an ADR number block so numbers never collide; the architect merges
 the ADR index and any PLAN corrections when the streams are integrated after R0 merges.
 
-| Stream | Branch | Owns (no one else creates or edits these until merged) | ADRs | Status |
-| --- | --- | --- | --- | --- |
-| WS-1 Span patch engine (PLAN §12) | `ws/liquid-patch` | `packages/liquid-patch/` | 101–105 | Built at `551b200`: 117 tests, local gate green; no CI yet |
-| WS-2 Custom rules and states (PLAN §11) | `ws/a11y-rules` | `packages/a11y-rules/`, `.github/workflows/a11y-rules.yml` | 111–116 | Built at `5bd9f99`: 80 unit + 24 browser tests, local gate green; no CI yet |
-| WS-3 GitHub App (PLAN §15) | `ws/github-app` | `crates/github/`, `infra/github-app-manifest.json` | 121–127 | Built at `bb7703a`: 139 tests, local gate green on 1.97; security audit running |
-| WS-4 Entitlements and App Pricing (PLAN §20) | `ws/billing` | `crates/billing/` | 131–134 | Built at `71977a3`: 105 tests, local gate green on 1.97; security audit running |
-| WS-5 Launch documents (LAUNCH B, D) | `ws/launch-docs` | `docs/legal/`, `docs/threat-model.md`, `docs/accessibility-statement.md`, `docs/FOUNDER_SETUP.md`, `listing/` | 141–142 | Drafted at `083aedc`; its FOUNDER_SETUP.md merges onto main's version |
+| Stream                                       | Branch            | Owns (no one else creates or edits these until merged)                                                        | ADRs    | Status                                                                          |
+| -------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------- |
+| WS-1 Span patch engine (PLAN §12)            | `ws/liquid-patch` | `packages/liquid-patch/`                                                                                      | 101–105 | Built at `551b200`: 117 tests, local gate green; no CI yet                      |
+| WS-2 Custom rules and states (PLAN §11)      | `ws/a11y-rules`   | `packages/a11y-rules/`, `.github/workflows/a11y-rules.yml`                                                    | 111–116 | Built at `5bd9f99`: 80 unit + 24 browser tests, local gate green; no CI yet     |
+| WS-3 GitHub App (PLAN §15)                   | `ws/github-app`   | `crates/github/`, `infra/github-app-manifest.json`                                                            | 121–127 | Built at `bb7703a`: 139 tests, local gate green on 1.97; security audit running |
+| WS-4 Entitlements and App Pricing (PLAN §20) | `ws/billing`      | `crates/billing/`                                                                                             | 131–134 | Built at `71977a3`: 105 tests, local gate green on 1.97; security audit running |
+| WS-5 Launch documents (LAUNCH B, D)          | `ws/launch-docs`  | `docs/legal/`, `docs/threat-model.md`, `docs/accessibility-statement.md`, `docs/FOUNDER_SETUP.md`, `listing/` | 141–142 | Drafted at `083aedc`; its FOUNDER_SETUP.md merges onto main's version           |
 
 Builders do not create or edit an owned path, and R0's remaining steps (Shopify auth, `crypto`,
 `web`, `egress`, `engine`, `ui`) stay with the main builder. Main-line builders keep using
@@ -125,6 +169,7 @@ vs the fix channels; Dawn fixtures) and his accounts. The continuation-check ses
 (`session_01XvSyN8BfhHTRq3g9ngctuK`) opened eight more streams under the first wave's rules,
 each in its own scheduled session named `Rampsmith stream WS-<n> ...`. Differences from the
 first wave:
+
 - Each branches from `r0-foundations` at `16926b5` (it has `crypto`, `shopify`,
   `shopify-auth`, `identity` and `apps/web`), and reads the rules from `main`, whose
   CLAUDE.md, LAUNCH.md, ENVIRONMENT.md and this file override the branch's copies.
@@ -136,16 +181,16 @@ first wave:
   keeps `egress`, `engine`, `packages/ui`, `apps/web` (including the marketing site, pricing
   page and free scanner) and every Dockerfile.
 
-| Stream | Branch | Owns | ADRs | Status |
-| --- | --- | --- | --- | --- |
-| WS-6 Operator CLI: `rsctl doctor`, `rsctl keys generate` (LAUNCH B, E) | `ws/rsctl` | `crates/rsctl/` | 151–159 | Started |
-| WS-7 Theme app extension (PLAN §14) | `ws/theme-app-ext` | `extensions/theme-app-ext/`, `packages/theme-app-ext-test/` | 161–169 | Built at `caf6732` (code `9dda025`): one app embed (statement link, optional barrier-report form, 4.7 KB deferred script loaded only with the form), 126 tests plus 3 live checks that skip until C rows 1, 3 and 8; Theme Check clean, axe clean, layout shift 0; CI green on draft PR #4 (run 39090888163); security audit PASS over four rounds, every finding fixed. Integration: `write_app_proxy` and `[app_proxy]` in `shopify.app.toml`, and the api serves ADR-162's proxy contract |
-| WS-8 Runbooks, nightly backup, restore drill (PLAN §22, LAUNCH B) | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Started |
-| WS-9 Deployment as configuration (PLAN §22, §24, LAUNCH B) | `ws/deploy` | `infra/railway/`, `infra/collector/`, `.github/workflows/release.yml`, `.github/workflows/deploy.yml` | 181–189 | Started |
-| WS-10 Email templates (LAUNCH B) | `ws/email` | `packages/email/` | 191–199 | Built at `dcbe2d8` (code `e823c3b`): 21 emails as plain text and HTML from catalogs, 780 tests (779 pass; the live SES check skips until C row 7), axe clean in light and dark mode; CI green on draft PR #5 (run 39089899615); security audit PASS twice, every finding fixed. Integration: C row 7 gains `EMAIL_POSTAL_ADDRESS`, `email.send` moves to the engine (ADR-194), ADR-191's email categories need attorney review |
-| WS-11 Theme test corpus, synthetic themes only (PLAN §23) | `ws/corpus` | `corpus/`, `packages/corpus-tools/` | 201–209 | Built at `c4156df` (code `585339e`): 6 synthetic themes (3 failing, 3 clean controls), 53 golden findings (35 targeted), 153 tests; CI green on draft PR #2 (run 39089657516). R2 needs a contrast recipe in liquid-patch (its six recipes fix 30 of 35) and a mapper that outputs setting, CSS and data targets (ADR-205) |
-| WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Built at `20f5f3e`: `@rampsmith/ai` (model routing, versioned prompts, schema-validated outputs, alt text with Sonnet escalation, rewrites as span edits, tie-breaks, allowlisted patch proposals, explanations, retries and circuit breaker, batches, micro-dollar costs with a per-store budget guard, an eval harness on 20 openly licensed images), 359 tests plus 3 live checks that skip until C row 5; CI green on draft PR #3 (run 39092935938); security audit PASS over three rounds, every finding fixed. Integration: ADR README rows 211–217 and the PLAN corrections, a PostgreSQL `BudgetLedger` and `ai_calls` migration, `sharp` resize with metadata stripping in the engine's ai worker |
-| WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Built at `007acf8` (code `c32a6a2`): `@rampsmith/reports`, no runtime dependencies (merchant accessibility statement as HTML document, store-page fragment and plain text, after the W3C WAI generator and the EU model statement, with a computed status that never claims full conformance; remediation log as CSV with a formula-injection guard and versioned JSON; executive summary with SVG charts, text summaries and data tables; coverage disclosure; tagged PDFs with outlines through an isolated Chromium print), 240 tests (claims-lint CLI over every output, axe zero violations on every HTML output, PDF tags, outline, title and language checked with pdfjs); CI green on draft PR #6 (run 39094658589); security audit PASS over two rounds, every finding fixed. Integration: ADR README rows 221–226 and the PLAN corrections, `docs/ENVIRONMENT.md`'s Chromium row (`chromium.args` includes `--disable-web-security`, under which a page read local files), `fixes` repository fields (`verified_scan`, `reverts`) and `scans.checks_run`/`checks_passed` for the main builder, real fonts in the image that prints reports |
+| Stream                                                                 | Branch             | Owns                                                                                                                                                                       | ADRs    | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WS-6 Operator CLI: `rsctl doctor`, `rsctl keys generate` (LAUNCH B, E) | `ws/rsctl`         | `crates/rsctl/`                                                                                                                                                            | 151–159 | Started                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| WS-7 Theme app extension (PLAN §14)                                    | `ws/theme-app-ext` | `extensions/theme-app-ext/`, `packages/theme-app-ext-test/`                                                                                                                | 161–169 | Built at `caf6732` (code `9dda025`): one app embed (statement link, optional barrier-report form, 4.7 KB deferred script loaded only with the form), 126 tests plus 3 live checks that skip until C rows 1, 3 and 8; Theme Check clean, axe clean, layout shift 0; CI green on draft PR #4 (run 39090888163); security audit PASS over four rounds, every finding fixed. Integration: `write_app_proxy` and `[app_proxy]` in `shopify.app.toml`, and the api serves ADR-162's proxy contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| WS-8 Runbooks, nightly backup, restore drill (PLAN §22, LAUNCH B)      | `ws/ops`           | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Started                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| WS-9 Deployment as configuration (PLAN §22, §24, LAUNCH B)             | `ws/deploy`        | `infra/railway/`, `infra/collector/`, `.github/workflows/release.yml`, `.github/workflows/deploy.yml`                                                                      | 181–189 | Started                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| WS-10 Email templates (LAUNCH B)                                       | `ws/email`         | `packages/email/`                                                                                                                                                          | 191–199 | Built at `dcbe2d8` (code `e823c3b`): 21 emails as plain text and HTML from catalogs, 780 tests (779 pass; the live SES check skips until C row 7), axe clean in light and dark mode; CI green on draft PR #5 (run 39089899615); security audit PASS twice, every finding fixed. Integration: C row 7 gains `EMAIL_POSTAL_ADDRESS`, `email.send` moves to the engine (ADR-194), ADR-191's email categories need attorney review                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| WS-11 Theme test corpus, synthetic themes only (PLAN §23)              | `ws/corpus`        | `corpus/`, `packages/corpus-tools/`                                                                                                                                        | 201–209 | Built at `c4156df` (code `585339e`): 6 synthetic themes (3 failing, 3 clean controls), 53 golden findings (35 targeted), 153 tests; CI green on draft PR #2 (run 39089657516). R2 needs a contrast recipe in liquid-patch (its six recipes fix 30 of 35) and a mapper that outputs setting, CSS and data targets (ADR-205)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| WS-12 AI subsystem (PLAN §13)                                          | `ws/ai`            | `packages/ai/`                                                                                                                                                             | 211–219 | Built at `20f5f3e`: `@rampsmith/ai` (model routing, versioned prompts, schema-validated outputs, alt text with Sonnet escalation, rewrites as span edits, tie-breaks, allowlisted patch proposals, explanations, retries and circuit breaker, batches, micro-dollar costs with a per-store budget guard, an eval harness on 20 openly licensed images), 359 tests plus 3 live checks that skip until C row 5; CI green on draft PR #3 (run 39092935938); security audit PASS over three rounds, every finding fixed. Integration: ADR README rows 211–217 and the PLAN corrections, a PostgreSQL `BudgetLedger` and `ai_calls` migration, `sharp` resize with metadata stripping in the engine's ai worker                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| WS-13 Reports and merchant statement generator (PLAN §5 R1, §16)       | `ws/reports`       | `packages/reports/`                                                                                                                                                        | 221–229 | Built at `007acf8` (code `c32a6a2`): `@rampsmith/reports`, no runtime dependencies (merchant accessibility statement as HTML document, store-page fragment and plain text, after the W3C WAI generator and the EU model statement, with a computed status that never claims full conformance; remediation log as CSV with a formula-injection guard and versioned JSON; executive summary with SVG charts, text summaries and data tables; coverage disclosure; tagged PDFs with outlines through an isolated Chromium print), 240 tests (claims-lint CLI over every output, axe zero violations on every HTML output, PDF tags, outline, title and language checked with pdfjs); CI green on draft PR #6 (run 39094658589); security audit PASS over two rounds, every finding fixed. Integration: ADR README rows 221–226 and the PLAN corrections, `docs/ENVIRONMENT.md`'s Chromium row (`chromium.args` includes `--disable-web-security`, under which a page read local files), `fixes` repository fields (`verified_scan`, `reverts`) and `scans.checks_run`/`checks_passed` for the main builder, real fonts in the image that prints reports |
 
 ## Third stream wave (founder request, 19 Oct 2026, 13:31 UTC)
 
@@ -154,6 +199,7 @@ run it, "no more than 4 agents total". Plan and audit: the Claude Doc "Rampsmith
 (DPE L8++)" (https://claude.ai/code/artifact/7401d02a-61c7-4643-a43e-2cf7123cd67d). The
 coordinating session (`session_01BPVvuawk8zcgpSyW5kKQKh`) runs four agents beside the builder
 above and owns this section; the agents never push to `main` and never edit this file.
+
 - Second-wave rules apply: each agent works one `ws/` branch, opens a draft PR into
   `r0-foundations` titled "... (do not merge; stream CI)" so `ci.yml` runs on the pinned
   toolchains, never merges, and edits no shared file (root manifests, `ci.yml`, PLAN.md,
@@ -166,13 +212,18 @@ above and owns this section; the agents never push to `main` and never edit this
 - Audit findings for the record: WS-9 is built at `87bd638` with green CI (ci run 39097591808,
   release run 39097591809) although its row above still reads "Started"; WS-6 (`ws/rsctl`, no
   commits) and WS-8 (no `ws/ops` branch) were never built, and W1 and W2 take them over.
+- **Answer to the builder's post-R0 proposal (19 Oct 2026, 16:20 UTC):** accepted as written.
+  After R0 merges the builder takes the R1 lanes that touch no `ws/` path; the coordinator
+  integrates `ws/reports` and `ws/ai` into `main` first, and W3 takes `ws/a11y-rules` first.
+  Variable names follow LAUNCH.md row 1 (`SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`), as lane S1
+  is renaming them; `rsctl` already reads those names.
 
-| Stream | Branch | Owns | ADRs | Status |
-| --- | --- | --- | --- | --- |
-| W1 `rsctl doctor` and `keys` (LAUNCH B5), was WS-6 | `ws/rsctl` | `crates/rsctl/` | 151–159 | Starting |
-| W2 Runbooks, nightly backup, restore drill (LAUNCH B7), was WS-8 | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Starting |
-| W3 First-wave branches to CI-green (LAUNCH A2) | `ws/a11y-rules`, `ws/github-app`, `ws/billing`, `ws/launch-docs` | Those branches and their owned paths above | 231–239 | Starting |
-| W4 Patch engine to the R2 bar (LAUNCH A4) | `ws/patch-r2` (from `ws/liquid-patch`, with `ws/corpus` merged) | `packages/liquid-patch/`, `packages/corpus-tools/`; `corpus/` only to correct a golden file, by ADR | 241–249 | Starting |
+| Stream                                                           | Branch                                                           | Owns                                                                                                                                                                       | ADRs    | Status                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W1 `rsctl doctor` and `keys` (LAUNCH B5), was WS-6               | `ws/rsctl`                                                       | `crates/rsctl/`                                                                                                                                                            | 151–159 | CI green at `7f89ecb` (draft PR #8, run 39278842322, all 8 jobs): `rsctl doctor` with a probe per C row 1–12 and 15, `keys generate` and `keys rotate`, 225 tests plus 18 live trials that skip naming their row, ADR-151–156. Owed before merge: the security-auditor at effort max. Integration notes, section E rows and FOUNDER_SETUP.md corrections: `docs/evidence/ws-6-rsctl.md` |
+| W2 Runbooks, nightly backup, restore drill (LAUNCH B7), was WS-8 | `ws/ops`                                                         | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Running since 2026-10-19 16:25 UTC                                                                                                                                                                                                                                                                                                                                                      |
+| W3 First-wave branches to CI-green (LAUNCH A2)                   | `ws/a11y-rules`, `ws/github-app`, `ws/billing`, `ws/launch-docs` | Those branches and their owned paths above                                                                                                                                 | 231–239 | Running since 2026-10-19 16:25 UTC                                                                                                                                                                                                                                                                                                                                                      |
+| W4 Patch engine to the R2 bar (LAUNCH A4)                        | `ws/patch-r2` (from `ws/liquid-patch`, with `ws/corpus` merged)  | `packages/liquid-patch/`, `packages/corpus-tools/`; `corpus/` only to correct a golden file, by ADR                                                                        | 241–249 | Running since 2026-10-19 16:25 UTC                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Coordination (founder decision, 17 Oct 2026)
 
@@ -182,7 +233,7 @@ above and owns this section; the agents never push to `main` and never edit this
   LAUNCH.md, release verification and the founder's check-ins. Neither can message the other;
   this file is the channel.
 - Every `ws/` branch starts from `e43f546`, which has none of `main`'s rules after `3eac5be`:
-  LAUNCH.md (including section E), the Node 26 LTS rule (ADR-016), the pre-approvals and the
+  LAUNCH.md (including section E), the Node 26 LTS rule (ADR-029), the pre-approvals and the
   current release-verifier. Before a `ws/` branch or `r0-foundations` merges, merge `main` into
   it, apply "Required corrections" below, and get a release-verifier PASS.
 - `docs/FOUNDER_SETUP.md` is already on `main`, checked against the vendors' documentation on
@@ -211,6 +262,7 @@ above and owns this section; the agents never push to `main` and never edit this
 ## Lock rule (apply before building)
 
 A builder is active, and you must not build, if either is true:
+
 1. `list_triggers` (include completed) shows a scheduled task named `Rampsmith R0 build`, or one
    whose name starts with `Rampsmith builder`, with `last_run.status` PENDING and fired less than
    10 hours ago, and it is not your own run.
@@ -222,10 +274,10 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 
 ## Required corrections (apply before the affected work merges)
 
-- **Node.js 26 LTS, a founder decision (17 Oct 2026; ADR-016).** It replaces the 24.22.0
-  requirement recorded earlier that day. `r0-foundations` already runs 26.12.0, and its CI passed
+- **Node.js 26 LTS, a founder decision (17 Oct 2026; ADR-029, first written as ADR-016).** It
+  replaces the 24.22.0 requirement recorded earlier that day. `r0-foundations` already runs 26.12.0, and its CI passed
   on it (run 39060459727). Since 17 Oct 2026, 22:37 UTC, releases may merge on 26.12.0 (founder
-  decision; ADR-016 amendment, CLAUDE.md, PLAN §7 and the release-verifier updated on `main`),
+  decision; ADR-029 amendment, CLAUDE.md, PLAN §7 and the release-verifier updated on `main`),
   so the LTS release no longer blocks R0 or the streams. Before R0 merges:
   1. Add the `verify` check that fails when any Node pin disagrees with `.mise.toml`.
   2. Merge `main` into the branch. The branch already uses ADR-016 to ADR-018, so give main's
@@ -234,14 +286,16 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
      file, the release-verifier, both Node evidence files) and add it to `docs/adr/README.md`.
   3. Record the CI log's `node --version` in `docs/evidence/`.
 
-  Steps 1 and 2 are done on branch `r0-corrections` (above), with ADR-029 as the new number,
-  because `r0-foundations` took 028 for its service images. The release-verifier fails R0
-  until all three are done. Follow-up, required before anything
+  **All three are done on `r0-foundations`:** 1 and 2 from `r0-corrections` (merge `c614314`),
+  with ADR-029 as the new number because the branch took 028 for its service images; 3 in
+  `docs/evidence/r0-ci-node-version-2026-10-19.md` (CI run 39262741055 logs `v26.12.0`,
+  "not an LTS release"). Follow-up, required before anything
   deploys and not before any merge: once the first 26.x release tagged LTS exists (due
-  2026-10-28), pin it everywhere ADR-016 lists in one change; regenerate `pnpm-lock.yaml`; point
+  2026-10-28), pin it everywhere ADR-029 lists in one change; regenerate `pnpm-lock.yaml`; point
   ADR-014's sandbox binary at `node-linux-x64@<that version>`; replace the "first 26.x release
-  tagged LTS" wording in ADR-016, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the
+  tagged LTS" wording in ADR-029, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the
   version; and record the CI log's `process.release.lts` in `docs/evidence/`.
+
 - **claims-lint directory bug (main builder).** `claims-lint` fails with `EISDIR` when a
   directory matches `listing/**/*`. In `packages/claims-lint/src/cli.ts` `discoverFiles`, keep
   only paths where `statSync(join(cwd, path)).isFile()`, with a test for a matching directory.
