@@ -18,9 +18,9 @@ pub struct Config {
     pub db_max_connections: u32,
     /// Reported as `service.version`, normally the image's commit.
     pub service_version: String,
-    /// The Shopify app's client id (`SHOPIFY_CLIENT_ID`).
+    /// The Shopify app's client id (`SHOPIFY_API_KEY`).
     pub shopify_client_id: String,
-    /// The Shopify app's client secret (`SHOPIFY_CLIENT_SECRET`). Signs session tokens.
+    /// The Shopify app's client secret (`SHOPIFY_API_SECRET`). Signs session tokens.
     pub shopify_client_secret: SecretString,
     /// Master keys for envelope encryption (`RAMPSMITH_MASTER_KEYS`, ADR-021).
     pub master_keys: KeyRing,
@@ -82,9 +82,9 @@ impl Config {
             });
         }
         let shopify_client_id =
-            get("SHOPIFY_CLIENT_ID").ok_or(ConfigError::Missing("SHOPIFY_CLIENT_ID"))?;
+            get("SHOPIFY_API_KEY").ok_or(ConfigError::Missing("SHOPIFY_API_KEY"))?;
         let shopify_client_secret =
-            get("SHOPIFY_CLIENT_SECRET").ok_or(ConfigError::Missing("SHOPIFY_CLIENT_SECRET"))?;
+            get("SHOPIFY_API_SECRET").ok_or(ConfigError::Missing("SHOPIFY_API_SECRET"))?;
         let master_keys = KeyRing::parse(
             &get("RAMPSMITH_MASTER_KEYS").ok_or(ConfigError::Missing("RAMPSMITH_MASTER_KEYS"))?,
         )
@@ -140,8 +140,8 @@ mod tests {
     /// `pairs` over a complete Shopify and key configuration; an empty value unsets.
     fn config(pairs: &[(&str, &str)]) -> Result<Config, ConfigError> {
         let mut vars: HashMap<String, String> = [
-            ("SHOPIFY_CLIENT_ID", "0123456789abcdef"),
-            ("SHOPIFY_CLIENT_SECRET", "shpss_hunter3"),
+            ("SHOPIFY_API_KEY", "0123456789abcdef"),
+            ("SHOPIFY_API_SECRET", "shpss_hunter3"),
             ("RAMPSMITH_MASTER_KEYS", &format!("k1:{KEY}") as &str),
             ("WEBAUTHN_RP_ID", "app.rampsmith.test"),
             ("WEBAUTHN_RP_ORIGIN", "https://app.rampsmith.test"),
@@ -243,8 +243,8 @@ mod tests {
     fn requires_shopify_credentials_and_master_keys() {
         let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
         for name in [
-            "SHOPIFY_CLIENT_ID",
-            "SHOPIFY_CLIENT_SECRET",
+            "SHOPIFY_API_KEY",
+            "SHOPIFY_API_SECRET",
             "RAMPSMITH_MASTER_KEYS",
         ] {
             assert_eq!(

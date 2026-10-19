@@ -10,7 +10,7 @@ founder's accounts, so they are the only part left; each takes minutes.
    `shopify app config link`. Choose "Create a new app" named Rampsmith. The CLI writes
    `client_id` into `shopify.app.toml`; commit that change (the client id is public).
 3. In the Partner dashboard, copy the app's client secret into the password manager and into
-   the environment as `SHOPIFY_CLIENT_SECRET`, with `SHOPIFY_CLIENT_ID` beside it. Never commit it.
+   the environment as `SHOPIFY_API_SECRET`, with `SHOPIFY_API_KEY` beside it. Never commit it.
 4. Generate the first master key: `head -c 32 /dev/urandom | base64`, store it as
    `RAMPSMITH_MASTER_KEYS=k2026a:<key>` in the same places.
 

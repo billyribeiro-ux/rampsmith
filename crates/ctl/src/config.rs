@@ -81,8 +81,8 @@ impl Config {
             worker_id: get("WORKER_ID").unwrap_or_else(default_worker_id),
             service_version: get("SERVICE_VERSION")
                 .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()),
-            shopify_client_id: require("SHOPIFY_CLIENT_ID")?.trim().to_owned(),
-            shopify_client_secret: SecretString::from(require("SHOPIFY_CLIENT_SECRET")?),
+            shopify_client_id: require("SHOPIFY_API_KEY")?.trim().to_owned(),
+            shopify_client_secret: SecretString::from(require("SHOPIFY_API_SECRET")?),
             master_keys,
         })
     }
@@ -105,8 +105,8 @@ mod tests {
     fn config(pairs: &[(&str, &str)]) -> Result<Config, ConfigError> {
         let mut vars: HashMap<String, String> = [
             ("DATABASE_URL", "postgres://worker@db/rampsmith"),
-            ("SHOPIFY_CLIENT_ID", "abc"),
-            ("SHOPIFY_CLIENT_SECRET", "shpss_hunter4"),
+            ("SHOPIFY_API_KEY", "abc"),
+            ("SHOPIFY_API_SECRET", "shpss_hunter4"),
             (
                 "RAMPSMITH_MASTER_KEYS",
                 "k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
@@ -136,8 +136,8 @@ mod tests {
     fn every_required_variable_is_required() {
         for name in [
             "DATABASE_URL",
-            "SHOPIFY_CLIENT_ID",
-            "SHOPIFY_CLIENT_SECRET",
+            "SHOPIFY_API_KEY",
+            "SHOPIFY_API_SECRET",
             "RAMPSMITH_MASTER_KEYS",
         ] {
             assert_eq!(

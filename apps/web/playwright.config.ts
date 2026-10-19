@@ -53,7 +53,7 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: '3999',
         API_URL: 'http://127.0.0.1:3998',
-        SHOPIFY_CLIENT_ID: 'e2e-client-id',
+        SHOPIFY_API_KEY: 'e2e-client-id',
       },
     },
     {
@@ -63,8 +63,8 @@ export default defineConfig({
       env: {
         DATABASE_URL: `postgres://rampsmith_e2e_login:e2e@${pgHost}:${pgPort}/rampsmith_e2e`,
         BIND_ADDR: '127.0.0.1:3997',
-        SHOPIFY_CLIENT_ID: 'e2e-client-id',
-        SHOPIFY_CLIENT_SECRET: 'e2e-client-secret',
+        SHOPIFY_API_KEY: 'e2e-client-id',
+        SHOPIFY_API_SECRET: 'e2e-client-secret',
         RAMPSMITH_MASTER_KEYS: 'e2e:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',
         WEBAUTHN_RP_ID: 'localhost',
         WEBAUTHN_RP_ORIGIN: 'http://localhost:3996',
@@ -79,7 +79,7 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: '3996',
         API_URL: 'http://127.0.0.1:3997',
-        SHOPIFY_CLIENT_ID: 'e2e-client-id',
+        SHOPIFY_API_KEY: 'e2e-client-id',
         PROTOCOL_HEADER: 'x-forwarded-proto',
       },
     },
