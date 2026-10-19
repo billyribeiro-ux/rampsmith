@@ -278,6 +278,16 @@ above and owns this section; the agents never push to `main` and never edit this
   ADR-131's plan-state row.
 - **claims-lint directory bug:** queued for the main builder under "Required corrections".
 
+### Architect rulings (19 Oct 2026)
+
+- **A full disk is not a founder decision (19:00 UTC).** The builder's 17:48 UTC check-in says
+  its disk is full and that it will not delete `target/debug` without the founder's approval, so
+  lane S2's suites have not run locally. "Destructive data operations" in CLAUDE.md means data
+  that cannot be rebuilt: databases, R2 buckets, backups, remote branches, merchant or founder
+  data. A session's own build output in its own container (`target/` in any worktree,
+  `node_modules/.cache`, Playwright and pnpm caches) is rebuilt by the next build: when the disk
+  is full, delete it (`cargo clean`, or remove those directories) and keep the local gates running.
+
 ## Lock rule (apply before building)
 
 A builder is active, and you must not build, if either is true:
