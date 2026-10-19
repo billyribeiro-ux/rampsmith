@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 19:58 UTC by the architect chat (founder instruction below).
+Last updated: 2026-10-19 19:58 UTC by the architect chat; builder section updated 20:00 UTC.
 
 ## Founder instruction, 19 Oct 2026, 19:04 UTC (overrides anything below)
 
@@ -34,27 +34,16 @@ he does not need to approve anything. From now on:
 
 ## Active builder
 
-- **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`, task
-  `trig_01VH5RUTufH5KPZLALRvbdZr`), started 2026-10-19 13:37 UTC, working on `r0-foundations`
-  (finishing R0 and merging it). Lock rule applied at 13:40 UTC: no other builder task PENDING;
-  the newest non-`ws/` push was `r0-foundations` `d825c7b` at 2026-10-18 23:55 UTC (13.7 h).
-  The founder paused this session at 14:18 UTC and resumed it in chat at 14:30 UTC, so its task
-  reads FAILED while the session is still working: treat this entry, not the task status, as
-  the lock until the entry is removed.
-- **Pushed so far:** `r0-foundations` `c3673f6` = `d825c7b` + `r0-corrections` (`d1bfeab`) +
-  `main` at `8913458`, CI green (run 39262741055). W1 has already branched `ws/rsctl` from
-  `c3673f6`. Then, docs only: `af3f48c` (required correction 3,
-  `docs/evidence/r0-ci-node-version-2026-10-19.md`), `7165c14` (R0 security audit **PASS**, no
-  critical or high, 6 medium and 15 low, `docs/evidence/r0-security-audit-2026-10-19.md`),
-  `6bb8116` (ADR-029 amendment and PLAN §6/§22 corrected to the images as built).
-- **R0 release-verifier at `7165c14`: FAIL**, with all three PLAN §5 exit criteria PASS and CI
-  green (run 39273064507). Blockers being fixed: (1) a live dev-store check with its LAUNCH.md
-  section E row, and the code's `SHOPIFY_CLIENT_ID`/`SHOPIFY_CLIENT_SECRET` renamed to LAUNCH.md
-  row 1's `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`; (2) five inline SVG icons in `packages/ui`
-  replaced with `phosphor-svelte`; (3) the stale ADR-016 references in this file (done in this
-  commit); (4) ADR-029 and PLAN versus the built images (done, `6bb8116`); (5) the audit
-  follow-up tracked (the team table below); (6) the gate evidence recorded, then the verifier
-  re-run.
+- **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`), active since
+  13:37 UTC. Its scheduled task reads FAILED because the founder paused and resumed it in chat;
+  treat this entry, not the task status, as the lock until it is removed. **R0 is done** (merged
+  as `1fae714`; gate record `docs/evidence/r0-release-gate.md`, ADR-030 to ADR-034). The founder
+  confirmed at 19:53 UTC that this builder continues, with pushes allowed: it now plans and
+  builds **R1** from `main` (next section), and does not push to `r1-hardening` or
+  `r1-hardening-ts` (the architect chat's lanes S2 and S3, PRs #15 and #16). Its last fix for
+  PR #15 (Clippy 1.99 `unused_async_trait_impl` in `crates/api/src/rate_limit.rs`) is posted as a
+  patch on PR #15; the PR #16 fix (`SHOPIFY_API_KEY` in the spawned app of
+  `apps/web/tests/app.spec.ts`) is on PR #16.
 
 ### Builder team (founder instruction, 19 Oct 2026, ~14:50 UTC)
 
