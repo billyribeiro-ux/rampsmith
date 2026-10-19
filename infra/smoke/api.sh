@@ -6,8 +6,8 @@ image=$1
 # Throwaway credentials and a fresh random key: the process must start, not reach Shopify.
 docker run -d --name api -p 8080:8080 \
   -e DATABASE_URL=postgres://nobody@127.0.0.1:9/none \
-  -e SHOPIFY_CLIENT_ID=ci-smoke \
-  -e SHOPIFY_CLIENT_SECRET=ci-smoke \
+  -e SHOPIFY_API_KEY=ci-smoke \
+  -e SHOPIFY_API_SECRET=ci-smoke \
   -e RAMPSMITH_MASTER_KEYS="ci:$(head -c 32 /dev/urandom | base64 -w0)" \
   -e WEBAUTHN_RP_ID=localhost -e WEBAUTHN_RP_ORIGIN=http://localhost:5173 \
   "$image"

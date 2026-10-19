@@ -35,6 +35,10 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [027](027-challenge-detection-from-s2.md) | Challenge detection calibrated by spike S-2 | Accepted |
 | [028](028-service-images.md) | Images for web, engine and egress | Accepted |
 | [029](029-node-26-lts-runtime.md) | Node.js 26 LTS for every Node service (26.12.0 until the LTS release) | Accepted |
+| [030](030-phosphor-icons-in-the-svelte-ui.md) | Phosphor icons in the Svelte UI | Accepted |
+| [031](031-shopify-credential-names-and-the-r0-live-dev-store-check.md) | Shopify credential names and the R0 live dev-store check | Accepted |
+| [032](032-token-client-transport-and-error-classes.md) | Token client transport and error classes | Accepted |
+| [033](033-webauthn-origin-validation.md) | WebAuthn origin validation | Accepted |
 
 ## Template
 

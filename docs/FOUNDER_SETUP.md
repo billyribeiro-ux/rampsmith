@@ -66,7 +66,7 @@ This is a decision, not an input, and R2 depends on it. Shopify's App Store requ
 - **Both**: GH and RW.
 - Never put a value in the repo or a chat. Values marked *public* may be shown to builders.
 - Railway services read these through shared variables that the deploy configuration (`infra/railway`) wires to the right service, so you set each value once per environment and do not choose which service gets it.
-- When you finish, reply in the Rampsmith chat. Builders then run `rsctl doctor` (see "About `rsctl doctor`") and the live checks in LAUNCH.md section E.
+- When you finish, run `rsctl doctor` yourself, on your machine or on Railway, where the inputs are (LAUNCH.md B; see "About `rsctl doctor`"). It checks each input against its live service and prints PASS or FAIL per input, never a value. Then reply in the Rampsmith chat with that output. Live checks in LAUNCH.md section E that need a secret builders cannot read also run on your machine: for the Shopify dev-store check, `docs/runbooks/shopify-dev-store.md` section 3 has the one command.
 
 Docs: [GitHub: use secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets?tool=webui) · [secrets reference](https://docs.github.com/en/actions/reference/security/secrets) · [manage environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) · [gh secret set](https://cli.github.com/manual/gh_secret_set) · [Railway: secrets](https://docs.railway.com/guides/managing-secrets-on-railway.md) · [variables](https://docs.railway.com/variables.md)
 
@@ -210,7 +210,7 @@ Wait until builders commit `shopify.app.toml`. Shopify says App Store apps shoul
 
 Values:
 - `SHOPIFY_API_KEY` = Client ID (*public*) → Both. Railway `production` only; staging needs its own app (see the last section).
-- `SHOPIFY_API_SECRET` = Client secret → Both. Same Railway note.
+- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. Not a GitHub repository secret: no workflow uses it, and any workflow pushed to a branch of this repository can read repository secrets. If a workflow ever needs it, it goes in as a GH env secret on a protected environment (ADR-031).
 
 These are the names in LAUNCH.md section C, row 1, and the ones `rsctl doctor` reads. The code on `r0-foundations` reads the same two values as `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` (`crates/api`, `crates/ctl`, `apps/web`, `.env.example`; finding 2 of ADR-156 on `ws/rsctl`), and the Railway configuration on `ws/deploy` (ADR-182) maps the first pair to the second. You set only the names above.
 
