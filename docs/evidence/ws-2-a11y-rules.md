@@ -255,3 +255,51 @@ Gate for this commit (`fix(a11y-rules): guard the whole context ...`): `pnpm ins
 section 5) → `Test Files 3 passed (3)`, `Tests 36 passed (36)`, 13.11 s; claims-lint → no banned
 claims; `pnpm install --frozen-lockfile` passes. The workspace-wide `pnpm run test` still fails
 only in `packages/queue` for want of `DATABASE_URL`.
+
+## 9. Merge with `r0-foundations` and CI (19 October 2026, third stream wave)
+
+Agent W3 brought the branch to merge-ready. Pull request #9 (draft, into `r0-foundations`,
+"WS-2: Custom rules and states (do not merge; stream CI)").
+
+**The merge.** `origin/r0-foundations` at `6bb8116` merged in by merge commit `e7177c3`; no
+history was rewritten. One conflict, `pnpm-lock.yaml`: r0-foundations' lockfile was taken and
+pnpm 12.14.0 regenerated the `packages/a11y-rules` importer (parse5 8.0.1, fast-check 4.10.2,
+playwright-core 1.64.1, with entities 8.1.0 and pure-rand 8.4.2 underneath). Versions are the
+ones in section 1; nothing was bumped. Two changes inside owned paths, both in the merge commit,
+because `check:node-pins` on `r0-foundations` failed without them:
+
+- `packages/a11y-rules/package.json`: `"engines": { "node": ">=26.12.0 <27" }`.
+- The workflow `a11y-rules.yml`: a step "Node version (ADR-029)" that runs `node --version`,
+  `node -p 'process.release.lts ?? "not an LTS release"'` and checks the installed version
+  against the pin in `.mise.toml`, as the pin check requires of a job that installs Node.
+
+The workflow's actions were already pinned by SHA and its images by digest; nothing else changed.
+
+**CI on head `e7177c3`.**
+
+| Workflow | Run | Conclusion |
+| --- | --- | --- |
+| `ci.yml` | [39285493653](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39285493653) | success (rust, node, contracts, e2e, four image builds) |
+| `a11y-rules.yml` | [39285493814](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39285493814) | success (job `browser`) |
+
+The `browser` job's log (job 118170124500) shows the Chrome Headless Shell 156.0.8078.4 build
+that section 4 predicted, and:
+
+```text
+$ pnpm --filter @rampsmith/a11y-rules run test:browser
+ Test Files  3 passed (3)
+      Tests  36 passed (36)
+   Duration  12.14s
+```
+
+Test counts: browser 36 passed in CI, the same as section 8's local run (there on
+`@sparticuz/chromium` 153, here on 156, so the checks pass on both builds). The 102 unit tests of
+section 8 run in the `node` job of `ci.yml` (conclusion success); their count is read here from
+section 8's local run, not from the CI log.
+
+**Integration notes.**
+
+1. `docs/adr/README.md` has no rows for ADR-111 to ADR-116.
+2. The workflow `a11y-rules.yml` is separate from `ci.yml`; the builder's R1 lanes need this
+   package, so the branch is the first of the four to merge.
+3. Nothing outside the stream's paths changed except `pnpm-lock.yaml`, by pnpm.
