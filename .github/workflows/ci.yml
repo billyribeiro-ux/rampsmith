@@ -64,10 +64,21 @@ jobs:
           install_args: cargo-binstall cargo:cargo-nextest cargo:cargo-deny cargo:cargo-machete cargo:sqlx-cli
       - name: rustfmt
         run: mise run check:rust-fmt
-      - name: Report rustc and Clippy diagnostics as annotations
-        run: echo "::add-matcher::.github/matchers/rust.json"
       - name: Clippy (-D warnings)
-        run: mise run check:clippy
+        shell: bash
+        run: |
+          set -o pipefail
+          mise run check:clippy 2>&1 | tee "$RUNNER_TEMP/clippy.log"
+      - name: Report Clippy's errors as annotations
+        if: failure()
+        shell: bash
+        run: |
+          # The job log host is unreachable from the build sessions; this makes the failure
+          # readable through the check-run annotations API.
+          sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r//g' "$RUNNER_TEMP/clippy.log" |
+            grep -E -A8 '(^|\] )error(\[|:)' | grep -vE 'Compiling|Checking' |
+            head -n 60 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/clippy.tail"
+          echo "::error title=Clippy errors (first 60 lines)::$(cat "$RUNNER_TEMP/clippy.tail")"
       - name: cargo-deny
         run: mise run check:cargo-deny
       - name: cargo-machete
