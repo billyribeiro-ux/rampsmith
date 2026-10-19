@@ -96,7 +96,10 @@ botocore (the AWS CLI v2 engine) defaults `request_checksum_calculation` and
    recent backup. They sit below the retention (30 days, 12 months), so the job's own pruning is
    never refused; lowering `BACKUP_KEEP_DAILY` below 25 would make the prune step fail loudly
    (`could not delete`), which is the intended behaviour. A locked bucket cannot be emptied, so
-   decommissioning an environment starts by removing the lock rules.
+   decommissioning an environment starts by removing the lock rules. `infra/backup/tests/run.sh` checks
+   both files against the retention (a cap longer than 30 days and 366 days, a lock shorter than 30 and
+   334 days, the four key prefixes) and that an edit shortening a cap or lengthening a lock is caught,
+   so a change to either number fails the pull request instead of surprising the founder.
 8. **Only the founder applies 6 and 7**, with an account-level token or the dashboard, because the
    backup token cannot (decision 2). Both are in Section E of `docs/evidence/ws-8-ops.md`.
 

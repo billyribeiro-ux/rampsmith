@@ -486,5 +486,42 @@ marker_out=$(env -i "${STD[@]}" PGHOST="$sock" PGPORT="$port" PGUSER=postgres "$
 assert_rc "restore refuses an archive without metadata: exit 1" 1 $?
 assert_contains "restore refuses an archive without metadata: says why" "the upload never finished" "$marker_out"
 
+# --- the R2 rule files agree with the retention (ADR-172 decisions 6 and 7) ------------------------------------------------------------------------
+# The founder applies these files by hand, so nothing else would notice if an edit made the cost cap
+# shorter than the retention (it would delete good backups) or a lock longer than it (the job's own
+# prune would be refused). The numbers: 30 daily periods and 12 monthly periods; the oldest object a
+# prune removes is at least 30 days old (daily) and at least 334 days old (monthly: twelve months
+# back, less up to one month of position inside the period).
+r2_query() { # path sql (the document is :'doc')
+  printf '%s\n' "$2" |
+    "$PGBIN/psql" -X -q -At -h "$sock" -p "$port" -U postgres -d postgres -v doc="$(cat "$1")"
+}
+lifecycle_sql="select count(*) || ' ' || coalesce(bool_and(
+    (r -> 'deleteObjectsTransition' -> 'condition' ->> 'maxAge')::bigint
+      > case when r -> 'conditions' ->> 'prefix' like '%/daily/' then 30 * 86400 else 366 * 86400 end), false)
+  from jsonb_array_elements(:'doc'::jsonb -> 'rules') r;"
+assert_eq "r2: the lifecycle cap is longer than the retention on all four prefixes" \
+  "4 true" "$(r2_query "$BK/r2/lifecycle.json" "$lifecycle_sql")"
+lock_sql="select count(*) || ' ' || coalesce(bool_and(
+    (r -> 'condition' ->> 'maxAgeSeconds')::bigint
+      < case when r ->> 'prefix' like '%/daily/' then 30 * 86400 else 334 * 86400 end), false)
+  from jsonb_array_elements(:'doc'::jsonb -> 'rules') r;"
+assert_eq "r2: the bucket lock is shorter than the retention on all four prefixes" \
+  "4 true" "$(r2_query "$BK/r2/bucket-lock.json" "$lock_sql")"
+prefix_sql="select string_agg(p, ' ' order by p) from (
+  select coalesce(r -> 'conditions' ->> 'prefix', r ->> 'prefix') as p
+  from jsonb_array_elements(:'doc'::jsonb -> 'rules') r) s;"
+prefixes="production/daily/ production/monthly/ staging/daily/ staging/monthly/"
+assert_eq "r2: the lifecycle rules name the backup key layout" "$prefixes" "$(r2_query "$BK/r2/lifecycle.json" "$prefix_sql")"
+assert_eq "r2: the lock rules name the backup key layout" "$prefixes" "$(r2_query "$BK/r2/bucket-lock.json" "$prefix_sql")"
+
+# The checks above must be able to fail: a cap of one day and a lock of a year are both refused.
+sed 's/"maxAge": 5184000/"maxAge": 86400/' "$BK/r2/lifecycle.json" >"$work/lifecycle-short.json"
+assert_eq "r2: a cap shorter than the retention is caught" \
+  "4 false" "$(r2_query "$work/lifecycle-short.json" "$lifecycle_sql")"
+sed 's/"maxAgeSeconds": 2160000/"maxAgeSeconds": 31536000/' "$BK/r2/bucket-lock.json" >"$work/lock-long.json"
+assert_eq "r2: a lock longer than the retention is caught" \
+  "4 false" "$(r2_query "$work/lock-long.json" "$lock_sql")"
+
 printf 'backup-tests\t%s passed, %s failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ] && [ "$passed" -gt 0 ]
