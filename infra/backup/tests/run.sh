@@ -277,6 +277,37 @@ assert_eq "backup: stores a daily and a monthly pair" \
 staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.meta.json
 staging/monthly/2026-10/rampsmith-staging-20261019T010203Z.dump.age
 staging/monthly/2026-10/rampsmith-staging-20261019T010203Z.meta.json" "$(files)"
+
+# list-backups.sh, which the restore runbook uses to pick the object: complete and unfinished
+# archives, newest first, and a loud failure when the token variables are missing.
+mkdir -p "$store/staging/daily/2026-10-18"
+: >"$store/staging/daily/2026-10-18/rampsmith-staging-20261018T010203Z.dump.age"
+list_env=(
+  "PATH=$PATH" "AWS_BIN=$DIR/fake-aws.sh" "FAKE_S3_ROOT=$s3" "R2_ENDPOINT_URL=http://r2.invalid"
+  "R2_ACCOUNT_ID=00000000000000000000000000000000" "R2_ACCESS_KEY_ID=test-key" "R2_SECRET_ACCESS_KEY=test-secret" "R2_BUCKET_BACKUPS=$bucket"
+)
+list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment staging 2>&1)
+assert_rc "list-backups: lists a configured bucket" 0 $?
+assert_eq "list-backups: newest first, unfinished uploads marked, monthly after daily" \
+  "daily	staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.dump.age	complete
+daily	staging/daily/2026-10-18/rampsmith-staging-20261018T010203Z.dump.age	incomplete
+monthly	staging/monthly/2026-10/rampsmith-staging-20261019T010203Z.dump.age	complete" "$list_out"
+list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment staging --kind monthly 2>&1)
+assert_eq "list-backups: --kind monthly lists only the monthly archive" \
+  "monthly	staging/monthly/2026-10/rampsmith-staging-20261019T010203Z.dump.age	complete" "$list_out"
+list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment production 2>&1)
+assert_rc "list-backups: an environment with no backups is not an error" 0 $?
+assert_contains "list-backups: says there is nothing" "no backups under production/" "$list_out"
+assert_not_contains "list-backups: never lists another environment's keys" "staging/" "$list_out"
+list_out=$(env -i PATH="$PATH" "$RD/list-backups.sh" --environment staging 2>&1)
+assert_rc "list-backups: missing variables fail" 1 $?
+assert_contains "list-backups: names the variables and the row" "R2_ACCOUNT_ID" "$list_out"
+assert_contains "list-backups: names LAUNCH.md section C row 6" "LAUNCH.md section C row 6" "$list_out"
+list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment '../x' 2>&1)
+assert_rc "list-backups: a bad environment name fails" 1 $?
+list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment staging --kind weekly 2>&1)
+assert_rc "list-backups: a bad kind fails" 1 $?
+rm -rf "$store/staging/daily/2026-10-18"
 archive="$store/staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.dump.age"
 meta="$store/staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.meta.json"
 assert_eq "backup: the archive is an age file" "age-encryption.org/v1" "$(head -c 21 "$archive")"
