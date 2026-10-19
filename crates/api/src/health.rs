@@ -42,9 +42,10 @@ pub(crate) async fn healthz() -> Json<Health> {
     Json(Health { status: "ok" })
 }
 
-/// Readiness: the database answers, the connection is a plain application login that
-/// row-level security binds (ADR-040), and the database holds at least this build's newest
-/// migration.
+/// Readiness: the database answers and holds at least this build's newest migration.
+// The doc line above is the published OpenAPI summary. Readiness also fails while the
+// connection is not a plain application login that row-level security binds (ADR-040); the
+// response is the same 503 problem, so the contract does not change.
 #[utoipa::path(
     get,
     path = "/readyz",
