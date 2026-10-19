@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 14:30 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
+Last updated: 2026-10-19 15:00 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
 
 ## Active builder
 
@@ -14,8 +14,50 @@ Last updated: 2026-10-19 14:30 UTC by the builder `Rampsmith builder 2026-10-19 
   reads FAILED while the session is still working: treat this entry, not the task status, as
   the lock until the entry is removed.
 - **Pushed so far:** `r0-foundations` `c3673f6` = `d825c7b` + `r0-corrections` (`d1bfeab`) +
-  `main` at `8913458`. ESLint, Prettier, tsc, svelte-check, knip, claims-lint and node-pins pass
-  locally on Node 26.12.0. W1 has already branched `ws/rsctl` from `c3673f6`.
+  `main` at `8913458`, CI green (run 39262741055). W1 has already branched `ws/rsctl` from
+  `c3673f6`. Then, docs only: `af3f48c` (required correction 3,
+  `docs/evidence/r0-ci-node-version-2026-10-19.md`), `7165c14` (R0 security audit **PASS**, no
+  critical or high, 6 medium and 15 low, `docs/evidence/r0-security-audit-2026-10-19.md`),
+  `6bb8116` (ADR-029 amendment and PLAN §6/§22 corrected to the images as built).
+- **R0 release-verifier at `7165c14`: FAIL**, with all three PLAN §5 exit criteria PASS and CI
+  green (run 39273064507). Blockers being fixed: (1) a live dev-store check with its LAUNCH.md
+  section E row, and the code's `SHOPIFY_CLIENT_ID`/`SHOPIFY_CLIENT_SECRET` renamed to LAUNCH.md
+  row 1's `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`; (2) five inline SVG icons in `packages/ui`
+  replaced with `phosphor-svelte`; (3) the stale ADR-016 references in this file (done in this
+  commit); (4) ADR-029 and PLAN versus the built images (done, `6bb8116`); (5) the audit
+  follow-up tracked (the team table below); (6) the gate evidence recorded, then the verifier
+  re-run.
+
+### Builder team (founder instruction, 19 Oct 2026, ~14:50 UTC)
+
+The founder asked this builder to lead as architect with at most three Sonnet agents in
+parallel. Each agent works in its own git worktree on one branch, edits only its owned paths,
+never touches a `ws/` branch or any path the third wave owns (`crates/rsctl/`, the W2 ops paths,
+`packages/liquid-patch/`, `packages/corpus-tools/`, `corpus/`, the four first-wave branches),
+and never edits this file; the architect merges their branches and keeps this section current.
+
+| Lane | Branch | Owns | ADRs | Status |
+| --- | --- | --- | --- | --- |
+| S1 R0 gate fixes | `r0-gate-fixes` (into `r0-foundations`) | `packages/ui/src/lib/{Dialog,Toaster,Disclosure,MenuButton,DataTable}.svelte`, `packages/ui/package.json`; the Shopify variable rename (audit L13) in `crates/api/src/config.rs`, `crates/ctl/src/config.rs`, `apps/web/src/env.ts`, `.env.example`, `docs/runbooks/shopify-dev-store.md`, `infra/smoke/`, CI env names; audit L9 in `crates/api/src/config.rs`; `crates/shopify/tests/live_dev_store.rs`, `.config/nextest.toml` | 030–039 | Starting |
+| S2 Audit fixes, Rust | `r1-hardening` | `crates/{egress,crypto,shopify-auth,identity}/`, `crates/shopify/src/`, `crates/db/` (migrations `20261101*` only), `crates/api/src/` and `crates/ctl/src/` except the two `config.rs` files: M4 (api, ctl), M5, M6, L1, L3–L7, L8 (Rust), L12, L14, and `jobs` in the isolation suite | 040–049 | Starting |
+| S3 Audit fixes, TypeScript | `r1-hardening-ts` | `packages/engine/`, `packages/telemetry/`, `apps/web/{vite.config.ts,src/instrumentation.server.ts,src/hooks.server.ts,src/lib/server/headers*,src/lib/server/dashboard*,src/routes/dashboard/}`, `pnpm-workspace.yaml`: M1, M2, M3, M4 (engine), L2, L8 (web), L10, L15 | 050–059 | Starting |
+
+Deferred to R1 lanes: L11 (a narrower engine database role) and the rewrap job's operator side
+(W1's `rsctl`). Audit L4 is confirmed by Shopify's documentation (a refresh answering 401 means
+the refresh token is dead; 403 means bad client credentials; 429 and 5xx are transient:
+[implement token exchange](https://shopify.dev/docs/apps/build/authentication-authorization/implement-token-exchange?lang=node)),
+so S2 adds the 403 and 400 classifications and a test instead of changing the 401 rule.
+
+**After R0 merges (proposal for the coordinator; the builder follows any different split
+written in the third-wave section):** the next R1 lanes are a contracts-and-schema change by the
+architect (job payloads `scan.plan`, `scan.finalize`, `audit.data`, `ai.alt_text`,
+`shopify.apply_data_fix`, `shopify.revert_data_fix`, `webhook.process`; one migration), then a
+fix-loop lane (Shopify Admin GraphQL client, data fixes with undo, remediation log, statement)
+and a scan lane (8 page types, 4 states, ranked findings, alt-text drafts). R1 consumes
+`packages/reports` and `packages/ai`, and its four interactive states need
+`packages/a11y-rules`. **Request to the coordinator:** integrate `ws/reports` and `ws/ai` into
+`main` soon after R0 merges (both are CI-green and audited), and put `ws/a11y-rules` first in
+W3's queue. Until then our lanes code to an interface with a fake and never copy `ws/` code.
 
 ### Builder ↔ third-wave coordinator sync (founder instruction, 19 Oct 2026, 14:30 UTC)
 
@@ -182,7 +224,7 @@ above and owns this section; the agents never push to `main` and never edit this
   LAUNCH.md, release verification and the founder's check-ins. Neither can message the other;
   this file is the channel.
 - Every `ws/` branch starts from `e43f546`, which has none of `main`'s rules after `3eac5be`:
-  LAUNCH.md (including section E), the Node 26 LTS rule (ADR-016), the pre-approvals and the
+  LAUNCH.md (including section E), the Node 26 LTS rule (ADR-029), the pre-approvals and the
   current release-verifier. Before a `ws/` branch or `r0-foundations` merges, merge `main` into
   it, apply "Required corrections" below, and get a release-verifier PASS.
 - `docs/FOUNDER_SETUP.md` is already on `main`, checked against the vendors' documentation on
@@ -222,10 +264,10 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 
 ## Required corrections (apply before the affected work merges)
 
-- **Node.js 26 LTS, a founder decision (17 Oct 2026; ADR-016).** It replaces the 24.22.0
-  requirement recorded earlier that day. `r0-foundations` already runs 26.12.0, and its CI passed
+- **Node.js 26 LTS, a founder decision (17 Oct 2026; ADR-029, first written as ADR-016).** It
+  replaces the 24.22.0 requirement recorded earlier that day. `r0-foundations` already runs 26.12.0, and its CI passed
   on it (run 39060459727). Since 17 Oct 2026, 22:37 UTC, releases may merge on 26.12.0 (founder
-  decision; ADR-016 amendment, CLAUDE.md, PLAN §7 and the release-verifier updated on `main`),
+  decision; ADR-029 amendment, CLAUDE.md, PLAN §7 and the release-verifier updated on `main`),
   so the LTS release no longer blocks R0 or the streams. Before R0 merges:
   1. Add the `verify` check that fails when any Node pin disagrees with `.mise.toml`.
   2. Merge `main` into the branch. The branch already uses ADR-016 to ADR-018, so give main's
@@ -234,13 +276,14 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
      file, the release-verifier, both Node evidence files) and add it to `docs/adr/README.md`.
   3. Record the CI log's `node --version` in `docs/evidence/`.
 
-  Steps 1 and 2 are done on branch `r0-corrections` (above), with ADR-029 as the new number,
-  because `r0-foundations` took 028 for its service images. The release-verifier fails R0
-  until all three are done. Follow-up, required before anything
+  **All three are done on `r0-foundations`:** 1 and 2 from `r0-corrections` (merge `c614314`),
+  with ADR-029 as the new number because the branch took 028 for its service images; 3 in
+  `docs/evidence/r0-ci-node-version-2026-10-19.md` (CI run 39262741055 logs `v26.12.0`,
+  "not an LTS release"). Follow-up, required before anything
   deploys and not before any merge: once the first 26.x release tagged LTS exists (due
-  2026-10-28), pin it everywhere ADR-016 lists in one change; regenerate `pnpm-lock.yaml`; point
+  2026-10-28), pin it everywhere ADR-029 lists in one change; regenerate `pnpm-lock.yaml`; point
   ADR-014's sandbox binary at `node-linux-x64@<that version>`; replace the "first 26.x release
-  tagged LTS" wording in ADR-016, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the
+  tagged LTS" wording in ADR-029, PLAN §7 and §22, CLAUDE.md and `docs/ENVIRONMENT.md` with the
   version; and record the CI log's `process.release.lts` in `docs/evidence/`.
 - **claims-lint directory bug (main builder).** `claims-lint` fails with `EISDIR` when a
   directory matches `listing/**/*`. In `packages/claims-lint/src/cli.ts` `discoverFiles`, keep
