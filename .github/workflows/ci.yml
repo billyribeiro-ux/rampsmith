@@ -86,7 +86,20 @@ jobs:
       - name: sqlx offline data matches the migrated schema
         run: mise run check:sqlx
       - name: Tests (cargo-nextest, PostgreSQL 18.6)
-        run: mise run test:rust
+        shell: bash
+        run: |
+          set -o pipefail
+          mise run test:rust 2>&1 | tee "$RUNNER_TEMP/nextest.log"
+      - name: Report the failing tests as an annotation
+        if: failure()
+        shell: bash
+        run: |
+          # The job log host is unreachable from the build sessions; this makes the failure
+          # readable through the check-run annotations API.
+          sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r//g' "$RUNNER_TEMP/nextest.log" |
+            grep -E -A12 '(FAIL|SIGSEGV|panicked at|TIMEOUT|error(\[|:))' | head -n 70 |
+            sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/nextest.tail"
+          echo "::error title=nextest failures (first 70 lines)::$(cat "$RUNNER_TEMP/nextest.tail")"
 
   node:
     name: node
@@ -147,7 +160,20 @@ jobs:
       - name: Node.js pins agree with .mise.toml (ADR-029)
         run: mise run check:node-pins
       - name: Tests (Vitest, PostgreSQL 18.6)
-        run: mise run test:ts
+        shell: bash
+        run: |
+          set -o pipefail
+          mise run test:ts 2>&1 | tee "$RUNNER_TEMP/vitest.log"
+      - name: Report the failing tests as an annotation
+        if: failure()
+        shell: bash
+        run: |
+          # The job log host is unreachable from the build sessions; this makes the failure
+          # readable through the check-run annotations API.
+          sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r//g' "$RUNNER_TEMP/vitest.log" |
+            grep -E -A12 '(FAIL |×|AssertionError|Error:|ERR_)' | head -n 70 |
+            sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/vitest.tail"
+          echo "::error title=vitest failures (first 70 lines)::$(cat "$RUNNER_TEMP/vitest.tail")"
 
   e2e:
     name: e2e
