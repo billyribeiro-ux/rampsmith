@@ -17,7 +17,7 @@
 
 \if :{?job}
 \else
-  \warn 'refused: pass the job id, for example \set job 00000000-0000-0000-0000-000000000000'
+  \warn 'refused: pass the job id as the psql variable job, for example -v job=00000000-0000-0000-0000-000000000000'
   do $$ begin raise exception 'jobs-token-state.sql needs the psql variable job=<uuid>'; end $$;
 \endif
 

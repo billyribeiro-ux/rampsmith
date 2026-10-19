@@ -8,7 +8,7 @@
 | Decisions behind it | ADR-178; the version lives in the places listed in step 2 |
 | Verified | 2026-10-19 against Shopify's versioning page and the repository. The commands are `git`, `cargo` and `mise` and run as written; the staging steps need a development store (LAUNCH.md C rows 1 and 3) and the synthetic journey does not exist yet |
 
-## What Shopify guarantees (shopify.dev/docs/api/usage/versioning, read 19 Oct 2026)
+## What Shopify commits to (shopify.dev/docs/api/usage/versioning, read 19 Oct 2026)
 
 - A new version every three months, at 5 pm UTC on the first day of the quarter: `2026-10` is "Latest stable", `2027-01` the release candidate; on 1 January 2027 at 17:00 UTC `2027-01` becomes stable and `2027-04` becomes the candidate. Release candidates "may include backwards-incompatible changes, so not recommended for production".
 - Each stable version is supported for at least 12 months, with at least nine months of overlap between consecutive versions.

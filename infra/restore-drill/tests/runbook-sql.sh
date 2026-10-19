@@ -187,5 +187,30 @@ expect "jobs-token-state says why" 'bypasses row-level security'
 run token-missing postgres jobs-token-state.sql
 bad "jobs-token-state refuses to run without a job id"
 
+# --- audit-window.sql --------------------------------------------------------------------------
+# By now the seed wrote 120 system rows for each tenant and the two audited retries wrote one
+# operator row for each tenant, all inside the last hour.
+since=$(sql "select (now() - interval '1 hour')::text")
+run audit postgres audit-window.sql -v "since=$since"
+ok "audit-window runs as the superuser"
+expect "audit-window counts the system rows of both tenants" $'^fix\\.proposed\tsystem\t240\t2$'
+expect "audit-window counts the operator rows of both tenants" $'^job\\.retried\toperator\t2\t2$'
+expect "audit-window counts the tenants it touched" $'^2$'
+expect "audit-window lists the operator action with the tenant and the operator's name" $'\t'"${tenant_a}"$'\ttester\tjob\\.retried$'
+refuse "audit-window never prints the data column" 'key restored'
+future=$(sql "select (now() + interval '1 hour')::text")
+run audit-future postgres audit-window.sql -v "since=$future"
+ok "audit-window runs on a window with nothing in it"
+refuse "audit-window leaves out rows before the window" 'fix\.proposed'
+earlier=$(sql "select (now() - interval '30 minutes')::text")
+run audit-until postgres audit-window.sql -v "since=$since" -v "until=$earlier"
+refuse "audit-window leaves out rows after the end of the window" 'fix\.proposed'
+run audit-ctl rampsmith_ctl audit-window.sql -v "since=$since"
+bad "audit-window refuses a role that row-level security applies to"
+expect "audit-window says why" 'bypasses row-level security'
+run audit-missing postgres audit-window.sql
+bad "audit-window refuses to run without a start time"
+expect "audit-window says what is missing" 'needs the psql variable since'
+
 printf 'runbook-sql\t%s checks, %s failed\n' "$total" "$failed"
 [ "$failed" -eq 0 ]

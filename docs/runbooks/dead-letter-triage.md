@@ -6,7 +6,7 @@
 | Severity | SEV2 as paged (a dead token-refresh job is a shop that will lose access); SEV3 for other queues |
 | Use it when | The page fires; a `job is dead` line appears in the logs; `jobs-depth.sql` shows a non-zero `dead` row; after any outage, to sweep what the outage killed |
 | Decisions behind it | ADR-018 (the queue protocol), ADR-022 (token refresh), ADR-178 (this triage and the SQL) |
-| Verified | 2026-10-19. The SQL files run on every pull request against PostgreSQL 18.6 with the repository migrations, seeded jobs in every state, as the superuser and as `rampsmith_ctl` (45 checks, `infra/restore-drill/tests/runbook-sql.sh`). **Not run on Railway**: Section E row |
+| Verified | 2026-10-19. The SQL files run on every pull request against PostgreSQL 18.6 with the repository migrations, seeded jobs in every state, as the superuser and as `rampsmith_ctl` (58 checks, `infra/restore-drill/tests/runbook-sql.sh`). **Not run on Railway**: Section E row |
 
 ## What exists, and what does not
 

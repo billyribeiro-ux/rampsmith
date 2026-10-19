@@ -67,7 +67,9 @@ which alert has a signal behind it today. Checked in the repository on 19 Oct 20
 3. **Evidence first, then containment.** The runbook's security branch tells the responder to
    capture before changing: the service logs (`railway logs --service S --environment E --since 24h`
    to a private file; the R2 archive keeps 30 days), the deployment list (`railway deployment list`),
-   the relevant `audit_log` rows (break-glass), and the ticket timeline; then contain with commands
+   the relevant `audit_log` rows (break-glass, through `docs/runbooks/sql/audit-window.sql`, which prints
+   counts by action and tenant, the operator actions and never the `data` column; tested in
+   `infra/restore-drill/tests/runbook-sql.sh`), and the ticket timeline; then contain with commands
    that are in the Railway CLI reference or the repository: stop a service
    (`railway down --service S --environment E --yes`), roll back (`deploy.yml` by hand, ADR-185),
    rotate a key (the two rotation runbooks), delete a GitHub App key, restore (the two restore

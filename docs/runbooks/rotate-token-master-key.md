@@ -6,7 +6,7 @@
 | Severity | Planned change: SEV4 (do it in a quiet period). A leaked or suspected ring: SEV1, then follow the leak section |
 | Use it when | A person with access to the ring leaves; a ring may have leaked; on the schedule the founder sets (PLAN gives none; once a year is a sensible default). Losing the ring is survivable by design (PLAN §22: merchants re-authenticate), but a *wrong* rotation is not free, so this runbook goes slowly |
 | Decisions behind it | ADR-021 (the ring format), ADR-153 (`rsctl keys`), ADR-177 (this procedure) |
-| Verified | 2026-10-19. The `rsctl keys` commands and `doctor --row 12` come from ADR-153 and its evidence (`ws/rsctl`, 18 CLI tests); the SQL file was run on PostgreSQL 18.6 with the repository migrations (45 checks, `infra/restore-drill/tests/runbook-sql.sh`). **The Railway steps and the end-to-end refresh were not run on a live project**: Section E rows |
+| Verified | 2026-10-19. The `rsctl keys` commands and `doctor --row 12` come from ADR-153 and its evidence (`ws/rsctl`, 18 CLI tests); the SQL file was run on PostgreSQL 18.6 with the repository migrations (58 checks, `infra/restore-drill/tests/runbook-sql.sh`). **The Railway steps and the end-to-end refresh were not run on a live project**: Section E rows |
 
 ## What exists, and what does not
 

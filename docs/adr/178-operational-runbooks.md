@@ -78,17 +78,17 @@ than 15 minutes" has no signal behind it. The evidence file carries a runbook fo
 
 ## Decision
 
-1. **The SQL an operator runs lives in `docs/runbooks/sql/` and is executed by a test.** Five files
+1. **The SQL an operator runs lives in `docs/runbooks/sql/` and is executed by a test.** Six files
    (`jobs-depth.sql`, `jobs-dead.sql`, `jobs-retry-dead.sql`, `jobs-token-state.sql`,
-   `master-key-usage.sql`) and
+   `master-key-usage.sql`, and `audit-window.sql` for the incident runbook, ADR-179) and
    `infra/restore-drill/tests/runbook-sql.sh`, which migrates a fresh PostgreSQL 18 with the
    repository's migrations, seeds two tenants and jobs in each state, runs every file as the
-   superuser and as `rampsmith_ctl`, and checks output and effect (45 checks; it runs in the
+   superuser and as `rampsmith_ctl`, and checks output and effect (58 checks; it runs in the
    `backup-tests` job on every pull request that touches `docs/runbooks/sql/`). A runbook step that
    nobody ran is a guess.
 2. **Least privilege inside break-glass.** The job files begin with `set role rampsmith_worker`, so
-   even a superuser connection sees only what `ctl` sees. Two files need the superuser, the
-   master-key report and the token state of one shop; each refuses any role that row-level security
+   even a superuser connection sees only what `ctl` sees. Three files need the superuser, the
+   master-key report, the token state of one shop and the audit window; each refuses any role that row-level security
    applies to, because under RLS the tenant function raises an error and a quieter failure could read
    as "no data under this key".
 3. **Triage before retry.** The dead-letter runbook is a table from error code to meaning and action,
