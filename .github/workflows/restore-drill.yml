@@ -5,7 +5,8 @@
 #   lint          ShellCheck and actionlint, pinned releases
 #   drill         migrate, seed two tenants, back up, restore, verify, time it; then the negative
 #                 cases that must make it fail; then the restore path for a real backup
-#   backup-tests  the backup scripts end to end against a throwaway database
+#   backup-tests  the backup scripts end to end against a throwaway database, and the SQL files
+#                 the runbooks tell an operator to run (docs/runbooks/sql, ADR-178)
 #   live          weekly and on demand: restore the newest real staging backup. It skips with a
 #                 warning that names LAUNCH.md section C rows 6 and 8 until they are done.
 #
@@ -17,6 +18,7 @@ on:
     paths:
       - infra/restore-drill/**
       - infra/backup/**
+      - docs/runbooks/sql/**
       - crates/db/migrations/**
       - .github/workflows/restore-drill.yml
       - .github/workflows/backup.yml
@@ -169,6 +171,9 @@ jobs:
       - name: Backup tests (names, retention, skip and failure paths, both transports)
         run: |
           infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests
+      - name: Runbook SQL (the statements the runbooks tell an operator to run, on a migrated database)
+        run: |
+          infra/restore-drill/in-container.sh bash infra/restore-drill/tests/runbook-sql.sh --out /scratch/backup-tests/runbook-sql
       - name: Show the skip notices of the backup gate and the live drill (no secrets here)
         # The same scripts the nightly backup and the weekly live drill run first, with nothing
         # configured: each must announce its skip, name LAUNCH.md section C rows 6 and 8, and
