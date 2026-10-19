@@ -1,3 +1,7 @@
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import process from 'node:process';
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -84,4 +88,79 @@ test('unknown pages answer 404 with an accessible page', async ({ page }) => {
   expect(response?.status()).toBe(404);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found');
   await axe(page);
+});
+
+/** A port nothing listens on right now. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => {
+    server.close(() => {
+      resolve();
+    });
+  });
+  return port;
+}
+
+test('exported telemetry carries no launch parameter, token or shop name (audit M2)', async () => {
+  // A second copy of the built app exports its spans to a collector this test runs. The OTLP
+  // body is protobuf, in which strings are plain bytes, so searching it searches every attribute.
+  const bodies: Buffer[] = [];
+  const collector = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      bodies.push(Buffer.concat(chunks));
+      response.writeHead(200, { 'content-type': 'application/x-protobuf' }).end();
+    });
+  });
+  await new Promise<void>((resolve) => collector.listen(0, '127.0.0.1', resolve));
+  const collectorPort = (collector.address() as AddressInfo).port;
+  const appPort = await freePort();
+  const app = spawn(process.execPath, ['build'], {
+    env: {
+      PATH: process.env['PATH'],
+      HOST: '127.0.0.1',
+      PORT: appPort.toString(),
+      API_URL: 'http://127.0.0.1:3998',
+      SHOPIFY_CLIENT_ID: 'e2e-client-id',
+      OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${collectorPort.toString()}`,
+      OTEL_METRICS_EXPORTER: 'none',
+      OTEL_BSP_SCHEDULE_DELAY: '200',
+    },
+    stdio: 'ignore',
+  });
+  const origin = `http://127.0.0.1:${appPort.toString()}`;
+  try {
+    await expect
+      .poll(
+        () =>
+          fetch(`${origin}/healthz`).then(
+            (response) => response.status,
+            () => 0,
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(200);
+    const launch = `${origin}/app?embedded=1&hmac=x&id_token=y&session=z&shop=s.myshopify.com`;
+    expect((await fetch(launch)).status).toBe(200);
+    // The root span for the request has left the process, with its address cut to the path
+    // (SvelteKit sees https here: adapter-node assumes it without a protocol header).
+    await expect
+      .poll(() => Buffer.concat(bodies).toString('latin1'), { timeout: 20_000 })
+      .toContain(`://127.0.0.1:${appPort.toString()}/app`);
+    const wire = Buffer.concat(bodies).toString('latin1');
+    expect(wire).toContain('sveltekit.handle.root');
+    for (const word of ['id_token', 'hmac', 'session', 'myshopify', 'embedded=1']) {
+      expect(wire, word).not.toContain(word);
+    }
+  } finally {
+    app.kill('SIGKILL');
+    await new Promise<void>((resolve) => {
+      collector.close(() => {
+        resolve();
+      });
+    });
+  }
 });

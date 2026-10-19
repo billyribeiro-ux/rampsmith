@@ -86,3 +86,27 @@ databases.
 All 25 pre-existing engine unit tests, the store tests and the 12 browser tests pass as a member
 role, which also exercises row-level security as the deployed engine will (the cross-tenant test
 in `store.test.ts` is unchanged and still passes).
+
+## M2 telemetry URLs (ADR-053)
+
+What changed: `UrlRedactingSpanProcessor` (`packages/telemetry/src/redact.ts`) runs first in
+`startTelemetry`'s processor list, which the engine and `apps/web/src/instrumentation.server.ts`
+both call. It reduces URL attributes to origin plus path, rewrites URLs and `*.myshopify.com`
+names inside any other string, event or link attribute, and replaces secret-named attributes.
+`startTelemetry` now builds the OTLP exporter itself (`@opentelemetry/exporter-trace-otlp-proto`
+0.223.0, added with `pnpm add -E`; `@opentelemetry/sdk-trace-base` 2.12.0 moves to runtime
+dependencies) so that nothing can be exported ahead of the redactor.
+
+Before the fix, on the built web app exporting to a local collector (`app.spec.ts`, test "exported
+telemetry carries no launch parameter, token or shop name"): the OTLP body held
+`https://127.0.0.1:41071/app?embedded=1&hmac=x&id_token=y&session=z&shop=s.myshopify.com` and the
+test failed with `Expected substring: not "id_token"`. After: the body holds the route, the
+`sveltekit.handle.root` span and `://127.0.0.1:<port>/app`, and none of `id_token`, `hmac`,
+`session`, `myshopify`, `embedded=1`; the test passes (8 of 8 in the `embedded` project).
+
+Unit tests (`packages/telemetry/test/redact.test.ts`, 21 tests, 24 in the package): URL and text
+rewriting, 200,000 characters of hostile input, every attribute shape, late attributes, events and
+links, `startTelemetry`, and the real OTLP pipeline into a local collector searched byte for byte.
+Removing the processor from `startTelemetry` fails two of them (`expected
+'http://localhost:3000/app?embedded=1&…' to be 'http://localhost:3000/app'` and `id_token:
+expected '\n\u009c…' not to contain 'id_token'`).

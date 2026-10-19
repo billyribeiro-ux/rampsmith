@@ -12,7 +12,7 @@
 import type postgres from 'postgres';
 
 /** The group role the engine's login must be a member of. */
-export const WORKER_ROLE = 'rampsmith_worker';
+const WORKER_ROLE = 'rampsmith_worker';
 
 interface RoleFacts {
   readonly effective: string;
