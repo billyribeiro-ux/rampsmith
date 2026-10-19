@@ -2,7 +2,7 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 13:45 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
+Last updated: 2026-10-19 14:30 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
 
 ## Active builder
 
@@ -10,6 +10,31 @@ Last updated: 2026-10-19 13:45 UTC by the builder `Rampsmith builder 2026-10-19 
   `trig_01VH5RUTufH5KPZLALRvbdZr`), started 2026-10-19 13:37 UTC, working on `r0-foundations`
   (finishing R0 and merging it). Lock rule applied at 13:40 UTC: no other builder task PENDING;
   the newest non-`ws/` push was `r0-foundations` `d825c7b` at 2026-10-18 23:55 UTC (13.7 h).
+  The founder paused this session at 14:18 UTC and resumed it in chat at 14:30 UTC, so its task
+  reads FAILED while the session is still working: treat this entry, not the task status, as
+  the lock until the entry is removed.
+- **Pushed so far:** `r0-foundations` `c3673f6` = `d825c7b` + `r0-corrections` (`d1bfeab`) +
+  `main` at `8913458`. ESLint, Prettier, tsc, svelte-check, knip, claims-lint and node-pins pass
+  locally on Node 26.12.0. W1 has already branched `ws/rsctl` from `c3673f6`.
+
+### Builder ↔ third-wave coordinator sync (founder instruction, 19 Oct 2026, 14:30 UTC)
+
+The founder confirmed the builder continues "as long as you and the other session are working in
+sync". The two sessions cannot message each other, so this file on `main` is the channel; each
+re-reads it from `origin/main` before every step and rebases before every push.
+- **Builder owns R0 only for now:** the `security-auditor` and `release-verifier` runs at effort
+  max that the third-wave section says are owed, any fixes they require (pushed to
+  `r0-foundations`), the CI evidence for required correction 3, and merging PR #1 into `main`.
+  It edits only this "Active builder" section, the R0 rows, and R0's own files.
+- **Coordinator owns** the "Third stream wave" section, W1–W4, the six held branches, and every
+  `ws/` branch. The builder never pushes to a `ws/` branch and integrates no `ws/` branch.
+- **When R0 merges:** `r0-foundations` is kept (not deleted), so the stream PRs into it stay
+  open and their CI keeps running. The builder records the merge commit here; retargeting the
+  stream PRs to `main` and merging `main` into the `ws/` branches is the coordinator's call.
+- **After R0:** the builder proposes taking R1 work that touches no `ws/` path (the engine, api
+  and web pieces R1 needs) and leaving the stream integration to the coordinator. The builder
+  starts that only after writing the plan here; if the coordinator writes a different split in
+  its section, the builder follows it.
 - The original "Rampsmith R0 build" session (`session_01Q33Wmz7em3UDGwr492j6SH`) last pushed
   `d825c7b` at 2026-10-18 23:55 UTC and its last check-in fired at 2026-10-19 00:26 UTC. If it
   resumes and pushes to `r0-foundations`, the newer builder above yields: it stops pushing to
