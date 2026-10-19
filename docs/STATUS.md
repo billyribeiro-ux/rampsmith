@@ -43,7 +43,7 @@ and never edits this file; the architect merges their branches and keeps this se
 | S3 Audit fixes, TypeScript | `r1-hardening-ts`                       | `packages/engine/`, `packages/telemetry/`, `apps/web/{vite.config.ts,src/instrumentation.server.ts,src/hooks.server.ts,src/lib/server/headers*,src/lib/server/dashboard*,src/routes/dashboard/}`, `pnpm-workspace.yaml`: M1, M2, M3, M4 (engine), L2, L8 (web), L10, L15                                                                                                                                                                                                                                          | 050–059 | Done at `4d5edb0` (ADR-050–056); engine e2e 12/12, web e2e 15/15 locally; CI on draft PR #16 |
 
 **Follow-ups from lane S1's security audit (`docs/evidence/r0-s1-security-audit-2026-10-19.md`, PASS):**
-lane S2 (`r1-hardening`) now also owns `crates/shopify/` and `crates/telemetry/` for F1 (keep
+lane S2 (`r1-hardening`) now also owns `crates/shopify/`, `crates/telemetry/` and the two `config.rs` files of `crates/api` and `crates/ctl` (lane S1 is done) for F1 (keep
 `reqwest`, `hyper_util`, `h2` and `rustls` at `info` unless `RUST_LOG` names them, so no shop
 domain reaches DEBUG logs), F2 (classify token errors by Shopify's OAuth `error` code, never
 deleting tokens on `invalid_client`; the live probe then requires `invalid_subject_token`), F3
