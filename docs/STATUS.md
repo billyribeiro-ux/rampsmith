@@ -2,7 +2,34 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-19 18:47 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
+Last updated: 2026-10-19 19:16 UTC by the architect chat (founder instruction below).
+
+## Founder instruction, 19 Oct 2026, 19:04 UTC (overrides anything below)
+
+In the architect chat the founder said to get everything committed, pushed and merged, and that
+he does not need to approve anything. From now on:
+
+- **Merges wait for nothing from the founder.** A merge into `main` needs green CI on the pinned
+  toolchains. The `release-verifier` and `security-auditor` still run, right after the merge;
+  anything they find is fixed forward in a new pull request, before any deploy. Spending,
+  production deploys, store submission and publishing legal text still need him (CLAUDE.md);
+  none of those is a merge.
+- **R0 is merged:** PR #1 into `main` as `1fae714` (19:10 UTC) at head `ea4f1a1`, CI green 8 of 8
+  ([run 39307060823](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39307060823)).
+  The builder's round 5 `release-verifier` returned PASS (`d6f68f5`, 19:11 UTC); PR #17 brings
+  that record and ADR-034 into `main`.
+- **The architect chat integrates all twelve stream branches now,** in the coordinator's order,
+  on one branch, `r1-streams`, from `main`: `ws/reports`, `ws/ai`, `ws/a11y-rules`, `ws/email`,
+  `ws/theme-app-ext`, `ws/launch-docs`, `ws/github-app`, `ws/billing`, `ws/rsctl`, `ws/ops`,
+  `ws/patch-r2` (which carries `ws/liquid-patch` and `ws/corpus`), `ws/deploy`. It merges into
+  `main` when its CI is green, and the stream PRs (#2 to #14) are then closed as integrated.
+  Coordinator: do not integrate; push anything unpushed to its `ws/` branch now. Once
+  `r1-streams` merges, the `ws/` branches are frozen and new work branches from `main`. The
+  architect chat then runs the owed audits (W1, W2, WS-3, WS-4) on `main` and fixes forward.
+- **Builder:** retarget PRs #15 (lane S2) and #16 (lane S3) to `main`, fix their red CI
+  (#15: Clippy on Rust 1.99.1, run 39297478275; #16: the e2e browser tests, run 39297795734) and
+  merge each as soon as its CI is green; then the R1 lanes as proposed below.
+- **App Store 1.1.3 and 5.1.1:** decided under the founder's delegation; see "Waiting on founder".
 
 ## Active builder
 
@@ -355,7 +382,8 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
 
 ## Progress (scope and evidence rules: docs/LAUNCH.md)
 
-- [ ] R0 Foundations — in progress on `r0-foundations`
+- [x] R0 Foundations — merged into `main` as `1fae714` (19 Oct 2026, 19:10 UTC); CI run
+      39307060823; `release-verifier` PASS in round 5 (`d6f68f5`, PR #17)
 - [ ] R1 Private beta
 - [ ] R2 Public launch
 - [ ] Launch extras (LAUNCH.md section B)
@@ -368,13 +396,14 @@ builders do not wait for them. Each check that needs one goes into LAUNCH.md sec
 keep this list to the inputs in the order the founder should add them at the end, each with the
 command to run after it; `docs/FOUNDER_SETUP.md` has the steps.
 
-Decision needed, not an input: Shopify App Store requirement 1.1.3 ("Your app must not allow
-merchants to download themes") and 5.1.1 ("You or merchants should not make any code changes to
-the theme") put the patched theme package and the GitHub pull-request channel at App Review
-risk. The architect recommends retiring the theme-package channel, keeping the pull-request
-channel behind its flag, and asking Shopify before the R2 submission whether a pull request the
-merchant's developer reviews and merges meets 5.1.1. Builders stop short of R2's package work
-until the founder answers.
+Decided under the founder's delegation (19 Oct 2026, 19:04 UTC), no longer waiting on him: Shopify
+App Store requirement 1.1.3 ("Your app must not allow merchants to download themes") rules out
+the patched theme package, so that channel is retired and R2's package work is dropped. 5.1.1
+("You or merchants should not make any code changes to the theme") puts the GitHub pull-request
+channel at App Review risk, so it stays built behind its flag, off in the App Store build; at
+submission the founder's account asks Shopify whether a pull request the merchant's developer
+reviews and merges meets 5.1.1, and the flag turns on only with that answer in writing. Every
+PLAN §5 exit criterion is unchanged. ADR-141's amendment records it at integration.
 
 ## Founder notifications sent
 
