@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seeded autoplay audio</title>
+    <!--
+      Seeded: #bare autoplays 5 seconds of audio with no control (violation); #nearby has only
+      an unlabelled-purpose button next to it (review). Must NOT be reported: native controls
+      (#with-controls), muted (#muted), and an aria-controls pause button (#with-pause).
+    -->
+  </head>
+  <body>
+    <audio id="bare" autoplay src="/media/tone.wav"></audio>
+    <audio id="with-controls" autoplay controls src="/media/tone.wav" aria-label="Sample"></audio>
+    <audio id="muted" autoplay muted src="/media/tone.wav"></audio>
+    <div>
+      <audio id="with-pause" autoplay src="/media/tone.wav"></audio>
+      <button type="button" aria-controls="with-pause">Pause music</button>
+    </div>
+    <section>
+      <div><audio id="nearby" autoplay src="/media/tone.wav"></audio></div>
+      <button type="button">Sound</button>
+    </section>
+  </body>
+</html>

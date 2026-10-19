@@ -2,6 +2,7 @@
   // Where toasts appear. Both live regions exist before any message does, so screen readers
   // announce each new toast: information in a polite role="status" region, errors in an
   // assertive role="alert" region (ADR-026).
+  import XIcon from 'phosphor-svelte/lib/XIcon';
   import type { Toasts } from './toasts.svelte.ts';
 
   interface Props {
@@ -48,9 +49,7 @@
               toaster.dismiss(toast.id);
             }}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2" fill="none" />
-            </svg>
+            <XIcon size={14} weight="bold" aria-hidden="true" />
           </button>
         </div>
       {/each}

@@ -1,0 +1,37 @@
+{
+  "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
+  "prompt_version": "alt-text@2",
+  "model": "claude-haiku-5-5",
+  "image_id": "brick-wall",
+  "request_sha256": "068c49421220d5d89e335b5a04d3dc6bbd30e930a91adccc83a6b795f88eb64f",
+  "response": {
+    "id": "msg_eval_brick_wall_claude_haiku_5_5",
+    "container": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"alt\":\"Grey brick-effect pattern of long, narrow bricks laid in staggered rows\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.88}",
+        "citations": null
+      }
+    ],
+    "diagnostics": null,
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": null,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 1036,
+      "output_tokens": 66,
+      "output_tokens_details": null,
+      "server_tool_use": null,
+      "service_tier": "standard",
+      "speed": "standard"
+    }
+  }
+}

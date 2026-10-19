@@ -1,0 +1,524 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rampsmith:corpus:golden:1",
+  "title": "Rampsmith theme corpus: golden findings of one theme",
+  "description": "Every finding the scanner must report on the theme's rendered pages, where it maps in source, and what the fix engine is expected to do (PLAN §23; corpus/CONTRACT.md; ADR-201).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "subject", "kind", "alignment", "findings"],
+  "properties": {
+    "$schema": {
+      "const": "../schema/golden.schema.json"
+    },
+    "subject": {
+      "description": "The theme, or for a store's data-audit findings the store, these findings belong to.",
+      "$ref": "#/$defs/slug"
+    },
+    "kind": {
+      "enum": ["failing", "control", "store"]
+    },
+    "alignment": {
+      "description": "Versions and commits whose rule ids and span format the findings follow.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axeCore", "a11yRules", "liquidPatch"],
+      "properties": {
+        "axeCore": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "a11yRules": {
+          "$ref": "#/$defs/commit"
+        },
+        "liquidPatch": {
+          "$ref": "#/$defs/commit"
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "control"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "store"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "engine": {
+                  "const": "rampsmith-data"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "engine": {
+                  "enum": ["axe", "rampsmith-browser"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "themePath": {
+      "description": "Theme-relative path in one of Shopify's theme directories.",
+      "type": "string",
+      "pattern": "^(?:layout|templates|templates/customers|sections|blocks|snippets|locales|config|assets)/[A-Za-z0-9._-]+$"
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "anchor": {
+      "description": "The source text at the span's start: for an element, the start of its start tag, long enough to occur once in the file; for a CSS declaration, the whole declaration, occurring once in its rule; for data, the whole span. It keeps the file reviewable and lets the tooling re-find the span after an edit. Mappers ignore it.",
+      "type": "string",
+      "minLength": 2
+    },
+    "criterion": {
+      "type": "string",
+      "pattern": "^[1-4]\\.[1-9][0-9]?\\.[1-9][0-9]?$"
+    },
+    "elementSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "file", "start", "tag", "anchor"],
+      "properties": {
+        "kind": {
+          "const": "element"
+        },
+        "file": {
+          "$ref": "#/$defs/themePath",
+          "type": "string",
+          "pattern": "\\.liquid$"
+        },
+        "start": {
+          "$ref": "#/$defs/offset"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        }
+      }
+    },
+    "span": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/elementSpan"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "file", "pointer", "start", "end"],
+          "properties": {
+            "kind": {
+              "const": "json-value"
+            },
+            "file": {
+              "$ref": "#/$defs/themePath",
+              "type": "string",
+              "pattern": "\\.json$"
+            },
+            "pointer": {
+              "type": "string",
+              "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "file", "selector", "start", "end", "property", "anchor"],
+          "properties": {
+            "kind": {
+              "const": "css-declaration"
+            },
+            "file": {
+              "$ref": "#/$defs/themePath",
+              "type": "string",
+              "pattern": "\\.(?:css|liquid)$"
+            },
+            "selector": {
+              "description": "The selector of the one rule in the file that holds the declaration, written as in the file.",
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            },
+            "property": {
+              "type": "string",
+              "pattern": "^-?[a-z][a-z-]*$"
+            },
+            "anchor": {
+              "$ref": "#/$defs/anchor"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "resource", "field"],
+          "properties": {
+            "kind": {
+              "const": "data"
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^gid://shopify/[A-Za-z]+/[0-9]+$"
+            },
+            "field": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+            },
+            "start": {
+              "$ref": "#/$defs/offset"
+            },
+            "end": {
+              "$ref": "#/$defs/offset"
+            },
+            "anchor": {
+              "description": "The value's text between the offsets; empty for an empty field, whose span is [0, 0).",
+              "type": "string"
+            }
+          },
+          "dependentRequired": {
+            "start": ["end", "anchor"],
+            "end": ["start"],
+            "anchor": ["start"]
+          }
+        }
+      ]
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "selector"],
+      "properties": {
+        "page": {
+          "description": "A page id from the manifest, or * for every page of the theme.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/slug"
+            },
+            {
+              "const": "*"
+            }
+          ]
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "expectedFix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel", "recipe", "outcome", "targeted"],
+      "properties": {
+        "channel": {
+          "enum": ["theme-patch", "admin-api", "none"]
+        },
+        "recipe": {
+          "enum": [
+            "document-language",
+            "skip-link",
+            "empty-link",
+            "empty-button",
+            "form-label",
+            "image-alt",
+            "contrast",
+            "focus-visible",
+            "target-size",
+            "media-alt",
+            "rich-text",
+            "ai-proposal"
+          ]
+        },
+        "outcome": {
+          "enum": ["fixed", "refused", "review"]
+        },
+        "refusal": {
+          "enum": [
+            "wrong-file",
+            "target-not-found",
+            "wrong-element",
+            "liquid-in-attribute",
+            "conditional-attribute",
+            "dynamic-content",
+            "main-landmark-not-found",
+            "head-not-found",
+            "id-conflict",
+            "needs-unique-id",
+            "not-labelable",
+            "no-image-object",
+            "invalid-parameter"
+          ]
+        },
+        "targeted": {
+          "type": "boolean"
+        },
+        "params": {
+          "type": "object"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "refused"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "required": ["refusal"]
+          },
+          "else": {
+            "not": {
+              "type": "object",
+              "required": ["refusal"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "targeted": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "const": "theme-patch"
+              },
+              "outcome": {
+                "const": "fixed"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ruleId",
+        "engine",
+        "outcome",
+        "impact",
+        "criteria",
+        "category",
+        "description",
+        "mapping",
+        "span",
+        "expectedFix"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "ruleId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "engine": {
+          "enum": ["axe", "rampsmith-browser", "rampsmith-data"]
+        },
+        "outcome": {
+          "enum": ["violation", "incomplete"]
+        },
+        "impact": {
+          "enum": ["minor", "moderate", "serious", "critical"]
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/criterion"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "category": {
+          "enum": [
+            "low-contrast",
+            "alt-text-media",
+            "alt-text-theme-image",
+            "form-label",
+            "empty-link",
+            "empty-button",
+            "document-language",
+            "skip-link",
+            "focus-visible",
+            "target-size",
+            "rich-text",
+            "widget-roles",
+            "other"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10
+        },
+        "occurrences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/occurrence"
+          },
+          "minItems": 1
+        },
+        "mapping": {
+          "enum": ["deterministic", "ambiguous", "none"]
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "rendersFrom": {
+          "$ref": "#/$defs/elementSpan"
+        },
+        "ambiguity": {
+          "type": "string",
+          "minLength": 10
+        },
+        "expectedFix": {
+          "$ref": "#/$defs/expectedFix"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "engine": {
+                "const": "rampsmith-data"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "mapping": {
+                "const": "none"
+              },
+              "span": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "data"
+                  }
+                }
+              }
+            },
+            "not": {
+              "type": "object",
+              "required": ["occurrences"]
+            }
+          },
+          "else": {
+            "type": "object",
+            "required": ["occurrences"],
+            "properties": {
+              "mapping": {
+                "enum": ["deterministic", "ambiguous"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mapping": {
+                "const": "ambiguous"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "required": ["ambiguity"]
+          },
+          "else": {
+            "not": {
+              "type": "object",
+              "required": ["ambiguity"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

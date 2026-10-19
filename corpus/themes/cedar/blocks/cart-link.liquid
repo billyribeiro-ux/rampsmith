@@ -1,0 +1,11 @@
+<a href="{{ routes.cart_url }}" class="header-icon header-icon--cart" {{ block.shopify_attributes }}>
+  {{- 'icon-bag.svg' | inline_asset_content -}}
+  <span class="visually-hidden">{{ 'templates.cart.title' | t }}</span>
+  {%- if cart.item_count > 0 -%}
+    <span class="header-icon__count" aria-hidden="true">{{ cart.item_count }}</span>
+  {%- endif -%}
+</a>
+
+{% schema %}
+{ "name": "Cart link", "settings": [] }
+{% endschema %}

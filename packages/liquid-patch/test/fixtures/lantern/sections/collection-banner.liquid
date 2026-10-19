@@ -1,0 +1,12 @@
+{%- if collection.image != blank -%}
+  <div class="collection-banner">
+    <img
+      class="collection-banner__image"
+      src="{{ collection.image | image_url: width: 1200 }}"
+      alt="{{ collection.image.alt | escape }}"
+      width="{{ collection.image.width }}"
+      height="{{ collection.image.height }}"
+      loading="lazy"
+    >
+  </div>
+{%- endif -%}

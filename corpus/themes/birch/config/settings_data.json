@@ -1,0 +1,30 @@
+{
+  "current": {
+    "color_body_text": "#2b2b2b",
+    "color_body_bg": "#ffffff",
+    "color_button": "#7a3e1d",
+    "color_announcement_text": "#a6a6a6",
+    "color_announcement_bg": "#fafafa",
+    "social_pinterest_link": "https://pinterest.com/harborandpine",
+    "social_youtube_link": "https://youtube.com/@harborandpine",
+    "sections": {
+      "header": {
+        "type": "header",
+        "settings": { "announcement": "Spring restock is here" }
+      },
+      "footer": {
+        "type": "footer",
+        "settings": { "newsletter_title": "Join our list" }
+      }
+    }
+  },
+  "presets": {
+    "Default": {
+      "color_body_text": "#2b2b2b",
+      "color_body_bg": "#ffffff",
+      "color_button": "#7a3e1d",
+      "color_announcement_text": "#555555",
+      "color_announcement_bg": "#fafafa"
+    }
+  }
+}

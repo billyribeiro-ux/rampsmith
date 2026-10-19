@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><meta name="format-detection" content="telephone=no, date=no, address=no, email=no"><title>Your accessibility report for shop.example</title>
+<style>:root{color-scheme:light dark;supported-color-schemes:light dark;}body{margin:0;padding:0;}@media (prefers-color-scheme: dark){.rs-page{background-color:#0b0f14 !important;color:#f3f4f6 !important;}.rs-card{background-color:#151b23 !important;border-color:#374151 !important;}.rs-text{color:#f3f4f6 !important;}.rs-muted{color:#b6c0cc !important;}.rs-link{color:#93c5fd !important;}.rs-button{background-color:#93c5fd !important;border-color:#93c5fd !important;color:#0b0f14 !important;}.rs-subtle{background-color:#0b0f14 !important;border-color:#9ca3af !important;}.rs-row{border-color:#374151 !important;}}@media (max-width: 480px){.rs-card{padding:24px 16px !important;}}</style>
+</head>
+<body class="rs-page" style="margin:0;padding:0;background-color:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%"><div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;opacity:0;mso-hide:all">Passes 41 of 50 automated WCAG 2.2 AA checks.</div>
+<div role="article" aria-roledescription="email" aria-label="Your accessibility report for shop.example" lang="en" dir="ltr" class="rs-page" style="background-color:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:24px 12px"><!--[if mso]><table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+<div style="max-width:600px;margin:0 auto"><div class="rs-card" style="background-color:#ffffff;border:1px solid #d1d5db;border-radius:8px;padding:32px 24px"><p class="rs-text" style="margin:0 0 24px;font-size:16px;line-height:24px;color:#111827;font-weight:700;letter-spacing:0.02em">Rampsmith</p>
+<h1 class="rs-text" style="margin:0 0 16px;font-size:24px;line-height:32px;font-weight:700;color:#111827">Accessibility report for shop.example</h1>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">Rampsmith&#39;s free scanner checked <bdi>3</bdi> pages of <bdi>shop.example</bdi> on <bdi>October 17, 2026</bdi>, at one screen size.</p>
+<h2 class="rs-text" style="margin:24px 0 8px;font-size:18px;line-height:26px;font-weight:700;color:#111827">Summary</h2>
+<table class="rs-text" style="width:100%;border-collapse:collapse;margin:0 0 16px;color:#111827"><tbody><tr><th scope="row" class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:left;font-weight:600;padding-right:16px">Automated WCAG 2.2 AA checks</th><td class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:right">Passes <bdi>41</bdi> of <bdi>50</bdi></td></tr>
+<tr><th scope="row" class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:left;font-weight:600;padding-right:16px">Pages checked</th><td class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:right"><bdi>3</bdi></td></tr>
+</tbody>
+</table>
+<h2 class="rs-text" style="margin:24px 0 8px;font-size:18px;line-height:26px;font-weight:700;color:#111827">Issues by impact on shoppers</h2>
+<table class="rs-text" style="width:100%;border-collapse:collapse;margin:0 0 16px;color:#111827"><tbody><tr><th scope="row" class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:left;font-weight:600;padding-right:16px">Critical</th><td class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:right"><bdi>2</bdi></td></tr>
+<tr><th scope="row" class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:left;font-weight:600;padding-right:16px">Serious</th><td class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:right"><bdi>7</bdi></td></tr>
+<tr><th scope="row" class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:left;font-weight:600;padding-right:16px">Moderate</th><td class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:right"><bdi>4</bdi></td></tr>
+<tr><th scope="row" class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:left;font-weight:600;padding-right:16px">Minor</th><td class="rs-row" style="padding:8px 0;border-bottom:1px solid #d1d5db;vertical-align:top;font-size:16px;line-height:24px;text-align:right"><bdi>1</bdi></td></tr>
+</tbody>
+</table>
+<h2 class="rs-text" style="margin:24px 0 8px;font-size:18px;line-height:26px;font-weight:700;color:#111827">Most frequent issues</h2>
+<ul class="rs-text" style="margin:0 0 16px;padding:0 0 0 24px;color:#111827;font-size:16px;line-height:24px"><li style="margin:0 0 8px"><bdi>Images without alternative text</bdi>: <bdi>12</bdi> instances</li>
+<li style="margin:0 0 8px"><bdi>Links without an accessible name</bdi>: <bdi>5</bdi> instances</li>
+<li style="margin:0 0 8px"><bdi>Text with low colour contrast</bdi>: 1 instance</li>
+</ul>
+<p style="margin:24px 0"><a class="rs-button" href="https://rampsmith.example/scan/report/TESTONLYreport0022" style="display:inline-block;background-color:#1d4ed8;border:2px solid #1d4ed8;border-radius:6px;color:#ffffff;font-size:16px;font-weight:600;line-height:24px;padding:10px 20px;text-decoration:none">Open the full report</a></p>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">The report stays available until <bdi>November 16, 2026</bdi>.</p>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">Rampsmith can fix many of these issues at the source, in a Shopify store&#39;s own data and theme code: <a class="rs-link" href="https://rampsmith.example/how-it-works" style="color:#1d4ed8;text-decoration:underline"><bdi>see how it works</bdi></a>.</p>
+<div class="rs-subtle" style="margin:24px 0 0;padding:12px 16px 0;background-color:#f3f4f6;border-left:4px solid #6b7280"><p class="rs-text" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#111827">Automated checks find only part of all accessibility issues. Rampsmith lists what it checked and what still needs a person to review.</p>
+<p class="rs-text" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#111827">Deque, the maker of axe-core, reports that axe-core finds on average 57% of WCAG issues automatically.</p>
+</div>
+</div>
+<div style="padding:24px 8px 0"><p class="rs-muted" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#4b5563">You received this email because you asked Rampsmith&#39;s free scanner to send this report here and confirmed this address.</p>
+<p class="rs-muted" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#4b5563"><a class="rs-link" href="https://rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99" style="color:#1d4ed8;text-decoration:underline;display:inline-block;padding:4px 0">Unsubscribe from Rampsmith emails</a></p>
+<p class="rs-muted" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#4b5563">Questions? Write to <a class="rs-link" href="mailto:support@rampsmith.example" style="color:#1d4ed8;text-decoration:underline"><bdi>support@rampsmith.example</bdi></a>.</p>
+<p class="rs-muted" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#4b5563">Rampsmith<br>100 Example Street<br>Springfield, EX 00000<br>United States (test fixture)</p>
+</div>
+</div>
+<!--[if mso]></td></tr>
+</table>
+<![endif]-->
+</div>
+</body></html>

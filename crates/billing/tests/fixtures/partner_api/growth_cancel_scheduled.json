@@ -1,0 +1,28 @@
+{
+  "data": {
+    "activeSubscription": {
+      "shop": {
+        "id": "gid://shopify/Shop/5678"
+      },
+      "billingPeriod": "EVERY_30_DAYS",
+      "cancelAtEndOfCycle": true,
+      "trialEndsAt": null,
+      "currentBillingCycle": {
+        "startTime": "2026-10-01T00:00:00Z",
+        "endTime": "2026-10-31T00:00:00Z"
+      },
+      "items": [
+        {
+          "handle": "growth",
+          "price": {
+            "__typename": "FlatRatePrice",
+            "active": true,
+            "currency": "USD",
+            "amount": "199.00"
+          }
+        }
+      ],
+      "pendingUpdate": null
+    }
+  }
+}

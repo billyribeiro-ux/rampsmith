@@ -1,0 +1,6 @@
+<h1 class="product__title" {{ block.shopify_attributes }}>{{ product.title | escape }}</h1>
+<p class="product__price">{{ product.price | money }}</p>
+
+{% schema %}
+{ "name": "Product title", "settings": [] }
+{% endschema %}

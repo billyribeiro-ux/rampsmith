@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# The nightly logical backup (ADR-171 to ADR-174): pg_dump -Fc, encrypted with age to public
+# recipients, uploaded to the R2 backups bucket under a dated key, verified, then pruned.
+#
+#   backup.sh
+#
+# The archive is never written unencrypted: pg_dump's output goes through a pipe, a copy of the
+# stream feeds `pg_restore --list` (which proves the stream is a PostgreSQL archive), and age
+# writes the only file. The private key is not here and never was: only `age1...` recipients
+# are accepted.
+#
+# Configuration (environment; secrets come from GitHub environment secrets, never the repo):
+#   BACKUP_ENVIRONMENT      production | staging: the key prefix and the GitHub environment
+#   BACKUP_SOURCE           url (default) or railway-ssh: how pg_dump reaches the database
+#   BACKUP_DB_HOST/PORT/USER/NAME/PASSWORD
+#                           the database login (a least-privilege role: infra/backup/backup-role.sql);
+#                           with railway-ssh these are resolved inside the database container
+#   BACKUP_AGE_RECIPIENTS   public age recipients, one per line
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_BACKUPS   (LAUNCH.md C row 6)
+#   RAILWAY_API_TOKEN, BACKUP_RAILWAY_PROJECT_ID, BACKUP_RAILWAY_ENVIRONMENT,
+#   BACKUP_RAILWAY_SERVICE, BACKUP_RAILWAY_SSH_KEY_FILE                          (C row 8; railway-ssh only)
+# Optional: BACKUP_KEEP_DAILY (30), BACKUP_KEEP_MONTHLY (12), BACKUP_PRUNE_MAX (10), PGBIN (a
+# directory holding the PostgreSQL 18 client programs), AWS_BIN, RAILWAY_BIN, AGE_BIN, BACKUP_NOW.
+#
+# Exit codes: 0 stored and verified; 1 failed; 3 the environment is not configured yet.
+set -euo pipefail
+umask 077
+
+BK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$BK_DIR/lib/common.sh"
+# shellcheck source=lib/s3.sh
+source "$BK_DIR/lib/s3.sh"
+
+AGE_BIN="${AGE_BIN:-age}"
+RAILWAY_BIN="${RAILWAY_BIN:-railway}"
+BACKUP_SOURCE="${BACKUP_SOURCE:-url}"
+BACKUP_KEEP_DAILY="${BACKUP_KEEP_DAILY:-30}"
+BACKUP_KEEP_MONTHLY="${BACKUP_KEEP_MONTHLY:-12}"
+BACKUP_PRUNE_MAX="${BACKUP_PRUNE_MAX:-10}"
+
+pg_tool() {
+  if [ -n "${PGBIN:-}" ]; then printf '%s/%s' "$PGBIN" "$1"; else printf '%s' "$1"; fi
+}
+
+# --- configuration -------------------------------------------------------------------------------
+missing=$(bk_missing_r2 | tr '\n' ' ')
+if [ -z "${BACKUP_AGE_RECIPIENTS:-}" ]; then
+  missing="${missing}BACKUP_AGE_RECIPIENTS "
+fi
+if [ -n "$missing" ]; then
+  bk_warning "backup not configured: needs ${missing}(LAUNCH.md section C rows 6 and 8); nothing was backed up"
+  exit "$BK_EXIT_NOT_CONFIGURED"
+fi
+bk_require BACKUP_ENVIRONMENT BACKUP_DB_HOST BACKUP_DB_NAME BACKUP_DB_USER
+BACKUP_DB_PORT="${BACKUP_DB_PORT:-5432}"
+BACKUP_DB_PASSWORD="${BACKUP_DB_PASSWORD:-}"
+bk_valid_environment "$BACKUP_ENVIRONMENT" || bk_die "BACKUP_ENVIRONMENT is not a valid environment name"
+for name in BACKUP_DB_USER BACKUP_DB_NAME; do
+  [[ ${!name} =~ ^[A-Za-z0-9_.-]+$ ]] || bk_die "${name} holds characters outside A-Za-z0-9_.-"
+done
+# A host name, an address, or the directory of a Unix socket.
+# shellcheck disable=SC2153  # BACKUP_DB_HOST comes from the environment, checked by bk_require
+[[ $BACKUP_DB_HOST =~ ^(/[A-Za-z0-9_./-]+|[A-Za-z0-9_.:-]+)$ ]] ||
+  bk_die "BACKUP_DB_HOST is neither a host name nor a socket directory"
+[[ $BACKUP_DB_PORT =~ ^[0-9]{1,5}$ ]] || bk_die "BACKUP_DB_PORT is not a port number"
+case $BACKUP_SOURCE in
+  url) ;;
+  railway-ssh)
+    bk_require RAILWAY_API_TOKEN BACKUP_RAILWAY_PROJECT_ID BACKUP_RAILWAY_ENVIRONMENT BACKUP_RAILWAY_SERVICE
+    ;;
+  *) bk_die "BACKUP_SOURCE must be url or railway-ssh" ;;
+esac
+
+work=$(mktemp -d)
+cleanup() { rm -rf "$work"; }
+trap cleanup EXIT
+
+bk_write_recipients "$BACKUP_AGE_RECIPIENTS" "$work/recipients.txt"
+s3_init
+
+# --- reaching the database ----------------------------------------------------------------------
+# db_run TOOL ARGS...: runs a PostgreSQL client program against the database, writing to stdout.
+# With url the program runs here (libpq environment, nothing on a command line). With
+# railway-ssh it runs inside the database container: the password travels on stdin, so no
+# process list on either side shows it.
+db_run() {
+  local tool=$1
+  shift
+  case $BACKUP_SOURCE in
+    url)
+      PGHOST=$BACKUP_DB_HOST PGPORT=$BACKUP_DB_PORT PGUSER=$BACKUP_DB_USER \
+        PGDATABASE=$BACKUP_DB_NAME PGPASSWORD=$BACKUP_DB_PASSWORD \
+        "$(pg_tool "$tool")" "$@"
+      ;;
+    railway-ssh)
+      local key_args=()
+      if [ -n "${BACKUP_RAILWAY_SSH_KEY_FILE:-}" ]; then
+        key_args=(-i "$BACKUP_RAILWAY_SSH_KEY_FILE")
+      fi
+      # The script is a constant; its arguments are validated values and the tool's own flags.
+      printf '%s\n' "$BACKUP_DB_PASSWORD" |
+        "$RAILWAY_BIN" ssh -p "$BACKUP_RAILWAY_PROJECT_ID" -e "$BACKUP_RAILWAY_ENVIRONMENT" \
+          -s "$BACKUP_RAILWAY_SERVICE" "${key_args[@]}" -- \
+          sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec "$@"' sh "$tool" \
+          -h "$BACKUP_DB_HOST" -p "$BACKUP_DB_PORT" -U "$BACKUP_DB_USER" -d "$BACKUP_DB_NAME" "$@"
+      ;;
+  esac
+}
+
+# The tool's own connection flags are only needed with railway-ssh (libpq reads PG* with url);
+# giving them under url as well would be harmless, but pg_dump and psql take the same ones.
+dump_stream() {
+  db_run pg_dump -Fc --no-password --lock-wait-timeout=300s
+}
+
+query() {
+  db_run psql -X -At -v ON_ERROR_STOP=1 --no-password -c "$1"
+}
+
+# --- 1. dump, check and encrypt in one pass --------------------------------------------------------
+stamp=$(bk_utc_stamp)
+bk_valid_stamp "$stamp" || bk_die "BACKUP_NOW is not YYYYMMDDTHHMMSSZ"
+base=$(bk_object_base "$BACKUP_ENVIRONMENT" daily "$stamp")
+archive="$work/archive.age"
+bk_log "backup ${BACKUP_ENVIRONMENT} ${stamp} via ${BACKUP_SOURCE}"
+
+schema_version=$(query "select coalesce(max(version)::text, 'none') from public._sqlx_migrations where success") ||
+  bk_die "could not read the migration version: the login cannot reach the database or lacks SELECT (see infra/backup/backup-role.sql)"
+server_version=$(query "show server_version") || bk_die "could not read the server version"
+[[ $schema_version =~ ^[0-9a-z]+$ ]] || bk_die "unexpected migration version"
+[[ $server_version =~ ^[0-9A-Za-z._\ ()+-]+$ ]] || bk_die "unexpected server version"
+
+mkfifo "$work/toc.fifo"
+"$(pg_tool pg_restore)" --list <"$work/toc.fifo" >"$work/toc.txt" 2>"$work/toc.err" &
+toc_pid=$!
+
+set +e
+dump_stream 2>"$work/dump.err" | tee -p "$work/toc.fifo" | "$AGE_BIN" -R "$work/recipients.txt" -o "$archive" 2>"$work/age.err"
+statuses=("${PIPESTATUS[@]}")
+set -e
+# Release the TOC reader if the pipeline ended before the tee opened its fifo.
+: <>"$work/toc.fifo"
+toc_status=0
+wait "$toc_pid" || toc_status=$?
+
+if [ "${statuses[0]}" -ne 0 ]; then
+  bk_error "pg_dump failed (exit ${statuses[0]}): $(tr '\n' ' ' <"$work/dump.err" | head -c 600)"
+  exit 1
+fi
+if [ "${statuses[2]}" -ne 0 ]; then
+  bk_error "age failed (exit ${statuses[2]}): $(tr '\n' ' ' <"$work/age.err" | head -c 600)"
+  exit 1
+fi
+if [ "$toc_status" -ne 0 ]; then
+  bk_error "the dump is not a PostgreSQL archive (pg_restore --list exit ${toc_status}): $(tr '\n' ' ' <"$work/toc.err" | head -c 600)"
+  exit 1
+fi
+[ -s "$archive" ] || bk_die "age wrote an empty file"
+if ! grep -Eq '^[0-9]+; [0-9]+ [0-9]+ TABLE DATA public _sqlx_migrations ' "$work/toc.txt"; then
+  bk_die "the archive does not contain public._sqlx_migrations: this is not a Rampsmith database or the dump was filtered"
+fi
+tables=$(grep -Ec '^[0-9]+; [0-9]+ [0-9]+ TABLE DATA ' "$work/toc.txt" || true)
+policies=$(grep -Ec '^[0-9]+; [0-9]+ [0-9]+ POLICY ' "$work/toc.txt" || true)
+if [ "$policies" -lt 1 ]; then
+  bk_die "the archive holds no row-level security policy: the dump is not of the application schema"
+fi
+
+size=$(wc -c <"$archive" | tr -d ' ')
+sha=$(sha256sum "$archive" | cut -d' ' -f1)
+fingerprint=$(bk_recipients_fingerprint "$work/recipients.txt")
+age_version=$("$AGE_BIN" --version 2>/dev/null | head -n 1 | tr -cd '0-9A-Za-z._+-' || true)
+dump_version=$(grep -m1 '^; Dumped by pg_dump version' "$work/toc.txt" | sed 's/^; Dumped by pg_dump version: *//' | tr -cd '0-9A-Za-z._ ()+-' || true)
+bk_log "dumped: ${size} bytes encrypted, ${tables} tables, ${policies} policies, schema ${schema_version}"
+
+# --- 2. upload and verify ----------------------------------------------------------------------------
+write_meta() {
+  local kind=$1 key=$2 file=$3 run=""
+  if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    run="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  fi
+  cat >"$file" <<EOF
+{
+  "format": "rampsmith-backup-meta/1",
+  "environment": "${BACKUP_ENVIRONMENT}",
+  "kind": "${kind}",
+  "key": "${key}",
+  "created_utc": "${stamp:0:4}-${stamp:4:2}-${stamp:6:2}T${stamp:9:2}:${stamp:11:2}:${stamp:13:2}Z",
+  "size_bytes": ${size},
+  "sha256": "${sha}",
+  "encryption": {"tool": "age", "version": "${age_version}", "recipients_fingerprint": "${fingerprint}"},
+  "database": {"server_version": "${server_version}", "schema_version": "${schema_version}", "tables": ${tables}, "policies": ${policies}},
+  "pg_dump": "${dump_version}",
+  "source": "${BACKUP_SOURCE}",
+  "run": "${run}"
+}
+EOF
+}
+
+# store KIND: uploads the archive, checks size and content, then writes the metadata object last.
+store() {
+  local kind=$1 object remote_size remote_sha
+  object=$(bk_object_base "$BACKUP_ENVIRONMENT" "$kind" "$stamp")
+  s3_put "$archive" "${object}.dump.age" || bk_die "upload of ${object}.dump.age failed"
+  remote_size=$(s3_size "${object}.dump.age") || bk_die "could not read the size of ${object}.dump.age back"
+  if [ "$remote_size" != "$size" ]; then
+    bk_die "stored size ${remote_size} differs from the ${size} bytes sent for ${object}.dump.age"
+  fi
+  remote_sha=$(s3_cat "${object}.dump.age" | sha256sum | cut -d' ' -f1)
+  if [ "$remote_sha" != "$sha" ]; then
+    bk_die "stored content of ${object}.dump.age differs from what was sent (sha256 mismatch)"
+  fi
+  write_meta "$kind" "${object}.dump.age" "$work/meta-${kind}.json"
+  s3_put "$work/meta-${kind}.json" "${object}.meta.json" || bk_die "upload of ${object}.meta.json failed"
+  bk_log "stored ${object}.dump.age (${size} bytes, sha256 ${sha:0:16}...)"
+}
+
+store daily
+
+# The first backup of each month is kept a second time under monthly/; a missed first day
+# is made up by the next run, because the test is "no complete monthly backup yet".
+monthly_prefix="${BACKUP_ENVIRONMENT}/monthly/"
+monthly_keys=$(s3_list "$monthly_prefix") || bk_die "could not list ${monthly_prefix}"
+if printf '%s\n' "$monthly_keys" | bk_period_complete "$BACKUP_ENVIRONMENT" monthly "$stamp"; then
+  bk_log "monthly backup for ${stamp:0:4}-${stamp:4:2} already exists"
+else
+  store monthly
+fi
+
+# --- 3. retention (after the new backup is in place and verified) ---------------------------------------
+prune_kind() {
+  local kind=$1 keep=$2 keys victims count key
+  keys=$(s3_list "${BACKUP_ENVIRONMENT}/${kind}/") || bk_die "could not list ${BACKUP_ENVIRONMENT}/${kind}/ for pruning"
+  victims=$(printf '%s\n' "$keys" | bk_retention_victims "$BACKUP_ENVIRONMENT" "$kind" "$keep")
+  count=$(printf '%s\n' "$victims" | awk 'NF' | wc -l | tr -d ' ')
+  if [ "$count" -eq 0 ]; then
+    bk_log "retention ${kind}: nothing to prune (keeping the newest ${keep} periods)"
+    return 0
+  fi
+  if [ "$count" -gt "$BACKUP_PRUNE_MAX" ]; then
+    bk_die "retention ${kind}: refusing to delete ${count} objects (limit ${BACKUP_PRUNE_MAX}); the backup is stored. Check BACKUP_KEEP_* and the bucket, then raise BACKUP_PRUNE_MAX once"
+  fi
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    s3_delete "$key" || bk_die "retention ${kind}: could not delete ${key}"
+    bk_log "pruned ${key}"
+  done <<<"$victims"
+}
+prune_kind daily "$BACKUP_KEEP_DAILY"
+prune_kind monthly "$BACKUP_KEEP_MONTHLY"
+
+bk_notice "backup ${BACKUP_ENVIRONMENT} ${stamp} stored and verified: ${size} bytes, ${tables} tables, schema ${schema_version}"
+bk_summary "### Backup ${BACKUP_ENVIRONMENT} ${stamp}"
+bk_summary ""
+bk_summary "- archive: \`${base}.dump.age\`, ${size} bytes, sha256 \`${sha}\`"
+bk_summary "- source: ${BACKUP_SOURCE}; ${tables} tables, ${policies} policies, migration ${schema_version}; recipients ${fingerprint}"

@@ -1,0 +1,48 @@
+Rampsmith
+
+Verification results
+====================
+
+Rampsmith re-scanned the affected pages of Example Outfitters on October 17,
+2026.
+
+3 fixes now pass their automated checks
+---------------------------------------
+
+- Add alt text to 12 product images (WCAG 1.1.1)
+
+And 2 more.
+
+1 fix still fails its automated check
+-------------------------------------
+
+- Name the cart icon link (WCAG 2.4.4)
+
+Open each one in Rampsmith to see the evidence and the next step.
+
+Open the remediation log:
+https://admin.shopify.com/store/fixture-store/apps/rampsmith/log
+
+| Automated checks find only part of all accessibility issues. Rampsmith
+| lists what it checked and what still needs a person to review.
+|
+| Deque, the maker of axe-core, reports that axe-core finds on average 57%
+| of WCAG issues automatically.
+
+____________________________________________________________________________
+
+You received this email because notifications for Example Outfitters are
+sent to this address.
+
+Manage email preferences:
+https://app.rampsmith.example/settings/email
+
+Turn off emails like this one:
+https://app.rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

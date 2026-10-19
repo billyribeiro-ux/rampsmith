@@ -1,0 +1,22 @@
+{
+  "current": {
+    "color_text": "#1f1f1f",
+    "color_background": "#ffffff",
+    "color_accent": "#1f4d3a",
+    "color_announcement_text": "#9b9b9b",
+    "color_announcement_background": "#f4f1ec",
+    "page_width": 1200,
+    "social_facebook_link": "https://facebook.com/harborandpine",
+    "social_instagram_link": "https://instagram.com/harborandpine"
+  },
+  "presets": {
+    "Default": {
+      "color_text": "#1f1f1f",
+      "color_background": "#ffffff",
+      "color_accent": "#1f4d3a",
+      "color_announcement_text": "#5c5c5c",
+      "color_announcement_background": "#f4f1ec",
+      "page_width": 1200
+    }
+  }
+}

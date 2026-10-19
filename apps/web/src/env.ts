@@ -14,10 +14,10 @@ export const variables = defineEnvVars({
       "The api's base URL on the private network, such as http://api.railway.internal:8080",
     schema: required('API_URL'),
   },
-  SHOPIFY_CLIENT_ID: {
+  SHOPIFY_API_KEY: {
     description: "The Shopify app's public client id, rendered for App Bridge",
     public: true,
-    schema: required('SHOPIFY_CLIENT_ID'),
+    schema: required('SHOPIFY_API_KEY'),
   },
   SERVICE_VERSION: {
     description: 'Reported as service.version, normally the image commit',

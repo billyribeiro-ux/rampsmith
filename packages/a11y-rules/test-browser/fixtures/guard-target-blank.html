@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Navigation guard: the product form opens a new window</title>
+    <!-- The form targets _blank and its button _blank too. The script must refuse to submit it. -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form action="/cart/add" method="post" target="_blank">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="add" formtarget="_blank">Add to cart</button>
+      </form>
+    </main>
+  </body>
+</html>

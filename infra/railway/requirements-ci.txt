@@ -1,0 +1,5 @@
+# Tools release.yml runs on the deploy files (ADR-185). Hash read from PyPI on 2026-10-18 and
+# checked against the downloaded manylinux x86_64 wheel (GitHub's ubuntu-24.04 runners).
+# Install with: pip install --require-hashes -r infra/railway/requirements-ci.txt
+shellcheck-py==0.11.0.1 \
+    --hash=sha256:1b274df81de5b000ff78db433e7328b87e52e3c38481c60f8e488c3095beef05

@@ -1,0 +1,20 @@
+{
+  "id": 1,
+  "slug": "octoapp",
+  "client_id": "Iv1.ab1112223334445c",
+  "node_id": "MDExOkludGVncmF0aW9uMQ==",
+  "owner": { "login": "octocat", "id": 1, "type": "User", "site_admin": false },
+  "name": "Octocat App",
+  "description": "",
+  "external_url": "https://example.com",
+  "html_url": "https://github.com/apps/octoapp",
+  "created_at": "2017-07-08T16:18:44-04:00",
+  "updated_at": "2017-07-08T16:18:44-04:00",
+  "permissions": {
+    "metadata": "read",
+    "contents": "read",
+    "issues": "write",
+    "single_file": "write"
+  },
+  "events": ["push", "pull_request"]
+}

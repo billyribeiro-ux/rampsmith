@@ -1,0 +1,14 @@
+<nav class="site-header__menu" aria-label="{{ 'general.navigation.main' | t }}" {{ block.shopify_attributes }}>
+  <ul class="menu-list" role="list">
+    {%- for link in block.settings.menu.links -%}
+      <li><a class="menu-list__link" href="{{ link.url }}">{{ link.title | escape }}</a></li>
+    {%- endfor -%}
+  </ul>
+</nav>
+
+{% schema %}
+{
+  "name": "Menu",
+  "settings": [{ "type": "link_list", "id": "menu", "label": "Menu", "default": "main-menu" }]
+}
+{% endschema %}

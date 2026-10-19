@@ -1,0 +1,18 @@
+<ul class="social-links">
+  {%- if settings.social_facebook_url != blank -%}
+    <li>
+      <a href="{{ settings.social_facebook_url }}" class="social-links__item">
+        {{ 'icon-facebook.svg' | inline_asset_content }}
+        <span class="visually-hidden">{{ 'general.social.facebook' | t }}</span>
+      </a>
+    </li>
+  {%- endif -%}
+  {%- if settings.social_pinterest_url != blank -%}
+    <li>
+      <a href="{{ settings.social_pinterest_url }}" class="social-links__item">
+        {{ 'icon-pinterest.svg' | inline_asset_content }}
+        <span class="visually-hidden">{{ 'general.social.pinterest' | t }}</span>
+      </a>
+    </li>
+  {%- endif -%}
+</ul>

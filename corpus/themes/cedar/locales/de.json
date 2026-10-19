@@ -1,0 +1,37 @@
+{
+  "accessibility": {
+    "skip_to_content": "Direkt zum Inhalt"
+  },
+  "general": {
+    "navigation": {
+      "main": "Hauptmenü"
+    },
+    "pagination": {
+      "label": "Seiten"
+    },
+    "password_page": {
+      "admin_link": "Shopbetreiber? Hier anmelden",
+      "placeholder": "Passwort",
+      "enter": "Eintreten"
+    }
+  },
+  "newsletter": {
+    "label": "E-Mail",
+    "submit": "Abonnieren"
+  },
+  "products": {
+    "product": {
+      "add_to_cart": "In den Warenkorb"
+    }
+  },
+  "sections": {
+    "carousel": {
+      "slide": "Folie {{ number }}"
+    }
+  },
+  "templates": {
+    "cart": {
+      "title": "Warenkorb"
+    }
+  }
+}

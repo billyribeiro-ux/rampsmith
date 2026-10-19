@@ -74,7 +74,7 @@ impl From<AuthError> for SessionRejection {
                 }
             }
             AuthError::Exchange(reason) => {
-                error!(%reason, "token exchange failed: check SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET");
+                error!(%reason, "token exchange failed: check SHOPIFY_API_KEY and SHOPIFY_API_SECRET");
                 Self {
                     error: ApiError::new(ProblemCode::Internal),
                     retry: false,

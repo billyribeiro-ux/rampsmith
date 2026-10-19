@@ -1,0 +1,184 @@
+# OpenTelemetry Collector for Rampsmith (ADR-184): OTLP/HTTP in from every service on the
+# Railway private network; traces, metrics and logs out to Grafana Cloud; logs also archived to
+# Cloudflare R2, where a lifecycle rule deletes them after 30 days (PLAN §21).
+#
+# Railway passes this file to the stock opentelemetry-collector-contrib image in the
+# OTELCOL_CONFIG variable (`--config=env:OTELCOL_CONFIG`). Every value below that differs per
+# environment, and every credential, is an ${env:...} reference: the file holds no secret.
+# In OTTL statements `$$` is a literal `$` (the collector expands `${...}` everywhere).
+# Checked with `otelcol-contrib validate` and end to end by infra/collector/tests/smoke.py.
+
+extensions:
+  health_check:
+    endpoint: '[::]:13133'
+    path: /healthz
+  # Only Rampsmith's services hold this token (OTEL_EXPORTER_OTLP_HEADERS), so nothing else on
+  # the private network can write telemetry (ADR-184).
+  bearertokenauth/services:
+    token: ${env:RAMPSMITH_OTLP_TOKEN}
+  basicauth/grafana:
+    client_auth:
+      username: ${env:GRAFANA_CLOUD_OTLP_INSTANCE_ID}
+      password: ${env:GRAFANA_CLOUD_OTLP_TOKEN}
+
+receivers:
+  otlp:
+    protocols:
+      # OTLP/HTTP only (ADR-019), private network only: the collector has no public domain.
+      http:
+        endpoint: '[::]:4318'
+        auth:
+          authenticator: bearertokenauth/services
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  resource/environment:
+    attributes:
+      - key: deployment.environment.name
+        value: ${env:RAILWAY_ENVIRONMENT_NAME}
+        action: upsert
+  # PLAN §21: no personal data or tokens. Services are written not to record them; the
+  # collector drops or masks them anyway before anything leaves (defense in depth).
+  attributes/scrub:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: http.request.header.x-shopify-access-token
+        action: delete
+      - key: http.request.header.x-shopify-hmac-sha256
+        action: delete
+      - key: http.request.header.x-hub-signature-256
+        action: delete
+      - key: http.response.header.set-cookie
+        action: delete
+      - key: url.query
+        action: delete
+  transform/scrub:
+    error_mode: ignore
+    trace_statements:
+      - statements:
+          # Header attributes are dropped whole: their values can be string arrays,
+          # which the patterns below do not reach.
+          - delete_matching_keys(span.attributes, "^http\\.(request|response)\\.header\\.")
+          # Query strings carry Shopify's id_token, hmac and session (embedded app launch).
+          - replace_pattern(span.name, "\\?.*", "")
+          - replace_pattern(span.attributes["http.url"], "\\?.*", "")
+          - replace_pattern(span.attributes["url.full"], "\\?.*", "")
+          - replace_pattern(span.attributes["http.target"], "\\?.*", "")
+          - replace_all_patterns(span.attributes, "value", "(?i)((?:^|[?&#;])(?:id_token|hmac|session|code|state|token|signature|key|client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)(\\b(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)(\"(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token|token|authorization|cookie)\"\\s*:\\s*\")[^\"]*\"", "$${1}[REDACTED]\"")
+          - replace_all_patterns(span.attributes, "value", "\\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY)[A-Z0-9_]*\\s*[=:]\\s*)[^\\s\\\"]+", "$${1}[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)\\b((?:x-api-key|x-shopify-access-token|x-shopify-hmac-sha256|x-hub-signature-256|cookie|set-cookie)\\s*:\\s*)[^\\r\\n\\\"]+", "$${1}[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_all_patterns(span.attributes, "value", "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
+          - replace_all_patterns(span.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
+          - replace_pattern(span.status.message, "(?i)((?:^|[?&#;])(?:id_token|hmac|session|code|state|token|signature|key|client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_pattern(span.status.message, "(?i)(\\b(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_pattern(span.status.message, "(?i)(\"(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token|token|authorization|cookie)\"\\s*:\\s*\")[^\"]*\"", "$${1}[REDACTED]\"")
+          - replace_pattern(span.status.message, "\\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY)[A-Z0-9_]*\\s*[=:]\\s*)[^\\s\\\"]+", "$${1}[REDACTED]")
+          - replace_pattern(span.status.message, "(?i)\\b((?:x-api-key|x-shopify-access-token|x-shopify-hmac-sha256|x-hub-signature-256|cookie|set-cookie)\\s*:\\s*)[^\\r\\n\\\"]+", "$${1}[REDACTED]")
+          - replace_pattern(span.status.message, "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_pattern(span.status.message, "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_pattern(span.status.message, "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
+          - replace_pattern(span.status.message, "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
+          - replace_all_patterns(resource.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(instrumentation_scope.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+      - statements:
+          - delete_matching_keys(spanevent.attributes, "^http\\.(request|response)\\.header\\.")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)((?:^|[?&#;])(?:id_token|hmac|session|code|state|token|signature|key|client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)(\\b(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)(\"(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token|token|authorization|cookie)\"\\s*:\\s*\")[^\"]*\"", "$${1}[REDACTED]\"")
+          - replace_all_patterns(spanevent.attributes, "value", "\\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY)[A-Z0-9_]*\\s*[=:]\\s*)[^\\s\\\"]+", "$${1}[REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)\\b((?:x-api-key|x-shopify-access-token|x-shopify-hmac-sha256|x-hub-signature-256|cookie|set-cookie)\\s*:\\s*)[^\\r\\n\\\"]+", "$${1}[REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_all_patterns(spanevent.attributes, "value", "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
+          - replace_all_patterns(spanevent.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
+    log_statements:
+      - statements:
+          - delete_matching_keys(log.attributes, "^http\\.(request|response)\\.header\\.")
+          - replace_all_patterns(log.attributes, "value", "(?i)((?:^|[?&#;])(?:id_token|hmac|session|code|state|token|signature|key|client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "(?i)(\\b(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "(?i)(\"(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token|token|authorization|cookie)\"\\s*:\\s*\")[^\"]*\"", "$${1}[REDACTED]\"")
+          - replace_all_patterns(log.attributes, "value", "\\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY)[A-Z0-9_]*\\s*[=:]\\s*)[^\\s\\\"]+", "$${1}[REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "(?i)\\b((?:x-api-key|x-shopify-access-token|x-shopify-hmac-sha256|x-hub-signature-256|cookie|set-cookie)\\s*:\\s*)[^\\r\\n\\\"]+", "$${1}[REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]")
+          - replace_all_patterns(log.attributes, "value", "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@")
+          - replace_all_patterns(log.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
+          - replace_all_patterns(resource.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(instrumentation_scope.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          # A map or bytes body becomes its string form, so the patterns below reach it.
+          - set(log.body, log.body.string) where log.body != nil and not IsString(log.body)
+          - replace_pattern(log.body, "(?i)((?:^|[?&#;])(?:id_token|hmac|session|code|state|token|signature|key|client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)(\\b(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#;\\s]*", "$${1}[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)(\"(?:client_secret|api_key|apikey|password|passwd|secret|access_token|refresh_token|id_token|private_key|x-amz-signature|x-amz-credential|x-amz-security-token|token|authorization|cookie)\"\\s*:\\s*\")[^\"]*\"", "$${1}[REDACTED]\"") where IsString(log.body)
+          - replace_pattern(log.body, "\\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY)[A-Z0-9_]*\\s*[=:]\\s*)[^\\s\\\"]+", "$${1}[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)\\b((?:x-api-key|x-shopify-access-token|x-shopify-hmac-sha256|x-hub-signature-256|cookie|set-cookie)\\s*:\\s*)[^\\r\\n\\\"]+", "$${1}[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)\\b(bearer|basic)\\s+[A-Za-z0-9._~+/=-]{8,}", "$${1} [REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)\\b([a-z][a-z0-9+.-]*://[^:/?#\\s@]+:)[^@/?#\\s]+@", "$${1}[REDACTED]@") where IsString(log.body)
+          - replace_pattern(log.body, "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]") where IsString(log.body)
+    metric_statements:
+      - statements:
+          - replace_all_patterns(datapoint.attributes, "value", "\\?.*", "")
+          - replace_all_patterns(datapoint.attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}|(?:shp[a-z]{2}|gh[pousr]|github_pat|sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\\s]|\\\\[nr])*(?:-----END [A-Z ]*PRIVATE KEY-----)?", "[REDACTED]")
+          - replace_all_patterns(datapoint.attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", "[REDACTED_EMAIL]")
+  batch:
+    send_batch_size: 8192
+    timeout: 5s
+
+exporters:
+  otlp_http/grafana:
+    endpoint: ${env:GRAFANA_CLOUD_OTLP_ENDPOINT}
+    auth:
+      authenticator: basicauth/grafana
+    compression: gzip
+  # The 30-day log archive. R2 speaks the S3 API at https://<account>.r2.cloudflarestorage.com
+  # with region "auto"; path-style addressing keeps the bucket out of the host name.
+  awss3/logs:
+    s3uploader:
+      region: auto
+      endpoint: ${env:R2_ENDPOINT}
+      s3_bucket: ${env:R2_BUCKET_LOGS}
+      s3_base_prefix: ${env:RAILWAY_ENVIRONMENT_NAME}
+      s3_prefix: logs
+      s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      s3_partition_timezone: UTC
+      s3_force_path_style: true
+      compression: gzip
+      unique_key_func_name: uuidv7
+      retry_mode: standard
+      retry_max_attempts: 5
+    marshaler: otlp_json
+    timeout: 30s
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+
+service:
+  extensions: [health_check, bearertokenauth/services, basicauth/grafana]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/environment, attributes/scrub, transform/scrub, batch]
+      exporters: [otlp_http/grafana]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/environment, transform/scrub, batch]
+      exporters: [otlp_http/grafana]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/environment, attributes/scrub, transform/scrub, batch]
+      exporters: [otlp_http/grafana, awss3/logs]
+  telemetry:
+    logs:
+      level: info
+      encoding: json

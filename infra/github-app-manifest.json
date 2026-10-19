@@ -1,0 +1,21 @@
+{
+  "name": "Rampsmith",
+  "url": "https://replace-with-app-domain.example",
+  "hook_attributes": {
+    "url": "https://replace-with-app-domain.example/webhooks/github",
+    "active": true
+  },
+  "redirect_url": "https://replace-with-app-domain.example/github/manifest/callback",
+  "callback_urls": ["https://replace-with-app-domain.example/github/callback"],
+  "description": "Rampsmith opens pull requests that fix accessibility issues in a Shopify theme repository. It reads theme files and writes only to branches under rampsmith/.",
+  "public": false,
+  "default_events": ["pull_request", "push"],
+  "default_permissions": {
+    "checks": "write",
+    "contents": "write",
+    "metadata": "read",
+    "pull_requests": "write"
+  },
+  "request_oauth_on_install": true,
+  "setup_on_update": false
+}

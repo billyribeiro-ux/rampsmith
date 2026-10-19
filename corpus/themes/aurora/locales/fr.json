@@ -1,0 +1,68 @@
+{
+  "general": {
+    "social": {
+      "links": {
+        "facebook": "Facebook",
+        "instagram": "Instagram"
+      }
+    }
+  },
+  "newsletter": {
+    "subscribe": "S'abonner"
+  },
+  "blogs": {
+    "article": {
+      "back_to_blog": "Retour à {{ title }}"
+    }
+  },
+  "customer": {
+    "login_page": {
+      "title": "Connexion",
+      "email": "E-mail",
+      "forgot_password": "Mot de passe oublié ?",
+      "sign_in": "Se connecter",
+      "create_account": "Créer un compte"
+    }
+  },
+  "products": {
+    "product": {
+      "add_to_cart": "Ajouter au panier",
+      "price": {
+        "regular_price": "Prix habituel",
+        "sale_price": "Prix promotionnel"
+      },
+      "quantity": {
+        "label": "Quantité"
+      }
+    }
+  },
+  "sections": {
+    "header": {
+      "announcement": "Annonce",
+      "menu": "Menu"
+    },
+    "footer": {
+      "links": "Liens rapides"
+    },
+    "cart": {
+      "title": "Votre panier",
+      "empty": "Votre panier est vide",
+      "subtotal": "Sous-total",
+      "checkout": "Procéder au paiement",
+      "headings": {
+        "product": "Produit",
+        "quantity": "Quantité",
+        "total": "Total"
+      }
+    }
+  },
+  "templates": {
+    "search": {
+      "title": "Résultats de la recherche",
+      "results_count": {
+        "one": "{{ count }} résultat pour « {{ terms }} »",
+        "other": "{{ count }} résultats pour « {{ terms }} »"
+      }
+    }
+  }
+}

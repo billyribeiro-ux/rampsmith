@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Personal-data guard: a form-associated custom element</title>
+    <!--
+      A custom element submits an email with the product form through ElementInternals. The
+      guard must refuse the form.
+    -->
+    <script>
+      customElements.define(
+        'gift-email',
+        class extends HTMLElement {
+          static formAssociated = true;
+          constructor() {
+            super();
+            this.attachInternals().setFormValue('someone@example.test');
+          }
+        },
+      );
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>Gift card</h1>
+      <form action="/cart/add" method="post">
+        <input type="hidden" name="id" value="40000000009" />
+        <gift-email name="recipient"></gift-email>
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+  </body>
+</html>

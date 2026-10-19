@@ -1,0 +1,11 @@
+{
+  "$schema": "../schema/golden.schema.json",
+  "subject": "harbor-clean",
+  "kind": "store",
+  "alignment": {
+    "axeCore": "4.14.0",
+    "a11yRules": "b79ba2f",
+    "liquidPatch": "551b200"
+  },
+  "findings": []
+}

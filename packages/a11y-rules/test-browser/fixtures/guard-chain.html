@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout guard: a redirect chain ends in checkout</title>
+    <!--
+      The server answers the post with 302 to /hop, which answers 302 to /checkouts/... Every
+      hop must meet the guard.
+    -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form action="/cart/add?fixture=chain" method="post">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+  </body>
+</html>

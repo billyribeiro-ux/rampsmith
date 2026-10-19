@@ -1,0 +1,45 @@
+Rampsmith
+
+Welcome to Rampsmith
+====================
+
+Rampsmith is now installed on Example Outfitters. It finds WCAG 2.2 AA
+failures in your store and fixes them at the source, in your own store data
+and theme code, with a dated record of every change.
+
+What happens next
+-----------------
+
+- Your first scan is running. It checks your main page types and their
+  interactive states, such as menus and the cart drawer.
+- When it finishes, Rampsmith emails you the results, ranked by their effect
+  on shoppers.
+- Fixes that need no code, such as image descriptions, wait for your
+  approval. Nothing changes in your store until you approve it.
+
+Open Rampsmith:
+https://admin.shopify.com/store/fixture-store/apps/rampsmith
+
+| Automated checks find only part of all accessibility issues. Rampsmith
+| lists what it checked and what still needs a person to review.
+|
+| Deque, the maker of axe-core, reports that axe-core finds on average 57%
+| of WCAG issues automatically.
+
+____________________________________________________________________________
+
+You received this email because notifications for Example Outfitters are
+sent to this address.
+
+Manage email preferences:
+https://app.rampsmith.example/settings/email
+
+Turn off emails like this one:
+https://app.rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

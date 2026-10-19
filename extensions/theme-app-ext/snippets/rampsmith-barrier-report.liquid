@@ -1,0 +1,105 @@
+{%- comment -%}
+  Barrier-report form (ADR-162). Works without JavaScript: <details> opens it, the browser's
+  own validation checks the fields, and the form posts to the app proxy, whose page answers.
+  The deferred script adds in-page sending, inline errors and a status message; it reads its
+  messages from the data-msg-* attributes below. The status and error lines keep their space
+  while empty, so filling them never moves the page.
+
+  The page path is sent only for public page types, and never for app proxy pages (/a/,
+  /apps/, /community/, /tools/), whose paths other apps may use for tokens; account, gift
+  card, password and challenge pages send their type alone, since their paths can carry
+  order numbers or codes.
+  Accepts: uid (string, unique id prefix), proxy_path (string, the app proxy's storefront path)
+{%- endcomment -%}
+{%- liquid
+  case request.page_type
+    when '404', 'article', 'blog', 'cart', 'collection', 'index', 'list-collections', 'metaobject', 'page', 'policy', 'product', 'search'
+      assign page_path = request.path
+    else
+      assign page_path = ''
+  endcase
+  assign path_a = page_path | slice: 0, 3
+  assign path_apps = page_path | slice: 0, 6
+  assign path_tools = page_path | slice: 0, 7
+  assign path_community = page_path | slice: 0, 11
+  if path_a == '/a/' or path_apps == '/apps/' or path_tools == '/tools/' or path_community == '/community/'
+    assign page_path = ''
+  endif
+-%}
+<details class="rs-a11y__report">
+  <summary class="rs-a11y__toggle">{{ 'report.toggle' | t }}</summary>
+  <form
+    class="rs-a11y__form"
+    method="post"
+    action="{{ proxy_path | escape }}/barrier-report"
+    accept-charset="UTF-8"
+    data-rs-report
+    data-msg-sending="{{ 'report.status.sending' | t }}"
+    data-msg-sent="{{ 'report.status.sent' | t }}"
+    data-msg-failed="{{ 'report.status.failed' | t }}"
+    data-msg-rate-limited="{{ 'report.status.rate_limited' | t }}"
+    data-msg-invalid="{{ 'report.status.invalid' | t }}"
+    data-msg-error-prefix="{{ 'report.errors.prefix' | t }}"
+    data-msg-description-missing="{{ 'report.errors.description_missing' | t }}"
+    data-msg-description-too-long="{{ 'report.errors.description_too_long' | t }}"
+    data-msg-email-invalid="{{ 'report.errors.email_invalid' | t }}"
+  >
+    <p class="rs-a11y__hint">{{ 'report.intro' | t }}</p>
+    <input type="hidden" name="page" value="{{ page_path | escape }}">
+    <input type="hidden" name="page_type" value="{{ request.page_type | escape }}">
+    <input type="hidden" name="locale" value="{{ request.locale.iso_code | escape }}">
+
+    <label class="rs-a11y__label" for="{{ uid }}-description">
+      {{- 'report.description_label' | t }}
+      <span class="rs-a11y__qualifier">{{ 'report.required' | t }}</span>
+    </label>
+    <p class="rs-a11y__hint" id="{{ uid }}-description-hint">{{ 'report.description_hint' | t }}</p>
+    <textarea
+      class="rs-a11y__control"
+      id="{{ uid }}-description"
+      name="description"
+      rows="4"
+      maxlength="2000"
+      required
+      data-rs-field
+      aria-describedby="{{ uid }}-description-hint {{ uid }}-description-error"
+    ></textarea>
+    <p class="rs-a11y__error" id="{{ uid }}-description-error"></p>
+
+    <label class="rs-a11y__label" for="{{ uid }}-email">
+      {{- 'report.email_label' | t }}
+      <span class="rs-a11y__qualifier">{{ 'report.optional' | t }}</span>
+    </label>
+    <p class="rs-a11y__hint" id="{{ uid }}-email-hint">{{ 'report.email_hint' | t }}</p>
+    <input
+      class="rs-a11y__control"
+      id="{{ uid }}-email"
+      name="email"
+      type="email"
+      maxlength="254"
+      autocomplete="email"
+      spellcheck="false"
+      data-rs-field
+      aria-describedby="{{ uid }}-email-hint {{ uid }}-email-error"
+    >
+    <p class="rs-a11y__error" id="{{ uid }}-email-error"></p>
+
+    <div class="rs-a11y__hp">
+      <label for="{{ uid }}-website">{{ 'report.honeypot_label' | t }}</label>
+      <input id="{{ uid }}-website" name="website" type="text" tabindex="-1" autocomplete="off">
+    </div>
+
+    <p class="rs-a11y__hint">
+      {{- 'report.privacy_notice' | t -}}
+      {%- if shop.privacy_policy.url != blank %}
+        <a class="rs-a11y__inline-link" href="{{ shop.privacy_policy.url | escape }}">
+          {{- 'report.privacy_link' | t -}}
+        </a>
+      {%- endif -%}
+    </p>
+
+    <button class="rs-a11y__submit" type="submit">{{ 'report.submit' | t }}</button>
+    <p class="rs-a11y__status" role="status" data-rs-status></p>
+  </form>
+</details>
+<script src="{{ 'rampsmith-barrier-report.js' | asset_url }}" defer></script>

@@ -1,0 +1,35 @@
+Rampsmith
+
+New issues found
+================
+
+Rampsmith's scan of Example Outfitters on October 17, 2026 found 1 issue
+that was not there before.
+
+Rampsmith could not tell which change caused them.
+
+New issues
+----------
+
+- Image without alternative text (WCAG 1.1.1, Serious)
+
+See the new issues:
+https://admin.shopify.com/store/fixture-store/apps/rampsmith/findings?filter=new
+
+____________________________________________________________________________
+
+You received this email because notifications for Example Outfitters are
+sent to this address.
+
+Manage email preferences:
+https://app.rampsmith.example/settings/email
+
+Turn off emails like this one:
+https://app.rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

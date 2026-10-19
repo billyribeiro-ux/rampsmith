@@ -1,0 +1,43 @@
+<div class="announcement">
+	<p class="announcement__text">{{ section.settings.announcement | escape }}</p>
+	<button type="button" class="announcement__close" aria-label="">
+		<svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2"/></svg>
+	</button>
+</div>
+
+<header class="site-header" role="banner">
+	<div class="site-header__mobile">
+		<a href="/cart" class="site-header__cart">
+			<img src="{{ 'icon-cart.svg' | asset_url }}" alt="" width="24" height="24">
+		</a>
+	</div>
+
+	<div class="site-header__desktop">
+		<h1 class="site-header__logo">
+			<a href="/" class="site-header__logo-link">{{ shop.name }}</a>
+		</h1>
+
+    {% include 'site-nav' %}
+
+		<form action="/search" method="get" class="site-header__search" role="search">
+			<input type=search name=q class=site-header__search-input>
+			<button type="submit" class="btn site-header__search-submit">{{ 'general.search.submit' | t }}</button>
+		</form>
+
+		<a href="/account" class="site-header__account">
+			<i class="icon icon-user" aria-hidden="true"></i>
+		</a>
+		<a href="/cart" class="site-header__cart">
+			<img src="{{ 'icon-cart.svg' | asset_url }}" alt="" width="24" height="24">
+		</a>
+	</div>
+</header>
+
+{% schema %}
+{
+  "name": "Header",
+  "settings": [
+    { "type": "text", "id": "announcement", "label": "Announcement", "default": "Welcome" }
+  ]
+}
+{% endschema %}

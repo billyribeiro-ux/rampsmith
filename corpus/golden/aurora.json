@@ -1,0 +1,712 @@
+{
+  "$schema": "../schema/golden.schema.json",
+  "subject": "aurora",
+  "kind": "failing",
+  "alignment": {
+    "axeCore": "4.14.0",
+    "a11yRules": "b79ba2f",
+    "liquidPatch": "551b200"
+  },
+  "findings": [
+    {
+      "id": "html-lang",
+      "ruleId": "html-has-lang",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["3.1.1"],
+      "category": "document-language",
+      "description": "The layout's <html> element has no lang attribute, so screen readers guess the page language.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": "html"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "layout/theme.liquid",
+        "start": 16,
+        "tag": "html",
+        "anchor": "<html class=\"no-js\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "document-language",
+        "outcome": "fixed",
+        "targeted": true
+      }
+    },
+    {
+      "id": "announcement-contrast",
+      "ruleId": "color-contrast",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.4.3"],
+      "category": "low-contrast",
+      "description": "Announcement text uses the global announcement text colour (#9b9b9b) on #f4f1ec, about 2.5:1 at 14px.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".announcement-bar__message"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "json-value",
+        "file": "config/settings_data.json",
+        "pointer": "/current/color_announcement_text",
+        "start": 143,
+        "end": 152
+      },
+      "rendersFrom": {
+        "kind": "element",
+        "file": "sections/announcement-bar.liquid",
+        "start": 256,
+        "tag": "p",
+        "anchor": "<p class=\"announcement-bar__message\">{{ section.settings.text | escape }}</p>\n      </a>"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "contrast",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "minimumRatio": 4.5,
+          "against": "/current/color_announcement_background"
+        },
+        "note": "Smallest OKLCH lightness change of the setting that reaches 4.5:1, hue and chroma kept (PLAN §12)."
+      }
+    },
+    {
+      "id": "featured-description-contrast",
+      "ruleId": "color-contrast",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["1.4.3"],
+      "category": "low-contrast",
+      "description": "The featured collection description takes its colour (#a0a0a0) from a section setting in the home page template, about 2.6:1 on white.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".featured-collection__description"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "json-value",
+        "file": "templates/index.json",
+        "pointer": "/sections/featured/settings/description_color",
+        "start": 504,
+        "end": 513
+      },
+      "rendersFrom": {
+        "kind": "element",
+        "file": "sections/featured-collection.liquid",
+        "start": 294,
+        "tag": "p",
+        "anchor": "<p class=\"featured-collection__description\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "contrast",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "minimumRatio": 4.5
+        },
+        "note": "The colour is a section setting stored in the JSON template, not a global setting."
+      }
+    },
+    {
+      "id": "banner-image-alt",
+      "ruleId": "image-alt",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "alt-text-theme-image",
+      "description": "The image banner prints the merchant's image with no alt attribute.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".banner__image"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/image-banner.liquid",
+        "start": 104,
+        "tag": "img",
+        "anchor": "<img\n        src=\"{{ section.settings.image | image_url: width: 1600 }}\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "image-alt",
+        "outcome": "fixed",
+        "targeted": true,
+        "note": "alt=\"{{ section.settings.image.alt | escape }}\" from the image object in src."
+      }
+    },
+    {
+      "id": "newsletter-email-label",
+      "ruleId": "label",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The footer newsletter email field has no label, placeholder or accessible name.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".footer__newsletter input[type=\"email\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/footer.liquid",
+        "start": 775,
+        "tag": "input",
+        "anchor": "<input\n            id=\"NewsletterForm-{{ section.id }}\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "newsletter.label",
+            "text": "Email"
+          }
+        }
+      }
+    },
+    {
+      "id": "account-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The account icon link holds only an inline SVG hidden from assistive technology.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".header__icon--account"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 876,
+        "tag": "a",
+        "anchor": "<a href=\"{{ routes.account_login_url }}\" class=\"header__icon header__icon--account\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "customer.account_fallback",
+            "text": "Account"
+          }
+        }
+      }
+    },
+    {
+      "id": "cart-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The cart icon link holds an icon snippet and a count bubble marked aria-hidden, so it has no name.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": "#cart-icon-bubble"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 1303,
+        "tag": "a",
+        "anchor": "<a href=\"{{ routes.cart_url }}\" class=\"header__icon header__icon--cart\" id=\"cart-icon-bubble\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "templates.cart.cart",
+            "text": "Cart"
+          }
+        }
+      }
+    },
+    {
+      "id": "menu-toggle-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The menu toggle button holds only the hamburger icon snippet.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".header__menu-toggle"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/header.liquid",
+        "start": 37,
+        "tag": "button",
+        "anchor": "<button class=\"header__menu-toggle\" type=\"button\" aria-controls=\"HeaderMenu\" aria-expanded=\"false\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "sections.header.menu",
+            "text": "Menu"
+          }
+        }
+      }
+    },
+    {
+      "id": "social-facebook-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The Facebook link in the footer holds only an icon snippet.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".list-social__link[href*=\"facebook\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/footer.liquid",
+        "start": 1512,
+        "tag": "a",
+        "anchor": "<a href=\"{{ settings.social_facebook_link }}\" class=\"list-social__link\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "general.social.links.facebook",
+            "text": "Facebook"
+          }
+        }
+      }
+    },
+    {
+      "id": "social-instagram-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The Instagram link in the footer holds only an icon snippet.",
+      "occurrences": [
+        {
+          "page": "*",
+          "selector": ".list-social__link[href*=\"instagram\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/footer.liquid",
+        "start": 1783,
+        "tag": "a",
+        "anchor": "<a href=\"{{ settings.social_instagram_link }}\" class=\"list-social__link\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "general.social.links.instagram",
+            "text": "Instagram"
+          }
+        }
+      }
+    },
+    {
+      "id": "quantity-minus-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The decrease-quantity button in the quantity snippet holds only an icon; the snippet renders on the product and cart pages.",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": "button[name=\"minus\"]"
+        },
+        {
+          "page": "cart",
+          "selector": "button[name=\"minus\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "snippets/quantity-input.liquid",
+        "start": 285,
+        "tag": "button",
+        "anchor": "<button class=\"quantity__button\" name=\"minus\" type=\"button\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "products.product.quantity.decrease",
+            "text": "Decrease quantity"
+          }
+        }
+      }
+    },
+    {
+      "id": "quantity-plus-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The increase-quantity button in the quantity snippet holds only an icon.",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": "button[name=\"plus\"]"
+        },
+        {
+          "page": "cart",
+          "selector": "button[name=\"plus\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "snippets/quantity-input.liquid",
+        "start": 566,
+        "tag": "button",
+        "anchor": "<button class=\"quantity__button\" name=\"plus\" type=\"button\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "products.product.quantity.increase",
+            "text": "Increase quantity"
+          }
+        }
+      }
+    },
+    {
+      "id": "quantity-input-label",
+      "ruleId": "label",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The quantity number input has an id from the caller but no label; a <p> styled as a label sits beside it.",
+      "occurrences": [
+        {
+          "page": "product",
+          "selector": ".quantity__input"
+        },
+        {
+          "page": "cart",
+          "selector": ".quantity__input"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "snippets/quantity-input.liquid",
+        "start": 390,
+        "tag": "input",
+        "anchor": "<input\n    class=\"quantity__input\""
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "products.product.quantity.label",
+            "text": "Quantity"
+          }
+        },
+        "note": "The control already has id=\"{{ input_id }}\", so the label is added in the snippet with for=\"{{ input_id }}\" and no new id."
+      }
+    },
+    {
+      "id": "mug-card-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The product card's image link holds image_tag output; the stoneware mug's media has empty alt text, so this card's link has no name.",
+      "occurrences": [
+        {
+          "page": "index",
+          "selector": ".card__media[href$=\"stoneware-mug\"]"
+        },
+        {
+          "page": "collection",
+          "selector": ".card__media[href$=\"stoneware-mug\"]"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "snippets/card-product.liquid",
+        "start": 142,
+        "tag": "a",
+        "anchor": "<a href=\"{{ card_product.url }}\" class=\"card__media\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "refused",
+        "refusal": "dynamic-content",
+        "targeted": false,
+        "params": {
+          "label": {
+            "key": "products.product.view",
+            "text": "View product"
+          }
+        },
+        "note": "Liquid output decides the name; the data fix of rs-media-alt-empty on gid://shopify/MediaImage/9301 (store harbor) names the link."
+      }
+    },
+    {
+      "id": "cart-remove-link-name",
+      "ruleId": "link-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "serious",
+      "criteria": ["2.4.4", "4.1.2"],
+      "category": "empty-link",
+      "description": "The remove-item link in each cart row holds only the close icon snippet.",
+      "occurrences": [
+        {
+          "page": "cart",
+          "selector": ".cart-item__remove"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/main-cart.liquid",
+        "start": 1235,
+        "tag": "a",
+        "anchor": "<a href=\"{{ item.url_to_remove }}\" class=\"cart-item__remove\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-link",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "sections.cart.remove",
+            "text": "Remove"
+          }
+        }
+      }
+    },
+    {
+      "id": "search-input-label",
+      "ruleId": "label",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The search results page's search field has no label, placeholder or id.",
+      "occurrences": [
+        {
+          "page": "search",
+          "selector": ".search__input"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/main-search.liquid",
+        "start": 198,
+        "tag": "input",
+        "anchor": "<input type=\"search\" name=\"q\" value=\"{{ search.terms | escape }}\" class=\"search__input\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "templates.search.label",
+            "text": "Search"
+          }
+        },
+        "note": "The control has no id, so the recipe adds id=\"Field-q-{{ section.id }}\" (ADR-102)."
+      }
+    },
+    {
+      "id": "search-button-name",
+      "ruleId": "button-name",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "empty-button",
+      "description": "The search submit button holds only the search icon snippet.",
+      "occurrences": [
+        {
+          "page": "search",
+          "selector": ".search__button"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/main-search.liquid",
+        "start": 291,
+        "tag": "button",
+        "anchor": "<button type=\"submit\" class=\"search__button\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "empty-button",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "templates.search.submit",
+            "text": "Search"
+          }
+        }
+      }
+    },
+    {
+      "id": "article-image-alt",
+      "ruleId": "image-alt",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["1.1.1"],
+      "category": "rich-text",
+      "description": "An image inside the article body, written in the blog editor, has no alt attribute; the theme prints article.content as is.",
+      "occurrences": [
+        {
+          "page": "article",
+          "selector": ".article__content img"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "data",
+        "resource": "gid://shopify/Article/3001",
+        "field": "body",
+        "start": 75,
+        "end": 144,
+        "anchor": "<img src=\"/cdn/shop/files/linen-drying.jpg\" width=\"800\" height=\"500\">"
+      },
+      "expectedFix": {
+        "channel": "admin-api",
+        "recipe": "rich-text",
+        "outcome": "review",
+        "targeted": false,
+        "note": "Maps to store data, not theme source; the data audit reports the same element as rs-rich-text-img-alt-missing (store harbor)."
+      }
+    },
+    {
+      "id": "login-password-label",
+      "ruleId": "label",
+      "engine": "axe",
+      "outcome": "violation",
+      "impact": "critical",
+      "criteria": ["4.1.2"],
+      "category": "form-label",
+      "description": "The sign-in password field has no label or placeholder.",
+      "occurrences": [
+        {
+          "page": "login",
+          "selector": "#CustomerPassword"
+        }
+      ],
+      "mapping": "deterministic",
+      "span": {
+        "kind": "element",
+        "file": "sections/main-login.liquid",
+        "start": 477,
+        "tag": "input",
+        "anchor": "<input type=\"password\" name=\"customer[password]\" id=\"CustomerPassword\" autocomplete=\"current-password\">"
+      },
+      "expectedFix": {
+        "channel": "theme-patch",
+        "recipe": "form-label",
+        "outcome": "fixed",
+        "targeted": true,
+        "params": {
+          "label": {
+            "key": "customer.login_page.password",
+            "text": "Password"
+          }
+        }
+      }
+    }
+  ]
+}

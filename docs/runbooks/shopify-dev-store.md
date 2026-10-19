@@ -10,7 +10,7 @@ founder's accounts, so they are the only part left; each takes minutes.
    `shopify app config link`. Choose "Create a new app" named Rampsmith. The CLI writes
    `client_id` into `shopify.app.toml`; commit that change (the client id is public).
 3. In the Partner dashboard, copy the app's client secret into the password manager and into
-   the environment as `SHOPIFY_CLIENT_SECRET`, with `SHOPIFY_CLIENT_ID` beside it. Never commit it.
+   the environment as `SHOPIFY_API_SECRET`, with `SHOPIFY_API_KEY` beside it. Never commit it.
 4. Generate the first master key: `head -c 32 /dev/urandom | base64`, store it as
    `RAMPSMITH_MASTER_KEYS=k2026a:<key>` in the same places.
 
@@ -21,7 +21,48 @@ founder's accounts, so they are the only part left; each takes minutes.
 3. Set `application_url` to the deployed `web` URL (Railway) or let `shopify app dev` tunnel to a
    local `web` (it rewrites the URLs while `automatically_update_urls_on_dev = true`).
 
-## 3. First install (either of us, with the credentials in place)
+## 3. Live check against the store (the founder runs it; no install)
+
+This shows, without installing anything, that the store's domain reaches Shopify's token
+endpoint and that it answers an expired ID token with 400, not with rejected credentials or a
+token (ADR-031). It proves neither the form Rampsmith sends nor the client secret: the code reads
+only the status, Shopify answers a malformed form with 400, and its documentation does not say
+whether a wrong secret gets that 400 or a 403 (ADR-031 §3). CI's substitute tests prove the form,
+and the first install (section 4) proves the secret. Builders cannot run this check, because it
+needs the client secret.
+
+With the app from section 1 and store A from section 2, set three variables in your shell (never
+in a file that is committed) and run one test. Run the `read` line on its own: it waits for you
+to paste the secret, which it does not echo or keep in your shell history.
+
+```sh
+export SHOPIFY_API_KEY=...             # the app's client id
+read -rs SHOPIFY_API_SECRET && export SHOPIFY_API_SECRET   # paste the client secret; not echoed, not in history
+export SHOPIFY_DEV_STORE_DOMAIN=...    # store A, a bare *.myshopify.com host
+cargo nextest run -p rampsmith-shopify --test live_dev_store
+unset SHOPIFY_API_SECRET
+```
+
+The test signs an ID token for the store with the client secret, already expired, and sends a
+token exchange for it through the crate's real code to
+`https://<store>/admin/oauth/access_token`. Shopify's documented answer to an expired ID token
+is 400 Bad Request, which the crate reports as `InvalidSubjectToken`; nothing is installed and
+no token is issued. It passes on that answer. When it fails, the message says which class
+Shopify's answer fell into and never prints a secret, a token or a response body:
+
+| Message | Meaning |
+| --- | --- |
+| `Shopify rejected the client credentials` | Shopify answered 403: the id and secret do not match an app it knows. Recheck both in the Partner dashboard. |
+| `expected the stale-ID-token class ... got Rejected { status: 404 }` | Shopify answered with another client error, shown as the status. Check that the domain is store A's permanent `*.myshopify.com` host. |
+| `... got RateLimited`, `Upstream` or `Transport` | Shopify or the network failed. Run it again. |
+| `Shopify exchanged an expired ID token` | Shopify issued a token for an expired ID token. Stop and tell the architect: the probe's assumption is wrong. |
+
+Without the three variables the test passes and prints
+`Shopify dev-store live check skipped: needs LAUNCH.md section C rows 1 and 3 ...`; in GitHub
+Actions that line is a notice annotation on the run. LAUNCH.md section E lists the check until it has
+passed against the founder's store.
+
+## 4. First install (the founder, with the credentials in place)
 
 1. Start `api` and `ctl` with the variables in `.env.example`, and `web` (R0 step 8).
 2. Install the app on the development store from the Partner dashboard and open it.
