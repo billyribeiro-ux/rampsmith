@@ -259,7 +259,15 @@ terms of service and the guide.
 
 ## CI on the pull request
 
-Pull request #14 (draft, into `r0-foundations`). CI_PLACEHOLDER
+Pull request #14 (draft, into `r0-foundations`, "WS-5: Launch documents (do not merge; stream CI)").
+
+| Head | Workflow | Run | Conclusion |
+| --- | --- | --- | --- |
+| `6d405b8` (content) | `ci.yml` | [39291220375](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39291220375) | success: rust, node, contracts, e2e, four image builds |
+
+Commits after `6d405b8` change only this evidence file and `docs/FOUNDER_SETUP.md` wording
+(the Shopify variable mapping and the Grafana note). The run for the final head is recorded in
+the pull request and in the hand-off message; a file cannot hold the link to its own commit's run.
 
 ## Integration notes
 
