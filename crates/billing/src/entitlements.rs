@@ -182,9 +182,8 @@ pub enum Feature {
     DataFixes,
     /// The six core recipes for the most common failures (PLAN §12).
     CoreRecipes,
-    /// The patched theme package channel.
-    ThemePackage,
-    /// The GitHub pull-request channel.
+    /// The GitHub pull-request channel; the only code-fix channel since the patched theme
+    /// package was retired (ADR-141).
     GithubPullRequests,
     /// Every recipe in the catalog, beyond the six core ones.
     EveryRecipe,
@@ -202,10 +201,9 @@ pub enum Feature {
 
 impl Feature {
     /// Every feature, in the order the UI lists them.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9] = [
         Self::DataFixes,
         Self::CoreRecipes,
-        Self::ThemePackage,
         Self::GithubPullRequests,
         Self::EveryRecipe,
         Self::DescriptionRewrites,
@@ -222,7 +220,6 @@ impl Feature {
         match self {
             Self::DataFixes => "data_fixes",
             Self::CoreRecipes => "core_recipes",
-            Self::ThemePackage => "theme_package",
             Self::GithubPullRequests => "github_pull_requests",
             Self::EveryRecipe => "every_recipe",
             Self::DescriptionRewrites => "description_rewrites",
@@ -345,9 +342,8 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
     let free_features = FeatureSet::EMPTY.with(Feature::DataFixes);
     let starter_features = free_features
         .with(Feature::CoreRecipes)
-        .with(Feature::ThemePackage);
+        .with(Feature::GithubPullRequests);
     let growth_features = starter_features
-        .with(Feature::GithubPullRequests)
         .with(Feature::EveryRecipe)
         .with(Feature::DescriptionRewrites)
         .with(Feature::RegressionAlerts);
@@ -522,7 +518,7 @@ mod tests {
             .with(Feature::DataFixes)
             .with(Feature::PriorityQueue);
         assert!(set.contains(Feature::DataFixes));
-        assert!(!set.contains(Feature::ThemePackage));
+        assert!(!set.contains(Feature::GithubPullRequests));
         assert!(FeatureSet::EMPTY.is_subset_of(set));
         assert!(!set.is_subset_of(FeatureSet::EMPTY.with(Feature::DataFixes)));
         assert_eq!(
@@ -535,7 +531,7 @@ mod tests {
     #[test]
     fn locked_gates_name_the_lowest_unlocking_plan() {
         assert_eq!(
-            feature_gate(Plan::Free, Feature::ThemePackage),
+            feature_gate(Plan::Free, Feature::GithubPullRequests),
             Gate::Locked {
                 unlocked_by: Plan::Starter
             }
@@ -547,7 +543,7 @@ mod tests {
             }
         );
         assert_eq!(
-            feature_gate(Plan::Growth, Feature::GithubPullRequests),
+            feature_gate(Plan::Starter, Feature::GithubPullRequests),
             Gate::Allowed
         );
         assert!(feature_gate(Plan::Pro, Feature::PriorityQueue).is_allowed());
