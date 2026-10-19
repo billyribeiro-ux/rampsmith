@@ -13,7 +13,13 @@ import {
 } from '../translations.ts';
 
 export type RecipeId =
-  'document-language' | 'skip-link' | 'empty-link' | 'empty-button' | 'form-label' | 'image-alt';
+  | 'document-language'
+  | 'skip-link'
+  | 'empty-link'
+  | 'empty-button'
+  | 'form-label'
+  | 'image-alt'
+  | 'contrast';
 
 export interface RecipeTarget {
   /** Theme-relative path, such as `layout/theme.liquid`. */
@@ -45,6 +51,10 @@ export type RefusalCode =
   | 'not-labelable'
   /** The image has no image object to take alt text from, and was not declared decorative. */
   | 'no-image-object'
+  /** The value to change is not one opaque literal colour (`var()`, Liquid, a gradient). */
+  | 'unsupported-color'
+  /** No lightness of the colour gets past the required contrast on that background. */
+  | 'contrast-unreachable'
   | 'invalid-parameter';
 
 export type RecipeOutcome =

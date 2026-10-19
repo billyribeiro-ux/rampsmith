@@ -6,6 +6,7 @@
  * `position.end`. A span is half-open, `[start, end)`; `start === end` is an insertion.
  */
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
+import { parse as parseCss } from 'postcss';
 import { countUnparsedLiquid, parseLiquid } from './parse.ts';
 
 export interface Edit {
@@ -41,10 +42,21 @@ export type ApplyResult =
   | { readonly ok: false; readonly error: EditError };
 
 /** How a file is validated after editing, from its extension; `null` when it cannot be. */
-export function fileKind(path: string): 'liquid' | 'json' | null {
+export function fileKind(path: string): 'liquid' | 'json' | 'css' | null {
   if (path.endsWith('.liquid')) return 'liquid';
   if (path.endsWith('.json')) return 'json';
+  if (path.endsWith('.css')) return 'css';
   return null;
+}
+
+/** The first problem postcss finds in the text, or `null` when it parses. */
+function cssError(text: string): string | null {
+  try {
+    parseCss(text);
+    return null;
+  } catch (error: unknown) {
+    return error instanceof Error ? (error.message.split('\n')[0] ?? 'invalid CSS') : 'invalid CSS';
+  }
 }
 
 function fail(code: EditErrorCode, message: string): ApplyResult {
@@ -176,7 +188,8 @@ function jsonErrors(text: string): ParseError[] {
 /**
  * Applies one file's edits (all with the same `file`) and checks the result: a `.liquid` file
  * must still parse and must not gain Liquid the parser reads only as a string; a `.json` file
- * must still parse as JSON (comments allowed, as in Shopify theme JSON). The file is never
+ * must still parse as JSON (comments allowed, as in Shopify theme JSON); a `.css` file must
+ * still parse with postcss. The file is never
  * reprinted, so every code unit outside the edited spans stays identical.
  */
 export function applyEdits(source: string, edits: readonly Edit[]): ApplyResult {
@@ -184,7 +197,10 @@ export function applyEdits(source: string, edits: readonly Edit[]): ApplyResult 
   if (first === undefined) return { ok: true, contents: source };
   const kind = fileKind(first.file);
   if (kind === null) {
-    return fail('unsupported-file', `${first.file}: only .liquid and .json files are validated`);
+    return fail(
+      'unsupported-file',
+      `${first.file}: only .liquid, .json and .css files are validated`,
+    );
   }
   const spliced = spliceEdits(source, edits);
   if (!spliced.ok) return spliced;
@@ -199,6 +215,16 @@ export function applyEdits(source: string, edits: readonly Edit[]): ApplyResult 
         'result-unparseable',
         `${first.file} would not be valid JSON: error ${String(firstError.error)} at offset ${String(firstError.offset)}`,
       );
+    }
+    return spliced;
+  }
+  if (kind === 'css') {
+    if (cssError(source) !== null) {
+      return fail('source-unparseable', `${first.file} is not valid CSS before editing`);
+    }
+    const problem = cssError(spliced.contents);
+    if (problem !== null) {
+      return fail('result-unparseable', `${first.file} would not be valid CSS: ${problem}`);
     }
     return spliced;
   }

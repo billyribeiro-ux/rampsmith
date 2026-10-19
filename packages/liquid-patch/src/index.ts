@@ -1,3 +1,30 @@
+export {
+  contrastCandidates,
+  LIGHTNESS_STEP,
+  smallestChange,
+  strongerRatio,
+  type CandidateId,
+  type CandidateRequest,
+  type ColorCandidate,
+} from './color/candidates.ts';
+export {
+  clampChroma,
+  contrastRatio,
+  formatColor,
+  fromOklab,
+  fromOklch,
+  inSrgbGamut,
+  isLargeText,
+  parseColor,
+  relativeLuminance,
+  toOklab,
+  toOklch,
+  type ColorFormat,
+  type Oklab,
+  type Oklch,
+  type ParsedColor,
+  type Rgb,
+} from './color/color.ts';
 export { unifiedDiff } from './diff.ts';
 export {
   applyEdits,
@@ -26,7 +53,24 @@ export {
   type ElementNode,
   type LocatedElement,
 } from './html.ts';
+export {
+  locateJsonValue,
+  parseJsonTree,
+  pointerSegments,
+  toPointer,
+  type JsonValue,
+} from './json.ts';
 export { buildPatch, type FilePatch, type PatchError, type PatchResult } from './patch.ts';
+export {
+  chooseCandidate,
+  contrast,
+  type ColorSpan,
+  type ContrastCandidate,
+  type ContrastOutcome,
+  type ContrastParams,
+  type CssDeclarationSpan,
+  type JsonValueSpan,
+} from './recipes/contrast.ts';
 export { documentLanguage, LANG_VALUE } from './recipes/document-language.ts';
 export { emptyButton, type ButtonParams } from './recipes/empty-button.ts';
 export { emptyLink, type LabelParams } from './recipes/empty-link.ts';

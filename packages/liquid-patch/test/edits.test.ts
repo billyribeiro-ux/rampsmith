@@ -251,9 +251,27 @@ describe('applyEdits', () => {
   });
 
   it('refuses file types it cannot validate', () => {
-    expect(applyEdits('a{}', [edit(0, 0, 'x', 'assets/base.css')])).toMatchObject({
+    expect(applyEdits('<svg/>', [edit(0, 0, 'x', 'assets/icon.svg')])).toMatchObject({
       ok: false,
       error: { code: 'unsupported-file' },
+    });
+  });
+
+  it('keeps a CSS file parseable: a value edit passes, a broken block is refused', () => {
+    const file = 'assets/base.css';
+    const source = '.a { color: #aaa; }\n';
+    expect(applyEdits(source, [edit(12, 16, '#767676', file)])).toEqual({
+      ok: true,
+      contents: '.a { color: #767676; }\n',
+    });
+    expect(applyEdits(source, [edit(0, 0, '/* note */ ', file)])).toMatchObject({ ok: true });
+    expect(applyEdits(source, [edit(17, 19, ' ', file)])).toMatchObject({
+      ok: false,
+      error: { code: 'result-unparseable' },
+    });
+    expect(applyEdits('.a { color: ', [edit(0, 0, ' ', file)])).toMatchObject({
+      ok: false,
+      error: { code: 'source-unparseable' },
     });
   });
 
