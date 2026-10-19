@@ -78,7 +78,7 @@ describe('recordPage scrubs what it stores', () => {
 
     const rows = await db.owner<{ page_url: string; target: string; whole: string }[]>`
       select page_url, target, row_to_json(o)::text as whole
-        from finding_occurrences o where scan_id = ${f.scanId} order by target`;
+        from finding_occurrences o where scan_id = ${f.scanId} order by target collate "C"`;
     expect(rows.map((r) => r.target)).toEqual([
       '#[email] > img',
       'a[href]',
