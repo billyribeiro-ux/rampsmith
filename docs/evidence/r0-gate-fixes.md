@@ -9,7 +9,7 @@ Rust 1.97.0 (CI pins 1.99.1), PostgreSQL 18.4, Chromium 153 from `@sparticuz/chr
 | 1. Phosphor icons | Done | `feat(ui): draw the primitives' icons with phosphor-svelte` | 030 |
 | 2. Variable names, audit L13 | Done | `refactor(config): rename SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET` | 031 |
 | 3. WebAuthn origin, audit L9 | Done | `fix(api): parse WEBAUTHN_RP_ORIGIN as a URL` | 033 |
-| 4. Token client, audit L3, L4, L7 | Done | `fix(shopify): no redirects, HTTPS only, documented error classes, no shop in logs` | 032 |
+| 4. Token client, audit L3, L4 (by status code; see the S1 audit's F2), L7 (`crates/shopify` only; the rest is lane S2's) | Done | `fix(shopify): no redirects, HTTPS only, documented error classes, no shop in logs` | 032 |
 | 5. R0 live dev-store check | Done; the live run waits for LAUNCH.md section C rows 1 and 3 | `test(shopify): add the R0 live dev-store check with a visible skip notice` | 031 |
 
 ## 1. Phosphor icons (ADR-030)

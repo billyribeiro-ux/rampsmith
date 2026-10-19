@@ -30,9 +30,10 @@ in your shell (never in a file that is committed) and run one test:
 
 ```sh
 export SHOPIFY_API_KEY=...             # the app's client id
-export SHOPIFY_API_SECRET=...          # the app's client secret
+read -rs SHOPIFY_API_SECRET && export SHOPIFY_API_SECRET   # paste the client secret; not echoed, not in history
 export SHOPIFY_DEV_STORE_DOMAIN=...    # store A, a bare *.myshopify.com host
 cargo nextest run -p rampsmith-shopify --test live_dev_store
+unset SHOPIFY_API_SECRET
 ```
 
 The test signs an ID token for the store with the client secret, already expired, and sends a

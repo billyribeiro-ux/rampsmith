@@ -142,7 +142,7 @@ Wait until builders commit `shopify.app.toml`. Shopify says App Store apps shoul
 
 Values:
 - `SHOPIFY_API_KEY` = Client ID (*public*) → Both. Railway `production` only; staging needs its own app (see the last section).
-- `SHOPIFY_API_SECRET` = Client secret → Both. Same Railway note.
+- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. Not a GitHub repository secret: no workflow uses it, and any workflow pushed to a branch of this repository can read repository secrets. If a workflow ever needs it, it goes in as a GH env secret on a protected environment (ADR-031).
 
 Docs: [Partner getting started](https://help.shopify.com/en/partners/partner-program/getting-started) · [Partner settings](https://help.shopify.com/partners/manage-account/settings) · [Partner vs Dev Dashboard](https://help.shopify.com/partners/manage-account/dashboard) · [Dev Dashboard](https://shopify.dev/docs/apps/build/dev-dashboard) · [create apps in Dev Dashboard](https://shopify.dev/docs/apps/build/dev-dashboard/create-apps-using-dev-dashboard) · [manage config files](https://shopify.dev/docs/apps/build/cli-for-apps/manage-app-config-files) · [app config link](https://shopify.dev/docs/api/shopify-cli/app/app-config-link) · [app configuration](https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration) · [credentials](https://shopify.dev/docs/apps/build/authentication-authorization/manage-credentials.md) · [distribution](https://shopify.dev/docs/apps/launch/distribution) · [select distribution](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) · [scaffold an app](https://www.shopify.dev/docs/apps/getting-started/create)
 
