@@ -59,6 +59,11 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: node pnpm
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
       - run: mise run setup
       - run: pnpm --filter @rampsmith/engine exec playwright install --with-deps chromium
       - name: S-1 axe-core tag set and target-size on Dawn
@@ -85,6 +90,11 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: node pnpm
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
       - run: mise run setup
       - run: pnpm --filter @rampsmith/engine exec playwright install --with-deps chromium
       - name: S-2 bot-challenge rate across 50 public Shopify stores

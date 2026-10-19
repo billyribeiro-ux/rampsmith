@@ -151,14 +151,14 @@ Rampsmith is three deployables around one PostgreSQL database: a SvelteKit web a
 | `web` | SvelteKit 3.1, Svelte 5 | Shopify embedded admin (App Bridge and Polaris web components), standalone agency dashboard, marketing site, free scanner page | `api` over Railway private networking only |
 | `api` | Rust, Axum 0.8 | Auth, tenancy, Shopify OAuth and token exchange, webhook intake, fix approval workflow, billing state, report generation, job enqueueing, OpenAPI contract | PostgreSQL, Shopify, GitHub, Stripe, R2 |
 | `ctl` | Rust | Rust-side jobs: token refresh, webhook processing, Shopify data writes, GitHub pull requests, email, scheduled re-scans under a single leader | PostgreSQL queue, Shopify, GitHub, Amazon SES |
-| `engine` | TypeScript on Node 26 | Scan (Playwright and axe-core), source mapping, Liquid patching, theme packaging, AI calls, verification scans | PostgreSQL queue, R2, Anthropic API, `egress` |
+| `engine` | TypeScript on Node 26 LTS | Scan (Playwright and axe-core), source mapping, Liquid patching, theme packaging, AI calls, verification scans | PostgreSQL queue, R2, Anthropic API, `egress` |
 | `egress` | Rust | Forward proxy that keeps the browser on the public internet (section 18) | Merchant storefronts |
 | PostgreSQL 18 | — | System of record, job queue, audit log | — |
 | Cloudflare R2 | — | Screenshots, DOM snapshots, theme snapshots, patch packages, PDF reports | — |
 
 ### Decision records
 
-Each ADR is written to `docs/adr/` as its own file before the code it governs. The summary:
+Each ADR is written to `docs/adr/` as its own file before the code it governs; ADR-013 is reserved for the R3 evaluation of Shopify's Next Gen Events (section 14). The summary:
 
 | ADR | Decision | Why | Rejected |
 | --- | --- | --- | --- |
@@ -174,6 +174,7 @@ Each ADR is written to `docs/adr/` as its own file before the code it governs. T
 | 010 | Railway first, with a measured move of browser workers to dedicated hardware | Usage billing keeps idle cost near zero; you already deploy there; native PostgreSQL PITR | Kubernetes on day one: operations cost with no customer to justify it |
 | 011 | Claude Haiku 5.5 by default, escalate to Sonnet 5.5, Opus 5.5 for offline patch synthesis only | Cost per task ordered by difficulty (section 13) | One model for everything |
 | 012 | No Redis in R0 to R2 | Rate limits and caches fit in Postgres and in-process; one less stateful service | Redis "just in case" |
+| 029 | Node.js 26 LTS for `web`, `engine` and all tooling, on one `trixie-slim` base image | Founder decision: Active LTS at launch and supported until 30 April 2029; one runtime everywhere, pinned exactly | Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028, 13 months after launch; Microsoft's Playwright image for `engine`: its Node version floats |
 
 ### How the parts connect
 
@@ -200,7 +201,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 
 | Tool | Pinned | Note |
 | --- | --- | --- |
-| Node.js | 26.x (26.12.0 on 14 Oct 2026) | Listed as upcoming LTS, security support to 30 April 2029 ([endoflife.date](https://endoflife.date/nodejs)). If work starts before promotion, 24.22.0 LTS is the fallback. SvelteKit 3 needs at least 22.17. |
+| Node.js | 26 LTS: the first 26.x release tagged LTS, due 28 Oct 2026; 26.12.0 until then | Founder decision (ADR-029). Active LTS from 28 October 2026 to 20 October 2027, then security fixes until 30 April 2029 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)). Node's switch to LTS changes only metadata ([24.11.0 release notes](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)), so 26.12.0 is the code that becomes LTS. Releases may merge on 26.12.0 (founder decision, 17 Oct 2026; ADR-029 amendment); nothing deploys before the LTS pin. `@types/node` 26.6.5. Every package below accepts 26.12.0 in `engines.node`. |
 | pnpm | 12.14.0 | Managed by mise, never Corepack |
 | Rust | 1.99.1 (15 Oct 2026), edition 2024 | [Rust releases](https://blog.rust-lang.org/releases); managed by rustup, pinned in `rust-toolchain.toml` |
 | PostgreSQL | 18.6 | 19 is at RC1 (15 Oct 2026); adopt it at 19.1 ([postgresql.org](https://www.postgresql.org/)) |
@@ -222,6 +223,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `@playwright/test` | 1.64.1 | End-to-end and accessibility tests of Rampsmith's own UI |
 | `@axe-core/playwright` | 4.14.0 | Rampsmith's own UI must pass its own scanner |
 | `eslint` / `prettier` / `prettier-plugin-svelte` | 10.13.0 / 3.9.10 / 4.1.1 |  |
+| `phosphor-svelte` | 3.1.1 | Every icon in the Svelte UI (founder instruction, 17 Oct 2026); import each from `phosphor-svelte/lib/<Name>Icon`; Polaris draws its own icons in the embedded admin |
 
 ### Control plane (`api`, `ctl`)
 
@@ -286,7 +288,7 @@ One repository holds a Cargo workspace and a pnpm workspace side by side. Pure l
 
 ```text
 rampsmith/
-├── .mise.toml                  # node 26, pnpm 12.14.0, postgres 18
+├── .mise.toml                  # node 26 LTS, pnpm 12.14.0, postgres 18
 ├── rust-toolchain.toml         # 1.99.1 + rustfmt + clippy
 ├── Cargo.toml                  # [workspace] resolver = "3", [workspace.lints]
 ├── pnpm-workspace.yaml
@@ -1203,10 +1205,10 @@ Everything runs on Railway in a US region at launch, as immutable images tagged 
 
 | Service | Image | Notes |
 | --- | --- | --- |
-| `web` | Node 26 slim, multi-stage build, `adapter-node` | Health check on `/healthz` |
+| `web` | `node:<26 LTS version>-trixie-slim` pinned by digest, multi-stage build, `adapter-node` | Health check on `/healthz` |
 | `api` | Rust release binary on a distroless base | `/healthz` for liveness; `/readyz` checks the database and the migration version |
 | `ctl` | Same image as `api`, different command | Scheduler leadership through the advisory lock |
-| `engine` | Microsoft's Playwright image for 1.64.1, pinned by digest | Non-root, seccomp profile, Chromium sandbox on |
+| `engine` | The same Node 26 LTS `trixie-slim` image, pinned by digest; Chromium and its system libraries from `playwright install --with-deps chromium`, which supports Debian 13 in Playwright 1.64.1 | Non-root, seccomp profile, Chromium sandbox on |
 | `egress` | Rust release binary | The request-forgery guard; reachable only by `engine` on the private network |
 | PostgreSQL 18 | Railway PostgreSQL with PITR enabled | Direct connections for `LISTEN`; a connection pool per service |
 
@@ -1417,12 +1419,14 @@ Claude Code drives the build as architect and implementer, deciding everything t
 
 ### Stop and ask the founder only for
 
-Spending money · production deploys · App Store or WordPress.org submission · legal text · pricing · scope changes · destructive data operations · anything published under your name.
+Spending money · production deploys · App Store or WordPress.org submission · publishing legal text · pricing changes · other scope changes · destructive data operations · anything published under your name.
+
+Pre-approved by the founder on 17 October 2026: the pricing in section 20 as written; drafting legal text marked "attorney review required"; and evidence-backed scope tweaks that keep every section 5 exit criterion, each recorded in an ADR. The founder's accounts come last (17 October 2026): builders never wait for them, and every check that needs one is tracked in `docs/LAUNCH.md` section E.
 
 ### Never
 
 - Write merchant theme files through any API (ADR-004).
-- Add an overlay or toolbar widget (ADR-012 and section 3).
+- Add an overlay or toolbar widget (ADR-004 and section 3).
 - Use a banned claim from section 3, anywhere.
 - Disable, skip or loosen a gate to make it pass.
 - Commit a secret, or log a token, a storefront password or personal data.
@@ -1531,6 +1535,10 @@ Every page below was opened while writing this plan on 17 October 2026. Package 
 ### Stack and infrastructure
 
 - [endoflife.date: Node.js](https://endoflife.date/nodejs)
+- [Node.js release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)
+- [Node.js 24.11.0 release notes: the switch to LTS](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)
+- [Node.js 26.12.0 changelog](https://github.com/nodejs/node/blob/v26.12.0/doc/changelogs/CHANGELOG_V26.md)
+- [Docker official images: node tags](https://github.com/docker-library/official-images/blob/master/library/node)
 - [Rust release announcements](https://blog.rust-lang.org/releases)
 - [PostgreSQL release news](https://www.postgresql.org/)
 - [Railway plans and resource pricing](https://docs.railway.com/pricing/plans.md)

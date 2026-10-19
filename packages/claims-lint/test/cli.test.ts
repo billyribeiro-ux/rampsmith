@@ -55,6 +55,16 @@ describe('run', () => {
     );
   });
 
+  it('skips directories that match an include glob', () => {
+    const dirConfig = { ...config, include: ['listing/**/*'] };
+    write('claims-lint.config.json', JSON.stringify(dirConfig));
+    write('listing/screenshots/readme.md', 'Passes 12 of 14 automated checks');
+    write('listing/app-store.md', 'Fixes barriers at the source');
+    const result = run({ cwd: root, githubActions: false });
+    expect(result.exitCode).toBe(0);
+    expect(result.output.at(-1)).toMatch(/2 files scanned, no banned claims/);
+  });
+
   it('ignores excluded paths and files outside the include globs', () => {
     write('node_modules/x/messages/en.json', '{ "a": "certified" }');
     write('packages/claims-lint/test/x.svelte', '<p>certified</p>');

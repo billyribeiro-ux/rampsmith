@@ -92,6 +92,10 @@ description = "Banned claims (PLAN §3) in UI strings, emails, listing and marke
 depends = ["setup"]
 run = "node packages/claims-lint/src/main.ts"
 
+[tasks."check:node-pins"]
+description = "Every Node.js pin (engines, @types/node, images, CI) agrees with this file (ADR-029)"
+run = "node packages/node-pins/src/main.ts"
+
 [tasks."contracts:generate"]
 description = "Regenerate JSON Schemas, the OpenAPI document and their TypeScript types (ADR-009)"
 run = [

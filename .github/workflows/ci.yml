@@ -106,6 +106,11 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: node pnpm
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
       - name: Locate the pnpm store
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -126,6 +131,8 @@ jobs:
         run: mise run check:knip
       - name: claims-lint (PLAN §3)
         run: mise run check:claims
+      - name: Node.js pins agree with .mise.toml (ADR-029)
+        run: mise run check:node-pins
       - name: Tests (Vitest, PostgreSQL 18.6)
         run: mise run test:ts
 
@@ -166,6 +173,11 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: node pnpm
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
       - name: Locate the pnpm store
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -205,6 +217,11 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: node pnpm
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
       - name: Install dependencies (frozen lockfile)
         run: mise run setup
       - name: Contract drift (regenerate and diff)
