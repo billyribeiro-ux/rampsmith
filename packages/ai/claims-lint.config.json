@@ -1,0 +1,5 @@
+{
+  "include": ["prompts/**/*.txt"],
+  "exclude": [],
+  "allowlist": "claims-lint.allow.json"
+}

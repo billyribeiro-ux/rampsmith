@@ -1,0 +1,37 @@
+{
+  "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
+  "prompt_version": "alt-text@2",
+  "model": "claude-haiku-5-5",
+  "image_id": "free-shipping-banner",
+  "request_sha256": "bc1fd3ef3f0448785de8d200d38a34be08c3d613ecc2fef86e2385372ee514ab",
+  "response": {
+    "id": "msg_eval_free_shipping_banner_claude_haiku_5_5",
+    "container": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"alt\":\"Promotional banner about shipping\",\"decorative\":false,\"contains_text\":true,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.85}",
+        "citations": null
+      }
+    ],
+    "diagnostics": null,
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": null,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 876,
+      "output_tokens": 56,
+      "output_tokens_details": null,
+      "server_tool_use": null,
+      "service_tier": "standard",
+      "speed": "standard"
+    }
+  }
+}
