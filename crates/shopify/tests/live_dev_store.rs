@@ -6,11 +6,12 @@
 //! secret and addressed to that store and app, but it expired an hour ago, so Shopify cannot
 //! install anything for it. The test asserts that the crate classifies Shopify's answer as the
 //! stale-ID-token class (`TokenError::InvalidSubjectToken`) and not as rejected credentials.
-//! That proves live that the store's domain reaches Shopify's token endpoint, that the form is
-//! accepted, that a 400 maps to the stale class, and that Shopify did not answer with the
-//! rejected-credentials class. It does not prove the client secret: an ID token signed with a
-//! wrong secret is invalid as well, and Shopify may answer it with the same 400 (ADR-031 §3).
-//! The request has no side effects.
+//! That shows live that the store's domain reaches Shopify's HTTPS token endpoint and that it
+//! answers 400: not 403 (rejected credentials), not another status, not a token. It proves
+//! neither the client secret nor the form: the crate classifies a 400 by its status alone (S1
+//! audit F2), and Shopify also answers a malformed form and an ID token signed with a wrong
+//! secret with 400. The wiremock substitute in this file proves the form; the first install
+//! proves the secret (ADR-031 §3). The request has no side effects.
 //!
 //! Without the inputs the live test prints a notice naming them and returns. The other tests in
 //! this file always run: they check the notice, the input handling and the probe itself

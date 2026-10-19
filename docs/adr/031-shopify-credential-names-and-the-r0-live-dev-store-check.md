@@ -37,10 +37,11 @@ section E. The inputs here are LAUNCH.md section C row 1 (the app's key and secr
    `CredentialsRejected`. Shopify answers an expired ID token with 400 and issues nothing
    (ADR-032), so the request cannot install the app or create a token, and the test can run any
    number of times.
-3. **What it proves, and what it does not.** It proves live that the store's domain resolves to
-   Shopify's token endpoint, that the form the crate sends is accepted as well-formed, that the
-   endpoint's answer to an expired token maps to the stale class, and that the answer is not the
-   rejected-credentials class. Shopify's documentation does not say in which order it checks
+3. **What it proves, and what it does not.** It shows live that the store's domain resolves to
+   Shopify's HTTPS token endpoint and that the endpoint answers an expired ID token with 400:
+   not 403 (rejected credentials), not another status, not a token. It does not prove the form:
+   the crate classifies a 400 by its status alone (S1 audit F2), and Shopify answers a malformed
+   body with 400 too (ADR-032), so the wiremock substitute is what proves the form. Shopify's documentation does not say in which order it checks
    the client credentials, the token's signature and its expiry, so a 400 here is not by itself
    proof that the secret is right; a wrong secret that surfaces as 403 fails the probe, and one
    that surfaces as another 4xx fails it too. The install and scan suite that LAUNCH.md section E

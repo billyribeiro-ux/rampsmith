@@ -21,12 +21,18 @@ founder's accounts, so they are the only part left; each takes minutes.
 3. Set `application_url` to the deployed `web` URL (Railway) or let `shopify app dev` tunnel to a
    local `web` (it rewrites the URLs while `automatically_update_urls_on_dev = true`).
 
-## 3. Live check against the store (either of us, no install)
+## 3. Live check against the store (the founder runs it; no install)
 
-This proves the store's domain, Shopify's token endpoint, the form Rampsmith sends and the error
-mapping, without installing anything (ADR-031). It does not prove the client secret: a wrong
-secret can get the same 400 answer, so the first install (section 2) is what confirms it. With the app from section 1 and store A from section 2, set three variables
-in your shell (never in a file that is committed) and run one test:
+This shows, without installing anything, that the store's domain reaches Shopify's token
+endpoint and that it answers an expired ID token with 400, not with rejected credentials or a
+token (ADR-031). It proves neither the client secret nor the form Rampsmith sends: Shopify also
+answers a wrong secret or a malformed form with 400, and the code reads only the status. CI's
+substitute tests prove the form, and the first install (section 4) proves the secret. Builders
+cannot run this check, because it needs the client secret.
+
+With the app from section 1 and store A from section 2, set three variables in your shell (never
+in a file that is committed) and run one test. Run the `read` line on its own: it waits for you
+to paste the secret, which it does not echo or keep in your shell history.
 
 ```sh
 export SHOPIFY_API_KEY=...             # the app's client id

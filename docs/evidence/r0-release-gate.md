@@ -65,7 +65,7 @@ and blockers 2 to 6 passed. Three things remained, each now fixed:
 | --- | --- | --- | --- |
 | 1 | The live test's header and the runbook said the probe proves the credentials; ADR-031 §3 says a 400 does not prove the secret | Both now say what ADR-031 §3 says; LAUNCH.md's section E row too | `40d86e2` |
 | 2 | ADR-031 said CI would run the check once the inputs are GitHub secrets; `ci.yml` passes no secrets | ADR-031 corrected: the founder runs it (runbook section 3); a later live-checks workflow needs its own audit; FOUNDER_SETUP says so | `40d86e2` |
-| 3 | No `security-auditor` record for lane S1's auth and token changes | Audit at effort max: **PASS**, seven lows (two fixed, five tracked to Rust follow-ups, one to lane S2) and one medium outside the lane (fixed: the client secret no longer goes into GitHub repository secrets); `docs/evidence/r0-s1-security-audit-2026-10-19.md` | `0c4becc` |
+| 3 | No `security-auditor` record for lane S1's auth and token changes | Audit at effort max: **PASS**, seven lows (F5 fixed; F1–F4 and F6 owned by lane S2's follow-up, recorded in STATUS.md; F7 already fixed on lane S2's branch) and one medium outside the lane, O1 (fixed: the client secret no longer goes into GitHub repository secrets); `docs/evidence/r0-s1-security-audit-2026-10-19.md` | `0c4becc` |
 
 CI at `40d86e2`: [run 39300708921](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39300708921),
 8 of 8. Commits after it are documentation only.
