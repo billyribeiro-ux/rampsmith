@@ -9,7 +9,7 @@ import {
   type LocaleFile,
   type LocaleText,
 } from '../src/translations.ts';
-import { readDawn } from './dawn.ts';
+import { readLantern } from './lantern.ts';
 
 function apply(files: readonly LocaleFile[], edits: readonly Edit[]): LocaleFile[] {
   return files.map((f) => {
@@ -260,10 +260,10 @@ describe('localeEdits', () => {
     });
   });
 
-  it('adds keys to Dawn locale files without reformatting them, and skips keys Dawn has', () => {
+  it('adds keys to the fixture theme’s locale files without reformatting them, and skips keys they have', () => {
     const files = ['locales/en.default.json', 'locales/de.json', 'locales/ja.json'].map((path) => ({
       path,
-      source: readDawn(path),
+      source: readLantern(path),
     }));
     expect(
       localeEdits(files, [{ key: 'accessibility.skip_to_text', text: 'Skip to content' }]),

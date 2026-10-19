@@ -30,7 +30,7 @@ import {
 } from './types.ts';
 
 export interface SkipLinkParams {
-  /** Defaults to Dawn's key and English text. */
+  /** Defaults to the conventional key and English text. */
   readonly label?: TranslationRequirement;
   /** The id given to the main landmark when it has none. */
   readonly mainId?: string;
@@ -42,7 +42,7 @@ export const SKIP_LINK_LABEL: TranslationRequirement = {
   key: 'accessibility.skip_to_text',
   text: 'Skip to content',
 };
-/** Dawn's id for its main landmark. */
+/** The conventional id of the main landmark, used when the page has none. */
 const DEFAULT_MAIN_ID = 'MainContent';
 const DEFAULT_CLASS = 'rampsmith-skip-link';
 

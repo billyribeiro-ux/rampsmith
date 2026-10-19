@@ -34,7 +34,7 @@ export { formLabel, type FormLabelParams } from './recipes/form-label.ts';
 export { imageAlt, type ImageAltParams } from './recipes/image-alt.ts';
 export { SKIP_LINK_LABEL, skipLink, type SkipLinkParams } from './recipes/skip-link.ts';
 export {
-  DAWN_VISUALLY_HIDDEN_CLASS,
+  DEFAULT_VISUALLY_HIDDEN_CLASS,
   type Recipe,
   type RecipeId,
   type RecipeOutcome,

@@ -1,6 +1,6 @@
 /**
- * Empty buttons (WCAG 4.1.2): `aria-label` from a translation key (PLAN §12), the pattern Dawn
- * uses for its search and close buttons. The `t` filter escapes the text, so it is safe
+ * Empty buttons (WCAG 4.1.2): `aria-label` from a translation key (PLAN §12), the usual pattern
+ * for icon-only buttons such as search and close. The `t` filter escapes the text, so it is safe
  * inside the double-quoted attribute (ADR-103).
  */
 import { NodeTypes } from '@shopify/liquid-html-parser';

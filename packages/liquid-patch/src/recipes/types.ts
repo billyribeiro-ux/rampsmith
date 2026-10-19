@@ -117,8 +117,8 @@ export function locate(file: ParsedFile, target: RecipeTarget, names: readonly s
   return { ok: true, element };
 }
 
-/** The visually hidden class Dawn defines in `assets/base.css` (Dawn 16.0.0). */
-export const DAWN_VISUALLY_HIDDEN_CLASS = 'visually-hidden';
+/** The conventional name of the class that hides text visually but keeps it for screen readers. */
+export const DEFAULT_VISUALLY_HIDDEN_CLASS = 'visually-hidden';
 
 const CLASS_NAME = /^-?[_a-zA-Z][_a-zA-Z0-9-]*$/u;
 

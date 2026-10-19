@@ -20,7 +20,7 @@ import { translationOutput } from '../translations.ts';
 import type { LabelParams } from './empty-link.ts';
 import { attributeEvidence } from './name.ts';
 import {
-  DAWN_VISUALLY_HIDDEN_CLASS,
+  DEFAULT_VISUALLY_HIDDEN_CLASS,
   alreadyFixed,
   fixed,
   labelProblem,
@@ -81,7 +81,7 @@ export const formLabel: Recipe<FormLabelParams> = {
   id: 'form-label',
   wcag: ['1.3.1', '4.1.2'],
   run(file: ParsedFile, target: RecipeTarget, params: FormLabelParams) {
-    const className = params.visuallyHiddenClass ?? DAWN_VISUALLY_HIDDEN_CLASS;
+    const className = params.visuallyHiddenClass ?? DEFAULT_VISUALLY_HIDDEN_CLASS;
     const problem =
       labelProblem(params.label, className) ??
       (params.id === undefined ? null : idProblem(params.id));

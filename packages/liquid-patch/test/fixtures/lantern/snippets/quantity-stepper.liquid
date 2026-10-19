@@ -1,0 +1,21 @@
+<quantity-stepper class="stepper">
+  <label class="visually-hidden" for="Quantity-{{ section.id }}">
+    {{ 'products.quantity.label' | t }}
+  </label>
+  <button class="stepper__button" name="minus" type="button">
+    <span class="visually-hidden">{{- 'products.quantity.decrease' | t -}}</span>
+    {{ 'icon-minus.svg' | inline_asset_content }}
+  </button>
+  <input
+    class="stepper__input"
+    type="number"
+    name="quantity"
+    id="Quantity-{{ section.id }}"
+    value="1"
+    min="1"
+  >
+  <button class="stepper__button" name="plus" type="button">
+    <span class="visually-hidden">{{- 'products.quantity.increase' | t -}}</span>
+    {{ 'icon-plus.svg' | inline_asset_content }}
+  </button>
+</quantity-stepper>

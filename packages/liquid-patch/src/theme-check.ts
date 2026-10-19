@@ -115,7 +115,12 @@ export async function themeOffenses(
   options: Pick<ValidateOptions, 'themeDocset'> = {},
 ): Promise<ThemeOffense[]> {
   const byUri = new Map([...files].map(([path, source]) => [toUri(path), source]));
-  const theme = [...byUri].map(([uri, source]) => toSourceCode(uri, source));
+  // Theme Check reads Liquid and JSON files only: toSourceCode parses every other extension as
+  // JSON, which would report a CSS or SVG asset as a syntax error. The file system keeps all
+  // files, so checks that look for an asset still find it.
+  const theme = [...byUri]
+    .filter(([uri]) => uri.endsWith('.liquid') || uri.endsWith('.json'))
+    .map(([uri, source]) => toSourceCode(uri, source));
   const crashes: ThemeOffense[] = [];
   const offenses = await check(
     theme,

@@ -3,7 +3,7 @@
  * or `alt=""` with a recorded reason when the image is decorative (PLAN §12). The `image`
  * object's `alt` property holds the merchant's alt text
  * (https://shopify.dev/docs/api/liquid/objects/image#image-alt); `escape` keeps it safe inside
- * the attribute, as Dawn writes it (`alt="{{ collection.image.alt | escape }}"`).
+ * the attribute (`alt="{{ collection.image.alt | escape }}"`).
  */
 import { NodeTypes, type LiquidVariableOutput } from '@shopify/liquid-html-parser';
 import {
