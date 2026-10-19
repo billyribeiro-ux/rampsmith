@@ -157,11 +157,13 @@ Pull request #8, workflow `ci`. History on this branch:
 | [72](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39272803371) | `9894530` | failure | the same two |
 | 74 | `fa70920` | cancelled | superseded by the next push |
 | [75](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39274603211) | `2e3cfb5` | **success** | all 8 jobs: `rust` (rustfmt, Clippy `-D warnings`, cargo-deny, cargo-machete, sqlx, nextest), `node` (ESLint, Prettier, tsc, knip, claims-lint, Vitest), `contracts`, `e2e`, 4 image builds |
+| [76](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39276237446) | `573c11f` | **success** | ADRs and this file |
+| [77](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39277174799) | `619fc95` | **success** | the last code change (live trials start from their own row); all 8 jobs |
 
 Both failures were in files under `crates/rsctl`: the three assertions now compare against an empty
 value, and the fixtures were reformatted with Prettier 3.9.10 and the repository options (contents
-unchanged). Documentation-only commits after `2e3cfb5` re-run the same pipeline; the run on the
-final head is linked in the pull request and in the hand-off.
+unchanged). Documentation-only commits after `619fc95` re-run the same pipeline; the run on the final head is
+linked in the pull request and in the hand-off.
 
 No failure outside this stream's paths was seen.
 
