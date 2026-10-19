@@ -188,10 +188,10 @@ analyze() {
   psql_admin -d "$target" -c "analyze"
 }
 
-rd_stage target check_target
 rd_stage fetch fetch
 rd_stage decrypt decrypt
 rd_stage list list_archive
+rd_stage target check_target
 rd_stage restore restore
 rd_stage analyze analyze
 rd_log "restored into database ${target}"

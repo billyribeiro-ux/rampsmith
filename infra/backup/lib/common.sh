@@ -139,7 +139,7 @@ bk_retention_victims() {
         while (j >= 1 && periods[j] < v) { periods[j + 1] = periods[j]; j-- }
         periods[j + 1] = v
       }
-      if (n <= keep) exit
+      if (n < keep) exit
       cutoff = periods[keep]
       for (key in keys) if (keys[key] < cutoff) print key
     }' | LC_ALL=C sort
