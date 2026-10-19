@@ -202,6 +202,12 @@ jobs:
           cache: false
           install_args: node
 
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
+
       - name: Node.js LTS guard (.mise.toml and the images' Node.js)
         id: lts
         continue-on-error: true
@@ -456,6 +462,13 @@ jobs:
           # deploy secrets or decide a gate (ADR-185).
           cache: false
           install_args: node
+
+      - name: Node version (ADR-029)
+        if: steps.inputs.outputs.deploy == 'true'
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
 
       - name: Install the Shopify CLI from its lockfile, without install scripts
         if: steps.inputs.outputs.deploy == 'true'
