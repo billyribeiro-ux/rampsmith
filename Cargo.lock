@@ -2052,6 +2052,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rampsmith-github"
+version = "0.0.0"
+dependencies = [
+ "aws-lc-rs",
+ "axum",
+ "base64 0.23.1",
+ "hmac",
+ "http",
+ "opentelemetry",
+ "proptest",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "rampsmith-http-kit"
 version = "0.0.0"
 dependencies = [
