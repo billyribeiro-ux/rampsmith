@@ -130,3 +130,57 @@ against a throwaway key generated at test start.
 | Writes only to `rampsmith/`, never the connected branch; force only for re-derive | `writes_only_go_to_rampsmith_branches`, `the_connected_branch_is_never_writable`, `malformed_branch_names_are_rejected`, `a_batch_branch_equal_to_the_connected_branch_is_refused`, `a_pull_request_into_its_own_head_branch_is_refused_before_any_request`, `only_rederive_forces_a_ref_update`, `re_derive_force_pushes_and_fast_forward_refuses_a_rewrite` |
 | Transport: no redirects, https only, bounded responses, typed errors | `redirects_are_not_followed`, `the_client_refuses_plain_http_to_a_remote_host`, `base_url_must_be_https_except_on_loopback`, `oversized_responses_are_refused`, `status_codes_map_to_typed_errors`, `primary_rate_limits_map_to_a_typed_error_with_the_reset_wait`, `secondary_rate_limits_honour_retry_after` |
 | Untrusted text cannot inject trailers, HTML, links or mentions; no banned claims | `commit_trailer_cannot_be_injected_from_finding_or_summary`, `body_escapes_untrusted_finding_text`, `markdown::tests::code_span_neutralises_markdown_and_html`, `body_contains_no_banned_claims`, `plan_errors_never_contain_file_content` |
+
+## Merge with `r0-foundations` and CI (19 October 2026, third stream wave)
+
+Agent W3 brought the branch to merge-ready. Pull request #10 (draft, into `r0-foundations`,
+"WS-3: GitHub App (do not merge; stream CI)").
+
+**The merge.** `origin/r0-foundations` at `6bb8116` merged in by merge commit `7e156f6`; no
+history was rewritten. One conflict, `Cargo.lock`: r0-foundations' lockfile was taken and cargo
+added `rampsmith-github` (the proptest tree was already locked there). `base64`, `hmac`, `proptest`
+and `url` now come from the workspace table (`base64.workspace = true` and so on), which gained
+them on `r0-foundations` at the same versions as the table above. `aws-lc-rs`, `http`, `reqwest`
+and `sha2` stay direct entries in `crates/github/Cargo.toml` because their feature sets differ
+from the workspace entries (Cargo cannot switch a workspace dependency's default features off).
+
+**Clippy 1.99.1 fixes.** CI pins Rust 1.99.1; the local gate ran 1.97.0. The first CI run of the
+merge (run [39286328027](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39286328027),
+head `7e156f6`) failed in the `rust` job on two lints that 1.99 added or tightened:
+
+| Lint | Site | Fix (commit `5f9ac05`) |
+| --- | --- | --- |
+| `chunks_exact_to_as_chunks` | `decode_signature` in `crates/github/src/webhook.rs` | `hex.as_chunks::<2>()` on the 64-byte hex slice; the pairs leave no remainder, and the comment says so |
+| `assert_is_empty` | `tests/client.rs` (2 sites), `tests/webhook.rs` (`repositories`, `repositories_added`) | the assertion carries a message that prints the value it expected empty |
+
+No behaviour changed; the same 139 tests exercise both sites.
+
+**CI on head `5f9ac05`.**
+
+| Workflow | Run | Conclusion |
+| --- | --- | --- |
+| `ci.yml` | [39289693789](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39289693789) | success: rust (rustfmt, Clippy `-D warnings`, cargo-deny, cargo-machete, nextest on PostgreSQL 18.6), node, contracts, e2e, four image builds |
+
+The count of 139 tests comes from the local run above (79 unit, 9 + 26 + 6 + 1 + 18 in the
+integration binaries); the `Tests (cargo-nextest, PostgreSQL 18.6)` step concluded success, and its
+count was not read from the CI log.
+
+**Owed before merge: `security-auditor` at effort max.** This crate handles the App private key,
+the App JWT, installation tokens, webhook signatures and the only code that writes to a customer's
+repository. CLAUDE.md requires the `security-auditor` subagent at effort `max` for every change
+to tokens, webhooks and egress-adjacent code, and no result for this branch is recorded (the
+earlier run's result was never saved). W3 may not run it. The integrator runs it on `crates/github`
+at the merge head and records the verdict in this file before the branch merges.
+
+**Integration notes.**
+
+1. `jsonwebtoken` is now in the workspace (`Cargo.toml`, 11.1.0, `aws_lc_rs` backend, no `rsa`
+   crate in `Cargo.lock`). ADR-121 rejected `jsonwebtoken` for the GitHub App JWT because its
+   `rsa` path carries RUSTSEC-2023-0071, and its consequences section already says nothing here
+   changes if the main builder adds it for Shopify HS256 session tokens. `crates/github` keeps
+   signing RS256 with `aws-lc-rs` directly; both crates share one `aws-lc-rs` 1.18.2 in the
+   lockfile.
+2. PLAN §7 corrections listed in ADR-121 (the `jsonwebtoken` and `octocrab` rows) are still
+   to be made in PLAN.md, which this stream may not edit.
+3. `docs/adr/README.md` has no rows for ADR-121 to ADR-127.
+4. `infra/github-app-manifest.json` passes `prettier --check` with the repository config (run 19 October 2026).
