@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use crypto::KeyRing;
 use secrecy::SecretString;
 use thiserror::Error;
+use url::{Host, Url};
 
 /// Everything the api needs from its environment.
 #[derive(Debug)]
@@ -95,26 +96,24 @@ impl Config {
         let webauthn_rp_id = get("WEBAUTHN_RP_ID").ok_or(ConfigError::Missing("WEBAUTHN_RP_ID"))?;
         let webauthn_rp_origin =
             get("WEBAUTHN_RP_ORIGIN").ok_or(ConfigError::Missing("WEBAUTHN_RP_ORIGIN"))?;
-        let origin_host = webauthn_rp_origin
-            .strip_prefix("https://")
-            .or_else(|| webauthn_rp_origin.strip_prefix("http://localhost"))
-            .map(|rest| rest.split([':', '/']).next().unwrap_or_default().to_owned());
         let rp_id = webauthn_rp_id.trim().to_owned();
-        let origin_ok = match origin_host.as_deref() {
-            Some("") => webauthn_rp_origin.starts_with("http://localhost") && rp_id == "localhost",
-            Some(host) => host == rp_id || host.ends_with(&format!(".{rp_id}")),
-            None => false,
-        };
-        if !origin_ok {
+        if !is_host_name(&rp_id) {
             return Err(ConfigError::Invalid {
-                name: "WEBAUTHN_RP_ORIGIN",
-                reason: "must be https:// (or http://localhost) on WEBAUTHN_RP_ID or a subdomain"
+                name: "WEBAUTHN_RP_ID",
+                reason: "must be a lowercase domain name such as app.rampsmith.com, with no scheme, port or path"
                     .to_owned(),
             });
         }
+        let webauthn_rp_origin =
+            check_webauthn_origin(&webauthn_rp_origin, &rp_id).map_err(|reason| {
+                ConfigError::Invalid {
+                    name: "WEBAUTHN_RP_ORIGIN",
+                    reason: reason.to_owned(),
+                }
+            })?;
         Ok(Self {
             webauthn_rp_id: rp_id,
-            webauthn_rp_origin: webauthn_rp_origin.trim().to_owned(),
+            webauthn_rp_origin,
             shopify_client_id: shopify_client_id.trim().to_owned(),
             shopify_client_secret: SecretString::from(shopify_client_secret),
             master_keys,
@@ -125,6 +124,56 @@ impl Config {
                 .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()),
         })
     }
+}
+
+/// A dotted name of lowercase letters, digits and hyphens, as WebAuthn relying-party ids and
+/// the hosts of `https` origins are written.
+fn is_host_name(name: &str) -> bool {
+    name.len() <= 253
+        && name.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+        })
+}
+
+/// Checks the dashboard's WebAuthn origin against the relying-party id and returns it in
+/// canonical form (scheme, host and a non-default port). The rules (audit L9, ADR-024):
+///
+/// - it parses as a URL with the same parser the identity crate uses;
+/// - the scheme is `https`, or `http` only when the host is exactly `localhost`;
+/// - it is an origin: a domain host (not an IP address), no user info, query or fragment, and
+///   no path beyond `/`;
+/// - the host is the relying-party id or a subdomain of it, compared on whole labels.
+///
+/// The error is a fixed sentence: it never repeats the value.
+fn check_webauthn_origin(origin: &str, rp_id: &str) -> Result<String, &'static str> {
+    let url = Url::parse(origin)
+        .map_err(|_| "must be an absolute URL such as https://app.rampsmith.com")?;
+    if url.scheme() != "https" && url.scheme() != "http" {
+        return Err("must use https (http is allowed only for the host localhost)");
+    }
+    let Some(Host::Domain(host)) = url.host() else {
+        return Err("must have a domain name as its host, not an IP address");
+    };
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return Err("must be an origin: scheme, host and optional port only");
+    }
+    if url.scheme() == "http" && host != "localhost" {
+        return Err("must use https (http is allowed only for the host localhost)");
+    }
+    if host != rp_id && !host.ends_with(&format!(".{rp_id}")) {
+        return Err("host must be WEBAUTHN_RP_ID or a subdomain of it");
+    }
+    Ok(url.origin().ascii_serialization())
 }
 
 #[cfg(test)]
@@ -202,38 +251,152 @@ mod tests {
         assert!(!debug.contains(KEY));
     }
 
+    fn origin_config(id: &str, origin: &str) -> Result<Config, ConfigError> {
+        config(&[
+            ("DATABASE_URL", "postgres://app@db/rampsmith"),
+            ("WEBAUTHN_RP_ID", id),
+            ("WEBAUTHN_RP_ORIGIN", origin),
+        ])
+    }
+
     #[test]
-    fn the_webauthn_origin_must_belong_to_the_relying_party() {
-        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
-        for (id, origin) in [
-            ("app.rampsmith.test", "https://app.rampsmith.test"),
-            ("rampsmith.test", "https://app.rampsmith.test:8443"),
-            ("localhost", "http://localhost:5173"),
+    fn accepts_webauthn_origins_that_belong_to_the_relying_party() {
+        // (relying-party id, configured origin, the origin the api keeps)
+        for (id, origin, kept) in [
+            (
+                "app.rampsmith.test",
+                "https://app.rampsmith.test",
+                "https://app.rampsmith.test",
+            ),
+            (
+                "app.rampsmith.test",
+                "https://app.rampsmith.test/",
+                "https://app.rampsmith.test",
+            ),
+            (
+                "rampsmith.test",
+                "https://app.rampsmith.test:8443",
+                "https://app.rampsmith.test:8443",
+            ),
+            (
+                "rampsmith.test",
+                "HTTPS://App.Rampsmith.TEST",
+                "https://app.rampsmith.test",
+            ),
+            (
+                "rampsmith.test",
+                "https://rampsmith.test",
+                "https://rampsmith.test",
+            ),
+            ("localhost", "http://localhost", "http://localhost"),
+            (
+                "localhost",
+                "http://localhost:5173",
+                "http://localhost:5173",
+            ),
+            (
+                "localhost",
+                "http://LOCALHOST:5173",
+                "http://localhost:5173",
+            ),
+            (
+                "localhost",
+                "https://localhost:5173",
+                "https://localhost:5173",
+            ),
         ] {
-            let c =
-                config(&[base, ("WEBAUTHN_RP_ID", id), ("WEBAUTHN_RP_ORIGIN", origin)]).unwrap();
-            assert_eq!(c.webauthn_rp_id, id);
+            let c = origin_config(id, origin).unwrap_or_else(|e| panic!("{id} {origin}: {e}"));
+            assert_eq!(c.webauthn_rp_id, id, "{origin}");
+            assert_eq!(c.webauthn_rp_origin, kept, "{origin}");
         }
+    }
+
+    #[test]
+    fn refuses_webauthn_origins_that_do_not_belong_to_the_relying_party() {
         for (id, origin) in [
+            // Plain http is for the exact host `localhost` only (audit L9).
             ("app.rampsmith.test", "http://app.rampsmith.test"),
+            ("rampsmith.test", "http://localhost.rampsmith.test"),
+            ("rampsmith.test", "http://localhost.rampsmith.test:5173"),
+            ("localhost", "http://localhost.localhost"),
+            ("localhost", "http://localhost.:5173"),
+            ("rampsmith.test", "http://localhost:5173"),
+            // The host must be the relying-party id or a subdomain of it.
             ("app.rampsmith.test", "https://evil.test"),
             ("app.rampsmith.test", "https://notapp.rampsmith.test"),
-            ("rampsmith.test", "http://localhost:5173"),
+            ("app.rampsmith.test", "https://rampsmith.test"),
+            ("rampsmith.test", "https://evilrampsmith.test"),
+            ("rampsmith.test", "https://rampsmith.test.evil.test"),
+            // Anything beyond scheme, host and port is not an origin.
+            ("rampsmith.test", "https://evil.test@rampsmith.test"),
+            ("rampsmith.test", "https://user:pass@rampsmith.test"),
+            ("rampsmith.test", "https://rampsmith.test@evil.test"),
+            ("rampsmith.test", "https://rampsmith.test/dashboard"),
+            ("rampsmith.test", "https://rampsmith.test/?next=/"),
+            ("rampsmith.test", "https://rampsmith.test/#top"),
+            // Not a web origin at all.
+            ("rampsmith.test", "rampsmith.test"),
+            ("rampsmith.test", "//rampsmith.test"),
+            ("rampsmith.test", "https://"),
+            ("rampsmith.test", "ftp://rampsmith.test"),
+            ("rampsmith.test", "javascript:alert(1)"),
+            ("127.0.0.1", "https://127.0.0.1"),
+            ("localhost", "http://127.0.0.1:5173"),
+            ("localhost", "http://[::1]:5173"),
         ] {
+            let err = origin_config(id, origin).unwrap_err();
             assert!(
                 matches!(
-                    config(&[base, ("WEBAUTHN_RP_ID", id), ("WEBAUTHN_RP_ORIGIN", origin)]),
-                    Err(ConfigError::Invalid {
+                    err,
+                    ConfigError::Invalid {
                         name: "WEBAUTHN_RP_ORIGIN",
                         ..
-                    })
+                    }
                 ),
-                "{id} {origin}"
+                "{id} {origin}: {err:?}"
+            );
+            // The error names the variable and the rule, never the value.
+            let text = err.to_string();
+            for fragment in [
+                "rampsmith.test",
+                "evil",
+                "127.0.0.1",
+                "[::1]",
+                "alert",
+                "pass",
+            ] {
+                assert!(!text.contains(fragment), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn refuses_a_relying_party_id_that_is_not_a_lowercase_host_name() {
+        for id in [
+            "App.Rampsmith.test",
+            "https://rampsmith.test",
+            "rampsmith.test:443",
+            "rampsmith.test/",
+            ".rampsmith.test",
+            "rampsmith..test",
+            "-rampsmith.test",
+            "rampsmith test",
+        ] {
+            let err = origin_config(id, "https://rampsmith.test").unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ConfigError::Invalid {
+                        name: "WEBAUTHN_RP_ID",
+                        ..
+                    }
+                ),
+                "{id}: {err:?}"
             );
         }
         for name in ["WEBAUTHN_RP_ID", "WEBAUTHN_RP_ORIGIN"] {
             assert_eq!(
-                config(&[base, (name, "")]).unwrap_err(),
+                config(&[("DATABASE_URL", "postgres://app@db/rampsmith"), (name, "")]).unwrap_err(),
                 ConfigError::Missing(name)
             );
         }
