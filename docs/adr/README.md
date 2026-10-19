@@ -39,6 +39,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [031](031-shopify-credential-names-and-the-r0-live-dev-store-check.md) | Shopify credential names and the R0 live dev-store check | Accepted |
 | [032](032-token-client-transport-and-error-classes.md) | Token client transport and error classes | Accepted |
 | [033](033-webauthn-origin-validation.md) | WebAuthn origin validation | Accepted |
+| [034](034-merge-commits-for-branches-others-build-on.md) | Merge commits for branches that other branches build on | Accepted |
 
 ## Template
 
