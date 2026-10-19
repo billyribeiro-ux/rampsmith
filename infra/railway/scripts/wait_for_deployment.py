@@ -1,0 +1,147 @@
+"""Wait until a Railway service runs an exact image, deployed after a given moment (ADR-185).
+
+`railway config apply` commits the change and Railway deploys it asynchronously. This polls
+`railway deployment list --service <name> --json` (fields: id, status, createdAt, meta) and
+matches the image Railway recorded in each deployment's `meta.serviceManifest.source.image`.
+
+- A deployment of the image created after `since` (the moment before the apply) must reach
+  SUCCESS; FAILED, CRASHED, REMOVED, REMOVING or SKIPPED fail at once. For a service with a
+  health check, SUCCESS means the check passed and traffic moved to it.
+- If the apply changed nothing for this service, no new deployment appears. After a grace
+  period it is accepted only if the service's newest deployment of all already runs the image
+  and is SUCCESS: an older success further down the list never counts.
+
+It prints ids, statuses and timestamps only; a deployment's `meta` is never printed, only the
+names of its keys when the image cannot be found in it.
+
+Usage: python3 wait_for_deployment.py <service> <image@sha256:...> <since ISO-8601> [timeout]
+Authentication is the Railway CLI's (RAILWAY_TOKEN, a project token for one environment).
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+
+DONE = "SUCCESS"
+FAILED = {"FAILED", "CRASHED", "REMOVED", "REMOVING", "SKIPPED"}
+POLL_SECONDS = 10
+GRACE_SECONDS = 120
+
+
+def deployed_image(deployment: dict[str, Any]) -> str | None:
+    """The image a deployment runs, from the service manifest Railway records in `meta`."""
+    meta = deployment.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    for path in (("serviceManifest", "source", "image"), ("image",)):
+        value: Any = meta
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def created(deployment: dict[str, Any]) -> datetime:
+    text = str(deployment.get("createdAt", ""))
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=UTC)
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def list_deployments(service: str) -> list[dict[str, Any]]:
+    output = subprocess.run(
+        ["railway", "deployment", "list", "--service", service, "--json", "--limit", "20"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    ).stdout
+    parsed = json.loads(output)
+    if not isinstance(parsed, list):
+        raise ValueError("railway deployment list did not return a list")
+    return [item for item in parsed if isinstance(item, dict)]
+
+
+def describe(service: str, deployment: dict[str, Any]) -> str:
+    return (
+        f"{service}: deployment {deployment.get('id')} ({deployment.get('createdAt')}) "
+        f"is {deployment.get('status')}"
+    )
+
+
+def wait(
+    service: str,
+    image: str,
+    since: datetime,
+    timeout: float,
+    lister: Callable[[str], list[dict[str, Any]]] = list_deployments,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> tuple[bool, str]:
+    start = clock()
+    deadline = start + timeout
+    last = "no deployments yet"
+    while True:
+        deployments = lister(service)
+        fresh = [d for d in deployments if created(d) > since]
+        mine = [d for d in fresh if deployed_image(d) == image]
+        if mine:
+            newest = max(mine, key=created)
+            status = str(newest.get("status", ""))
+            if status == DONE:
+                return True, describe(service, newest)
+            if status in FAILED:
+                return False, describe(service, newest)
+            last = describe(service, newest)
+        elif fresh:
+            newest = max(fresh, key=created)
+            meta = newest.get("meta")
+            keys = sorted(meta) if isinstance(meta, dict) else []
+            last = (
+                f"{describe(service, newest)} and does not run the expected image "
+                f"(meta keys: {', '.join(keys) or 'none'})"
+            )
+        elif deployments and clock() - start >= GRACE_SECONDS:
+            newest = max(deployments, key=created)
+            if deployed_image(newest) == image and newest.get("status") == DONE:
+                return True, f"{describe(service, newest)}; unchanged by this apply"
+            last = f"no new deployment; newest is {describe(service, newest)}"
+        if clock() >= deadline:
+            return False, f"timed out: {last}"
+        sleep(POLL_SECONDS)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) not in (4, 5) or "@sha256:" not in argv[2]:
+        print("usage: wait_for_deployment.py <service> <image@sha256:...> <since> [timeout]")
+        return 2
+    try:
+        since = datetime.fromisoformat(argv[3].replace("Z", "+00:00"))
+    except ValueError:
+        print("usage: <since> must be an ISO-8601 time such as 2026-10-18T03:00:00Z")
+        return 2
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    timeout = float(argv[4]) if len(argv) == 5 else 1200.0
+    try:
+        ok, message = wait(argv[1], argv[2], since, timeout)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        ok, message = False, f"{argv[1]}: could not read deployments ({type(error).__name__})"
+    if ok:
+        print(message)
+        return 0
+    print(f"::error title=Railway deploy of {argv[1]}::{message}")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
