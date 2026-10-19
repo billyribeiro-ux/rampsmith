@@ -27,6 +27,19 @@ pub async fn app_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
     .expect("connect as rampsmith_app")
 }
 
+/// A pool connected as `rampsmith_worker`.
+pub async fn worker_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
+    opts.after_connect(|c, _| {
+        Box::pin(async move {
+            c.execute("set role rampsmith_worker").await?;
+            Ok(())
+        })
+    })
+    .connect_with(conn)
+    .await
+    .expect("connect as rampsmith_worker")
+}
+
 /// Password of the throw-away `LOGIN` roles the tests create. They exist only on the test
 /// cluster, and every test removes the ones it made.
 pub const TEST_ROLE_PASSWORD: &str = "rampsmith-test-only";

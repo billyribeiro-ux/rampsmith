@@ -8,7 +8,10 @@
     clippy::indexing_slicing
 )]
 
+use std::time::Duration;
+
 use api::AppState;
+use api::rate_limit::{Rate, StartLimits};
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use base64::Engine;
@@ -16,6 +19,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use db::Db;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower::ServiceExt;
 use webauthn_authenticator_rs::WebauthnAuthenticator;
@@ -262,4 +266,247 @@ fn the_openapi_document_declares_the_auth_routes() {
         doc["components"]["securitySchemes"]["dashboard_session"]["in"],
         "header"
     );
+}
+
+// --- Rate limits on the unauthenticated start endpoints (audit M6, ADR-042) --------------------
+
+const HOUR: Duration = Duration::from_hours(1);
+const FORWARDED: &str = "x-forwarded-for";
+
+/// A state whose limiter refills so slowly that no test sees a refill.
+async fn limited(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+    per_client: u32,
+    global: u32,
+) -> (AppState, PgPool) {
+    let pool = app_login_pool(opts, conn).await;
+    let db = Db::from_pool(pool.clone());
+    let identity =
+        identity::Identity::new(db.clone(), "app.rampsmith.test", ORIGIN, "Rampsmith").unwrap();
+    let state = AppState::new(db)
+        .with_identity(identity)
+        .with_start_limits(StartLimits {
+            per_client: Rate {
+                burst: per_client,
+                every: HOUR,
+            },
+            global: Rate {
+                burst: global,
+                every: HOUR,
+            },
+            max_clients: 100,
+        });
+    (state, pool)
+}
+
+struct Answer {
+    status: StatusCode,
+    content_type: String,
+    retry_after: Option<String>,
+    body: Value,
+}
+
+async fn post_from(state: &AppState, path: &str, forwarded: Option<&str>, body: Body) -> Answer {
+    let mut request = Request::post(path).header(header::CONTENT_TYPE, "application/json");
+    if let Some(value) = forwarded {
+        request = request.header(FORWARDED, value);
+    }
+    let response = api::app(state.clone())
+        .oneshot(request.body(body).unwrap())
+        .await
+        .unwrap();
+    let text = |name: header::HeaderName| {
+        response
+            .headers()
+            .get(name)
+            .map(|v| v.to_str().unwrap().to_owned())
+    };
+    let status = response.status();
+    let content_type = text(header::CONTENT_TYPE).unwrap_or_default();
+    let retry_after = text(header::RETRY_AFTER);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    Answer {
+        status,
+        content_type,
+        retry_after,
+        body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    }
+}
+
+async fn sign_in_start(state: &AppState, forwarded: Option<&str>) -> Answer {
+    post_from(state, "/v1/auth/sign-in/start", forwarded, Body::empty()).await
+}
+
+async fn register_start(state: &AppState, forwarded: Option<&str>, email: &str) -> Answer {
+    let body = json!({"email": email, "display_name": "Ada"}).to_string();
+    post_from(
+        state,
+        "/v1/auth/register/start",
+        forwarded,
+        Body::from(body),
+    )
+    .await
+}
+
+async fn ceremonies(pool: &PgPool) -> i64 {
+    sqlx::query_scalar("select count(*) from webauthn_ceremonies")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_client_over_its_limit_gets_429_with_retry_after_and_stores_nothing(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (state, pool) = limited(opts, conn, 2, 1000).await;
+    for _ in 0..2 {
+        assert_eq!(
+            sign_in_start(&state, Some("203.0.113.7")).await.status,
+            StatusCode::OK
+        );
+    }
+    let refused = sign_in_start(&state, Some("203.0.113.7")).await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(refused.content_type, "application/problem+json");
+    assert_eq!(refused.body["code"], "rate_limited");
+    assert_eq!(refused.body["status"], 429);
+    let wait: u64 = refused.retry_after.as_deref().unwrap().parse().unwrap();
+    assert!((1..=3600).contains(&wait), "{wait}");
+    assert_eq!(
+        ceremonies(&pool).await,
+        2,
+        "the refused request stored nothing"
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn registration_and_sign_in_start_share_one_budget(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (state, _) = limited(opts, conn, 2, 1000).await;
+    let client = Some("203.0.113.7");
+    assert_eq!(sign_in_start(&state, client).await.status, StatusCode::OK);
+    assert_eq!(
+        register_start(&state, client, "ada@example.com")
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        register_start(&state, client, "bob@example.com")
+            .await
+            .status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        sign_in_start(&state, client).await.status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn only_the_last_forwarded_entry_names_the_client(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (state, _) = limited(opts, conn, 1, 1000).await;
+    assert_eq!(
+        sign_in_start(&state, Some("203.0.113.7")).await.status,
+        StatusCode::OK
+    );
+    // Inventing earlier entries does not buy a fresh budget: the web server's entry is last.
+    for spoofed in ["1.2.3.4, 203.0.113.7", "5.6.7.8,9.9.9.9,203.0.113.7"] {
+        assert_eq!(
+            sign_in_start(&state, Some(spoofed)).await.status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "{spoofed}"
+        );
+    }
+    // A different client is unaffected.
+    assert_eq!(
+        sign_in_start(&state, Some("1.2.3.4, 203.0.113.8"))
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // Two addresses in one IPv6 /64 are one client.
+    assert_eq!(
+        sign_in_start(&state, Some("2001:db8:1:2::1")).await.status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        sign_in_start(&state, Some("2001:db8:1:2:ffff::9"))
+            .await
+            .status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_global_limit_holds_across_clients_and_for_requests_without_an_address(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (state, pool) = limited(opts, conn, 10, 3).await;
+    for forwarded in [Some("203.0.113.1"), Some("203.0.113.2"), None] {
+        assert_eq!(
+            sign_in_start(&state, forwarded).await.status,
+            StatusCode::OK
+        );
+    }
+    for forwarded in [Some("203.0.113.3"), None, Some("garbage")] {
+        let refused = sign_in_start(&state, forwarded).await;
+        assert_eq!(
+            refused.status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "{forwarded:?}"
+        );
+        assert_eq!(refused.body["code"], "rate_limited");
+        assert!(refused.retry_after.is_some());
+    }
+    assert_eq!(ceremonies(&pool).await, 3);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_limited_request_is_refused_before_its_body_is_read(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (state, _) = limited(opts, conn, 1, 1000).await;
+    let client = Some("203.0.113.7");
+    assert_eq!(sign_in_start(&state, client).await.status, StatusCode::OK);
+    let refused = post_from(
+        &state,
+        "/v1/auth/register/start",
+        client,
+        Body::from("{not json"),
+    )
+    .await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_limits_cover_only_the_start_endpoints(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let (state, _) = limited(opts, conn, 1, 1).await;
+    let client = Some("203.0.113.7");
+    assert_eq!(sign_in_start(&state, client).await.status, StatusCode::OK);
+    assert_eq!(
+        sign_in_start(&state, client).await.status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    // Verification and session calls answer as they always did.
+    let finish = post_from(
+        &state,
+        "/v1/auth/sign-in/finish",
+        client,
+        Body::from(json!({"ceremony_id": uuid::Uuid::nil(), "credential": {}}).to_string()),
+    )
+    .await;
+    assert_eq!(finish.status, StatusCode::BAD_REQUEST);
+    let (status, _) = call(&state, Method::GET, "/v1/auth/session", None, Some("nope")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }

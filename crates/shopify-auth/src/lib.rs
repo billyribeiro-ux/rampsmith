@@ -117,11 +117,16 @@ struct Prior {
     claimed: Option<i64>,
 }
 
-fn access_context(shop: ShopId) -> String {
+/// The context an access token is sealed with: what ties its ciphertext to its shop and column
+/// (ADR-021). Anything that re-wraps stored tokens must pass the same context (audit L6).
+#[must_use]
+pub fn access_context(shop: ShopId) -> String {
     format!("shopify_tokens/access/{shop}")
 }
 
-fn refresh_context(shop: ShopId) -> String {
+/// The context a refresh token is sealed with; see [`access_context`].
+#[must_use]
+pub fn refresh_context(shop: ShopId) -> String {
     format!("shopify_tokens/refresh/{shop}")
 }
 

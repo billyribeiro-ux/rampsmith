@@ -153,6 +153,54 @@ impl Db {
             .fetch_one(&self.pool)
             .await?)
     }
+
+    /// Up to `limit` (1 to 1000) stored Shopify token rows that a master key other than
+    /// `active_key_id` still wraps, across tenants, in shop id order after `after` (audit L6,
+    /// ADR-045). Pass the last shop of the previous batch as `after`, and `None` for the first
+    /// batch. Only the worker role may call this. It returns ids and a version, never
+    /// ciphertext: read and write each row in its own [`Db::tenant`] transaction.
+    pub async fn tokens_to_rewrap(
+        &self,
+        active_key_id: &str,
+        after: Option<ShopId>,
+        limit: i32,
+    ) -> Result<Vec<RewrapCandidate>, DbError> {
+        let rows = sqlx::query!(
+            r#"select tenant_id as "tenant_id!", shop_id as "shop_id!", version as "version!"
+                 from shopify_tokens_to_rewrap($1, $2, $3)"#,
+            active_key_id,
+            after.map(ShopId::as_uuid),
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| RewrapCandidate {
+                tenant: TenantId::from_uuid(r.tenant_id),
+                shop: ShopId::from_uuid(r.shop_id),
+                version: r.version,
+            })
+            .collect())
+    }
+
+    /// How many stored Shopify token rows each master key id wraps, by key id (audit L6,
+    /// ADR-045). A key is safe to remove from the key ring once it no longer appears. Only the
+    /// worker role may call this.
+    pub async fn token_key_counts(&self) -> Result<Vec<KeyCount>, DbError> {
+        let rows = sqlx::query!(
+            r#"select key_id as "key_id!", tokens as "tokens!" from shopify_token_key_counts()"#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| KeyCount {
+                key_id: r.key_id,
+                tokens: r.tokens,
+            })
+            .collect())
+    }
 }
 
 /// Looks a shop up by domain on `conn` (the `app_shop_by_domain` function, ADR-022).
@@ -186,6 +234,26 @@ pub struct ShopRef {
     pub shop: ShopId,
     /// Its installation state.
     pub status: ShopStatus,
+}
+
+/// A token row that a retired master key still wraps, found by [`Db::tokens_to_rewrap`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RewrapCandidate {
+    /// The tenant that owns the shop.
+    pub tenant: TenantId,
+    /// The shop.
+    pub shop: ShopId,
+    /// The row's version when it was listed.
+    pub version: i64,
+}
+
+/// How many token rows one master key id wraps; see [`Db::token_key_counts`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyCount {
+    /// The master key id stored on the rows.
+    pub key_id: String,
+    /// How many rows carry it.
+    pub tokens: i64,
 }
 
 /// Holds a shop's token lock; see [`Db::shop_lock`].

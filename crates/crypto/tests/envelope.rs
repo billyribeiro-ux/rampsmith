@@ -154,6 +154,37 @@ fn rewrap_keeps_the_context_binding() {
     );
 }
 
+/// Audit L6: `rewrap` keeps the value's ciphertext byte for byte, and still decrypts it once to
+/// check it, which is what its documentation now says.
+#[test]
+fn rewrap_carries_the_data_over_and_refuses_tampered_data() {
+    let rotated = ring(&format!("k2:{K2},k1:{K1}"));
+    let sealed = ring(&format!("k1:{K1}")).seal(b"value", b"ctx").unwrap();
+    let rewrapped = rotated.rewrap("k1", sealed.bytes(), b"ctx").unwrap();
+
+    // Format: version (1), wrap nonce (12), wrapped data key (32 + 16 tag), then the value's own
+    // nonce and ciphertext. Only the first three are rewritten.
+    let wrapped_end = 1 + 12 + 48;
+    assert_eq!(
+        rewrapped.bytes()[wrapped_end..],
+        sealed.bytes()[wrapped_end..]
+    );
+    assert_ne!(
+        rewrapped.bytes()[..wrapped_end],
+        sealed.bytes()[..wrapped_end]
+    );
+
+    // The value is checked on the way: one flipped bit in its ciphertext is refused, although
+    // only the wrapping would have been rewritten.
+    let mut tampered = sealed.bytes().to_vec();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 1;
+    assert_eq!(
+        rotated.rewrap("k1", &tampered, b"ctx").unwrap_err(),
+        CryptoError::Authentication
+    );
+}
+
 #[test]
 fn open_string_returns_a_secret_string() {
     let ring = ring(&format!("k1:{K1}"));

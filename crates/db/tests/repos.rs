@@ -931,3 +931,167 @@ async fn marking_a_site_verified_keeps_the_first_time(opts: PgPoolOptions, conn:
         .unwrap();
     assert_eq!(again.verified_at, Some(at));
 }
+
+// --- Re-wrapping stored tokens (audit L6, ADR-045) ---------------------------------------------
+
+/// A row's tokens re-wrapped to key `k2`: bytes that differ from the row's, same expiry.
+fn rewrapped(label: u8) -> shopify::Rewrapped {
+    shopify::Rewrapped {
+        access_ct: vec![label, 0xaa],
+        refresh_ct: vec![label, 0xbb],
+        key_id: "k2".to_owned(),
+    }
+}
+
+#[sqlx::test]
+async fn replacing_the_wrapping_changes_the_key_and_keeps_the_version(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    let read = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!((read.version, read.tokens.key_id.as_str()), (0, "k1"));
+
+    assert!(
+        shopify::replace_wrapping(&mut tx, g.shop, &read, &rewrapped(1))
+            .await
+            .unwrap()
+    );
+    let now = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!(
+        now.version, 0,
+        "re-wrapping is not a new version of the tokens"
+    );
+    assert_eq!(now.tokens.key_id, "k2");
+    assert_eq!(now.tokens.access_ct, rewrapped(1).access_ct);
+    assert_eq!(now.tokens.access_expires_at, read.tokens.access_expires_at);
+    assert_eq!(
+        now.tokens.refresh_expires_at,
+        read.tokens.refresh_expires_at
+    );
+
+    // The same read is stale now: nothing is written twice.
+    assert!(
+        !shopify::replace_wrapping(&mut tx, g.shop, &read, &rewrapped(2))
+            .await
+            .unwrap()
+    );
+    // A refresh that read the row before the swap still stores its tokens afterwards.
+    let v = shopify::rotate(&mut tx, g.shop, read.version, &support::sealed_tokens(5))
+        .await
+        .unwrap();
+    assert_eq!(v, Some(1));
+}
+
+#[sqlx::test]
+async fn replacing_the_wrapping_loses_to_any_change_since_the_read(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    let read = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+
+    // Rotated since: a new version.
+    shopify::rotate(&mut tx, g.shop, 0, &support::sealed_tokens(3))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !shopify::replace_wrapping(&mut tx, g.shop, &read, &rewrapped(1))
+            .await
+            .unwrap()
+    );
+
+    // Deleted and stored again by a process that still seals under the key being retired: the
+    // row is back at version 0 under the same key id, but it holds other tokens.
+    assert!(shopify::delete_tokens(&mut tx, g.shop).await.unwrap());
+    assert_eq!(
+        shopify::put_tokens(&mut tx, g.shop, None, &support::sealed_tokens(4))
+            .await
+            .unwrap(),
+        Some(0)
+    );
+    assert!(
+        !shopify::replace_wrapping(&mut tx, g.shop, &read, &rewrapped(1))
+            .await
+            .unwrap(),
+        "a stale read re-wrapped the new tokens over"
+    );
+    let kept = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!(kept.tokens.access_ct, support::sealed_tokens(4).access_ct);
+    assert_eq!(kept.tokens.key_id, "k1");
+}
+
+#[sqlx::test]
+async fn the_worker_lists_token_rows_under_other_keys_across_tenants(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let app = app_db(opts.clone(), conn.clone()).await;
+    let a = seed(&app, 1).await;
+    let b = seed(&app, 2).await;
+    let worker = Db::from_pool(support::worker_pool(opts, conn).await);
+
+    // Nothing is under another key while k1 is the active one.
+    assert!(
+        worker
+            .tokens_to_rewrap("k1", None, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Both tenants' rows are listed in shop id order, with their versions and no ciphertext.
+    let mut expected = [(a.tenant, a.shop), (b.tenant, b.shop)];
+    expected.sort_by_key(|(_, shop)| shop.as_uuid());
+    let listed = worker.tokens_to_rewrap("k2", None, 10).await.unwrap();
+    let pairs: Vec<_> = listed.iter().map(|r| (r.tenant, r.shop)).collect();
+    assert_eq!(pairs, expected);
+    assert!(listed.iter().all(|r| r.version == 0));
+
+    // Keyset paging: a batch of one, then the rest after it, then nothing. Zero means one.
+    let first = worker.tokens_to_rewrap("k2", None, 1).await.unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].shop, expected[0].1);
+    let rest = worker
+        .tokens_to_rewrap("k2", Some(first[0].shop), 10)
+        .await
+        .unwrap();
+    assert_eq!(rest.len(), 1);
+    assert_eq!(rest[0].shop, expected[1].1);
+    assert!(
+        worker
+            .tokens_to_rewrap("k2", Some(rest[0].shop), 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        worker.tokens_to_rewrap("k2", None, 0).await.unwrap().len(),
+        1
+    );
+
+    let counts = worker.token_key_counts().await.unwrap();
+    assert_eq!(
+        counts,
+        vec![db::KeyCount {
+            key_id: "k1".to_owned(),
+            tokens: 2
+        }]
+    );
+}
+
+#[sqlx::test]
+async fn only_the_worker_may_list_tokens_to_rewrap(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let app = app_db(opts, conn).await;
+    seed(&app, 1).await;
+    // SQLSTATE 42501 (insufficient privilege) is what `DbError` calls `Forbidden`.
+    let err = app.tokens_to_rewrap("k2", None, 10).await.unwrap_err();
+    assert!(matches!(err, db::DbError::Forbidden), "{err:?}");
+    let err = app.token_key_counts().await.unwrap_err();
+    assert!(matches!(err, db::DbError::Forbidden), "{err:?}");
+}

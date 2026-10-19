@@ -259,6 +259,56 @@ pub async fn rotate(
     .await?)
 }
 
+/// The two sealed tokens of a row, with their data keys wrapped under another master key
+/// (audit L6, ADR-045). The tokens and their expiry are the same; only the wrapping changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rewrapped {
+    /// The sealed access token, re-wrapped.
+    pub access_ct: Vec<u8>,
+    /// The sealed refresh token, re-wrapped.
+    pub refresh_ct: Vec<u8>,
+    /// The master key that wraps both data keys now.
+    pub key_id: String,
+}
+
+/// Swaps in a re-wrapped copy of a row's tokens, only if the row is still exactly as the caller
+/// read it: the same version, master key id and ciphertexts (audit L6, ADR-045). Returns whether
+/// it did. `false` means the row was rotated, re-wrapped by someone else, replaced or removed
+/// since, and nothing changed.
+///
+/// The version is not incremented, on purpose. Re-wrapping changes how the same tokens are
+/// stored, not which tokens they are. A token refresh that read the row before this swap and
+/// stores new tokens after it must still win, and a bumped version would make it fail its
+/// compare-and-swap for no reason. The ciphertexts are compared as well as the version because
+/// a version alone can repeat: a row deleted and stored again starts at version 0, and an old
+/// process may still seal under the key being retired.
+pub async fn replace_wrapping(
+    tx: &mut TenantTx,
+    shop: ShopId,
+    read: &StoredTokens,
+    rewrapped: &Rewrapped,
+) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update shopify_tokens
+              set access_ct = $7, refresh_ct = $8, key_id = $9
+            where tenant_id = $1 and shop_id = $2 and version = $3 and key_id = $4
+              and access_ct = $5 and refresh_ct = $6"#,
+        tenant,
+        shop.as_uuid(),
+        read.version,
+        read.tokens.key_id,
+        read.tokens.access_ct,
+        read.tokens.refresh_ct,
+        rewrapped.access_ct,
+        rewrapped.refresh_ct,
+        rewrapped.key_id,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 /// Deletes a shop's tokens, after Shopify revoked them or the app was uninstalled. Returns
 /// whether a row was deleted.
 pub async fn delete_tokens(tx: &mut TenantTx, shop: ShopId) -> Result<bool, DbError> {

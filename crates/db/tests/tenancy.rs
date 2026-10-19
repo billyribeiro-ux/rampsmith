@@ -15,17 +15,45 @@
 mod support;
 
 use db::Db;
-use db::repo::{audit, findings, fixes, occurrences, scans, shopify, sites, tenants};
+use db::repo::{audit, findings, fixes, jobs, occurrences, scans, shopify, sites, tenants};
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
-use support::{Graph, app_pool, assert_empty, owner_pool, sealed_tokens, seed};
+use support::{Graph, app_pool, assert_empty, owner_pool, sealed_tokens, seed, worker_pool};
+
+/// One job for each tenant, enqueued through the repository, and one system job with no tenant,
+/// which only workers may see (`jobs` is a tenant table with per-role policies, ADR-003).
+async fn seed_jobs(db: &Db, owner: &PgPool, tenants: [Graph; 2]) {
+    for graph in tenants {
+        let mut tx = db.tenant(graph.tenant).await.unwrap();
+        jobs::enqueue(
+            &mut tx,
+            queue::NewJob::new(
+                "scan.plan",
+                "scan.plan@1",
+                serde_json::json!({ "scan": graph.scan.to_string() }),
+            ),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+    }
+    let system = queue::NewJob::new(
+        "system.retention",
+        "system.retention@1",
+        serde_json::json!({}),
+    );
+    let mut conn = owner.acquire().await.unwrap();
+    queue::enqueue(&mut conn, &system).await.unwrap();
+}
 
 async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool, Graph, Graph) {
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
     let pool = app_pool(opts, conn).await;
     let db = Db::from_pool(pool.clone());
     let a = seed(&db, 1).await;
     let b = seed(&db, 2).await;
+    seed_jobs(&db, &owner, [a, b]).await;
     (db, pool, a, b)
 }
 
@@ -279,7 +307,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 11] = [
+const TENANT_TABLES: [&str; 12] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -291,6 +319,7 @@ const TENANT_TABLES: [&str; 11] = [
     "fix_findings",
     "audit_log",
     "scan_pages",
+    "jobs",
 ];
 
 #[sqlx::test]
@@ -312,8 +341,10 @@ async fn row_level_security_hides_other_tenants_rows_from_raw_sql(
             } else {
                 "tenant_id"
             };
+            // `is distinct from`, not `<>`: a row with no tenant (a system job) counts as foreign
+            // too, and `<>` would not count it.
             let foreign: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-                "select count(*) from {table} where {column} <> $1"
+                "select count(*) from {table} where {column} is distinct from $1"
             )))
             .bind(me.tenant.as_uuid())
             .fetch_one(&mut *tx)
@@ -327,6 +358,116 @@ async fn row_level_security_hides_other_tenants_rows_from_raw_sql(
         }
         tx.rollback().await.unwrap();
     }
+}
+
+/// Runs `sql` as the application role scoped to `tenant`, in a transaction of its own that is
+/// rolled back, and returns the number of rows it affected.
+async fn as_tenant(
+    pool: &PgPool,
+    tenant: TenantId,
+    sql: impl sqlx::SqlSafeStr,
+) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(tenant.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let done = sqlx::query(sql).execute(&mut *tx).await?;
+    tx.rollback().await.unwrap();
+    Ok(done.rows_affected())
+}
+
+/// The generic check above proves nothing foreign leaks, which an empty table would also
+/// satisfy. This one proves `jobs` holds a job for each tenant and one for the system, and
+/// that the application role sees only its tenant's while workers see all three.
+#[sqlx::test]
+async fn jobs_are_seen_by_their_tenant_and_by_workers_only(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, pool, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    for me in [a, b] {
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query("select set_config('app.tenant_id', $1, true)")
+            .bind(me.tenant.to_string())
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let seen: Vec<Option<uuid::Uuid>> = sqlx::query_scalar("select tenant_id from jobs")
+            .fetch_all(&mut *tx)
+            .await
+            .unwrap();
+        assert_eq!(seen, vec![Some(me.tenant.as_uuid())]);
+        tx.rollback().await.unwrap();
+    }
+
+    let workers = worker_pool(opts, conn).await;
+    let (all, system): (i64, i64) =
+        sqlx::query_as("select count(*), count(*) filter (where tenant_id is null) from jobs")
+            .fetch_one(&workers)
+            .await
+            .unwrap();
+    assert_eq!(
+        (all, system),
+        (3, 1),
+        "workers see every job, system ones too"
+    );
+}
+
+const ENQUEUE_FOR_THE_SCOPED_TENANT: &str =
+    "insert into jobs (id, queue, payload_schema, payload, tenant_id, state)
+     values (gen_random_uuid(), 'scan.plan', 'scan.plan@1', '{}', app_current_tenant(), 'ready')";
+const ENQUEUE_WITHOUT_A_TENANT: &str =
+    "insert into jobs (id, queue, payload_schema, payload, tenant_id, state)
+     values (gen_random_uuid(), 'scan.plan', 'scan.plan@1', '{}', null, 'ready')";
+
+#[sqlx::test]
+async fn the_app_role_enqueues_only_for_its_own_tenant_and_never_edits_jobs(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, pool, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+
+    // A control: a job for its own tenant is accepted.
+    let own = as_tenant(&pool, a.tenant, ENQUEUE_FOR_THE_SCOPED_TENANT).await;
+    assert_eq!(own.unwrap(), 1);
+
+    // A job with no tenant is a system job, which the application role may not create.
+    let err = as_tenant(&pool, a.tenant, ENQUEUE_WITHOUT_A_TENANT)
+        .await
+        .expect_err("the application role enqueued a system job");
+    assert!(err.to_string().contains("row-level security"), "{err}");
+
+    // A job for the other tenant is refused.
+    let for_b = format!(
+        "insert into jobs (id, queue, payload_schema, payload, tenant_id, state)
+         values (gen_random_uuid(), 'scan.plan', 'scan.plan@1', '{{}}', '{}', 'ready')",
+        b.tenant.as_uuid()
+    );
+    let err = as_tenant(&pool, a.tenant, sqlx::AssertSqlSafe(for_b))
+        .await
+        .expect_err("the application role enqueued for another tenant");
+    assert!(err.to_string().contains("row-level security"), "{err}");
+
+    // Jobs are never edited or removed by the application role, even its own.
+    for statement in [
+        "update jobs set state = 'cancelled', finished_at = now()",
+        "delete from jobs",
+    ] {
+        let err = as_tenant(&pool, a.tenant, statement)
+            .await
+            .expect_err("the application role changed jobs");
+        assert!(err.to_string().contains("permission denied"), "{err}");
+    }
+
+    // Workers claim and finish jobs of every tenant, so they may change all of them.
+    let workers = worker_pool(opts, conn).await;
+    let touched = sqlx::query("update jobs set priority = 1")
+        .execute(&workers)
+        .await
+        .unwrap();
+    assert_eq!(touched.rows_affected(), 3);
 }
 
 #[sqlx::test]

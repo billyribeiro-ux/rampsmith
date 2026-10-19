@@ -14,7 +14,9 @@ mod tx;
 
 pub use error::DbError;
 pub use roles::{RoleError, RoleViolation, RuntimeRole};
-pub use tx::{Db, IdentityTx, SHOP_LOCK_TIMEOUT, ShopLock, ShopRef, TenantTx};
+pub use tx::{
+    Db, IdentityTx, KeyCount, RewrapCandidate, SHOP_LOCK_TIMEOUT, ShopLock, ShopRef, TenantTx,
+};
 
 /// The workspace migrations, embedded at compile time. Deploys run them before traffic
 /// switches (PLAN §22); tests get them applied by `#[sqlx::test]`.
