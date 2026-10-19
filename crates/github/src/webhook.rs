@@ -382,8 +382,9 @@ fn decode_signature(value: &[u8]) -> Option<[u8; 32]> {
         return None;
     }
     let mut out = [0_u8; 32];
-    for (slot, pair) in out.iter_mut().zip(hex.chunks_exact(2)) {
-        let [high, low] = pair else { return None };
+    // `hex` is exactly 64 bytes, so the pairs leave no remainder.
+    let (pairs, _) = hex.as_chunks::<2>();
+    for (slot, [high, low]) in out.iter_mut().zip(pairs) {
         *slot = (hex_value(*high)? << 4) | hex_value(*low)?;
     }
     Some(out)

@@ -403,7 +403,8 @@ async fn a_pull_request_into_its_own_head_branch_is_refused_before_any_request()
         repo.open_or_update_pull_request(&plan, &head_as_base).await,
         Err(GitHubError::Branch(BranchRejection::Connected))
     );
-    assert!(fake.requests().is_empty());
+    let sent = fake.requests();
+    assert!(sent.is_empty(), "no request may be sent, got {sent:?}");
 }
 
 #[tokio::test]
@@ -621,7 +622,8 @@ async fn too_many_repositories_are_refused_before_any_request() {
         client.installation_token(installation(), &wide).await,
         Err(GitHubError::InvalidRequest(_))
     ));
-    assert!(fake.requests().is_empty());
+    let sent = fake.requests();
+    assert!(sent.is_empty(), "no request may be sent, got {sent:?}");
 }
 
 #[tokio::test]

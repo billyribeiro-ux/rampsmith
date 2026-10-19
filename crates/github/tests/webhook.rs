@@ -129,7 +129,7 @@ fn installation_actions_beyond_the_known_ones_parse_as_other() {
         event.installation.account.login, None,
         "enterprise accounts have no login"
     );
-    assert!(event.repositories.is_empty());
+    assert!(event.repositories.is_empty(), "{:?}", event.repositories);
     payload["action"] = json!("some_future_action");
     let Event::Installation(event) = deliver("installation", &payload).unwrap().event else {
         panic!("wrong event");
@@ -157,7 +157,11 @@ fn installation_repositories_parses() {
     assert_eq!(event.action, InstallationRepositoriesAction::Removed);
     assert_eq!(event.installation.id.get(), 4242);
     assert_eq!(event.repositories_removed[0].id.get(), 7);
-    assert!(event.repositories_added.is_empty());
+    assert!(
+        event.repositories_added.is_empty(),
+        "{:?}",
+        event.repositories_added
+    );
 }
 
 #[test]
