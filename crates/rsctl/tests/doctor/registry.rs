@@ -46,9 +46,9 @@ fn launch_section_c() -> BTreeMap<u8, BTreeSet<String>> {
 }
 
 #[test]
-fn the_variables_match_launch_section_c_rows_1_to_12_exactly() {
+fn the_variables_match_launch_section_c_rows_1_to_12_and_16_exactly() {
     let doc = launch_section_c();
-    for row in 1..=12_u8 {
+    for row in (1..=12_u8).chain([16]) {
         let in_doc = doc
             .get(&row)
             .unwrap_or_else(|| panic!("LAUNCH.md section C has no row {row}"));
@@ -72,8 +72,8 @@ fn row_15_names_no_variables_of_its_own() {
 }
 
 #[test]
-fn every_row_from_1_to_12_has_a_check_and_row_15_is_staging_only() {
-    for row in 1..=12_u8 {
+fn every_row_from_1_to_12_and_16_has_a_check_and_row_15_is_staging_only() {
+    for row in (1..=12_u8).chain([16]) {
         assert!(
             CHECKS.iter().any(|def| def.row == row),
             "no check for C row {row}"
@@ -86,7 +86,7 @@ fn every_row_from_1_to_12_has_a_check_and_row_15_is_staging_only() {
         CHECKS
             .iter()
             .filter(|def| !def.staging_only)
-            .all(|def| def.row <= 12)
+            .all(|def| def.row <= 12 || def.row == 16)
     );
 }
 
@@ -115,6 +115,15 @@ fn check_ids_are_unique_and_reads_stay_in_the_checks_own_row_except_where_docume
         (
             "staging.separate-apps",
             vec![Var::ShopifyApiKey, Var::GithubAppId],
+        ),
+        // The backup and drill tokens (row 16) are proved on the buckets of row 6.
+        (
+            "r2.backup-token",
+            vec![Var::R2AccountId, Var::R2BucketBackups],
+        ),
+        (
+            "r2.drill-token",
+            vec![Var::R2AccountId, Var::R2BucketBackups],
         ),
     ]);
     for def in CHECKS {

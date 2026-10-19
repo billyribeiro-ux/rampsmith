@@ -88,7 +88,7 @@ fn with_nothing_set_every_trial_is_skipped_and_names_its_row() {
         );
     }
     let rows: BTreeSet<u8> = plans.iter().map(|p| p.row).collect();
-    for row in 1..=12 {
+    for row in (1..=12).chain([16]) {
         assert!(rows.contains(&row), "row {row} has no live trial");
     }
 }
@@ -100,12 +100,22 @@ fn the_skip_notice_names_the_variables_to_set() {
         plan.skip.as_deref(),
         Some("C row 5: none of ANTHROPIC_API_KEY is set")
     );
-    let r2 = plan_for("r2.backups", &env(&[]));
+    let r2 = plan_for("r2.engine-not-backups", &env(&[]));
     let notice = r2.skip.unwrap();
     assert!(
         notice.contains("R2_BUCKET_BACKUPS") && notice.contains("R2_ACCOUNT_ID"),
         "{notice}"
     );
+    // The backup service's and the drill's tokens are row 16 inputs with names of their own.
+    let backup = plan_for("r2.backup-token", &env(&[])).skip.unwrap();
+    assert!(
+        backup.starts_with("C row 16:")
+            && backup.contains("BACKUP_R2_ACCESS_KEY_ID")
+            && !backup.contains("R2_ACCESS_KEY_ID, R2_SECRET"),
+        "{backup}"
+    );
+    let drill = plan_for("r2.drill-token", &env(&[])).skip.unwrap();
+    assert!(drill.contains("DRILL_R2_SECRET_ACCESS_KEY"), "{drill}");
 }
 
 #[test]
@@ -270,7 +280,9 @@ fn a_row_that_is_only_partly_set_starts_its_trials_so_the_gap_fails() {
         .filter(|p| p.skip.is_none())
         .map(|p| p.id)
         .collect();
-    assert!(running.contains("r2.evidence") && running.contains("r2.backups"));
+    assert!(running.contains("r2.evidence") && running.contains("r2.engine-not-backups"));
+    // Row 6 inputs alone never start the row 16 trials: they have tokens of their own.
+    assert!(!running.contains("r2.backup-token") && !running.contains("r2.drill-token"));
     assert!(!running.contains("turnstile.siteverify"));
 }
 

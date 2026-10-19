@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Tests for the logical backup scripts (ADR-171 to ADR-174).
+# Tests for the logical backup scripts (ADR-171 to ADR-174, ADR-090, ADR-091, ADR-094).
 #
 #   PGBIN=/usr/lib/postgresql/18/bin AGE=age AGE_KEYGEN=age-keygen tests/run.sh [--out DIR]
 #
 # Pure functions (names, retention, recipients) are tested directly. The backup itself runs end to
-# end against a throwaway PostgreSQL 18 cluster with the real repository migrations, a directory
-# standing in for the R2 bucket (tests/fake-aws.sh) and a stand-in for `railway ssh`
-# (tests/fake-railway.sh). Every failure path leaves an assertion that it left no archive without
-# its metadata and no plaintext behind.
+# end against a throwaway PostgreSQL 18 cluster with the real repository migrations and a
+# directory standing in for the R2 bucket (tests/fake-aws.sh), which also models the three R2
+# tokens: the backup service's (write), the drill's (read only) and the engine's (not this
+# bucket). Every failure path leaves an assertion that it left no archive without its metadata and
+# no plaintext behind.
+# The bash -c scripts below are single-quoted on purpose: they expand in the child shell.
+# shellcheck disable=SC2016
 set -uo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -192,8 +195,8 @@ STD=(
   "PATH=$PGBIN:$PATH" "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}" "HOME=$work"
   "PGBIN=$PGBIN" "AGE_BIN=$AGE" "AWS_BIN=$DIR/fake-aws.sh" "FAKE_S3_ROOT=$s3"
   "R2_ACCOUNT_ID=00000000000000000000000000000000" "R2_ENDPOINT_URL=http://r2.invalid"
-  "R2_ACCESS_KEY_ID=test-key" "R2_SECRET_ACCESS_KEY=test-secret" "R2_BUCKET_BACKUPS=$bucket"
-  "BACKUP_ENVIRONMENT=staging" "BACKUP_SOURCE=url" "BACKUP_DB_HOST=$sock" "BACKUP_DB_PORT=$port"
+  "BACKUP_R2_ACCESS_KEY_ID=test-key" "BACKUP_R2_SECRET_ACCESS_KEY=test-secret" "R2_BUCKET_BACKUPS=$bucket"
+  "BACKUP_ENVIRONMENT=staging" "BACKUP_DB_HOST=$sock" "BACKUP_DB_PORT=$port"
   "BACKUP_DB_USER=rampsmith_backup" "BACKUP_DB_NAME=rampsmith" "BACKUP_DB_PASSWORD=pw"
   "BACKUP_AGE_RECIPIENTS=$both" "BACKUP_NOW=20261019T010203Z"
 )
@@ -211,7 +214,7 @@ run_backup() { # [--without NAME]... [NAME=value]...
     for d in "${drop[@]}"; do [ "$d" = "$name" ] && skip=1; done
     [ "$skip" -eq 1 ] || args+=("$item")
   done
-  result=$(env -i "${args[@]}" "$BK/backup.sh" 2>&1)
+  result=$(env -i "${args[@]}" "${BK_COMMAND:-$BK/backup.sh}" 2>&1)
   rc=$?
   printf '%s\n' "$result" >>"$out/backup-runs.log"
 }
@@ -220,51 +223,84 @@ reset_store() { rm -rf "$store"; mkdir -p "$store"; }
 
 # --- not configured: skip loudly, never silently -----------------------------------------------------------------------------
 reset_store
-run_backup --without R2_SECRET_ACCESS_KEY --without R2_BUCKET_BACKUPS
+run_backup --without BACKUP_R2_SECRET_ACCESS_KEY --without R2_BUCKET_BACKUPS
 assert_rc "unconfigured: exit 3" 3 "$rc"
-assert_contains "unconfigured: names the missing variables" "R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS" "$result"
-assert_contains "unconfigured: names LAUNCH.md section C rows 6 and 8" "LAUNCH.md section C rows 6 and 8" "$result"
+assert_contains "unconfigured: names the missing variables" "BACKUP_R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS" "$result"
+assert_contains "unconfigured: names LAUNCH.md section C row 16" "LAUNCH.md section C row 16" "$result"
 assert_contains "unconfigured: is a warning annotation" "::warning::" "$result"
+assert_contains "unconfigured: names the environment" "backup of staging not configured" "$result"
+assert_not_contains "unconfigured: does not name what is present" "BACKUP_R2_ACCESS_KEY_ID" "$result"
 assert_eq "unconfigured: nothing was stored" "" "$(files)"
 run_backup --without BACKUP_AGE_RECIPIENTS
 assert_rc "unconfigured: no recipients is exit 3 too" 3 "$rc"
 assert_contains "unconfigured: names BACKUP_AGE_RECIPIENTS" "BACKUP_AGE_RECIPIENTS" "$result"
+run_backup --without BACKUP_DB_PASSWORD
+assert_rc "unconfigured: no database password is exit 3 too" 3 "$rc"
+assert_contains "unconfigured: names BACKUP_DB_PASSWORD" "BACKUP_DB_PASSWORD" "$result"
+# shellcheck disable=SC2016  # the text is Railway's own reference syntax, not a shell expansion
+run_backup 'BACKUP_R2_SECRET_ACCESS_KEY=${{shared.BACKUP_R2_SECRET_ACCESS_KEY}}'
+assert_rc "unconfigured: a Railway reference nobody resolved counts as unset" 3 "$rc"
+assert_contains "unconfigured: names the unresolved variable" "needs BACKUP_R2_SECRET_ACCESS_KEY (" "$result"
+# The engine's token is not the backup's (ADR-091): with only the engine's names set, the service
+# is unconfigured, and the engine's secret is neither used nor printed.
+run_backup --without BACKUP_R2_ACCESS_KEY_ID --without BACKUP_R2_SECRET_ACCESS_KEY \
+  R2_ACCESS_KEY_ID=engine-key R2_SECRET_ACCESS_KEY=engine-secret-marker
+assert_rc "unconfigured: the engine's R2 token is not a backup token" 3 "$rc"
+assert_contains "unconfigured: names the backup token variables" \
+  "BACKUP_R2_ACCESS_KEY_ID BACKUP_R2_SECRET_ACCESS_KEY" "$result"
+assert_not_contains "unconfigured: prints no secret" "engine-secret-marker" "$result"
+# The helpers behind those messages.
+assert_eq "helpers: missing names for the backup token set, in order" \
+  "R2_ACCOUNT_ID BACKUP_R2_SECRET_ACCESS_KEY" \
+  "$(env -i PATH="$PATH" BACKUP_R2_ACCESS_KEY_ID=x R2_BUCKET_BACKUPS=b bash -c \
+    'source "$1"; bk_missing_r2 BACKUP_R2 | tr "\n" " " | sed "s/ $//"' _ "$BK/lib/common.sh")"
+assert_eq "helpers: missing names for the drill token set" \
+  "DRILL_R2_ACCESS_KEY_ID DRILL_R2_SECRET_ACCESS_KEY" \
+  "$(env -i PATH="$PATH" R2_ACCOUNT_ID=a R2_BUCKET_BACKUPS=b BACKUP_R2_ACCESS_KEY_ID=x BACKUP_R2_SECRET_ACCESS_KEY=y bash -c \
+    'source "$1"; bk_missing_r2 DRILL_R2 | tr "\n" " " | sed "s/ $//"' _ "$BK/lib/common.sh")"
+env -i PATH="$PATH" bash -c 'source "$1"; bk_missing_r2 R2 2>/dev/null' _ "$BK/lib/common.sh"
+assert_rc "helpers: an unknown credential set is refused" 2 $?
+env -i PATH="$PATH" R2_ACCOUNT_ID=a R2_BUCKET_BACKUPS=b ACCESS_KEY=k bash -c \
+  'source "$1"; source "$2"; s3_init R2' _ "$BK/lib/common.sh" "$BK/lib/s3.sh" >/dev/null 2>&1
+assert_rc "helpers: s3_init refuses a credential set that is not BACKUP_R2 or DRILL_R2" 1 $?
 
-# --- the workflow gate: skip with a notice, never silently ---------------------------------------------------------------------------
-gate_url=(
-  "BACKUP_SOURCE=url" "BACKUP_ENVIRONMENT=production"
-  "R2_ACCOUNT_ID=a" "R2_ACCESS_KEY_ID=b" "R2_SECRET_ACCESS_KEY=c" "R2_BUCKET_BACKUPS=d"
-  "BACKUP_AGE_RECIPIENTS=$primary" "BACKUP_DB_NAME=n" "BACKUP_DB_PASSWORD=p" "BACKUP_DB_HOST=h"
-)
-gate_out=$(env -i PATH="$PATH" GITHUB_OUTPUT="$work/gate.out" "${gate_url[@]}" "$BK/gate.sh" 2>&1)
-assert_rc "gate: a complete url configuration passes" 0 $?
-assert_contains "gate: reports configured" "configured=true" "$gate_out"
-assert_not_contains "gate: no warning when complete" "::warning::" "$gate_out"
-gate_out=$(env -i PATH="$PATH" GITHUB_OUTPUT="$work/gate.out" BACKUP_SOURCE=railway-ssh BACKUP_ENVIRONMENT=production "$BK/gate.sh" 2>&1)
-assert_rc "gate: nothing configured is not an error" 0 $?
-assert_contains "gate: nothing configured is a warning" "::warning::backup of production skipped" "$gate_out"
-assert_contains "gate: names section C rows 6 and 8" "LAUNCH.md section C rows 6 and 8" "$gate_out"
-assert_contains "gate: names the R2 variables" "R2_ACCESS_KEY_ID" "$gate_out"
-assert_contains "gate: names the Railway variables" "RAILWAY_API_TOKEN" "$gate_out"
-assert_contains "gate: reports configured=false" "configured=false" "$gate_out"
-assert_contains "gate: writes the step output" "configured=false" "$(cat "$work/gate.out")"
-gate_out=$(env -i PATH="$PATH" "${gate_url[@]}" BACKUP_AGE_RECIPIENTS= "$BK/gate.sh" 2>&1)
-assert_contains "gate: one missing input is enough to skip" "needs BACKUP_AGE_RECIPIENTS" "$gate_out"
-gate_out=$(env -i PATH="$PATH" "${gate_url[@]}" BACKUP_SOURCE=nonsense "$BK/gate.sh" 2>&1)
-assert_rc "gate: an unknown transport is an error" 1 $?
+# --- the entrypoint: the one command Railway runs --------------------------------------------------------------------------------------
+entry_out=$(env -i PATH="$PATH" BACKUP_ENVIRONMENT=production "$BK/entrypoint.sh" 2>&1)
+assert_rc "entrypoint: an unconfigured service exits 0" 0 $?
+assert_contains "entrypoint: ... with a warning annotation" "::warning::backup of production not configured" "$entry_out"
+assert_contains "entrypoint: ... naming the row" "LAUNCH.md section C row 16" "$entry_out"
+assert_contains "entrypoint: ... and saying it skipped" "backup skipped" "$entry_out"
+entry_out=$(env -i PATH="$PATH" "$BK/entrypoint.sh" 2>&1)
+assert_rc "entrypoint: with nothing set at all it still exits 0" 0 $?
+assert_contains "entrypoint: ... and names every input" \
+  "R2_ACCOUNT_ID BACKUP_R2_ACCESS_KEY_ID BACKUP_R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS BACKUP_AGE_RECIPIENTS BACKUP_DB_PASSWORD" "$entry_out"
 
 # --- the live restore drill: skip with a notice, never silently ------------------------------------------------------------------------
 live_out=$(env -i PATH="$PATH" "$RD/live.sh" --environment staging --scratch "$work/live-scratch" 2>&1)
 assert_rc "live drill: nothing configured is not an error" 0 $?
 assert_contains "live drill: nothing configured is a warning" "::warning::live restore drill skipped" "$live_out"
-assert_contains "live drill: names section C rows 6 and 8" "LAUNCH.md section C rows 6 and 8" "$live_out"
-assert_contains "live drill: names the R2 variables" "R2_ACCESS_KEY_ID" "$live_out"
+assert_contains "live drill: names LAUNCH.md section C row 16" "LAUNCH.md section C row 16" "$live_out"
+assert_contains "live drill: names the drill's R2 variables" "DRILL_R2_ACCESS_KEY_ID DRILL_R2_SECRET_ACCESS_KEY" "$live_out"
 assert_contains "live drill: names the drill key" "BACKUP_DRILL_AGE_KEY" "$live_out"
-live_out=$(env -i PATH="$PATH" R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef R2_ACCESS_KEY_ID=x \
-  R2_SECRET_ACCESS_KEY=y R2_BUCKET_BACKUPS=some-bucket "$RD/live.sh" --environment staging --scratch "$work/live-scratch" 2>&1)
+assert_not_contains "live drill: does not ask for the backup service's token" "BACKUP_R2_" "$live_out"
+live_out=$(env -i PATH="$PATH" R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef DRILL_R2_ACCESS_KEY_ID=x \
+  DRILL_R2_SECRET_ACCESS_KEY=y R2_BUCKET_BACKUPS=some-bucket "$RD/live.sh" --environment staging --scratch "$work/live-scratch" 2>&1)
 assert_rc "live drill: only the drill key missing is still a skip" 0 $?
 assert_contains "live drill: names only what is missing" "needs BACKUP_DRILL_AGE_KEY (LAUNCH" "$live_out"
-assert_not_contains "live drill: does not name what is present" "R2_ACCESS_KEY_ID" "$live_out"
+assert_not_contains "live drill: does not name what is present" "DRILL_R2_ACCESS_KEY_ID" "$live_out"
+# The backup service's token is no substitute for the drill's (ADR-091).
+live_out=$(env -i PATH="$PATH" R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef BACKUP_R2_ACCESS_KEY_ID=x \
+  BACKUP_R2_SECRET_ACCESS_KEY=y R2_BUCKET_BACKUPS=some-bucket BACKUP_DRILL_AGE_KEY=k "$RD/live.sh" \
+  --environment staging --scratch "$work/live-scratch" 2>&1)
+assert_rc "live drill: the backup service's token alone is a skip" 0 $?
+assert_contains "live drill: ... that names the drill's token" "DRILL_R2_ACCESS_KEY_ID" "$live_out"
+# Both tokens in one environment is a configuration error, not a skip.
+live_out=$(env -i PATH="$PATH" R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef DRILL_R2_ACCESS_KEY_ID=x \
+  DRILL_R2_SECRET_ACCESS_KEY=y R2_BUCKET_BACKUPS=some-bucket BACKUP_DRILL_AGE_KEY=k BACKUP_R2_SECRET_ACCESS_KEY=write-marker \
+  "$RD/live.sh" --environment staging --scratch "$work/live-scratch" 2>&1)
+assert_rc "live drill: the write token in the drill's environment is refused" 1 $?
+assert_contains "live drill: ... naming the variable" "BACKUP_R2_SECRET_ACCESS_KEY is set" "$live_out"
+assert_not_contains "live drill: ... without printing it" "write-marker" "$live_out"
 live_out=$(env -i PATH="$PATH" "$RD/live.sh" --environment 'Bad Env' 2>&1)
 assert_rc "live drill: a bad environment name is an error" 1 $?
 
@@ -284,7 +320,8 @@ mkdir -p "$store/staging/daily/2026-10-18"
 : >"$store/staging/daily/2026-10-18/rampsmith-staging-20261018T010203Z.dump.age"
 list_env=(
   "PATH=$PATH" "AWS_BIN=$DIR/fake-aws.sh" "FAKE_S3_ROOT=$s3" "R2_ENDPOINT_URL=http://r2.invalid"
-  "R2_ACCOUNT_ID=00000000000000000000000000000000" "R2_ACCESS_KEY_ID=test-key" "R2_SECRET_ACCESS_KEY=test-secret" "R2_BUCKET_BACKUPS=$bucket"
+  "R2_ACCOUNT_ID=00000000000000000000000000000000" "DRILL_R2_ACCESS_KEY_ID=drill-read-key"
+  "DRILL_R2_SECRET_ACCESS_KEY=drill-read-secret" "R2_BUCKET_BACKUPS=$bucket"
 )
 list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment staging 2>&1)
 assert_rc "list-backups: lists a configured bucket" 0 $?
@@ -301,8 +338,13 @@ assert_contains "list-backups: says there is nothing" "no backups under producti
 assert_not_contains "list-backups: never lists another environment's keys" "staging/" "$list_out"
 list_out=$(env -i PATH="$PATH" "$RD/list-backups.sh" --environment staging 2>&1)
 assert_rc "list-backups: missing variables fail" 1 $?
-assert_contains "list-backups: names the variables and the row" "R2_ACCOUNT_ID" "$list_out"
-assert_contains "list-backups: names LAUNCH.md section C row 6" "LAUNCH.md section C row 6" "$list_out"
+assert_contains "list-backups: names the variables and the row" "DRILL_R2_ACCESS_KEY_ID" "$list_out"
+assert_contains "list-backups: names LAUNCH.md section C row 16" "LAUNCH.md section C row 16" "$list_out"
+list_out=$(env -i PATH="$PATH" AWS_BIN="$DIR/fake-aws.sh" FAKE_S3_ROOT="$s3" R2_ENDPOINT_URL=http://r2.invalid \
+  R2_ACCOUNT_ID=00000000000000000000000000000000 R2_BUCKET_BACKUPS="$bucket" \
+  BACKUP_R2_ACCESS_KEY_ID=test-key BACKUP_R2_SECRET_ACCESS_KEY=test-secret "$RD/list-backups.sh" --environment staging 2>&1)
+assert_rc "list-backups: the backup service's write token is not accepted in its place" 1 $?
+assert_contains "list-backups: ... and the drill's variables are named" "DRILL_R2_SECRET_ACCESS_KEY" "$list_out"
 list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment '../x' 2>&1)
 assert_rc "list-backups: a bad environment name fails" 1 $?
 list_out=$(env -i "${list_env[@]}" "$RD/list-backups.sh" --environment staging --kind weekly 2>&1)
@@ -454,33 +496,143 @@ run_backup BACKUP_KEEP_DAILY=2 FAKE_AWS_FAULT=rm-fail
 assert_rc "prune failure: exit 1" 1 "$rc"
 assert_eq "prune failure: the new backup is stored" "1" "$(files | grep -c 'daily/2026-10-19/.*meta.json' || true)"
 
-# --- the railway-ssh transport ---------------------------------------------------------------------------------------------------------------------
+# --- a failed backup is a failed run, and a success stays a success, through the entrypoint ----------------------------------------------
+BK_COMMAND="$BK/entrypoint.sh"
 reset_store
-: >"$work/railway.log"
-SSH_ENV=(
-  "BACKUP_SOURCE=railway-ssh" "RAILWAY_BIN=$DIR/fake-railway.sh" "RAILWAY_API_TOKEN=tok-railway-secret"
-  "BACKUP_RAILWAY_PROJECT_ID=proj-1" "BACKUP_RAILWAY_ENVIRONMENT=staging" "BACKUP_RAILWAY_SERVICE=postgres"
-  "FAKE_RAILWAY_LOG=$work/railway.log"
+run_backup
+assert_rc "entrypoint: a configured backup exits 0" 0 "$rc"
+assert_eq "entrypoint: ... and stores the four objects" "4" "$(files | wc -l | tr -d ' ')"
+reset_store
+run_backup BACKUP_DB_USER=rampsmith_api
+assert_rc "entrypoint: a failed backup exits 1, so Railway shows a failed run" 1 "$rc"
+assert_contains "entrypoint: ... and says why" "could not read the migration version" "$result"
+reset_store
+run_backup --without BACKUP_AGE_RECIPIENTS
+assert_rc "entrypoint: an unconfigured backup exits 0" 0 "$rc"
+assert_eq "entrypoint: ... and stores nothing" "" "$(files)"
+unset BK_COMMAND
+
+# --- the three R2 tokens each reach only what they are for (ADR-091, finding M1) -------------------------------------------------------
+# The fake bucket answers 403 AccessDenied to a token that does not cover the bucket and to a read
+# only token that writes, as R2 documents (error code 10003).
+reset_store
+SCOPE=(FAKE_AWS_WRITE_KEY=backup-write-key FAKE_AWS_READ_KEY=drill-read-key)
+run_backup "${SCOPE[@]}" BACKUP_R2_ACCESS_KEY_ID=backup-write-key R2_ACCESS_KEY_ID=engine-evidence-key \
+  R2_SECRET_ACCESS_KEY=engine-secret-marker
+assert_rc "tokens: the backup uses its own token, with the engine's names set beside it" 0 "$rc"
+assert_eq "tokens: ... and stores its four objects" "4" "$(files | wc -l | tr -d ' ')"
+assert_not_contains "tokens: ... without printing the engine's secret" "engine-secret-marker" "$result"
+reset_store
+run_backup "${SCOPE[@]}" BACKUP_R2_ACCESS_KEY_ID=engine-evidence-key
+assert_rc "tokens: the evidence token is refused on the backups bucket" 1 "$rc"
+assert_contains "tokens: ... as an upload that failed" "upload of" "$result"
+assert_contains "tokens: ... with the bucket's AccessDenied" "AccessDenied (403)" "$result"
+assert_eq "tokens: ... and nothing is stored" "" "$(files)"
+reset_store
+run_backup "${SCOPE[@]}" BACKUP_R2_ACCESS_KEY_ID=drill-read-key
+assert_rc "tokens: the drill's read-only token cannot write a backup" 1 "$rc"
+assert_contains "tokens: ... it is refused as read only" "this token is read only" "$result"
+assert_eq "tokens: ... and nothing is stored" "" "$(files)"
+reset_store
+run_backup "${SCOPE[@]}" BACKUP_R2_ACCESS_KEY_ID=backup-write-key
+drill_env=(
+  "PATH=$PATH" "AWS_BIN=$DIR/fake-aws.sh" "FAKE_S3_ROOT=$s3" "R2_ENDPOINT_URL=http://r2.invalid"
+  "R2_ACCOUNT_ID=00000000000000000000000000000000" "R2_BUCKET_BACKUPS=$bucket"
+  "DRILL_R2_ACCESS_KEY_ID=drill-read-key" "DRILL_R2_SECRET_ACCESS_KEY=drill-read-secret" "${SCOPE[@]}"
 )
-run_backup "${SSH_ENV[@]}" BACKUP_DB_PASSWORD=zq9-marker-password
-assert_rc "railway-ssh: succeeds" 0 "$rc"
-assert_eq "railway-ssh: stores the same four objects" "4" "$(files | wc -l | tr -d ' ')"
-railway_log=$(cat "$work/railway.log")
-assert_contains "railway-ssh: targets the project" "project=proj-1" "$railway_log"
-assert_contains "railway-ssh: targets the service" "service=postgres" "$railway_log"
-assert_contains "railway-ssh: runs pg_dump remotely" "arg=pg_dump" "$railway_log"
-assert_not_contains "railway-ssh: the database password is on no command line" "zq9-marker-password" "$railway_log"
-assert_not_contains "railway-ssh: the database password is not in the output" "zq9-marker-password" "$result"
-assert_not_contains "railway-ssh: the token is on no command line" "tok-railway-secret" "$railway_log"
-run_backup "${SSH_ENV[@]}" --without RAILWAY_API_TOKEN
-assert_rc "railway-ssh: needs the token" 1 "$rc"
-assert_contains "railway-ssh: names the missing token" "RAILWAY_API_TOKEN" "$result"
+list_out=$(env -i "${drill_env[@]}" "$RD/list-backups.sh" --environment staging --kind daily 2>&1)
+assert_rc "tokens: the drill's read-only token lists the backups" 0 $?
+assert_contains "tokens: ... and sees the archive" "staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.dump.age" "$list_out"
+env -i "${drill_env[@]}" bash -c 'source "$1"; source "$2"; s3_init DRILL_R2; s3_delete "$3"' _ \
+  "$BK/lib/common.sh" "$BK/lib/s3.sh" "staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.meta.json" >/dev/null 2>&1
+assert_rc "tokens: the drill's read-only token cannot delete a backup" 1 $?
+assert_eq "tokens: ... and the metadata object is still there" "1" \
+  "$(files | grep -c 'daily/.*meta.json' || true)"
+env -i "${drill_env[@]}" DRILL_R2_ACCESS_KEY_ID=engine-evidence-key bash -c \
+  'source "$1"; source "$2"; s3_init DRILL_R2; s3_size "$3"' _ "$BK/lib/common.sh" "$BK/lib/s3.sh" \
+  "staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.dump.age" >/dev/null 2>&1
+assert_rc "tokens: the evidence token cannot read the backups bucket either" 1 $?
+
+# --- the live drill hands its inputs to a container that runs as another user (finding M3, ADR-094) -----------------------------------------
+# live.sh runs under umask 077; the restore runs as the postgres image's user (uid 999), not the
+# runner's. The stand-in for in-container.sh checks the permission bits any other user is held to,
+# that the private key arrives in the environment and is on no disk under the scratch directory,
+# and that the archive then decrypts. The newest backup in the store is the one the last run wrote.
+handoff_env=(
+  "PATH=$PATH" "AWS_BIN=$DIR/fake-aws.sh" "FAKE_S3_ROOT=$s3" "R2_ENDPOINT_URL=http://r2.invalid"
+  "R2_ACCOUNT_ID=00000000000000000000000000000000" "R2_BUCKET_BACKUPS=$bucket"
+  "DRILL_R2_ACCESS_KEY_ID=drill-read-key" "DRILL_R2_SECRET_ACCESS_KEY=drill-read-secret"
+  "BACKUP_DRILL_AGE_KEY=$(cat "$work/primary.key")" "AGE=$AGE"
+  "RD_IN_CONTAINER=$RD/tests/fake-in-container.sh" "${SCOPE[@]}"
+)
+handoff_out=$(env -i "${handoff_env[@]}" "$RD/live.sh" --environment staging --scratch "$work/handoff" --max-age-hours 1000000 2>&1)
+assert_rc "handoff: the live drill completes against the fake bucket" 0 $?
+assert_contains "handoff: other users can open the archive" "PASS	read: other users can open $work/handoff/work/backup.dump.age" "$handoff_out"
+assert_contains "handoff: other users can open the metadata" "PASS	read: other users can open $work/handoff/work/backup.meta.json" "$handoff_out"
+assert_contains "handoff: other users can write the outputs" "PASS	write: other users can create files in out/" "$handoff_out"
+assert_contains "handoff: the key arrives in the environment" "PASS	key: passed in the environment" "$handoff_out"
+assert_contains "handoff: the key is on no disk" "PASS	key: no private key on disk under the scratch directory" "$handoff_out"
+assert_contains "handoff: the archive decrypts with it" "PASS	decrypt: the archive opens to a PostgreSQL archive" "$handoff_out"
+assert_eq "handoff: work is world-readable" "755" "$(stat -c %a "$work/handoff/work")"
+assert_eq "handoff: out is world-writable" "777" "$(stat -c %a "$work/handoff/out")"
+assert_eq "handoff: the scratch directory can be entered by others" "755" "$(stat -c %a "$work/handoff")"
+assert_eq "handoff: the archive is world-readable" "644" "$(stat -c %a "$work/handoff/work/backup.dump.age")"
+assert_eq "handoff: no private key was written anywhere in the scratch tree" "0" \
+  "$(grep -rIlF 'AGE-SECRET-KEY-' "$work/handoff" | wc -l | tr -d ' ')"
+assert_not_contains "handoff: the key is not in the output" "AGE-SECRET-KEY-" "$handoff_out"
+
+# The check must be able to fail: the layout live.sh made before the fix (umask 077) is refused.
+rm -rf "$work/bad-scratch"
+mkdir -p "$work/bad-scratch/work" "$work/bad-scratch/out"
+cp "$work/handoff/work/backup.dump.age" "$work/handoff/work/backup.meta.json" "$work/bad-scratch/work/"
+chmod 700 "$work/bad-scratch" "$work/bad-scratch/work" "$work/bad-scratch/out"
+chmod 600 "$work/bad-scratch/work/backup.dump.age" "$work/bad-scratch/work/backup.meta.json"
+bad_out=$(env -i PATH="$PATH" AGE="$AGE" RD_SCRATCH="$work/bad-scratch" RD_IDENTITY="$(cat "$work/primary.key")" \
+  "$RD/tests/fake-in-container.sh" 2>&1)
+assert_rc "handoff: a 0700 scratch tree is refused (the original defect)" 1 $?
+assert_contains "handoff: ... because the directory cannot be entered" "not searchable by other users" "$bad_out"
+assert_contains "handoff: ... and the outputs cannot be written" "FAIL	write: " "$bad_out"
+bad_out=$(env -i PATH="$PATH" AGE="$AGE" RD_SCRATCH="$work/handoff" "$RD/tests/fake-in-container.sh" 2>&1)
+assert_rc "handoff: a missing key is refused" 1 $?
+assert_contains "handoff: ... by name" "FAIL	key: RD_IDENTITY was not passed" "$bad_out"
+bad_out=$(env -i PATH="$PATH" AGE="$AGE" RD_SCRATCH="$work/handoff" RD_IDENTITY="$(cat "$work/primary.key")" \
+  "$RD/tests/fake-in-container.sh" 2>&1)
+assert_rc "handoff: the fake passes on the layout live.sh now makes" 0 $?
+
+# container-run.sh is what in-container.sh runs inside the container around the command.
+cr_dir="$work/container-run"
+mkdir -p "$cr_dir/scratch/out"
+chmod 700 "$cr_dir/scratch/out"
+printf 'report\n' >"$cr_dir/scratch/out/report.txt"
+chmod 600 "$cr_dir/scratch/out/report.txt"
+cr_out=$(env -i PATH="$PATH" RD_IDENTITY_FILE="$cr_dir/identity.key" RD_SCRATCH_DIR="$cr_dir/scratch" \
+  RD_IDENTITY="$(cat "$work/primary.key")" "$RD/container-run.sh" bash -c '
+    printf "mode %s\n" "$(stat -c %a "$RD_IDENTITY_FILE")"
+    printf "age_ok %s\n" "$(grep -c "AGE-SECRET-KEY-" "$RD_IDENTITY_FILE")"
+    printf "env %s\n" "${RD_IDENTITY:-unset}"
+    printf "environ %s\n" "$(tr "\0" "\n" </proc/$$/environ | grep -c "^RD_IDENTITY=")"
+    exit 7' 2>&1)
+cr_rc=$?
+assert_rc "container-run: the command's exit status is the exit status" 7 "$cr_rc"
+assert_contains "container-run: the key file is private to its user" "mode 600" "$cr_out"
+assert_contains "container-run: the key file holds the key" "age_ok 1" "$cr_out"
+assert_contains "container-run: the command does not see the key variable" "env unset" "$cr_out"
+assert_contains "container-run: ... and neither does its process environment" "environ 0" "$cr_out"
+assert_eq "container-run: the key file is deleted afterwards" "absent" \
+  "$([ -e "$cr_dir/identity.key" ] && echo present || echo absent)"
+assert_eq "container-run: the reports are readable for the runner afterwards" "755 644" \
+  "$(stat -c %a "$cr_dir/scratch/out") $(stat -c %a "$cr_dir/scratch/out/report.txt")"
+env -i PATH="$PATH" RD_IDENTITY_FILE="$cr_dir/none.key" RD_SCRATCH_DIR="$cr_dir/scratch" "$RD/container-run.sh" true
+assert_rc "container-run: without a key no key file is written" 0 $?
+assert_eq "container-run: ... none" "absent" "$([ -e "$cr_dir/none.key" ] && echo present || echo absent)"
+assert_eq "container-run: live.sh and container-run.sh agree on the key file" "1 1" \
+  "$(grep -c -- '--identity /tmp/rd-identity.key' "$RD/live.sh") $(grep -c '/tmp/rd-identity.key' "$RD/container-run.sh")"
 
 # --- the metadata object is the commit marker ---------------------------------------------------------------------------------------------------------
 reset_store
 run_backup
 find "$store" -name '*.meta.json' -delete
-marker_out=$(env -i "${STD[@]}" PGHOST="$sock" PGPORT="$port" PGUSER=postgres "$RD/restore.sh" \
+marker_out=$(env -i "${STD[@]}" DRILL_R2_ACCESS_KEY_ID=drill-read-key DRILL_R2_SECRET_ACCESS_KEY=drill-read-secret PGHOST="$sock" PGPORT="$port" PGUSER=postgres "$RD/restore.sh" \
   --target rampsmith --identity "$work/primary.key" --work "$work/restore-marker" \
   --object staging/daily/2026-10-19/rampsmith-staging-20261019T010203Z.dump.age 2>&1)
 assert_rc "restore refuses an archive without metadata: exit 1" 1 $?

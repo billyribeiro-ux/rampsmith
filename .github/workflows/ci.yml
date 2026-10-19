@@ -288,3 +288,63 @@ jobs:
           only-fixed: true
           output-format: table
           grype-version: v0.120.1
+
+  # Founder secrets are Railway variables or secrets of one GitHub environment that only `main`
+  # can deploy to (docs/FOUNDER_SETUP.md section 0, ADR-092). Never repository or organization
+  # secrets: any workflow of any branch, and every pull request, could read those. This job has
+  # no environment, so a secret named below resolves here only if it exists at repository or
+  # organization level, and then the job fails, naming it. Only presence is tested; no value is
+  # printed or kept. GitHub refuses secret names that start with GITHUB_, so those two can
+  # never be found here; they are listed so that the list is exactly rsctl's
+  # (`founder_secret_names`, kept equal by crates/rsctl/tests/secret_placement.rs).
+  secrets-scope:
+    name: secrets-scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: No founder secret at repository or organization level
+        env:
+          SCOPE_SHOPIFY_API_SECRET: ${{ secrets.SHOPIFY_API_SECRET }}
+          SCOPE_SHOPIFY_PARTNER_API_TOKEN: ${{ secrets.SHOPIFY_PARTNER_API_TOKEN }}
+          SCOPE_SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}
+          SCOPE_SHOPIFY_DEV_STORE_PASSWORD: ${{ secrets.SHOPIFY_DEV_STORE_PASSWORD }}
+          SCOPE_SHOPIFY_DEV_STORE_B_PASSWORD: ${{ secrets.SHOPIFY_DEV_STORE_B_PASSWORD }}
+          SCOPE_GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          SCOPE_GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.GITHUB_APP_WEBHOOK_SECRET }}
+          SCOPE_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SCOPE_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          SCOPE_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          SCOPE_TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          SCOPE_SES_ACCESS_KEY_ID: ${{ secrets.SES_ACCESS_KEY_ID }}
+          SCOPE_SES_SECRET_ACCESS_KEY: ${{ secrets.SES_SECRET_ACCESS_KEY }}
+          SCOPE_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SCOPE_RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          SCOPE_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+          SCOPE_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SCOPE_STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          SCOPE_STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          SCOPE_RAMPSMITH_MASTER_KEYS: ${{ secrets.RAMPSMITH_MASTER_KEYS }}
+          SCOPE_BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          SCOPE_BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          SCOPE_BACKUP_DB_PASSWORD: ${{ secrets.BACKUP_DB_PASSWORD }}
+          SCOPE_DRILL_R2_ACCESS_KEY_ID: ${{ secrets.DRILL_R2_ACCESS_KEY_ID }}
+          SCOPE_DRILL_R2_SECRET_ACCESS_KEY: ${{ secrets.DRILL_R2_SECRET_ACCESS_KEY }}
+          SCOPE_BACKUP_DRILL_AGE_KEY: ${{ secrets.BACKUP_DRILL_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          found=()
+          checked=0
+          while IFS= read -r var; do
+            checked=$((checked + 1))
+            [ -z "${!var}" ] || found+=("${var#SCOPE_}")
+          done < <(compgen -e | grep '^SCOPE_' | sort)
+          if [ "$checked" -lt 20 ]; then
+            echo "::error title=secrets-scope::only $checked names were checked; the list in this job is broken"
+            exit 1
+          fi
+          if [ "${#found[@]}" -gt 0 ]; then
+            echo "::error title=secrets-scope::${found[*]} exists as a repository or organization secret. Delete it there. Founder secrets are Railway variables, or secrets of the staging, production or backup-drill GitHub environment (docs/FOUNDER_SETUP.md section 0)."
+            exit 1
+          fi
+          echo "No repository or organization secret among the $checked founder secret names."

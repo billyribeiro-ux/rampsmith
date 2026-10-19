@@ -1,6 +1,11 @@
 //! The founder inputs `rsctl doctor` may read: every variable in LAUNCH.md section C, rows 1
-//! to 12, and nothing else (ADR-151). A probe asks for a [`Var`], never a string, and the test
-//! suite records every read to prove each probe stays inside its declared set.
+//! to 12 and row 16, and nothing else (ADR-151, ADR-093). A probe asks for a [`Var`], never a
+//! string, and the test suite records every read to prove each probe stays inside its declared
+//! set.
+//!
+//! [`founder_secret_names`] is the one list of founder secret names. The `secrets-scope` job of
+//! `.github/workflows/ci.yml` checks that none of them exists as a repository or organization
+//! secret, and a test (`tests/secret_placement.rs`) keeps the job's list equal to this one.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -58,6 +63,14 @@ pub enum Var {
     StripeWebhookSecret,
     // Row 12: master keys.
     RampsmithMasterKeys,
+    // Row 16: the nightly backup service and the weekly restore drill (ADR-090 to ADR-093).
+    BackupR2AccessKeyId,
+    BackupR2SecretAccessKey,
+    BackupDbPassword,
+    BackupAgeRecipients,
+    DrillR2AccessKeyId,
+    DrillR2SecretAccessKey,
+    BackupDrillAgeKey,
 }
 
 impl Var {
@@ -99,6 +112,13 @@ impl Var {
         Self::StripePublishableKey,
         Self::StripeWebhookSecret,
         Self::RampsmithMasterKeys,
+        Self::BackupR2AccessKeyId,
+        Self::BackupR2SecretAccessKey,
+        Self::BackupDbPassword,
+        Self::BackupAgeRecipients,
+        Self::DrillR2AccessKeyId,
+        Self::DrillR2SecretAccessKey,
+        Self::BackupDrillAgeKey,
     ];
 
     /// The variable's name.
@@ -141,6 +161,13 @@ impl Var {
             Self::StripePublishableKey => "STRIPE_PUBLISHABLE_KEY",
             Self::StripeWebhookSecret => "STRIPE_WEBHOOK_SECRET",
             Self::RampsmithMasterKeys => "RAMPSMITH_MASTER_KEYS",
+            Self::BackupR2AccessKeyId => "BACKUP_R2_ACCESS_KEY_ID",
+            Self::BackupR2SecretAccessKey => "BACKUP_R2_SECRET_ACCESS_KEY",
+            Self::BackupDbPassword => "BACKUP_DB_PASSWORD",
+            Self::BackupAgeRecipients => "BACKUP_AGE_RECIPIENTS",
+            Self::DrillR2AccessKeyId => "DRILL_R2_ACCESS_KEY_ID",
+            Self::DrillR2SecretAccessKey => "DRILL_R2_SECRET_ACCESS_KEY",
+            Self::BackupDrillAgeKey => "BACKUP_DRILL_AGE_KEY",
         }
     }
 
@@ -179,6 +206,13 @@ impl Var {
             Self::CloudflareApiToken => 10,
             Self::StripeSecretKey | Self::StripePublishableKey | Self::StripeWebhookSecret => 11,
             Self::RampsmithMasterKeys => 12,
+            Self::BackupR2AccessKeyId
+            | Self::BackupR2SecretAccessKey
+            | Self::BackupDbPassword
+            | Self::BackupAgeRecipients
+            | Self::DrillR2AccessKeyId
+            | Self::DrillR2SecretAccessKey
+            | Self::BackupDrillAgeKey => 16,
         }
     }
 
@@ -208,8 +242,26 @@ impl Var {
                 | Self::StripeSecretKey
                 | Self::StripeWebhookSecret
                 | Self::RampsmithMasterKeys
+                | Self::BackupR2AccessKeyId
+                | Self::BackupR2SecretAccessKey
+                | Self::BackupDbPassword
+                | Self::DrillR2AccessKeyId
+                | Self::DrillR2SecretAccessKey
+                | Self::BackupDrillAgeKey
         )
     }
+}
+
+/// The names of every founder secret, in LAUNCH.md order. None of them is ever a repository or
+/// organization secret (ADR-092): each is a Railway variable, or a secret of one GitHub
+/// environment that only `main` can deploy to.
+#[must_use]
+pub fn founder_secret_names() -> Vec<&'static str> {
+    Var::ALL
+        .iter()
+        .filter(|var| var.is_secret())
+        .map(|var| var.name())
+        .collect()
 }
 
 /// Where variables come from: the process environment, or a map in tests.
@@ -381,9 +433,37 @@ mod tests {
                     .bytes()
                     .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
             );
-            assert!((1..=12).contains(&var.row()));
+            assert!((1..=12).contains(&var.row()) || var.row() == 16);
         }
         assert_eq!(seen.len(), Var::ALL.len());
+    }
+
+    #[test]
+    fn the_founder_secret_names_are_the_secret_variables_and_only_those() {
+        let names = founder_secret_names();
+        assert_eq!(
+            names.len(),
+            Var::ALL.iter().filter(|var| var.is_secret()).count()
+        );
+        for must in [
+            "RAILWAY_TOKEN",
+            "SHOPIFY_APP_AUTOMATION_TOKEN",
+            "R2_ACCESS_KEY_ID",
+            "BACKUP_R2_SECRET_ACCESS_KEY",
+            "DRILL_R2_SECRET_ACCESS_KEY",
+            "BACKUP_DRILL_AGE_KEY",
+            "BACKUP_DB_PASSWORD",
+        ] {
+            assert!(names.contains(&must), "{must} is a founder secret");
+        }
+        // Identifiers and public keys are not secrets.
+        for public in [
+            "R2_ACCOUNT_ID",
+            "R2_BUCKET_BACKUPS",
+            "BACKUP_AGE_RECIPIENTS",
+        ] {
+            assert!(!names.contains(&public), "{public} is not a secret");
+        }
     }
 
     #[test]

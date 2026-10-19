@@ -20,6 +20,7 @@ on:
       - infra/railway/**
       - infra/collector/**
       - infra/*.Dockerfile
+      - infra/backup/**
       - crates/db/migrations/**
       - .github/workflows/release.yml
       - .github/workflows/deploy.yml
@@ -183,7 +184,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [web, api, engine, egress]
+        include: &images
+          - { service: web, dockerfile: infra/web.Dockerfile }
+          - { service: api, dockerfile: infra/api.Dockerfile }
+          - { service: engine, dockerfile: infra/engine.Dockerfile }
+          - { service: egress, dockerfile: infra/egress.Dockerfile }
+          # The nightly backup's cron service (ADR-090) keeps its image beside its scripts.
+          - { service: backup, dockerfile: infra/backup/Dockerfile }
     services:
       postgres:
         # postgres:18.6-bookworm, index digest read from Docker Hub on 2026-10-17 (ci.yml).
@@ -201,6 +208,7 @@ jobs:
           --health-retries 20
     env:
       SERVICE: ${{ matrix.service }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -208,11 +216,11 @@ jobs:
       - name: Find the Dockerfile
         id: dockerfile
         run: |
-          if [ -f "infra/$SERVICE.Dockerfile" ]; then
+          if [ -f "$DOCKERFILE" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=image $SERVICE::infra/$SERVICE.Dockerfile does not exist yet (main builder); a release on main fails until it does."
+            echo "::warning title=image $SERVICE::$DOCKERFILE does not exist yet (main builder); a release on main fails until it does."
           fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: steps.dockerfile.outputs.present == 'true'
@@ -224,7 +232,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: infra/${{ matrix.service }}.Dockerfile
+          file: ${{ matrix.dockerfile }}
           load: true
           push: false
           provenance: false
@@ -277,17 +285,18 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        service: [web, api, engine, egress]
+        include: *images
     env:
       SERVICE: ${{ matrix.service }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Require the Dockerfile
         run: |
-          if [ ! -f "infra/$SERVICE.Dockerfile" ]; then
-            echo "::error title=image $SERVICE::infra/$SERVICE.Dockerfile does not exist, so this commit cannot be released."
+          if [ ! -f "$DOCKERFILE" ]; then
+            echo "::error title=image $SERVICE::$DOCKERFILE does not exist, so this commit cannot be released."
             exit 1
           fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -304,7 +313,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: infra/${{ matrix.service }}.Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           # One plain image manifest per service; provenance is attached below as a signed
           # attestation instead of an unsigned BuildKit one.
@@ -360,7 +369,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        service: [web, api, engine, egress]
+        service: [web, api, engine, egress, backup]
     services:
       postgres:
         # postgres:18.6-bookworm, index digest read from Docker Hub on 2026-10-17 (ci.yml).
@@ -481,6 +490,7 @@ jobs:
       api: ${{ steps.read.outputs.api }}
       engine: ${{ steps.read.outputs.engine }}
       egress: ${{ steps.read.outputs.egress }}
+      backup: ${{ steps.read.outputs.backup }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -489,13 +499,13 @@ jobs:
       - name: Read the verified digests
         id: read
         run: |
-          # Exactly the four verify jobs' artifacts, each in its own directory: an extra or a
+          # Exactly the five verify jobs' artifacts, each in its own directory: an extra or a
           # missing one stops the release instead of overwriting a verified digest.
           found=$(find release -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')
-          [ "$found" = "verified-api verified-egress verified-engine verified-web " ] ||
+          [ "$found" = "verified-api verified-backup verified-egress verified-engine verified-web " ] ||
             { echo "::error::unexpected release artifacts: $found"; exit 1; }
           echo "## Release ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
-          for service in web api engine egress; do
+          for service in web api engine egress backup; do
             ref=$(cat "release/verified-$service/$service")
             [[ "$ref" =~ ^${REGISTRY}/rampsmith-${service}@sha256:[0-9a-f]{64}$ ]] ||
               { echo "::error::bad image reference for $service"; exit 1; }
@@ -517,6 +527,7 @@ jobs:
       api-image: ${{ needs.manifest.outputs.api }}
       engine-image: ${{ needs.manifest.outputs.engine }}
       egress-image: ${{ needs.manifest.outputs.egress }}
+      backup-image: ${{ needs.manifest.outputs.backup }}
     # Passed by name, as GitHub requires: each exists only as a secret of the `staging`
     # environment, which takes precedence inside deploy.yml's environment jobs.
     secrets:
@@ -538,6 +549,7 @@ jobs:
       api-image: ${{ needs.manifest.outputs.api }}
       engine-image: ${{ needs.manifest.outputs.engine }}
       egress-image: ${{ needs.manifest.outputs.egress }}
+      backup-image: ${{ needs.manifest.outputs.backup }}
     secrets:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       SHOPIFY_APP_AUTOMATION_TOKEN: ${{ secrets.SHOPIFY_APP_AUTOMATION_TOKEN }}

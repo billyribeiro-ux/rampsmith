@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-IMAGE_SERVICES = ("web", "api", "ctl", "engine", "egress")
+IMAGE_SERVICES = ("web", "api", "ctl", "engine", "egress", "backup")
 REGISTRY = "ghcr.io/billyribeiro-ux"
 REPOSITORIES = {
     name: f"{REGISTRY}/rampsmith-{'api' if name == 'ctl' else name}" for name in IMAGE_SERVICES

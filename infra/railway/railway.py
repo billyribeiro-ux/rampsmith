@@ -7,7 +7,7 @@ JSON from standard output, so nothing here may print to stdout.
 Inputs come from the process environment, set by `.github/workflows/deploy.yml`:
 
 - `RAMPSMITH_IMAGE_WEB`, `RAMPSMITH_IMAGE_API`, `RAMPSMITH_IMAGE_CTL`, `RAMPSMITH_IMAGE_ENGINE`,
-  `RAMPSMITH_IMAGE_EGRESS`: images pinned by digest. `RAMPSMITH_IMAGE_CTL` defaults to the api's
+  `RAMPSMITH_IMAGE_EGRESS`, `RAMPSMITH_IMAGE_BACKUP`: images pinned by digest. `RAMPSMITH_IMAGE_CTL` defaults to the api's
   image when it is unset; set but empty, ctl declares no source. A service without an image
   declares no source, and Railway CLI 5.70.0 plans that as removing the source of a service
   that has one, so deploy.yml always passes every service's image: the new release's or, in
@@ -51,6 +51,7 @@ IMAGE_REPOSITORIES = {
     "ctl": f"{REGISTRY}/rampsmith-api",  # same image, different start command
     "engine": f"{REGISTRY}/rampsmith-engine",
     "egress": f"{REGISTRY}/rampsmith-egress",
+    "backup": f"{REGISTRY}/rampsmith-backup",
 }
 IMAGE_INPUTS = {name: f"RAMPSMITH_IMAGE_{name.upper()}" for name in IMAGE_REPOSITORIES}
 # The upstream collector, pinned by its index digest (ADR-184). Updated by hand: renovate.json
@@ -90,7 +91,16 @@ PUBLIC = (
     ("web", "RAMPSMITH_SITE_HOST", PORTS["web"]),
     ("api", "RAMPSMITH_WEBHOOK_HOST", API_WEBHOOK_PORT),
 )
-SERVICES = ("web", "api", "ctl", "engine", "egress", "collector", "postgres")
+SERVICES = ("web", "api", "ctl", "engine", "egress", "collector", "backup", "postgres")
+
+# The nightly logical backup is a cron service inside the project (ADR-090): Railway starts the
+# image's entrypoint on this schedule (UTC, at least five minutes apart), and the process exits
+# when the backup is done. It has no port, health check or domain, and no preview copy: a pull
+# request's environment holds throwaway data and must not hold the backup credentials.
+BACKUP_CRON = "17 2 * * *"
+BACKUP_DB_LOGIN = "rampsmith_backup"
+# A failed run is retried twice (a network blip), then stays failed for the next night.
+BACKUP_RESTART_RETRIES = 2
 
 MIGRATIONS = "/usr/local/share/rampsmith/migrations"
 # Railway runs a Docker image's start and pre-deploy commands in exec form, so anything that
@@ -111,7 +121,15 @@ START_COMMANDS = {
 }
 
 # How long a replaced deployment keeps running: workers finish the job in flight.
-DRAINING_SECONDS = {"web": 30, "api": 30, "ctl": 120, "engine": 180, "egress": 60, "collector": 30}
+DRAINING_SECONDS = {
+    "web": 30,
+    "api": 30,
+    "ctl": 120,
+    "engine": 180,
+    "egress": 60,
+    "collector": 30,
+    "backup": 60,
+}
 
 # Database logins, one per service, created by bootstrap.sql (ADR-183). Passwords are
 # generated hex strings, so they need no escaping inside a URL.
@@ -218,6 +236,10 @@ def _deploy(name: str) -> dict[str, Any]:
 
 def _source(name: str, env: str, inputs: Inputs) -> dict[str, Any]:
     """The source and build settings of one service in one environment."""
+    if name == "backup":
+        # Only staging and production declare it (main), and only from a pinned image.
+        reference = inputs.images.get(name)
+        return {"source": image(reference)} if reference else {}
     if name == "collector":
         return {"source": image(COLLECTOR_IMAGE)}
     image_name = "api" if name == "ctl" else name
@@ -437,6 +459,41 @@ def _collector(env: str, inputs: Inputs) -> Any:
     )
 
 
+def _backup(env: str, inputs: Inputs) -> Any:
+    """The nightly backup (ADR-090): cron, private network, its own R2 token (ADR-091).
+
+    It holds exactly what it uses and nothing else: no Railway token, no SSH key, no master key,
+    no engine R2 token, no telemetry token. `BACKUP_R2_*` and `BACKUP_DB_PASSWORD` are read by no
+    other service and by no repository workflow. Unset inputs make the entrypoint warn and exit 0
+    (infra/backup/entrypoint.sh), so an unconfigured service never looks like a crashing one.
+    """
+    variables = {
+        "BACKUP_ENVIRONMENT": env,
+        "BACKUP_DB_HOST": ref("postgres", "RAILWAY_PRIVATE_DOMAIN"),
+        "BACKUP_DB_PORT": "5432",
+        "BACKUP_DB_NAME": ref("postgres", "PGDATABASE"),
+        "BACKUP_DB_USER": BACKUP_DB_LOGIN,
+        "BACKUP_DB_PASSWORD": shared("BACKUP_DB_PASSWORD"),
+        # Public keys only; the private halves stay offline (ADR-173).
+        "BACKUP_AGE_RECIPIENTS": shared("BACKUP_AGE_RECIPIENTS"),
+        "R2_ACCOUNT_ID": shared("R2_ACCOUNT_ID"),
+        "R2_BUCKET_BACKUPS": shared("R2_BUCKET_BACKUPS"),
+        "BACKUP_R2_ACCESS_KEY_ID": shared("BACKUP_R2_ACCESS_KEY_ID"),
+        "BACKUP_R2_SECRET_ACCESS_KEY": shared("BACKUP_R2_SECRET_ACCESS_KEY"),
+    }
+    return service(
+        "backup",
+        **_source("backup", env, inputs),
+        deploy={
+            **_deploy("backup"),
+            "restartPolicyMaxRetries": BACKUP_RESTART_RETRIES,
+            "cronSchedule": BACKUP_CRON,
+        },
+        replicas={REGION: 1},
+        env=variables,
+    )
+
+
 def main(ctx: Any = None) -> Any:
     env = _environment(ctx)
     inputs = Inputs(os.environ)
@@ -451,4 +508,6 @@ def main(ctx: Any = None) -> Any:
         _api(env, inputs),
         _web(env, inputs),
     ]
+    if env != PREVIEW:
+        resources.append(_backup(env, inputs))
     return project(PROJECT, resources=resources)
