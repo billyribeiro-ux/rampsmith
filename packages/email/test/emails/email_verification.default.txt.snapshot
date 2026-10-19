@@ -1,0 +1,22 @@
+Rampsmith
+
+Confirm your email address
+==========================
+
+Confirm that this address is yours to finish setting up your Rampsmith
+account.
+
+Confirm email address:
+https://app.rampsmith.example/account/verify?token=TESTONLYver1a2b3c4d5e6f7a8b9c0dd
+
+The link works once and expires in 60 minutes.
+
+If you did not create a Rampsmith account, ignore this email. The address
+stays unconfirmed.
+
+____________________________________________________________________________
+
+You received this email because this address was used to create a Rampsmith
+account.
+
+Questions? Write to support@rampsmith.example.
