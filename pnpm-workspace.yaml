@@ -7,6 +7,15 @@ saveExact: true
 engineStrict: true
 strictPeerDependencies: true
 
+# A version is installed only after it has been on the registry for a day (PLAN §18, audit L15,
+# ADR-056). The unit is minutes. pnpm 12.14.0 already defaults to 1440, but quietly falls back
+# to a younger version when nothing in a range is old enough; setting the value ourselves turns
+# the strict mode on, so resolution fails instead (`minimumReleaseAgeStrict` is spelled out for
+# the reader). In an emergency, name the exact version under `minimumReleaseAgeExclude` and
+# record why in an ADR.
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+
 # openapi-typescript 7.13.0 declares `typescript: ^5.x`; it runs on 6.0.3, proven by the
 # contract-drift check typechecking its output under the strict config (ADR-020).
 peerDependencyRules:

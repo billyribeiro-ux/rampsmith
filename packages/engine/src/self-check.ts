@@ -5,7 +5,7 @@
  * it. CI runs it inside the engine image; it opens no network connection.
  */
 import process from 'node:process';
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.ts';
 import { scanPage } from './scan-page.ts';
 import { userAgent } from './user-agent.ts';
 
@@ -16,12 +16,8 @@ const PAGE = [
   '</main></body></html>',
 ].join('');
 
-const browser = await chromium.launch({
-  chromiumSandbox: true,
-  ...(process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'] === undefined
-    ? {}
-    : { executablePath: process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'] }),
-});
+const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'];
+const browser = await launchBrowser(executablePath === undefined ? {} : { executablePath });
 try {
   const scan = await scanPage(browser, {
     url: `data:text/html,${encodeURIComponent(PAGE)}`,

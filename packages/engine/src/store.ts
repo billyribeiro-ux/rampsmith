@@ -9,6 +9,7 @@
 import { uuidv7 } from '@rampsmith/queue';
 import type postgres from 'postgres';
 import { fingerprint } from './fingerprint.ts';
+import { scrubExcerpt, scrubSelector, scrubUrl } from './scrub.ts';
 import type { Impact, Occurrence, PageScan } from './scan-page.ts';
 
 export interface PageContext {
@@ -58,8 +59,16 @@ export function recordPage(
       returning id`;
     if (page.length === 0) return { recorded: false, findings: 0, occurrences: 0 };
 
+    // Everything below is written from scrubbed text (PLAN §19, audit L10): the fingerprint is
+    // taken over the scrubbed selector, so attribute values never reach a stored hash either.
+    const pageUrl = scrubUrl(scan.finalUrl);
     const groups = new Map<string, { print: Uint8Array; items: Occurrence[] }>();
-    for (const o of scan.violations) {
+    for (const violation of scan.violations) {
+      const o: Occurrence = {
+        ...violation,
+        target: scrubSelector(violation.target),
+        html: scrubExcerpt(violation.html),
+      };
       const print = fingerprint(o.ruleId, o.target, o.section ?? '');
       const key = Buffer.from(print).toString('hex');
       const group = groups.get(key) ?? { print, items: [] };
@@ -93,7 +102,7 @@ export function recordPage(
         await tx`
           insert into finding_occurrences
             (finding_id, scan_id, tenant_id, page_url, page_state, target, html_excerpt, captured_at)
-          values (${finding.id}, ${ctx.scanId}, ${ctx.tenantId}, ${scan.finalUrl}, 'default',
+          values (${finding.id}, ${ctx.scanId}, ${ctx.tenantId}, ${pageUrl}, 'default',
                   ${o.target}, ${o.html}, ${capturedAt})`;
         occurrences += 1;
       }

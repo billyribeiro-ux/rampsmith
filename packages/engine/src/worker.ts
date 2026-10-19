@@ -19,8 +19,6 @@ export interface EngineDeps {
   readonly egress: {
     readonly proxyUrl: string;
     readonly tokenSecret: string;
-    /** Tests only: route loopback through egress too. */
-    readonly loopback?: boolean;
   };
   readonly userAgent: string;
   /** Connections one page load may open through egress. */
@@ -102,11 +100,7 @@ export function scanPageHandler(deps: EngineDeps) {
       result = await scan(deps.browser, {
         url: target.href,
         userAgent: deps.userAgent,
-        proxy: {
-          server: deps.egress.proxyUrl,
-          token,
-          ...(deps.egress.loopback === true ? { loopback: true } : {}),
-        },
+        proxy: { server: deps.egress.proxyUrl, token },
       });
     } catch (error) {
       throw new JobFailure('retryable', {
