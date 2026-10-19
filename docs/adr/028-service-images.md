@@ -63,5 +63,6 @@ WebKit on Ubuntu 24.04.5; its Dockerfile at v1.64.1 installs Node from NodeSourc
 
 - `pnpm deploy` for engine and web: it copies workspace packages into `node_modules`, where
   Node refuses to strip their TypeScript.
-- Installing Chromium on a Node slim image with `playwright install --with-deps`: PLAN §22 pins
-  Microsoft's image so the browser and its libraries come from one tested build.
+- Installing Chromium on a Node slim image with `playwright install --with-deps`: Microsoft's
+  image keeps the browser and its libraries as one tested build, and copying Node's binary from
+  the pinned official image keeps Node exact (ADR-029, amendment of 19 Oct 2026).

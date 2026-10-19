@@ -50,8 +50,8 @@ Node.js 26 LTS is the runtime for `web`, `engine` and all repository tooling.
 | `.mise.toml` | `node = "<26.x LTS version>"` |
 | Every `package.json` | `"engines": { "node": ">=<26.x LTS version> <27" }` |
 | `pnpm-workspace.yaml` | `engineStrict: true`. Without it, pnpm 12.14.0 installs on a wrong Node without an error. |
-| `web` and `engine` images | `FROM node:<26.x LTS version>-trixie-slim@sha256:<digest>` |
-| Chromium for `engine` | `pnpm exec playwright install --with-deps chromium` during the image build |
+| `web` image | `FROM node:<26.x LTS version>-trixie-slim@sha256:<digest>` |
+| `engine` image | Node's binary copied from `node:<26.x LTS version>-trixie-slim@sha256:<digest>` onto Microsoft's Playwright image pinned by digest (ADR-028; amendment of 19 Oct 2026 below) |
 | CI | mise installs Node from `.mise.toml`; each job logs `node --version` and `process.release.lts` |
 | Type definitions | `@types/node` on 26.x (26.6.5 on 17 Oct 2026) |
 | Cloud sessions | `npm i -g node@<version>` (`docs/ENVIRONMENT.md`), or the ADR-014 route with `node-linux-x64@<version>` |
@@ -65,9 +65,10 @@ image digests the same way. Changing the major line needs the founder.
 - One Node line from the R0 bootstrap through launch and about two years of production.
 - R0 and later releases may merge on 26.12.0; the move to the LTS pin is a follow-up change
   under the full gate once the LTS release exists, and it must land before anything deploys.
-- `web` and `engine` share one base image, so one digest update patches both.
-- The `engine` image installs its browser libraries from Playwright's Debian 13 list instead of
-  inheriting Microsoft's Playwright image.
+- `web` and `engine` take Node from one official image, so one digest update moves both to the
+  same Node build.
+- The `engine` image takes Chromium and its libraries from Microsoft's Playwright image
+  (ADR-028), and only Node's binary from the official image (amendment of 19 Oct 2026).
 
 ## Rejected alternatives
 
@@ -75,7 +76,9 @@ image digests the same way. Changing the major line needs the founder.
   13 months after the planned launch.
 - Releasing on 26.12.0: a Current release; the LTS release, due 28 October 2026, carries the
   same code.
-- Microsoft's Playwright image for `engine`: its Node version floats.
+- Microsoft's Playwright image for `engine` with its own Node: that Node version floats. Using
+  the image with Node's binary copied from the pinned official image is accepted instead
+  (amendment of 19 Oct 2026).
 - A `-slim` tag without the Debian name: the image maintainers choose which Debian release it
   means (for 24.x it is Debian 12); `trixie-slim` makes the base an explicit choice.
 
@@ -100,3 +103,25 @@ it stays rejected for deploying.
   `engineStrict: true`; every `FROM node:` line on `node:<pin>-trixie-slim@sha256:<digest>`; no
   `actions/setup-node` or `node-version`; and every workflow job that installs Node logs
   `node --version` and `process.release.lts` and fails when the version differs from the pin.
+
+## Amendment (19 Oct 2026): the engine image
+
+The R0 branch built the `engine` image under ADR-028, not on `trixie-slim` with
+`playwright install --with-deps` as the table above first said. The R0 release verifier found
+the two records disagreeing, and the built image is the one CI proves
+([run 39273064507](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39273064507),
+`images (engine)`: the smoke test asserts `"node":"v26.12.0"` and scans a page with the
+Chromium sandbox on). So this record follows ADR-028:
+
+- `engine` runs on `mcr.microsoft.com/playwright:v1.64.1-noble` pinned by digest, with the base's
+  own Node 24 removed and Node 26's binary copied from the same
+  `node:<pin>-trixie-slim@sha256:<digest>` image that `web` uses. Node no longer floats: its
+  version and build come from the official image named in the pin, which `check:node-pins`
+  already checks on every `FROM node:` line.
+- Chromium and its system libraries come from Microsoft's tested image instead of Playwright's
+  Debian 13 dependency list, so the browser and its libraries are one build.
+- The rejection of Microsoft's image above applies to its own NodeSource Node, which the image
+  build deletes.
+- The LTS follow-up changes the same `FROM node:` digest for both images; nothing else about the
+  engine's Node changes.
+

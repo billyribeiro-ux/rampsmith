@@ -174,7 +174,7 @@ Each ADR is written to `docs/adr/` as its own file before the code it governs; A
 | 010 | Railway first, with a measured move of browser workers to dedicated hardware | Usage billing keeps idle cost near zero; you already deploy there; native PostgreSQL PITR | Kubernetes on day one: operations cost with no customer to justify it |
 | 011 | Claude Haiku 5.5 by default, escalate to Sonnet 5.5, Opus 5.5 for offline patch synthesis only | Cost per task ordered by difficulty (section 13) | One model for everything |
 | 012 | No Redis in R0 to R2 | Rate limits and caches fit in Postgres and in-process; one less stateful service | Redis "just in case" |
-| 029 | Node.js 26 LTS for `web`, `engine` and all tooling, on one `trixie-slim` base image | Founder decision: Active LTS at launch and supported until 30 April 2029; one runtime everywhere, pinned exactly | Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028, 13 months after launch; Microsoft's Playwright image for `engine`: its Node version floats |
+| 029 | Node.js 26 LTS for `web`, `engine` and all tooling, Node always from the pinned official `trixie-slim` image (`engine` copies its binary onto Microsoft's Playwright image, ADR-028) | Founder decision: Active LTS at launch and supported until 30 April 2029; one runtime everywhere, pinned exactly | Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028, 13 months after launch; Microsoft's Playwright image with its own NodeSource Node: that version floats |
 
 ### How the parts connect
 
@@ -1206,9 +1206,9 @@ Everything runs on Railway in a US region at launch, as immutable images tagged 
 | Service | Image | Notes |
 | --- | --- | --- |
 | `web` | `node:<26 LTS version>-trixie-slim` pinned by digest, multi-stage build, `adapter-node` | Health check on `/healthz` |
-| `api` | Rust release binary on a distroless base | `/healthz` for liveness; `/readyz` checks the database and the migration version |
+| `api` | Rust release binary on `debian:trixie-slim` pinned by digest, with Debian security updates applied at build (it links the system OpenSSL for `webauthn-rs-core`; ADR-020, ADR-028) | `/healthz` for liveness; `/readyz` checks the database and the migration version |
 | `ctl` | Same image as `api`, different command | Scheduler leadership through the advisory lock |
-| `engine` | The same Node 26 LTS `trixie-slim` image, pinned by digest; Chromium and its system libraries from `playwright install --with-deps chromium`, which supports Debian 13 in Playwright 1.64.1 | Non-root, seccomp profile, Chromium sandbox on |
+| `engine` | Microsoft's Playwright 1.64.1 image pinned by digest, with its own Node removed and Node 26's binary copied from the pinned `node:<26 LTS version>-trixie-slim` image (ADR-028, ADR-029 amendment of 19 Oct 2026) | Non-root, seccomp profile, Chromium sandbox on |
 | `egress` | Rust release binary | The request-forgery guard; reachable only by `engine` on the private network |
 | PostgreSQL 18 | Railway PostgreSQL with PITR enabled | Direct connections for `LISTEN`; a connection pool per service |
 
