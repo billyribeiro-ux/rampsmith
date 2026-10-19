@@ -338,21 +338,36 @@ pub async fn delete_session(tx: &mut IdentityTx, token_hash: &[u8; 32]) -> Resul
     Ok(done.rows_affected() > 0)
 }
 
-/// Deletes expired sessions and ceremonies; returns how many rows went.
-pub async fn sweep(tx: &mut IdentityTx, now: OffsetDateTime) -> Result<u64, DbError> {
-    let sessions = sqlx::query!(
-        "delete from web_sessions where idle_expires_at <= $1 or absolute_expires_at <= $1",
-        now
+/// Ends every session of `user` and returns how many there were. A sign-in calls this before it
+/// creates its own session, so a session someone else holds does not outlive the person's next
+/// sign-in (audit L8, ADR-046).
+///
+/// The user's row is locked first. Two sign-ins at once then take turns: the second waits for
+/// the first to commit and deletes the session it created, so exactly one session is left. A
+/// single `delete` could not do this, because under `READ COMMITTED` its snapshot is taken
+/// before the lock wait ends and would not see the first sign-in's new row.
+pub async fn delete_sessions_of(tx: &mut IdentityTx, user: UserId) -> Result<u64, DbError> {
+    sqlx::query_scalar!(
+        "select id from users where id = $1 for update",
+        user.as_uuid()
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    let done = sqlx::query!(
+        "delete from web_sessions where user_id = $1",
+        user.as_uuid()
     )
     .execute(tx.conn())
-    .await?
-    .rows_affected();
-    let ceremonies = sqlx::query!(
-        "delete from webauthn_ceremonies where expires_at <= $1",
-        now
-    )
-    .execute(tx.conn())
-    .await?
-    .rows_affected();
-    Ok(sessions + ceremonies)
+    .await?;
+    Ok(done.rows_affected())
+}
+
+/// Deletes expired sessions and ceremonies by the database's clock; returns how many rows
+/// went. It calls `identity_sweep()` (migration 20261101000001), which only the worker role
+/// may execute: the worker has no grants on the identity tables themselves (ADR-042).
+pub async fn sweep(tx: &mut IdentityTx) -> Result<u64, DbError> {
+    let swept = sqlx::query_scalar!(r#"select identity_sweep() as "swept!""#)
+        .fetch_one(tx.conn())
+        .await?;
+    Ok(u64::try_from(swept).unwrap_or(0))
 }

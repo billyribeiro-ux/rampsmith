@@ -13,6 +13,12 @@ use crate::Refusal;
 
 const CONTEXT: &[u8] = b"rampsmith-egress-v1.";
 
+/// The furthest ahead of "now" a token's `exp` may be, in seconds (audit L14). The engine
+/// signs tokens that live two minutes (ADR-025); anything much longer is not from it, and a
+/// leaked token with a distant expiry would stay useful for as long as the signing secret
+/// does. Five minutes leaves room for clock drift between the engine and egress.
+pub const MAX_TOKEN_AHEAD_SECS: i64 = 300;
+
 /// What a token grants.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +93,9 @@ impl TokenKey {
         Ok(format!("{body}.{tag}"))
     }
 
-    /// Verifies a token's signature in constant time, then its version and expiry.
+    /// Verifies a token's signature in constant time, then its version and expiry. A token is
+    /// refused once `now` reaches `exp`, and also when `exp` is more than
+    /// [`MAX_TOKEN_AHEAD_SECS`] ahead of `now`.
     pub fn verify(&self, token: &str, now: i64) -> Result<ScanToken, Refusal> {
         let (body, tag) = token.split_once('.').ok_or(Refusal::BadToken)?;
         let tag = URL_SAFE_NO_PAD.decode(tag).map_err(|_| Refusal::BadToken)?;
@@ -98,7 +106,8 @@ impl TokenKey {
             .decode(body)
             .map_err(|_| Refusal::BadToken)?;
         let token: ScanToken = serde_json::from_slice(&json).map_err(|_| Refusal::BadToken)?;
-        if token.v != 1 || now >= token.exp {
+        if token.v != 1 || now >= token.exp || token.exp > now.saturating_add(MAX_TOKEN_AHEAD_SECS)
+        {
             return Err(Refusal::BadToken);
         }
         Ok(token)

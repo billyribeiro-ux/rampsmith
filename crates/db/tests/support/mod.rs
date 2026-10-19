@@ -27,6 +27,66 @@ pub async fn app_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
     .expect("connect as rampsmith_app")
 }
 
+/// A pool connected as `rampsmith_worker`.
+pub async fn worker_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
+    opts.after_connect(|c, _| {
+        Box::pin(async move {
+            c.execute("set role rampsmith_worker").await?;
+            Ok(())
+        })
+    })
+    .connect_with(conn)
+    .await
+    .expect("connect as rampsmith_worker")
+}
+
+/// Password of the throw-away `LOGIN` roles the tests create. They exist only on the test
+/// cluster, and every test removes the ones it made.
+pub const TEST_ROLE_PASSWORD: &str = "rampsmith-test-only";
+
+/// Creates the `LOGIN` role `name` with `attributes` (for example `in role rampsmith_app`),
+/// replacing a leftover of an earlier run that died before cleaning up. Names are unique per
+/// test, because roles are cluster-wide and tests run in parallel.
+pub async fn create_login_role(owner: &PgPool, name: &str, attributes: &str) {
+    drop_role(owner, name).await;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "create role {name} login password '{TEST_ROLE_PASSWORD}' {attributes}"
+    )))
+    .execute(owner)
+    .await
+    .expect("create the login role");
+}
+
+/// Removes `name` and anything it owns in this database. Does nothing if it does not exist.
+pub async fn drop_role(owner: &PgPool, name: &str) {
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "do $$ begin
+           if exists (select 1 from pg_roles where rolname = '{name}') then
+             reassign owned by {name} to current_user;
+             drop owned by {name};
+             drop role {name};
+           end if;
+         end $$"
+    )))
+    .execute(owner)
+    .await
+    .expect("drop the login role");
+}
+
+/// Connect options for `name`, which [`create_login_role`] made, to the same database.
+pub fn as_role(conn: &PgConnectOptions, name: &str) -> PgConnectOptions {
+    conn.clone().username(name).password(TEST_ROLE_PASSWORD)
+}
+
+/// A one-connection pool logged in as `name`.
+pub async fn pool_as(opts: &PgPoolOptions, conn: &PgConnectOptions, name: &str) -> PgPool {
+    opts.clone()
+        .max_connections(2)
+        .connect_with(as_role(conn, name))
+        .await
+        .expect("connect as the login role")
+}
+
 /// A superuser pool, for assertions that must see past row-level security.
 pub async fn owner_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
     opts.connect_with(conn).await.expect("connect as owner")
@@ -154,9 +214,10 @@ pub async fn seed_shop(tx: &mut db::TenantTx, site: domain::SiteId, label: u8) -
     )
     .await
     .unwrap();
-    db::repo::shopify::put_tokens(tx, shop.id, &sealed_tokens(label))
+    let version = db::repo::shopify::put_tokens(tx, shop.id, None, &sealed_tokens(label))
         .await
         .unwrap();
+    assert_eq!(version, Some(0), "a new shop has no tokens to be stale");
     shop.id
 }
 

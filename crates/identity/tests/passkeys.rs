@@ -150,11 +150,17 @@ async fn register_then_sign_in_with_the_same_passkey(opts: PgPoolOptions, conn: 
         .unwrap();
     assert!(used.is_some());
 
-    // Both sessions resolve to the user until signed out.
-    for session in [&registered, &signed_in] {
-        let user = id.session(&session.token, now()).await.unwrap().unwrap();
-        assert_eq!(user.id, registered.user.id);
-    }
+    // Signing in ended the earlier session (audit L8, ADR-046); the new one resolves to the
+    // user until it is signed out.
+    assert!(
+        id.session(&registered.token, now())
+            .await
+            .unwrap()
+            .is_none(),
+        "the session from before the sign-in still works"
+    );
+    let user = id.session(&signed_in.token, now()).await.unwrap().unwrap();
+    assert_eq!(user.id, registered.user.id);
     assert!(id.sign_out(&signed_in.token).await.unwrap());
     assert!(id.session(&signed_in.token, now()).await.unwrap().is_none());
     assert!(!id.sign_out(&signed_in.token).await.unwrap());
@@ -293,6 +299,65 @@ async fn a_passkey_cannot_sign_in_as_someone_else(opts: PgPoolOptions, conn: PgC
         .await
         .unwrap_err();
     assert!(matches!(err, IdentityError::Rejected), "{err:?}");
+}
+
+/// Audit L8: a sign-in ends the user's earlier sessions, only the user's, and only when it
+/// succeeds.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn signing_in_ends_that_users_earlier_sessions_and_nobody_elses(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (id, owner) = identity(opts, conn).await;
+    let mut ada_key = authenticator();
+    let mut bob_key = authenticator();
+    let (ada_first, ada_credential) = register(&id, &mut ada_key, "ada@example.com").await;
+    let (bob, _) = register(&id, &mut bob_key, "bob@example.com").await;
+    let ada_user = *ada_first.user.id.as_uuid().as_bytes();
+
+    // A sign-in that fails verification ends nothing: Bob's handle with Ada's key.
+    let (ceremony, options) = id.start_sign_in(now()).await.unwrap();
+    let forged = sign_in_as(
+        &mut ada_key,
+        options,
+        &ada_credential,
+        *bob.user.id.as_uuid().as_bytes(),
+    );
+    assert!(id.finish_sign_in(ceremony, &forged, now()).await.is_err());
+    for session in [&ada_first, &bob] {
+        assert!(id.session(&session.token, now()).await.unwrap().is_some());
+    }
+
+    // Ada signs in twice more: only the newest of her sessions works, Bob's is untouched, and
+    // the table holds one session each.
+    let mut earlier = vec![ada_first];
+    let mut latest = None;
+    for _ in 0..2 {
+        let (ceremony, options) = id.start_sign_in(now()).await.unwrap();
+        let assertion = sign_in_as(&mut ada_key, options, &ada_credential, ada_user);
+        let session = id
+            .finish_sign_in(ceremony, &assertion, now())
+            .await
+            .unwrap();
+        earlier.extend(latest.replace(session));
+    }
+    let latest = latest.unwrap();
+    for old in &earlier {
+        assert!(
+            id.session(&old.token, now()).await.unwrap().is_none(),
+            "an earlier session survived a later sign-in"
+        );
+    }
+    assert!(id.session(&latest.token, now()).await.unwrap().is_some());
+    assert!(id.session(&bob.token, now()).await.unwrap().is_some());
+    let per_user: Vec<(String, i64)> = sqlx::query_as(
+        "select user_id::text, count(*) from web_sessions group by user_id order by 1",
+    )
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    assert_eq!(per_user.len(), 2);
+    assert!(per_user.iter().all(|(_, n)| *n == 1), "{per_user:?}");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

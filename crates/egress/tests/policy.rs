@@ -99,6 +99,53 @@ fn non_public_ipv6_ranges_are_refused() {
     }
 }
 
+/// Audit L1: IPv6 is allowed only inside the global unicast block `2000::/3`, minus the
+/// special-purpose ranges in it. Forms that used to slip through a deny list are refused.
+#[test]
+fn ipv6_outside_global_unicast_is_refused() {
+    let policy = AddressPolicy::default();
+    for addr in [
+        "::7f00:1",         // IPv4-compatible 127.0.0.1 (::/96, deprecated)
+        "::a9fe:a9fe",      // IPv4-compatible 169.254.169.254, the cloud metadata address
+        "::808:808",        // IPv4-compatible 8.8.8.8: no form of ::/96 is public
+        "::ffff:0:7f00:1",  // IPv4-translated 127.0.0.1 (::ffff:0:0:0/96, SIIT)
+        "::ffff:0:808:808", // IPv4-translated 8.8.8.8
+        "3fff::1",          // documentation, RFC 9637 (3fff::/20)
+        "3fff:fff:ffff::1", // the last address of 3fff::/20
+        "5f00::1",          // SRv6 SIDs, RFC 9602 (5f00::/16)
+        "1fff:ffff::1",     // just below 2000::/3
+        "4000::1",          // just above it
+        "8000::1",
+        "e000::1",
+        "64:ff9b:1::808:808", // local-use NAT64, RFC 8215: not the well-known prefix
+    ] {
+        assert!(
+            matches!(policy.check(ip(addr)), Err(Refusal::NonPublicAddress(_))),
+            "{addr}"
+        );
+    }
+    // The edges of the block, and the neighbours of 3fff::/20, stay reachable.
+    for addr in [
+        "2000::1",
+        "2a00:1450:4001:81b::200e",
+        "2606:4700:4700::1111",
+        "3ffe:ffff::1",
+        "3fff:1000::1", // first address after 3fff::/20
+        "3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    ] {
+        assert!(policy.check(ip(addr)).is_ok(), "{addr}");
+    }
+}
+
+/// The exceptions still reach the ranges the policy refuses by default, for test and staging
+/// networks, and only those.
+#[test]
+fn exceptions_open_ipv6_ranges_outside_global_unicast_too() {
+    let policy = AddressPolicy::default().allowing(&["::1/128".parse().unwrap()]);
+    assert!(policy.check(ip("::1")).is_ok());
+    assert!(policy.check(ip("::7f00:1")).is_err());
+}
+
 #[test]
 fn embedded_ipv4_addresses_are_checked_too() {
     let policy = AddressPolicy::default();
@@ -153,5 +200,25 @@ proptest! {
     fn every_unique_local_ipv6_address_is_refused(bits in any::<u128>()) {
         let ula = Ipv6Addr::from((bits & !(0x7f_u128 << 121)) | (0xfc_u128 << 120));
         prop_assert!(AddressPolicy::default().check(IpAddr::V6(ula)).is_err(), "{}", ula);
+    }
+
+    /// Whatever the bits, an IPv6 address outside 2000::/3 is refused unless it is one of the
+    /// two forms that stand for an IPv4 address (mapped, or the well-known NAT64 prefix),
+    /// which are judged by that address instead.
+    #[test]
+    fn every_ipv6_address_outside_global_unicast_is_refused(bits in any::<u128>()) {
+        prop_assume!(bits >> 125 != 0b001);
+        let mapped = bits >> 32 == 0xffff;
+        let nat64 = bits >> 32 == 0x0064_ff9b_u128 << 64;
+        prop_assume!(!mapped && !nat64);
+        let addr = Ipv6Addr::from(bits);
+        prop_assert!(AddressPolicy::default().check(IpAddr::V6(addr)).is_err(), "{}", addr);
+    }
+
+    /// The same, for the 3fff::/20 documentation block inside global unicast.
+    #[test]
+    fn every_documentation_ipv6_address_in_3fff_is_refused(low in 0u128..(1 << 108)) {
+        let addr = Ipv6Addr::from((0x3fff_u128 << 112) | low);
+        prop_assert!(AddressPolicy::default().check(IpAddr::V6(addr)).is_err(), "{}", addr);
     }
 }

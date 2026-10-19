@@ -22,6 +22,9 @@ pub enum DbError {
     /// Any other database failure.
     #[error("database error: {0}")]
     Sqlx(sqlx::Error),
+    /// Another process held a lock for longer than the lock timeout.
+    #[error("timed out waiting for a lock")]
+    LockTimeout,
     /// The job protocol refused the operation.
     #[error("queue error: {0}")]
     Queue(String),

@@ -9,6 +9,7 @@ use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderName, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
+use db::DbError;
 use http_kit::{ApiError, ProblemCode};
 use serde::Serialize;
 use shopify_auth::AuthError;
@@ -76,6 +77,16 @@ impl From<AuthError> for SessionRejection {
                 error!(%reason, "token exchange failed: check SHOPIFY_API_KEY and SHOPIFY_API_SECRET");
                 Self {
                     error: ApiError::new(ProblemCode::Internal),
+                    retry: false,
+                }
+            }
+            // Another request was still exchanging this shop's token. The embedded app
+            // retries; the wait was bounded so the connection went back to the pool (ADR-041).
+            AuthError::Database(DbError::LockTimeout) => {
+                warn!("timed out waiting for the shop's token lock");
+                Self {
+                    error: ApiError::new(ProblemCode::Unavailable)
+                        .detail("The app is still setting up this shop; try again shortly."),
                     retry: false,
                 }
             }

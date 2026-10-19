@@ -333,11 +333,15 @@ impl Identity {
         Ok(taken)
     }
 
+    /// Starts a session for `user` in `tx`, after ending all the user's earlier ones, so a
+    /// session someone else holds does not survive the person's next sign-in (audit L8,
+    /// ADR-046). Both happen in the caller's transaction: a sign-in that fails ends nothing.
     async fn create_session(
         tx: &mut db::IdentityTx,
         user: User,
         now: OffsetDateTime,
     ) -> Result<NewSession, IdentityError> {
+        repo::delete_sessions_of(tx, user.id).await?;
         let raw: [u8; 32] = rand::random();
         let token = URL_SAFE_NO_PAD.encode(raw);
         let expires_at = now + SESSION_ABSOLUTE;

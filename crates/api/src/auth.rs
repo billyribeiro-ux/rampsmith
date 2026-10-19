@@ -4,6 +4,8 @@
 //! keeps the session token in an `HttpOnly` cookie, and forwards it as
 //! `Authorization: Session <token>`. [`UserSession`] is the extractor dashboard routes use.
 
+use std::fmt;
+
 use axum::Json;
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
@@ -20,6 +22,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::rate_limit::StartAllowed;
 
 fn identity_of(state: &AppState) -> Result<&identity::Identity, ApiError> {
     state.identity.as_ref().ok_or_else(|| {
@@ -52,7 +55,7 @@ fn identity_error(e: IdentityError) -> ApiError {
 }
 
 /// A dashboard user, as the web app shows them.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 pub(crate) struct UserInfo {
     /// The user's id.
     id: Uuid,
@@ -60,6 +63,15 @@ pub(crate) struct UserInfo {
     email: String,
     /// Their display name.
     display_name: String,
+}
+
+// Written by hand so that logging a value never prints the person's email or name.
+impl fmt::Debug for UserInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserInfo")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl From<User> for UserInfo {
@@ -83,7 +95,7 @@ pub(crate) struct CeremonyStarted {
 }
 
 /// A new session. The token is shown once; store it in an `HttpOnly` cookie.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 pub(crate) struct SessionCreated {
     /// The session token.
     token: String,
@@ -93,6 +105,17 @@ pub(crate) struct SessionCreated {
     expires_at: OffsetDateTime,
     /// Who signed in.
     user: UserInfo,
+}
+
+// Written by hand: the derived `Debug` would print the plaintext session token (audit L8).
+impl fmt::Debug for SessionCreated {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionCreated")
+            .field("token", &"[redacted]")
+            .field("expires_at", &self.expires_at)
+            .field("user", &self.user)
+            .finish()
+    }
 }
 
 impl From<NewSession> for SessionCreated {
@@ -151,6 +174,7 @@ fn to_value<T: Serialize>(value: &T) -> Result<Value, ApiError> {
 )]
 pub(crate) async fn start_registration(
     State(state): State<AppState>,
+    _allowed: StartAllowed,
     Json(request): Json<RegistrationRequest>,
 ) -> Result<Json<CeremonyStarted>, ApiError> {
     let (ceremony_id, options) = identity_of(&state)?
@@ -204,6 +228,7 @@ pub(crate) async fn finish_registration(
 )]
 pub(crate) async fn start_sign_in(
     State(state): State<AppState>,
+    _allowed: StartAllowed,
 ) -> Result<Json<CeremonyStarted>, ApiError> {
     let (ceremony_id, options) = identity_of(&state)?
         .start_sign_in(OffsetDateTime::now_utc())
@@ -321,4 +346,30 @@ pub(crate) async fn delete_session(
         .await
         .map_err(identity_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Audit L8: the response type carries the plaintext session token, and a stray `{:?}` or
+    /// a `#[instrument]` on a handler must not be able to print it.
+    #[test]
+    fn debug_output_never_shows_the_session_token_or_the_person() {
+        let created = SessionCreated {
+            token: "rs_live_TOKEN_VALUE_1234567890".to_owned(),
+            expires_at: OffsetDateTime::UNIX_EPOCH,
+            user: UserInfo {
+                id: Uuid::nil(),
+                email: "ada@example.com".to_owned(),
+                display_name: "Ada Lovelace".to_owned(),
+            },
+        };
+        for text in [format!("{created:?}"), format!("{created:#?}")] {
+            assert!(text.contains("SessionCreated"), "{text}");
+            for secret in ["TOKEN_VALUE", "ada@example.com", "Ada Lovelace"] {
+                assert!(!text.contains(secret), "{secret} leaked: {text}");
+            }
+        }
+    }
 }

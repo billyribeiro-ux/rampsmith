@@ -156,29 +156,43 @@ pub struct StoredTokens {
     pub shop_id: ShopId,
     /// The sealed values.
     pub tokens: SealedTokens,
-    /// Incremented by every write; the compare-and-swap token for [`rotate`].
+    /// Incremented by every write; the compare-and-swap token for [`rotate`] and
+    /// [`put_tokens`].
     pub version: i64,
 }
 
-/// Stores a shop's tokens after token exchange, replacing any row. Returns the new version.
+/// Stores a shop's tokens after token exchange, if the row is still as the caller read it
+/// (ADR-022, ADR-044): `expected_version` is `None` when the caller found no token row, and
+/// `Some(version)` when it found one at that version.
+///
+/// `Some(new version)` on success (0 for a first row). `None` when the row is not as claimed
+/// (another writer stored or changed it, or the shop is another tenant's) and nothing changed:
+/// the caller re-reads, or fails. A `Some` claim is [`rotate`]; the `None` claim is an insert
+/// that yields to any existing row.
 pub async fn put_tokens(
     tx: &mut TenantTx,
     shop: ShopId,
+    expected_version: Option<i64>,
     tokens: &SealedTokens,
-) -> Result<i64, DbError> {
+) -> Result<Option<i64>, DbError> {
+    let Some(expected_version) = expected_version else {
+        return insert_tokens(tx, shop, tokens).await;
+    };
+    rotate(tx, shop, expected_version, tokens).await
+}
+
+/// Inserts the first token row of a shop; `None` when a row already exists.
+async fn insert_tokens(
+    tx: &mut TenantTx,
+    shop: ShopId,
+    tokens: &SealedTokens,
+) -> Result<Option<i64>, DbError> {
     let tenant = tx.tenant_uuid();
-    let version = sqlx::query_scalar!(
+    Ok(sqlx::query_scalar!(
         r#"insert into shopify_tokens
              (shop_id, tenant_id, access_ct, refresh_ct, key_id, access_expires_at, refresh_expires_at)
            values ($1, $2, $3, $4, $5, $6, $7)
-           on conflict (shop_id) do update
-              set access_ct = excluded.access_ct,
-                  refresh_ct = excluded.refresh_ct,
-                  key_id = excluded.key_id,
-                  access_expires_at = excluded.access_expires_at,
-                  refresh_expires_at = excluded.refresh_expires_at,
-                  version = shopify_tokens.version + 1
-            where shopify_tokens.tenant_id = excluded.tenant_id
+           on conflict (shop_id) do nothing
         returning version"#,
         shop.as_uuid(),
         tenant,
@@ -189,8 +203,7 @@ pub async fn put_tokens(
         tokens.refresh_expires_at,
     )
     .fetch_optional(tx.conn())
-    .await?;
-    version.ok_or(DbError::Forbidden)
+    .await?)
 }
 
 /// A shop's tokens, if any are stored.
@@ -244,6 +257,56 @@ pub async fn rotate(
     )
     .fetch_optional(tx.conn())
     .await?)
+}
+
+/// The two sealed tokens of a row, with their data keys wrapped under another master key
+/// (audit L6, ADR-045). The tokens and their expiry are the same; only the wrapping changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rewrapped {
+    /// The sealed access token, re-wrapped.
+    pub access_ct: Vec<u8>,
+    /// The sealed refresh token, re-wrapped.
+    pub refresh_ct: Vec<u8>,
+    /// The master key that wraps both data keys now.
+    pub key_id: String,
+}
+
+/// Swaps in a re-wrapped copy of a row's tokens, only if the row is still exactly as the caller
+/// read it: the same version, master key id and ciphertexts (audit L6, ADR-045). Returns whether
+/// it did. `false` means the row was rotated, re-wrapped by someone else, replaced or removed
+/// since, and nothing changed.
+///
+/// The version is not incremented, on purpose. Re-wrapping changes how the same tokens are
+/// stored, not which tokens they are. A token refresh that read the row before this swap and
+/// stores new tokens after it must still win, and a bumped version would make it fail its
+/// compare-and-swap for no reason. The ciphertexts are compared as well as the version because
+/// a version alone can repeat: a row deleted and stored again starts at version 0, and an old
+/// process may still seal under the key being retired.
+pub async fn replace_wrapping(
+    tx: &mut TenantTx,
+    shop: ShopId,
+    read: &StoredTokens,
+    rewrapped: &Rewrapped,
+) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update shopify_tokens
+              set access_ct = $7, refresh_ct = $8, key_id = $9
+            where tenant_id = $1 and shop_id = $2 and version = $3 and key_id = $4
+              and access_ct = $5 and refresh_ct = $6"#,
+        tenant,
+        shop.as_uuid(),
+        read.version,
+        read.tokens.key_id,
+        read.tokens.access_ct,
+        read.tokens.refresh_ct,
+        rewrapped.access_ct,
+        rewrapped.refresh_ct,
+        rewrapped.key_id,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() > 0)
 }
 
 /// Deletes a shop's tokens, after Shopify revoked them or the app was uninstalled. Returns

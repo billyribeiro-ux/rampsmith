@@ -140,7 +140,13 @@ impl KeyRing {
     }
 
     /// Re-wraps the data key of a value sealed under `key_id` with the active master key.
-    /// The data ciphertext is unchanged, so the value itself is never decrypted.
+    ///
+    /// The stored data ciphertext is carried over byte for byte and the value is not returned,
+    /// but it is decrypted once inside this call, and the plaintext is dropped (and wiped) at
+    /// once. That is deliberate: it proves that `context` opens the value, so a ciphertext
+    /// that was moved to another slot fails here instead of being re-bound to the wrong one.
+    /// Fails with [`CryptoError::Authentication`] when `context` or the bytes are wrong, and
+    /// with [`CryptoError::UnknownKey`] when the ring no longer holds `key_id`.
     pub fn rewrap(
         &self,
         key_id: &str,

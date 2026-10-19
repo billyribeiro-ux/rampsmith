@@ -15,7 +15,7 @@ use std::net::IpAddr;
 
 pub use policy::AddressPolicy;
 pub use proxy::{Proxy, ProxyConfig, Resolve, SystemResolver};
-pub use token::{ScanToken, TokenKey};
+pub use token::{MAX_TOKEN_AHEAD_SECS, ScanToken, TokenKey};
 
 /// Why egress refused a request. Shown to operators in logs and metrics, never to pages.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

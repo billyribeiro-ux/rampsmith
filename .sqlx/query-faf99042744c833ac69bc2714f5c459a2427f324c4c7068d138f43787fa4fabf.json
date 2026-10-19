@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_tokens\n              set access_ct = $7, refresh_ct = $8, key_id = $9\n            where tenant_id = $1 and shop_id = $2 and version = $3 and key_id = $4\n              and access_ct = $5 and refresh_ct = $6",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Bytea",
+        "Bytea",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "faf99042744c833ac69bc2714f5c459a2427f324c4c7068d138f43787fa4fabf"
+}
