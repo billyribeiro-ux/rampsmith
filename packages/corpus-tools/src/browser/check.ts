@@ -19,6 +19,7 @@ import {
   type PageComparison,
   type ResolvedOccurrence,
 } from './compare.ts';
+import type { SnapshotNode } from './snapshot.ts';
 
 export const ORIGIN = 'http://storefront.corpus.test';
 
@@ -112,6 +113,8 @@ export interface PageRun {
    * document order, described for the source mapper (tag, attributes, text, ancestors).
    */
   readonly elements: Readonly<Record<number, RenderedElement>>;
+  /** Every element of the page in document order (scripts left out), for the additive check. */
+  readonly snapshot: readonly SnapshotNode[];
 }
 
 export interface PageResult extends PageRun {
@@ -165,6 +168,7 @@ interface InPageResult {
   readonly rulesRun: string[];
   readonly indices: number[][];
   readonly elements: Record<number, RenderedElement>;
+  readonly snapshot: SnapshotNode[];
 }
 
 /** Renders, loads and checks one page in a fresh browser context. */
@@ -194,6 +198,20 @@ export async function runPage(
       async ([tags, selectors]): Promise<InPageResult> => {
         const all = Array.from(document.querySelectorAll('*'));
         const indexOf = new Map(all.map((el, i) => [el, i]));
+        const attributesOf = (el: Element): Record<string, string> =>
+          Object.fromEntries(Array.from(el.attributes, (a) => [a.name.toLowerCase(), a.value]));
+        const snapshot = all
+          .filter((el) => el.tagName !== 'SCRIPT')
+          .map((el) => ({
+            tag: el.tagName.toLowerCase(),
+            attributes: attributesOf(el),
+            text: Array.from(el.childNodes)
+              .filter((n): n is Text => n.nodeType === Node.TEXT_NODE)
+              .map((n) => n.data)
+              .join(' ')
+              .replace(/\s+/g, ' ')
+              .trim(),
+          }));
         const axeApi = (
           globalThis as unknown as {
             axe: { run(context: Document, options: RunOptions): Promise<AxeResults> };
@@ -239,8 +257,6 @@ export async function runPage(
         const indices = selectors.map((selector) =>
           Array.from(document.querySelectorAll(selector)).map((el) => indexOf.get(el) ?? -1),
         );
-        const attributesOf = (el: Element): Record<string, string> =>
-          Object.fromEntries(Array.from(el.attributes, (a) => [a.name.toLowerCase(), a.value]));
         const nodeOf = (el: Element) => {
           const previous: { tag: string; attributes: Record<string, string> }[] = [];
           for (let s = el.previousElementSibling; s !== null; s = s.previousElementSibling) {
@@ -270,7 +286,7 @@ export async function runPage(
             ancestors,
           };
         }
-        return { nodes, rulesRun: [...new Set(rulesRun)].sort(), indices, elements };
+        return { nodes, rulesRun: [...new Set(rulesRun)].sort(), indices, elements, snapshot };
       },
       [options.tags, wanted.map((w) => w.selector)] as const,
     );
@@ -281,6 +297,7 @@ export async function runPage(
       rulesRun: result.rulesRun,
       occurrences,
       elements: result.elements,
+      snapshot: result.snapshot,
     };
   } finally {
     await context.close();

@@ -76,10 +76,12 @@ mapper-found spans are byte-equal to the golden offsets.
   0.9 there. A later release should re-measure on themes written by someone else.
 - **Parameters come from the golden file.** Label texts, keys and decorative reasons are the
   golden's `expectedFix.params`, standing in for the merchant or the AI proposal.
-- **Regressions are axe-core's view** (ADR-203). A purely visual change that no rule detects is
-  not seen. The edits are span edits that keep every other byte (`test/recipe-properties.test.ts`),
-  and every patched file re-parses and passes Theme Check, which bounds what an edit can change,
-  but it is not a pixel comparison.
+- **Regressions are axe-core's view** (ADR-203), plus the additive DOM check (ADR-247 point 3):
+  after patching, every element, attribute and text of every page is still there, in order, and
+  the patches only added (the runs add 0 to 7 elements per page and violate nothing). That
+  bounds what an edit can change in the markup. It is not a pixel comparison: a change that only
+  alters how the unchanged markup is styled is seen only where axe-core has a rule, and the
+  colour fixes are such changes by design.
 - **One browser, one viewport.** Chromium at 1280×800; the cascade model evaluates media queries
   there. A fix for a mobile-only rule is not exercised.
 - **Mapping limits** (ADR-244, ADR-245): elements created by JavaScript, text printed through

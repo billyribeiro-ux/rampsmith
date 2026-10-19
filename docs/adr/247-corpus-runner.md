@@ -49,8 +49,16 @@ and the patch engine run against the corpus, with tests that fail below the bar.
    A second run without the contrast recipe, on golden spans, must land below the fix-rate bar,
    which proves the gate can fail (WS-11's measurement: 30 of 35).
 3. **Regressions are ADR-203's, unchanged**: axe-core's view is the measure (CONTRACT.md,
-   "Render regressions"). A purely visual change no rule sees is not detected; the runner does
-   not claim otherwise.
+   "Render regressions"), and `buildReport` scores them. A purely visual change no rule sees is
+   not detected by that measure, so the runner also takes a snapshot of every page's DOM
+   (tag, attributes, direct text of each element, scripts left out) before and after patching and
+   applies an **additive check** (`src/browser/snapshot.ts`): every element of the page before
+   must be in the page after, in the same order (aligned by tag and classes), with every
+   attribute it had (a blank value may be filled; `style` attributes and `<style>` text may
+   change, since a colour fix is CSS) and the text it had. Recipes only add, so a violation is
+   markup swallowed, moved or rewritten outside the patched spans. The result is
+   `domViolations`, not a contract regression kind (the schema's list is fixed); the gate test
+   fails on any, and the report lists the elements each patch added.
 4. **Output.** `src/cli.ts run [<theme>...] [--golden-spans] [--out <file>]` writes the JSON
    report (`jsonReport`: gates, scores with a verdict per finding, a table per category with
    mapping accuracy and fix rate, per theme counts, each finding's mapping and fix detail, the
@@ -81,5 +89,6 @@ and the patch engine run against the corpus, with tests that fail below the bar.
 - Applying each fix on its own and rescanning after each: interactions between patches (two
   edits to one file, a shared snippet) are what the real engine meets; all edits go in one
   patch, as the contract says.
-- A pixel or DOM diff as the regression measure: ADR-203 chose axe-core's view; a stronger check
-  can be added without changing the contract.
+- A pixel diff as the regression measure: the renderer is static (no web fonts or images are
+  loaded) and a pixel baseline would be brittle; ADR-203 chose axe-core's view, and the additive
+  DOM check above is the stricter measure that needs no baseline.

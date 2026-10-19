@@ -19,6 +19,7 @@ import {
 import type { Browser } from 'playwright-core';
 import { checkPage, type PageResult } from '../browser/check.ts';
 import { summarizeCounts } from '../browser/compare.ts';
+import { additiveChanges } from '../browser/snapshot.ts';
 import type { Corpus, LoadedTheme } from '../corpus.ts';
 import type { Category, ExpectedFix, GoldenFinding } from '../golden.ts';
 import {
@@ -77,6 +78,13 @@ export interface ThemeRun {
   readonly before: readonly PageScan[];
   readonly after: readonly PageScan[];
   readonly newThemeCheckOffenses: readonly string[];
+  /**
+   * Where a page after patching does not keep something of the page before (an element gone, an
+   * attribute rewritten, text lost). Stricter than the contract's regressions (ADR-247).
+   */
+  readonly domViolations: readonly string[];
+  /** Elements the patch added, per page. */
+  readonly addedElements: Readonly<Record<string, number>>;
   /** One unified diff per patched file. */
   readonly diffs: Readonly<Record<string, string>>;
   /** Problems that make the run unreliable: unjoined scanner findings, patch failures. */
@@ -97,6 +105,8 @@ export interface CorpusRun {
   readonly findings: readonly FindingResult[];
   readonly themes: readonly ThemeRun[];
   readonly problems: readonly string[];
+  /** Every theme's `domViolations`, prefixed by theme and page. */
+  readonly domViolations: readonly string[];
 }
 
 export interface RunOptions {
@@ -427,12 +437,19 @@ export async function runTheme(
     counts: summarizeCounts(r.nodes),
   }));
   const after: PageScan[] = [];
+  const domViolations: string[] = [];
+  const addedElements: Record<string, number> = {};
   const firing = new Map<string, Firing>();
   for (const [i, spec] of entry.pages.entries()) {
     const was = beforeResults[i];
     try {
       const now = await checkPage(browser, patchedRenderer, spec, golden, check);
       const delta = was === undefined ? null : pageDelta(was, now);
+      if (was !== undefined) {
+        const kept = additiveChanges(was.snapshot, now.snapshot);
+        for (const v of kept.violations) domViolations.push(`${entry.name}/${spec.id}: ${v}`);
+        addedElements[spec.id] = kept.added.length;
+      }
       for (const [finding, f] of delta?.firing ?? []) {
         const prior = firing.get(finding);
         firing.set(finding, { was: (prior?.was ?? 0) + f.was, now: (prior?.now ?? 0) + f.now });
@@ -507,6 +524,8 @@ export async function runTheme(
     before,
     after,
     newThemeCheckOffenses: newOffenses,
+    domViolations,
+    addedElements,
     diffs,
     problems,
     details,
@@ -527,6 +546,7 @@ export async function runCorpus(
   const themeCheck: { theme: string; count: number }[] = [];
   const themes: ThemeRun[] = [];
   const problems: string[] = [];
+  const domViolations: string[] = [];
   const findings: FindingResult[] = [];
   for (const loaded of corpus.themes) {
     if (loaded.entry.kind !== 'failing') continue;
@@ -541,6 +561,7 @@ export async function runCorpus(
     after.push(...run.after);
     themeCheck.push({ theme: run.theme, count: run.newThemeCheckOffenses.length });
     problems.push(...run.problems);
+    domViolations.push(...run.domViolations);
     for (const finding of loaded.golden.findings) {
       const id = `${loaded.entry.name}/${finding.id}`;
       const detail = run.details.find((d) => d.id === id);
@@ -564,5 +585,5 @@ export async function runCorpus(
     fixes: scoreFixes(goldens, fixes),
     regressions: findRegressions(before, after, themeCheck),
   });
-  return { goldens, mapping, fixes, report, findings, themes, problems };
+  return { goldens, mapping, fixes, report, findings, themes, problems, domViolations };
 }

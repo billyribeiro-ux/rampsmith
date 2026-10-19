@@ -120,6 +120,14 @@ describe('fix gate', () => {
     }
   });
 
+  it('keeps every element, attribute and text of every page: patches only add (stricter than axe)', () => {
+    expect(run.domViolations, lines(run.domViolations)).toEqual([]);
+    // The check sees the patches: the pages gained elements (labels, skip links, names).
+    const added = run.themes.flatMap((t) => Object.values(t.addedElements));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.reduce((sum, n) => sum + n, 0)).toBeGreaterThan(0);
+  });
+
   it('introduces no Theme Check offense in any patched theme', () => {
     for (const theme of run.themes) {
       expect(theme.newThemeCheckOffenses, theme.theme).toEqual([]);

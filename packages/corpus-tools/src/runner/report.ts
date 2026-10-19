@@ -28,6 +28,10 @@ export interface JsonReport {
   readonly fixes: CorpusReport['fixes'];
   readonly regressions: CorpusReport['regressions'];
   readonly newThemeCheckOffenses: Readonly<Record<string, readonly string[]>>;
+  /** Where a patched page does not keep part of the page before (ADR-247, point 3). */
+  readonly domViolations: readonly string[];
+  /** Elements added by the patches, per theme and page. */
+  readonly addedElements: Readonly<Record<string, Readonly<Record<string, number>>>>;
   readonly categories: readonly CategoryRow[];
   readonly themes: readonly {
     readonly theme: string;
@@ -95,6 +99,8 @@ export function jsonReport(run: CorpusRun, options: RunOptions = {}): JsonReport
     newThemeCheckOffenses: Object.fromEntries(
       run.themes.map((t) => [t.theme, t.newThemeCheckOffenses]),
     ),
+    domViolations: run.domViolations,
+    addedElements: Object.fromEntries(run.themes.map((t) => [t.theme, t.addedElements])),
     categories: categoryRows(run.findings),
     themes: run.themes.map((t) => {
       const own = run.findings.filter((f) => f.theme === t.theme);
