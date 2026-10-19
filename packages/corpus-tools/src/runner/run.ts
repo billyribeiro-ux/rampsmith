@@ -334,7 +334,10 @@ export async function runTheme(
       });
       continue;
     }
-    const measure = found[0] === undefined ? undefined : contrastMeasure(found[0]);
+    const measures = found.flatMap((n) => {
+      const measure = contrastMeasure(n);
+      return measure === undefined ? [] : [measure];
+    });
     const spans = [span, ...(outcome?.status === 'mapped' ? (outcome.identical ?? []) : [])];
     const withoutRecipe = options.withoutRecipes?.includes(finding.ruleId) === true;
     const results = spans.map((s) =>
@@ -345,7 +348,7 @@ export async function runTheme(
             span: s,
             files: theme.files,
             params: paramsOf(expected),
-            ...(measure === undefined ? {} : { contrast: measure }),
+            ...(measures.length === 0 ? {} : { contrast: measures }),
           }),
     );
     const primary = results[0];

@@ -34,6 +34,14 @@ which need judgement. Without it, the API and the corpus runner would each carry
    planner. A missing parameter is the recipe's typed `invalid-parameter` refusal, not a guess.
 2. **Candidates.** For contrast the planner applies `nearest` unless the caller names
    `stronger` (ADR-242); the merchant-facing flow shows both, the planner only applies one.
+   **Several backgrounds.** A finding with several nodes can sit on several backgrounds (one
+   colour setting, a light and a tinted section). `contrast` may be a list of measures; equal
+   ones count once. The planner runs the recipe for each, pools the candidates, and takes the
+   one with the smallest change of lightness that exceeds the ratio on every background (for
+   `stronger`, the enhanced level on every background). If no candidate does, as for dark grey
+   text that would need to be both light and dark, it refuses with `contrast-unreachable`
+   rather than fix one background and break another. The corpus runner passes the measure of
+   every node.
 3. **Span kinds are checked here.** An element rule given a `json-value`, `css-declaration` or
    `data` span refuses with `wrong-element`; contrast given an element or data span refuses
    with `wrong-element`; a span whose file is not in the theme refuses with `wrong-file`; a file

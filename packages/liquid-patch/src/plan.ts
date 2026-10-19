@@ -9,10 +9,16 @@
  * returns its typed refusal.
  */
 import type { CandidateId } from './color/candidates.ts';
-import { isLargeText } from './color/color.ts';
+import { contrastRatio, isLargeText, parseColor } from './color/color.ts';
 import type { MappedSpan } from './map/types.ts';
 import { parseThemeFile, type ParsedFile } from './parse.ts';
-import { chooseCandidate, contrast, type ColorSpan } from './recipes/contrast.ts';
+import {
+  chooseCandidate,
+  contrast,
+  type ColorSpan,
+  type ContrastCandidate,
+  type ContrastOutcome,
+} from './recipes/contrast.ts';
 import { documentLanguage } from './recipes/document-language.ts';
 import { emptyButton } from './recipes/empty-button.ts';
 import { emptyLink } from './recipes/empty-link.ts';
@@ -51,8 +57,12 @@ export interface FixRequest {
   /** Theme files by theme-relative path. */
   readonly files: ReadonlyMap<string, string>;
   readonly params?: FixParams;
-  /** For `color-contrast`. */
-  readonly contrast?: ContrastEvidence;
+  /**
+   * For `color-contrast`: what the scan measured. A finding with several nodes may sit on
+   * several backgrounds; give one evidence per distinct measure and the planner picks the
+   * smallest change that clears all of them (or refuses).
+   */
+  readonly contrast?: ContrastEvidence | readonly ContrastEvidence[];
   /** For `color-contrast`: which candidate to apply; defaults to `nearest`. */
   readonly candidate?: CandidateId;
 }
@@ -116,15 +126,75 @@ function runElementRecipe(
   }
 }
 
+function evidenceList(
+  evidence: ContrastEvidence | readonly ContrastEvidence[] | undefined,
+): readonly ContrastEvidence[] {
+  if (evidence === undefined) return [];
+  return 'background' in evidence ? [evidence] : evidence;
+}
+
+function isLarge(evidence: ContrastEvidence): boolean {
+  return isLargeText(evidence.fontSizePx, evidence.bold ? 700 : 400);
+}
+
+/**
+ * The candidate that clears every background: the smallest change of lightness among the
+ * candidates each background produced that exceeds the ratio on all of them. `stronger` asks for
+ * the enhanced level of WCAG 1.4.6 (7:1, or 4.5:1 for large text) on all of them.
+ */
+function candidateForAll(
+  outcomes: readonly ContrastOutcome[],
+  evidence: readonly ContrastEvidence[],
+  id: CandidateId,
+): RecipeOutcome {
+  const refusal = outcomes.find((o) => o.kind === 'refusal');
+  if (refusal?.kind === 'refusal') return refusal;
+  const pool: ContrastCandidate[] = outcomes.flatMap((o) =>
+    o.kind === 'candidates' ? o.candidates : [],
+  );
+  const first = outcomes[0];
+  if (pool.length === 0) {
+    return first?.kind === 'already-fixed'
+      ? { kind: 'already-fixed', reason: first.reason }
+      : refuse('contrast-unreachable', 'no candidate colour was found');
+  }
+  const wanted = evidence.map((e) => {
+    const background = parseColor(e.background);
+    const large = isLarge(e);
+    return { rgb: background?.rgb, ratio: id === 'stronger' ? (large ? 4.5 : 7) : large ? 3 : 4.5 };
+  });
+  const chosen = pool
+    .filter((c) =>
+      wanted.every((w) => w.rgb !== undefined && contrastRatio(c.rgb, w.rgb) > w.ratio),
+    )
+    .sort((a, b) => Math.abs(a.deltaL) - Math.abs(b.deltaL))[0];
+  if (chosen === undefined) {
+    return refuse(
+      'contrast-unreachable',
+      `no ${id} colour of the candidates exceeds the ratio on all ${String(evidence.length)} backgrounds`,
+    );
+  }
+  return {
+    kind: 'edits',
+    edits: chosen.edits,
+    translations: [],
+    notes: [`contrast: ${chosen.color} clears ${String(evidence.length)} backgrounds, ${id}`],
+  };
+}
+
 function planContrast(request: FixRequest): RecipeOutcome {
-  const { span, files, contrast: evidence } = request;
+  const { span, files } = request;
   if (span.kind !== 'json-value' && span.kind !== 'css-declaration') {
     return refuse(
       'wrong-element',
       `color-contrast is fixed on a colour value, not on a ${span.kind}`,
     );
   }
-  if (evidence === undefined) {
+  const distinct = new Map(
+    evidenceList(request.contrast).map((e) => [`${e.background}|${String(isLarge(e))}`, e]),
+  );
+  const evidence = [...distinct.values()];
+  if (evidence.length === 0) {
     return refuse(
       'invalid-parameter',
       'color-contrast needs the measured background and text size',
@@ -133,11 +203,14 @@ function planContrast(request: FixRequest): RecipeOutcome {
   const source = files.get(span.file);
   if (source === undefined) return refuse('wrong-file', `${span.file} is not in the theme`);
   const colorSpan: ColorSpan = span;
-  const outcome = contrast.run(source, colorSpan, {
-    background: evidence.background,
-    large: isLargeText(evidence.fontSizePx, evidence.bold ? 700 : 400),
-  });
-  return chooseCandidate(outcome, request.candidate ?? 'nearest');
+  const outcomes = evidence.map((e) =>
+    contrast.run(source, colorSpan, { background: e.background, large: isLarge(e) }),
+  );
+  const id = request.candidate ?? 'nearest';
+  const [only] = outcomes;
+  return outcomes.length === 1 && only !== undefined
+    ? chooseCandidate(only, id)
+    : candidateForAll(outcomes, evidence, id);
 }
 
 /**

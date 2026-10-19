@@ -140,14 +140,14 @@ regression):
 
 | Package | Files | Tests | Notes |
 | --- | --- | --- | --- |
-| `@rampsmith/liquid-patch` | 17 | 256 | line coverage 97.63% (bar 95%), branches 88.8%, functions 97.44% |
+| `@rampsmith/liquid-patch` | 17 | 262 | line coverage 97.66% (bar 95%), branches 88.79%, functions 97.52% |
 | `@rampsmith/corpus-tools` | 11 | 175 | WS-11's 153 pass unchanged; 14 new in `test/runner.test.ts`, 8 in `test/snapshot.test.ts` |
 
 liquid-patch tests added in this stream: contrast colour maths (`color.test.ts` 18,
 `candidates.test.ts` 11, `contrast-recipe.test.ts` 15), selector matching (`selector.test.ts` 13),
 CSS index and cascade (`css-cascade.test.ts` 17), the theme index and element search
 (`theme-index.test.ts` 23), the mapper on the hand-written `tarn` theme (`mapper.test.ts` 32)
-and the planner (`plan.test.ts` 12). The 159 tests from before the mapper are unchanged.
+and the planner, including text on several backgrounds (`plan.test.ts` 18). The 159 tests from before the mapper are unchanged.
 
 The runner tests (`packages/corpus-tools/test/runner.test.ts`):
 
@@ -184,11 +184,11 @@ node-pins: every Node.js pin agrees with .mise.toml (ADR-029)
 
 $ pnpm --filter @rampsmith/liquid-patch test
  Test Files  17 passed (17)
-      Tests  256 passed (256)
- Statements   : 94.43% ( 2071/2193 )
- Branches     : 88.8% ( 1705/1920 )
- Functions    : 97.44% ( 343/352 )
- Lines        : 97.63% ( 1815/1859 )
+      Tests  262 passed (262)
+ Statements   : 94.51% ( 2101/2223 )
+ Branches     : 88.79% ( 1728/1946 )
+ Functions    : 97.52% ( 354/363 )
+ Lines        : 97.66% ( 1841/1885 )
 
 $ pnpm --filter @rampsmith/corpus-tools test
  Test Files  11 passed (11)
@@ -216,7 +216,7 @@ Pull request #12 (draft) runs the repository's `ci` workflow on every push. Runs
 | Head | Run | Conclusion |
 | --- | --- | --- |
 | `e20b335` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39297475376 | failure: only the `node-pins` step (the two package manifests lacked `engines.node`); ESLint, Prettier, tsc, knip and claims-lint passed |
-| `9681dfa` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39300221517 | pending when this was written; the final head's run is in the closing note |
+| `9681dfa` | https://github.com/billyribeiro-ux/rampsmith/actions/runs/39300221517 | success: all eight jobs, node job 2m49s with the corpus-tools and liquid-patch tests |
 
 ## ADRs
 
@@ -282,5 +282,4 @@ For the integrator and the owners of the files outside this stream's paths.
     changed only through pnpm.
 11. **Known limits** (ADR-249): mapper accuracy was measured on the corpus it was written
     against; re-measure on themes written by someone else before trusting 100% elsewhere.
-    Parameters (label texts, decorative reasons) come from the golden file in the runner; a
-    finding with several contrast nodes uses the first node's background.
+    Parameters (label texts, decorative reasons) come from the golden file in the runner.

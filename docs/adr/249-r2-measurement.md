@@ -86,12 +86,8 @@ mapper-found spans are byte-equal to the golden offsets.
   there. A fix for a mobile-only rule is not exercised.
 - **Mapping limits** (ADR-244, ADR-245): elements created by JavaScript, text printed through
   filters in a way that changes it, cascade layers, `@scope`, container queries, nesting and
-  shadow DOM are not modelled; they come back below 0.9 or `unmapped`, not wrong, by design, but
-  the corpus has no example of each.
-- **Contrast measure from the first node.** A finding with several nodes (the corpus's contrast
-  findings have 1 to 9) takes the background and text size from the first. The rescan checks every
-  node and none fires, but a theme whose nodes sit on different backgrounds could need a
-  worst-case choice that the runner does not make.
+  shadow DOM are not modelled. They are expected to come back below 0.9 or `unmapped`, not wrong,
+  but the corpus has no example of each, so that is a design intent, not a measurement.
 
 ## Consequences
 
