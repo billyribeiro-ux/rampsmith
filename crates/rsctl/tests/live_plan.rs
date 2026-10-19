@@ -146,10 +146,16 @@ fn a_blank_value_counts_as_absent() {
 }
 
 #[test]
-fn any_one_variable_a_check_reads_starts_its_trial() {
-    for (index, def) in CHECKS.iter().enumerate().filter(|(_, d)| !d.staging_only) {
-        for var in def.reads {
-            let plans = plan::plan(&env(&[(var.name(), "x")]));
+fn any_one_variable_of_a_checks_own_row_starts_its_trial() {
+    for (index, def) in CHECKS
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| !d.staging_only && !plan::NOT_VERIFIABLE.contains(&d.id))
+    {
+        for var in plan::trigger_vars(def) {
+            let mut pairs = vec![(var.name(), "x")];
+            pairs.extend(plan::also_needs(def).iter().map(|v| (v.name(), "x")));
+            let plans = plan::plan(&env(&pairs));
             assert!(
                 plans[index].skip.is_none(),
                 "{} stays skipped when {} is set",
@@ -157,6 +163,102 @@ fn any_one_variable_a_check_reads_starts_its_trial() {
                 var.name()
             );
         }
+    }
+}
+
+#[test]
+fn another_rows_variable_does_not_start_a_trial() {
+    // The Partner API probe reads SHOPIFY_API_KEY only to compare the app's key; having the
+    // row 1 input is no reason to run (and fail) the row 2 check.
+    let plans = plan::plan(&env(&[
+        ("SHOPIFY_API_KEY", "x"),
+        ("SHOPIFY_API_SECRET", "y"),
+    ]));
+    let partner = plans
+        .iter()
+        .find(|p| p.id == "shopify.partner-api")
+        .unwrap();
+    assert!(partner.skip.as_deref().unwrap().starts_with("C row 2:"));
+    // Nor does the dev store domain start the row 1 check.
+    let plans = plan::plan(&env(&[("SHOPIFY_DEV_STORE_DOMAIN", "x.myshopify.com")]));
+    let app = plans.iter().find(|p| p.id == "shopify.app").unwrap();
+    assert!(app.skip.as_deref().unwrap().starts_with("C row 1:"));
+    let store = plans
+        .iter()
+        .find(|p| p.id == "shopify.dev-store-a")
+        .unwrap();
+    assert!(store.skip.is_none());
+}
+
+#[test]
+fn the_row_1_check_waits_for_the_row_3_store_and_names_that_row() {
+    let plans = plan::plan(&env(&[
+        ("SHOPIFY_API_KEY", "x"),
+        ("SHOPIFY_API_SECRET", "y"),
+    ]));
+    let app = plans.iter().find(|p| p.id == "shopify.app").unwrap();
+    let notice = app.skip.as_deref().unwrap();
+    assert!(
+        notice.starts_with("C row 3: SHOPIFY_DEV_STORE_DOMAIN is not set"),
+        "{notice}"
+    );
+    assert!(notice.contains("C row 1 check"), "{notice}");
+    assert_eq!(app.name, "c01_shopify_app_skipped_C_row_3");
+    let both = plan::plan(&env(&[
+        ("SHOPIFY_API_KEY", "x"),
+        ("SHOPIFY_API_SECRET", "y"),
+        ("SHOPIFY_DEV_STORE_DOMAIN", "x.myshopify.com"),
+    ]));
+    assert!(
+        both.iter()
+            .find(|p| p.id == "shopify.app")
+            .unwrap()
+            .skip
+            .is_none()
+    );
+}
+
+#[test]
+fn the_railway_workspace_trial_starts_from_its_own_token() {
+    let project_only = plan::plan(&env(&[("RAILWAY_TOKEN", "x")]));
+    let running: Vec<&str> = project_only
+        .iter()
+        .filter(|p| p.skip.is_none())
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(running, vec!["railway.project-token"]);
+    let workspace_only = plan::plan(&env(&[("RAILWAY_API_TOKEN", "x")]));
+    let running: Vec<&str> = workspace_only
+        .iter()
+        .filter(|p| p.skip.is_none())
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(running, vec!["railway.workspace-token"]);
+}
+
+#[test]
+fn an_input_with_no_documented_check_is_skipped_by_name_even_when_set() {
+    for id in plan::NOT_VERIFIABLE {
+        let def = CHECKS.iter().find(|d| d.id == *id).unwrap();
+        let pairs: Vec<(&str, &str)> = def.reads.iter().map(|v| (v.name(), "x")).collect();
+        let e = env(&pairs);
+        let plan = plan_for(id, &e);
+        let notice = plan.skip.clone().expect("skipped");
+        assert!(
+            notice.starts_with(&format!("C row {}:", def.row)),
+            "{notice}"
+        );
+        assert!(plan.name.ends_with(&format!("_skipped_C_row_{}", def.row)));
+        // The list is true: the probe itself calls the input not verifiable.
+        let verdict = plan::execute(
+            &plan,
+            Arc::clone(&e),
+            Endpoints::all_at("http://127.0.0.1:9"),
+        );
+        assert!(
+            matches!(&verdict, Verdict::Ignored(text) if text.contains("no read-only check")),
+            "{id}: {verdict:?}"
+        );
     }
 }
 

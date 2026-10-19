@@ -67,7 +67,7 @@ forbidden, no `unwrap`/`expect`/`panic`/indexing outside tests, `anyhow` only in
 ## 3. Tests
 
 Substitute tests, all passing with no network beyond loopback
-(`cargo nextest run -p rampsmith-rsctl --all-features --locked`): **221 passed, 18 skipped**.
+(`cargo nextest run -p rampsmith-rsctl --all-features --locked`): **225 passed, 18 skipped**.
 
 | Binary | Tests | What it proves |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Substitute tests, all passing with no network beyond loopback
 | `tests/keys_cli.rs` | 18 | generate, rotate, drop, ids through the library and the built binary; stdout/stderr split; 0600 file; never overwrites; exit codes; the panic hook re-exec |
 | `tests/redaction.rs` | 9 | `Debug`, `Display`, every error type and re-encodings never carry a secret |
 | `tests/sigv4.rs` | 9 | AWS's `aws-signing-test-suite` header-signing cases and the two Amazon S3 documentation examples |
-| `tests/live_plan.rs` | 14 | the live trials' names, skip rule, verdicts and live path against fakes |
+| `tests/live_plan.rs` | 18 | the live trials' names, skip rule (own-row triggers, the row 3 need of the row 1 check, the always-skipped App Automation Token trial), verdicts and the live path against fakes |
 | `tests/live.rs` | 18 trials | ignored by name in CI (see section E) |
 
 Each probe's fake verifies what the real service verifies: the SigV4 signature (R2, SES), the
@@ -97,7 +97,7 @@ $ cargo clippy -p rampsmith-rsctl --all-targets --all-features --locked -- -D wa
     Finished `dev` profile [unoptimized + debuginfo] target(s)
 
 $ cargo nextest run -p rampsmith-rsctl --all-features --locked
-     Summary [   4.576s] 221 tests run: 221 passed, 18 skipped
+     Summary [   4.6s] 225 tests run: 225 passed, 18 skipped
 
 $ cargo deny --locked check
 advisories ok, bans ok, licenses ok, sources ok
@@ -186,7 +186,7 @@ skips with a notice naming the row, (3) the row has a live command. Every row's 
 | Stripe test keys retrieve the account (R3 only) | 11 | `... --test doctor stripe` (5) | `rsctl doctor --row 11` |
 | Master keys: ring parses and every key round-trips | 12 | `... --test doctor master_keys` (5), `tests/keys_cli.rs` (18) | `rsctl doctor --row 12` |
 | Staging uses its own Shopify app and GitHub App | 15 (1, 4) | `... --test doctor staging` (4) | `rsctl doctor --environment staging --production-shopify-api-key <id> --production-github-app-id <id>` in the staging environment |
-| All of the above in the test runner, skipped by name when an input is absent | 1 to 12, 15 | `cargo nextest run -p rampsmith-rsctl --test live_plan` (14) | `cargo nextest run -p rampsmith-rsctl --test live --no-tests=pass` |
+| All of the above in the test runner, skipped by name when an input is absent | 1 to 12, 15 | `cargo nextest run -p rampsmith-rsctl --test live_plan` (18) | `cargo nextest run -p rampsmith-rsctl --test live --no-tests=pass` |
 
 The existing first row of the table (`rsctl doctor`, inputs 1 to 12, "each probe against a fake of
 its service", `rsctl doctor`) is now true as written.

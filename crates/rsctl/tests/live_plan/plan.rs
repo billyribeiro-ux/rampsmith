@@ -7,9 +7,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rsctl::doctor::{CHECKS, Ctx, Endpoints, Options, run_checks};
+use rsctl::doctor::{CHECKS, CheckDef, Ctx, Endpoints, Options, run_checks};
 use rsctl::report::{Outcome, SkipKind, Target};
-use rsctl::vars::{EnvSource, Vars, names};
+use rsctl::vars::{EnvSource, Var, Vars, names};
 use time::OffsetDateTime;
 
 /// The production Shopify app's public client id, for the row 15 live trial.
@@ -44,33 +44,88 @@ pub enum Verdict {
     Failed(String),
 }
 
-/// The trials for the current environment. The trial for a check is skipped when none of the
-/// variables the check reads is set; once any is set it runs, and an incomplete row fails.
+/// Inputs the vendor documents no way to check without using them: nothing can run live.
+/// `live_plan.rs` proves the list against the probes (a set input reports "not verifiable").
+pub const NOT_VERIFIABLE: &[&str] = &["shopify.automation-token"];
+
+/// The variables whose presence means the founder has supplied this check's input, and so the
+/// live check should run: the variables it reads from its own row, except where the check also
+/// reads an optional second token (the Railway workspace probe starts from `RAILWAY_API_TOKEN`).
+pub fn trigger_vars(def: &CheckDef) -> Vec<Var> {
+    let own = def.reads.iter().copied().filter(|var| var.row() == def.row);
+    if def.id == "railway.workspace-token" {
+        own.filter(|&var| var == Var::RailwayApiToken).collect()
+    } else {
+        own.collect()
+    }
+}
+
+/// Inputs from another row that the check cannot run without. The row 1 check exchanges the
+/// client credentials on development store A, which is a row 3 input.
+pub fn also_needs(def: &CheckDef) -> &'static [Var] {
+    if def.id == "shopify.app" {
+        &[Var::ShopifyDevStoreDomain]
+    } else {
+        &[]
+    }
+}
+
+/// The notice for a check that cannot run now, or `None` when it can.
+fn skip_notice(def: &CheckDef, env: &Arc<dyn EnvSource>, vars: &Vars) -> Option<String> {
+    if def.staging_only {
+        let have = |name: &str| env.get(name).is_some_and(|v| !v.trim().is_empty());
+        return (!(have(PRODUCTION_SHOPIFY_API_KEY) && have(PRODUCTION_GITHUB_APP_ID))).then(|| {
+            format!(
+                "C row {}: set {PRODUCTION_SHOPIFY_API_KEY} and {PRODUCTION_GITHUB_APP_ID} to the production identifiers, and run this where {} hold the staging values",
+                def.row,
+                names(def.reads)
+            )
+        });
+    }
+    if NOT_VERIFIABLE.contains(&def.id) {
+        return Some(format!(
+            "C row {}: {} has no documented read-only check, so there is nothing to run live; `rsctl doctor` reports it as not verifiable",
+            def.row,
+            names(def.reads)
+        ));
+    }
+    let triggers = trigger_vars(def);
+    if !triggers.iter().any(|&var| vars.get(var).is_some()) {
+        return Some(format!(
+            "C row {}: none of {} is set",
+            def.row,
+            names(&triggers)
+        ));
+    }
+    let missing: Vec<Var> = also_needs(def)
+        .iter()
+        .copied()
+        .filter(|&var| vars.get(var).is_none())
+        .collect();
+    let first = *missing.first()?;
+    Some(format!(
+        "C row {}: {} is not set, and the C row {} check needs it",
+        first.row(),
+        names(&missing),
+        def.row
+    ))
+}
+
+/// The trials for the current environment. A check's trial runs once any variable of its own
+/// row that it reads is set (so a half-filled row runs and fails as incomplete, not skips), and
+/// the inputs it needs from other rows are present; otherwise it is skipped, and the notice
+/// names the C row of what is missing.
 pub fn plan(env: &Arc<dyn EnvSource>) -> Vec<Plan> {
     let vars = Vars::new(Arc::clone(env));
     CHECKS
         .iter()
         .enumerate()
         .map(|(index, def)| {
-            let skip = if def.staging_only {
-                let have = |name: &str| env.get(name).is_some_and(|v| !v.trim().is_empty());
-                (!(have(PRODUCTION_SHOPIFY_API_KEY) && have(PRODUCTION_GITHUB_APP_ID))).then(|| {
-                    format!(
-                        "C row {}: set {PRODUCTION_SHOPIFY_API_KEY} and {PRODUCTION_GITHUB_APP_ID} to the production identifiers, and run this where {} hold the staging values",
-                        def.row,
-                        names(def.reads)
-                    )
-                })
-            } else {
-                (!def.reads.iter().any(|&var| vars.get(var).is_some())).then(|| {
-                    format!("C row {}: none of {} is set", def.row, names(def.reads))
-                })
-            };
+            let skip = skip_notice(def, env, &vars);
             let base = format!("c{:02}_{}", def.row, def.id.replace(['.', '-'], "_"));
-            let name = if skip.is_some() {
-                format!("{base}_skipped_C_row_{}", def.row)
-            } else {
-                base
+            let name = match skip.as_deref().and_then(notice_row) {
+                Some(row) => format!("{base}_skipped_C_row_{row}"),
+                None => base,
             };
             Plan {
                 index,
@@ -81,6 +136,17 @@ pub fn plan(env: &Arc<dyn EnvSource>) -> Vec<Plan> {
             }
         })
         .collect()
+}
+
+/// The row a notice (`C row N: ...`) names.
+pub fn notice_row(notice: &str) -> Option<u8> {
+    notice
+        .strip_prefix("C row ")?
+        .split(':')
+        .next()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// Turns a probe's outcome into a verdict. A missing input fails a required check that was

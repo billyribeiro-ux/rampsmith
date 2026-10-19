@@ -28,15 +28,23 @@ tests will skip in both until the founder adds them.
    which supports a per-trial ignored flag decided when the list is built:
    - There is one trial per check in `doctor::CHECKS`, named `c<row>_<check id>`, for example
      `c05_anthropic_models` (18 trials: rows 1 to 12 and row 15).
-   - A trial runs whenever any variable its check reads is set (`any`, not `all`: a half-filled row
-     must run and fail as incomplete, not skip). It runs the real probe against the real vendor with
-     the process environment, 30 s per request, and passes, fails, or, for an input the vendor
-     cannot check (ADR-152), is reported ignored with the reason.
-   - When none of its variables is set the trial is flagged ignored, its name becomes
-     `c05_anthropic_models_skipped_C_row_5`, and a line goes to standard error:
-     `rsctl live: SKIP anthropic.models (C row 5: none of ANTHROPIC_API_KEY is set)`. A test
-     runner that lists skipped tests (nextest prints `SKIP` and the name; `cargo test` prints
-     `ignored`) therefore shows the row without any output capture.
+   - A trial runs whenever any variable of its own row that its check reads is set (`any`, not
+     `all`: a half-filled row must run and fail as incomplete, not skip). A variable that a check
+     reads from another row does not start it: the Partner API probe reads `SHOPIFY_API_KEY` only to
+     compare the app's key, and the Railway workspace probe starts from `RAILWAY_API_TOKEN`, not
+     `RAILWAY_TOKEN`. The one cross-row need is stated: the row 1 check exchanges the client
+     credentials on development store A, so it is skipped, naming C row 3, until
+     `SHOPIFY_DEV_STORE_DOMAIN` is set (the founder provides row 1 before row 3).
+   - A started trial runs the real probe against the real vendor with the process environment, 30 s
+     per request, and passes or fails. The one input the vendor documents no check for (the App
+     Automation Token) has a trial that is always skipped by name, set or not, because a runner
+     would count a quiet "ignored" return as a pass; `rsctl doctor` still reports it as not
+     verifiable.
+   - When a trial cannot run, it is flagged ignored, its name becomes
+     `c05_anthropic_models_skipped_C_row_5` (the row of what is missing), and a line goes to
+     standard error: `rsctl live: SKIP anthropic.models (C row 5: none of ANTHROPIC_API_KEY is
+     set)`. A test runner that lists skipped tests (nextest prints `SKIP` and the name; `cargo test`
+     prints `ignored`) therefore shows the row without any output capture.
    - Forcing a skipped trial to run (`--include-ignored`, `--run-ignored all`) fails it, saying it
      was forced to run without its input: a runner would otherwise count a quiet return as a pass.
    - Row 15 runs when `RSCTL_LIVE_PRODUCTION_SHOPIFY_API_KEY` and

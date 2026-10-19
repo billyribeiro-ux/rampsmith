@@ -1,4 +1,4 @@
-//! `rsctl`: Rampsmith's operator CLI (LAUNCH.md B5; ADR-151 to ADR-153).
+//! `rsctl`: Rampsmith's operator CLI (LAUNCH.md B5; ADR-151 to ADR-156).
 
 pub mod app;
 pub mod cli;

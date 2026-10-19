@@ -13,6 +13,13 @@ fetch tools on 2026-10-19, and the request shapes are exercised against fakes bu
 documented responses (ADR-155). The first live run against each vendor is the founder's, as a
 Section E row.
 
+Where a published page could not be fetched, its source was read instead: the R2 and Turnstile
+pages from the `cloudflare/cloudflare-docs` repository, the OTLP and exporter pages from the
+OpenTelemetry specification repository, the AWS SES v2 service description and endpoint table
+from `botocore` data, and the GitHub, Cloudflare and Stripe REST references from their OpenAPI
+descriptions (`github/rest-api-description`, Cloudflare's `api-schemas`, Stripe's `openapi`).
+The URLs below are the published pages those sources produce.
+
 ADR-151 sets the rules every probe follows: it reads only its declared variables, makes the
 least-privileged documented call, prints vendor error *codes* only, and never prints a secret.
 

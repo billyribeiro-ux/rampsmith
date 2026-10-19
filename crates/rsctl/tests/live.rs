@@ -1,9 +1,11 @@
 //! The live checks: every `rsctl doctor` probe against the real vendor, one trial per probe
 //! (LAUNCH.md section E, ADR-155).
 //!
-//! A trial runs whenever an input it reads is present. Otherwise it is marked ignored, its
-//! name says `skipped_C_row_<n>`, and a notice naming the row and the variables goes to
-//! standard error. A skipped trial that is forced to run fails: it never passes silently.
+//! A trial runs whenever an input of its own row is present (and the inputs it needs from
+//! another row, such as the development store for the row 1 check). Otherwise it is marked
+//! ignored, its name says `skipped_C_row_<n>`, and a notice naming the row and the variables
+//! goes to standard error. A skipped trial that is forced to run fails: it never passes
+//! silently.
 //! Run them live (`--no-tests=pass` because, with no input set, every trial is skipped):
 //!
 //! ```text
