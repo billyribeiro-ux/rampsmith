@@ -212,7 +212,7 @@ Values:
 - `SHOPIFY_API_KEY` = Client ID (*public*) → Both. Railway `production` only; staging needs its own app (see the last section).
 - `SHOPIFY_API_SECRET` = Client secret → Both. Same Railway note.
 
-These are the names in LAUNCH.md section C, row 1. The code on `r0-foundations` still reads `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` (`crates/api`, `crates/ctl`, `apps/web`, `.env.example`; finding 2 of ADR-156 on `ws/rsctl`), so the integrator renames those reads to the LAUNCH.md names before anything is deployed. Set the names above; nothing here needs the other pair.
+These are the names in LAUNCH.md section C, row 1, and the ones `rsctl doctor` reads. The code on `r0-foundations` reads the same two values as `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` (`crates/api`, `crates/ctl`, `apps/web`, `.env.example`; finding 2 of ADR-156 on `ws/rsctl`), and the Railway configuration on `ws/deploy` (ADR-182) maps the first pair to the second. You set only the names above.
 
 Check: `rsctl doctor --row 1`. It needs development store A with the app installed (step 6.7 below), because the client-credentials grant it uses works only for a store in the app's own organization; until then it reports SKIP naming row 3. It requests a token with the key and secret and reads the app's installation.
 
@@ -344,6 +344,7 @@ Values:
 - `OTEL_EXPORTER_OTLP_HEADERS`, which contains the token → Both
 - The tile also generates `OTEL_EXPORTER_OTLP_PROTOCOL`. LAUNCH.md row 9 lists it; the doctor requires `http/protobuf` when it is set.
 - `OTEL_EXPORTER_OTLP_ENDPOINT` is the base URL: the SDKs add `/v1/traces`, `/v1/metrics` and `/v1/logs` themselves. Services export only when the endpoint is set (ADR-019).
+- The `ws/deploy` branch changes where these values go: its services send telemetry to a collector inside Railway and only the collector holds the Grafana credential (ADR-182, ADR-184). When it merges, the integrator updates this step to match.
 
 Check: `rsctl doctor --row 9`. It posts an empty trace export to `<endpoint>/v1/traces` with your header; an empty request is valid, so nothing is stored, and a 200 proves the endpoint and token. That a trace becomes visible in Grafana is the end-to-end check in LAUNCH.md section E, done with the deployed services.
 
