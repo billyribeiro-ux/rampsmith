@@ -15,7 +15,7 @@ use contracts::ShopifyTokenRefresh;
 use crypto::{CryptoError, KeyRing};
 use db::repo::shopify::{self as shops, NewShop, SealedTokens, StoredTokens};
 use db::repo::{audit, jobs, sites, tenants};
-use db::{Db, DbError, TenantTx};
+use db::{Db, DbError, ShopRef, TenantTx};
 use domain::{ActorKind, Platform, ShopId, ShopStatus, TenantId, TenantKind};
 use queue::NewJob;
 use secrecy::SecretString;
@@ -185,26 +185,46 @@ impl ShopifyAuth {
         }
 
         // Exchange retires every other token of this app on this shop, so it runs under the
-        // shop's lock, and the check is repeated once the lock is held (ADR-022).
-        let lock = self.db.shop_lock(token.shop.as_str()).await?;
-        if let Some((tenant, shop_id)) = self.usable_shop(&token.shop, now).await? {
-            lock.release().await?;
-            return Ok(session(tenant, shop_id, false));
+        // shop's lock (ADR-022). The check is repeated once the lock is held, and the lock's
+        // own connection does the re-check and the store, so a holder needs one connection
+        // and a burst of cold opens cannot drain the pool (ADR-041).
+        let mut lock = self.db.shop_lock(token.shop.as_str()).await?;
+        let existing = lock.shop_by_domain(token.shop.as_str()).await?;
+        let tenant = existing.map_or_else(TenantId::new, |f| f.tenant);
+        let mut tx = lock.into_tenant(tenant).await?;
+        if let Some(found) = existing
+            && found.status == ShopStatus::Installed
+            && shops::get_tokens(&mut tx, found.shop)
+                .await?
+                .is_some_and(|s| s.tokens.access_expires_at > now)
+        {
+            tx.rollback().await?;
+            return Ok(session(tenant, found.shop, false));
         }
-        let offline = self
-            .tokens
-            .exchange(&token.shop, id_token)
-            .await
-            .map_err(|e| match e {
-                TokenError::InvalidSubjectToken => AuthError::StaleSessionToken,
-                e if e.is_retryable() => AuthError::Unavailable(e),
-                e => AuthError::Exchange(e),
-            })?;
-        let (tenant, shop_id) = self
-            .store_exchanged(&token.shop, token.user_id.as_deref(), &offline, now)
+        let exchanged = self.tokens.exchange(&token.shop, id_token).await;
+        let offline = match exchanged {
+            Ok(offline) => offline,
+            Err(e) => {
+                let _ = tx.rollback().await;
+                return Err(match e {
+                    TokenError::InvalidSubjectToken => AuthError::StaleSessionToken,
+                    e if e.is_retryable() => AuthError::Unavailable(e),
+                    e => AuthError::Exchange(e),
+                });
+            }
+        };
+        let shop_id = self
+            .store_exchanged(
+                &mut tx,
+                existing,
+                &token.shop,
+                token.user_id.as_deref(),
+                &offline,
+                now,
+            )
             .await?;
-        lock.release().await?;
-        info!(shop = %token.shop, %tenant, "offline token acquired by token exchange");
+        tx.commit().await?;
+        info!(%tenant, %shop_id, "offline token acquired by token exchange");
         Ok(session(tenant, shop_id, true))
     }
 
@@ -254,33 +274,33 @@ impl ShopifyAuth {
         })
     }
 
-    /// Installs or reinstalls the shop and stores the exchanged pair, in one transaction.
+    /// Installs or reinstalls the shop and stores the exchanged pair in the lock's transaction,
+    /// which the caller commits.
     async fn store_exchanged(
         &self,
+        tx: &mut TenantTx,
+        existing: Option<ShopRef>,
         shop: &ShopDomain,
         user_id: Option<&str>,
         offline: &OfflineToken,
         now: OffsetDateTime,
-    ) -> Result<(TenantId, ShopId), AuthError> {
-        let existing = self.db.shop_by_domain(shop.as_str()).await?;
-        let tenant = existing.map_or_else(TenantId::new, |f| f.tenant);
-        let mut tx = self.db.tenant(tenant).await?;
+    ) -> Result<ShopId, AuthError> {
         let (shop_id, action) = if let Some(found) = existing {
-            shops::reinstall(&mut tx, found.shop, &offline.scopes, shopify::API_VERSION)
+            shops::reinstall(tx, found.shop, &offline.scopes, shopify::API_VERSION)
                 .await?
                 .ok_or(DbError::Forbidden)?;
             (found.shop, "shopify.token_exchanged")
         } else {
             (
-                install(&mut tx, shop, &offline.scopes).await?,
+                install(tx, shop, &offline.scopes).await?,
                 "shopify.installed",
             )
         };
         let sealed = self.seal(shop_id, offline, now)?;
-        shops::put_tokens(&mut tx, shop_id, &sealed).await?;
-        jobs::enqueue(&mut tx, keepalive_job(shop_id, now)).await?;
+        shops::put_tokens(tx, shop_id, &sealed).await?;
+        jobs::enqueue(tx, keepalive_job(shop_id, now)).await?;
         audit::append(
-            &mut tx,
+            tx,
             &audit::NewEntry {
                 actor_kind: ActorKind::User,
                 actor_id: user_id.map(|u| format!("shopify:{u}")),
@@ -291,8 +311,7 @@ impl ShopifyAuth {
             },
         )
         .await?;
-        tx.commit().await?;
-        Ok((tenant, shop_id))
+        Ok(shop_id)
     }
 
     /// Refreshes the shop's access token if it expires within [`REFRESH_MARGIN`] of `now`.
@@ -310,21 +329,38 @@ impl ShopifyAuth {
             return Ok(RefreshOutcome::Fresh);
         }
 
+        // The lock's own connection does the re-read, the call to Shopify and the store, so a
+        // holder needs one connection (ADR-041).
         let lock = self.db.shop_lock(shop.as_str()).await?;
-        let outcome = self.refresh_locked(tenant, shop_id, &shop, now).await;
-        lock.release().await?;
-        outcome
+        let mut tx = lock.into_tenant(tenant).await?;
+        let outcome = self.refresh_locked(&mut tx, shop_id, &shop, now).await;
+        match outcome {
+            Ok(done @ (RefreshOutcome::Refreshed | RefreshOutcome::Revoked)) => {
+                tx.commit().await?;
+                if done == RefreshOutcome::Revoked {
+                    warn!(%shop_id, "Shopify revoked the offline token; tokens deleted");
+                } else {
+                    info!(%shop_id, "offline token refreshed");
+                }
+                Ok(done)
+            }
+            other => {
+                let _ = tx.rollback().await;
+                other
+            }
+        }
     }
 
+    /// Runs under the shop's lock on its transaction; the caller commits or rolls back.
     async fn refresh_locked(
         &self,
-        tenant: TenantId,
+        tx: &mut TenantTx,
         shop_id: ShopId,
         shop: &ShopDomain,
         now: OffsetDateTime,
     ) -> Result<RefreshOutcome, RefreshError> {
         // Re-read under the lock: an exchange or another refresh may have just finished.
-        let Some((_, stored)) = self.load(tenant, shop_id).await? else {
+        let Some((_, stored)) = load_in(tx, shop_id).await? else {
             return Ok(RefreshOutcome::NotInstalled);
         };
         if stored.tokens.access_expires_at > now + REFRESH_MARGIN {
@@ -338,26 +374,24 @@ impl ShopifyAuth {
         let offline = match self.tokens.refresh(shop, &refresh_token).await {
             Ok(offline) => offline,
             Err(TokenError::Revoked) => {
-                self.revoke(tenant, shop_id).await?;
+                revoke(tx, shop_id).await?;
                 return Ok(RefreshOutcome::Revoked);
             }
             Err(e) if e.is_retryable() => return Err(RefreshError::Retryable(e)),
             Err(e) => return Err(RefreshError::Rejected(e)),
         };
         let sealed = self.seal(shop_id, &offline, now)?;
-        let mut tx = self.db.tenant(tenant).await?;
-        if shops::rotate(&mut tx, shop_id, stored.version, &sealed)
+        if shops::rotate(tx, shop_id, stored.version, &sealed)
             .await?
             .is_none()
         {
             // Another writer rotated first despite the lock (an operator, a restore). Its pair
             // is the newer one; keep it.
-            warn!(%shop, "token rotation lost a compare-and-swap; keeping the stored pair");
-            tx.rollback().await?;
+            warn!(%shop_id, "token rotation lost a compare-and-swap; keeping the stored pair");
             return Ok(RefreshOutcome::Fresh);
         }
         audit::append(
-            &mut tx,
+            tx,
             &audit::NewEntry {
                 actor_kind: ActorKind::System,
                 actor_id: None,
@@ -368,8 +402,6 @@ impl ShopifyAuth {
             },
         )
         .await?;
-        tx.commit().await?;
-        info!(%shop, "offline token refreshed");
         Ok(RefreshOutcome::Refreshed)
     }
 
@@ -379,39 +411,9 @@ impl ShopifyAuth {
         shop_id: ShopId,
     ) -> Result<Option<(ShopDomain, StoredTokens)>, RefreshError> {
         let mut tx = self.db.tenant(tenant).await?;
-        let shop = shops::get(&mut tx, shop_id).await?;
-        let stored = shops::get_tokens(&mut tx, shop_id).await?;
+        let loaded = load_in(&mut tx, shop_id).await;
         tx.rollback().await?;
-        let (Some(shop), Some(stored)) = (shop, stored) else {
-            return Ok(None);
-        };
-        if shop.status != ShopStatus::Installed {
-            return Ok(None);
-        }
-        let domain = ShopDomain::parse(&shop.shop_domain).map_err(|_| DbError::Corrupt {
-            what: "shopify_shops.shop_domain",
-        })?;
-        Ok(Some((domain, stored)))
-    }
-
-    async fn revoke(&self, tenant: TenantId, shop_id: ShopId) -> Result<(), DbError> {
-        let mut tx = self.db.tenant(tenant).await?;
-        shops::delete_tokens(&mut tx, shop_id).await?;
-        audit::append(
-            &mut tx,
-            &audit::NewEntry {
-                actor_kind: ActorKind::Shopify,
-                actor_id: None,
-                action: "shopify.token_revoked".to_owned(),
-                subject_type: "shopify_shop".to_owned(),
-                subject_id: shop_id.as_uuid(),
-                data: serde_json::json!({}),
-            },
-        )
-        .await?;
-        tx.commit().await?;
-        warn!(%shop_id, "Shopify revoked the offline token; tokens deleted");
-        Ok(())
+        loaded
     }
 
     /// A usable access token for background work: refreshed first if due. `None` when the
@@ -435,6 +437,43 @@ impl ShopifyAuth {
             access_context(shop_id).as_bytes(),
         )?))
     }
+}
+
+/// The installed shop's domain and stored tokens, read on `tx`.
+async fn load_in(
+    tx: &mut TenantTx,
+    shop_id: ShopId,
+) -> Result<Option<(ShopDomain, StoredTokens)>, RefreshError> {
+    let shop = shops::get(tx, shop_id).await?;
+    let stored = shops::get_tokens(tx, shop_id).await?;
+    let (Some(shop), Some(stored)) = (shop, stored) else {
+        return Ok(None);
+    };
+    if shop.status != ShopStatus::Installed {
+        return Ok(None);
+    }
+    let domain = ShopDomain::parse(&shop.shop_domain).map_err(|_| DbError::Corrupt {
+        what: "shopify_shops.shop_domain",
+    })?;
+    Ok(Some((domain, stored)))
+}
+
+/// Deletes the shop's tokens after Shopify revoked the grant.
+async fn revoke(tx: &mut TenantTx, shop_id: ShopId) -> Result<(), DbError> {
+    shops::delete_tokens(tx, shop_id).await?;
+    audit::append(
+        tx,
+        &audit::NewEntry {
+            actor_kind: ActorKind::Shopify,
+            actor_id: None,
+            action: "shopify.token_revoked".to_owned(),
+            subject_type: "shopify_shop".to_owned(),
+            subject_id: shop_id.as_uuid(),
+            data: serde_json::json!({}),
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 /// Creates the tenant, its verified storefront site and the shop.

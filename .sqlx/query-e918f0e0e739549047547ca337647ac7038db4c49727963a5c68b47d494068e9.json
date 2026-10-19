@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select tenant_id as \"tenant_id!\", shop_id as \"shop_id!\", status as \"status!\"\n                 from app_shop_by_domain($1)",
+  "query": "select tenant_id as \"tenant_id!\", shop_id as \"shop_id!\", status as \"status!\"\n             from app_shop_by_domain($1)",
   "describe": {
     "columns": [
       {
@@ -33,5 +33,5 @@
       null
     ]
   },
-  "hash": "01356d63a7d3e715033d50b2aeeb714e3ed6bbcfe26c01557e98bbe3464a0e64"
+  "hash": "e918f0e0e739549047547ca337647ac7038db4c49727963a5c68b47d494068e9"
 }
