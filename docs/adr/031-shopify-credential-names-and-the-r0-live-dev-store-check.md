@@ -71,8 +71,12 @@ section E. The inputs here are LAUNCH.md section C row 1 (the app's key and secr
   `docs/evidence/r0-gate-fixes.md`, because LAUNCH.md is not a builder's file.
 - The founder runs one command with three variables (`docs/runbooks/shopify-dev-store.md`,
   section 3) and gets a pass or a message naming the class of Shopify's answer.
-- CI shows a notice on every run until the inputs exist as GitHub environment secrets; the
-  annotation is the reminder that row 1 and row 3 are open.
+- CI shows the notice on every run. `ci.yml` passes no secret to any job, so adding the inputs
+  as GitHub secrets does not make CI run the live check; the founder runs it with the command
+  above (runbook section 3). A later change may add a manually dispatched live-checks workflow
+  in a protected environment; it would expose `SHOPIFY_API_SECRET` to a CI job, so it needs its
+  own `security-auditor` review first. (Corrected 19 Oct 2026 after the R0 release verifier
+  found the first wording promised CI wiring that does not exist.)
 
 ## Rejected alternatives
 

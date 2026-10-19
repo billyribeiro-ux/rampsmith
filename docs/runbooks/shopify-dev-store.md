@@ -23,8 +23,9 @@ founder's accounts, so they are the only part left; each takes minutes.
 
 ## 3. Live check against the store (either of us, no install)
 
-This proves the credentials, the store's domain and Shopify's token endpoint without installing
-anything (ADR-031). With the app from section 1 and store A from section 2, set three variables
+This proves the store's domain, Shopify's token endpoint, the form Rampsmith sends and the error
+mapping, without installing anything (ADR-031). It does not prove the client secret: a wrong
+secret can get the same 400 answer, so the first install (section 2) is what confirms it. With the app from section 1 and store A from section 2, set three variables
 in your shell (never in a file that is committed) and run one test:
 
 ```sh
