@@ -55,6 +55,21 @@ passes silently (LAUNCH.md section E, conditions 1 to 3).
 Commits after `7ac4568` are documentation only: this file and a merge of `main`
 (STATUS.md lanes, the LAUNCH.md section E row).
 
-## Round 2 verdict
+## Round 2: `659999d`, verifier FAIL (19 Oct 2026)
+
+All three exit criteria passed again, CI was green on the head
+([run 39298334697](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39298334697), 8 of 8),
+and blockers 2 to 6 passed. Three things remained, each now fixed:
+
+| # | Finding | Fix | Commit |
+| --- | --- | --- | --- |
+| 1 | The live test's header and the runbook said the probe proves the credentials; ADR-031 §3 says a 400 does not prove the secret | Both now say what ADR-031 §3 says; LAUNCH.md's section E row too | `40d86e2` |
+| 2 | ADR-031 said CI would run the check once the inputs are GitHub secrets; `ci.yml` passes no secrets | ADR-031 corrected: the founder runs it (runbook section 3); a later live-checks workflow needs its own audit; FOUNDER_SETUP says so | `40d86e2` |
+| 3 | No `security-auditor` record for lane S1's auth and token changes | Audit at effort max: **PASS**, seven lows (two fixed, five tracked to Rust follow-ups, one to lane S2) and one medium outside the lane (fixed: the client secret no longer goes into GitHub repository secrets); `docs/evidence/r0-s1-security-audit-2026-10-19.md` | `0c4becc` |
+
+CI at `40d86e2`: [run 39300708921](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39300708921),
+8 of 8. Commits after it are documentation only.
+
+## Round 3 verdict
 
 Recorded below by the architect after the `release-verifier` run.
