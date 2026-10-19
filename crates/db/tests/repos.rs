@@ -731,8 +731,9 @@ async fn token_writes_bump_the_version_and_rotation_is_compare_and_swap(
     assert_eq!(stored.tokens, support::sealed_tokens(1));
 
     // Exchange replaces the row and bumps the version.
-    let v1 = shopify::put_tokens(&mut tx, g.shop, &support::sealed_tokens(2))
+    let v1 = shopify::put_tokens(&mut tx, g.shop, Some(0), &support::sealed_tokens(2))
         .await
+        .unwrap()
         .unwrap();
     assert_eq!(v1, 1);
 
@@ -757,6 +758,99 @@ async fn token_writes_bump_the_version_and_rotation_is_compare_and_swap(
             .is_none()
     );
     assert!(!shopify::delete_tokens(&mut tx, g.shop).await.unwrap());
+}
+
+/// Audit L5, ADR-044: an exchange stores its pair only if the row is still as the caller read
+/// it. `None` means "I found no row", `Some(v)` means "I found the row at version v".
+#[sqlx::test]
+async fn exchange_writes_are_compare_and_swap(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await; // tokens exist, version 0
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    let seeded = support::sealed_tokens(1);
+
+    // "No row" is wrong while one exists; so is a version the row never had. Nothing changes.
+    for wrong in [None, Some(7), Some(-1)] {
+        let lost = shopify::put_tokens(&mut tx, g.shop, wrong, &support::sealed_tokens(2))
+            .await
+            .unwrap();
+        assert_eq!(lost, None, "{wrong:?}");
+    }
+    let kept = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!((kept.version, &kept.tokens), (0, &seeded));
+
+    // The version the caller read wins, once.
+    let won = shopify::put_tokens(&mut tx, g.shop, Some(0), &support::sealed_tokens(2))
+        .await
+        .unwrap();
+    assert_eq!(won, Some(1));
+    let again = shopify::put_tokens(&mut tx, g.shop, Some(0), &support::sealed_tokens(3))
+        .await
+        .unwrap();
+    assert_eq!(again, None, "the same claim is stale after a win");
+    let now = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!((now.version, &now.tokens), (1, &support::sealed_tokens(2)));
+
+    // With no row, only "no row" is right, and the first row starts at version 0.
+    assert!(shopify::delete_tokens(&mut tx, g.shop).await.unwrap());
+    let none = shopify::put_tokens(&mut tx, g.shop, Some(1), &support::sealed_tokens(4))
+        .await
+        .unwrap();
+    assert_eq!(none, None);
+    assert!(
+        shopify::get_tokens(&mut tx, g.shop)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let first = shopify::put_tokens(&mut tx, g.shop, None, &support::sealed_tokens(4))
+        .await
+        .unwrap();
+    assert_eq!(first, Some(0));
+    let stored = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!(
+        (stored.version, &stored.tokens),
+        (0, &support::sealed_tokens(4))
+    );
+}
+
+#[sqlx::test]
+async fn concurrent_exchange_writes_from_the_same_read_have_one_winner(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let put = |claim: Option<i64>, label: u8| {
+        let db = db.clone();
+        async move {
+            let mut tx = db.tenant(g.tenant).await.unwrap();
+            let won = shopify::put_tokens(&mut tx, g.shop, claim, &support::sealed_tokens(label))
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+            won
+        }
+    };
+
+    // Two writers that both read version 0.
+    let (x, y) = tokio::join!(put(Some(0), 10), put(Some(0), 11));
+    assert_eq!(
+        [x, y].iter().filter(|w| w.is_some()).count(),
+        1,
+        "{x:?} {y:?}"
+    );
+
+    // Two writers that both found no row (an insert race).
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    shopify::delete_tokens(&mut tx, g.shop).await.unwrap();
+    tx.commit().await.unwrap();
+    let (x, y) = tokio::join!(put(None, 12), put(None, 13));
+    assert_eq!(
+        [x, y].iter().filter(|w| w.is_some()).count(),
+        1,
+        "{x:?} {y:?}"
+    );
 }
 
 #[sqlx::test]

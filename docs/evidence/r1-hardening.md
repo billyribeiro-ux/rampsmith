@@ -64,3 +64,19 @@ Commands and results:
 
 For the architect: the sqlx offline data gained `set_config('lock_timeout', ...)` and replaced
 the `app_shop_by_domain` lookup (same statement, moved into a helper, so its text hash changed).
+
+## L5: exchange writes are compare-and-swap (ADR-044, amends ADR-022)
+
+What changed: `db::repo::shopify::put_tokens` takes the caller's read (`None` or `Some(version)`)
+and returns `None` when the row moved; `shopify-auth` reads the row under the lock before the
+exchange and fails with a conflict if it changed during the call.
+
+Commands and results:
+
+- `cargo nextest run -p rampsmith-db -p rampsmith-shopify-auth --all-features --locked`:
+  `Summary 84 tests run: 84 passed, 0 skipped`. New: `db::repos::exchange_writes_are_compare_and_swap`,
+  `db::repos::concurrent_exchange_writes_from_the_same_read_have_one_winner` (also the insert
+  race), `shopify-auth::lifecycle::an_exchange_does_not_overwrite_a_row_changed_while_it_was_in_flight`.
+  `db::tenancy` now asserts that neither claim overwrites another tenant's row.
+
+For the architect: none.

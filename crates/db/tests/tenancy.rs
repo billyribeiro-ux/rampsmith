@@ -223,13 +223,18 @@ async fn assert_shopify_isolates(db: &Db, a: Graph, b: Graph) {
     assert!(!shopify::delete_tokens(&mut tx, b.shop).await.unwrap());
     tx.rollback().await.unwrap();
 
-    // Storing tokens for another tenant's shop fails instead of overwriting them.
-    let mut tx = db.tenant(a.tenant).await.unwrap();
-    assert!(
-        shopify::put_tokens(&mut tx, b.shop, &sealed_tokens(9))
-            .await
-            .is_err()
-    );
+    // Storing tokens for another tenant's shop never overwrites them, whichever row state the
+    // caller claims to have read: "no row yet" and "the row at version 0" both lose.
+    for claim in [None, Some(0)] {
+        let mut tx = db.tenant(a.tenant).await.unwrap();
+        let stored = shopify::put_tokens(&mut tx, b.shop, claim, &sealed_tokens(9)).await;
+        assert!(!matches!(stored, Ok(Some(_))), "{claim:?}: {stored:?}");
+        tx.rollback().await.unwrap();
+    }
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    let kept = shopify::get_tokens(&mut tx, b.shop).await.unwrap().unwrap();
+    assert_eq!(kept.version, 0);
+    assert_eq!(kept.tokens.access_ct, sealed_tokens(2).access_ct);
     tx.rollback().await.unwrap();
 }
 

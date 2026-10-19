@@ -709,3 +709,50 @@ async fn a_lock_held_by_another_process_ends_the_wait_with_an_error(
             .installed
     );
 }
+
+// --- Compare-and-swap on exchange (audit L5, ADR-044) -------------------------------------------
+
+/// Every in-band writer holds the shop's lock, so a row that changes while an exchange is in
+/// flight was written out of band (an operator, a restore). The exchange then stores nothing:
+/// it fails with a conflict, and the row and the audit log are as they were.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_exchange_does_not_overwrite_a_row_changed_while_it_was_in_flight(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let first = id_token(SHOP, now());
+    exchange_for(&w, &first, 1, StdDuration::ZERO, 1).await;
+    let installed = w.auth.authenticate_at(&first, now()).await.unwrap();
+
+    // Two hours on, the access token has expired and the next session exchanges again.
+    let later = now() + Duration::hours(2);
+    let second = id_token(SHOP, later);
+    exchange_for(&w, &second, 2, StdDuration::from_millis(700), 1).await;
+    let slow = {
+        let auth = w.auth.clone();
+        let second = second.clone();
+        tokio::spawn(async move { auth.authenticate_at(&second, later).await })
+    };
+    tokio::time::sleep(StdDuration::from_millis(300)).await; // the exchange is in flight
+    sqlx::query("update shopify_tokens set access_ct = '\\xdeadbeef', version = version + 1")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+
+    let error = slow.await.unwrap().unwrap_err();
+    assert!(
+        matches!(error, AuthError::Database(db::DbError::Conflict(_))),
+        "{error:?}"
+    );
+    let row = stored(&w, &installed).await;
+    assert_eq!(row.version, 1, "only the out-of-band write");
+    assert_eq!(row.tokens.access_ct, [0xde, 0xad, 0xbe, 0xef]);
+    let exchanged: i64 = sqlx::query_scalar(
+        "select count(*) from audit_log where action = 'shopify.token_exchanged'",
+    )
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
+    assert_eq!(exchanged, 0, "the lost exchange left no audit entry");
+}

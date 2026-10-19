@@ -108,6 +108,15 @@ pub struct ShopifyAuth {
     tokens: TokenClient,
 }
 
+/// What an exchange found under the shop's lock before it called Shopify.
+#[derive(Debug, Clone, Copy)]
+struct Prior {
+    /// The shop, if it is known.
+    existing: Option<ShopRef>,
+    /// The version of its token row, if it has one (the compare-and-swap claim, ADR-044).
+    claimed: Option<i64>,
+}
+
 fn access_context(shop: ShopId) -> String {
     format!("shopify_tokens/access/{shop}")
 }
@@ -192,14 +201,20 @@ impl ShopifyAuth {
         let existing = lock.shop_by_domain(token.shop.as_str()).await?;
         let tenant = existing.map_or_else(TenantId::new, |f| f.tenant);
         let mut tx = lock.into_tenant(tenant).await?;
-        if let Some(found) = existing
-            && found.status == ShopStatus::Installed
-            && shops::get_tokens(&mut tx, found.shop)
-                .await?
-                .is_some_and(|s| s.tokens.access_expires_at > now)
-        {
-            tx.rollback().await?;
-            return Ok(session(tenant, found.shop, false));
+        // The token row as it is now. The new pair is stored only if the row is still like this
+        // when the exchange returns (compare-and-swap, ADR-044).
+        let mut claimed = None;
+        if let Some(found) = existing {
+            let current = shops::get_tokens(&mut tx, found.shop).await?;
+            if found.status == ShopStatus::Installed
+                && current
+                    .as_ref()
+                    .is_some_and(|s| s.tokens.access_expires_at > now)
+            {
+                tx.rollback().await?;
+                return Ok(session(tenant, found.shop, false));
+            }
+            claimed = current.map(|s| s.version);
         }
         let exchanged = self.tokens.exchange(&token.shop, id_token).await;
         let offline = match exchanged {
@@ -213,16 +228,23 @@ impl ShopifyAuth {
                 });
             }
         };
-        let shop_id = self
+        let stored = self
             .store_exchanged(
                 &mut tx,
-                existing,
+                Prior { existing, claimed },
                 &token.shop,
                 token.user_id.as_deref(),
                 &offline,
                 now,
             )
-            .await?;
+            .await;
+        let shop_id = match stored {
+            Ok(shop_id) => shop_id,
+            Err(e) => {
+                let _ = tx.rollback().await;
+                return Err(e);
+            }
+        };
         tx.commit().await?;
         info!(%tenant, %shop_id, "offline token acquired by token exchange");
         Ok(session(tenant, shop_id, true))
@@ -275,17 +297,19 @@ impl ShopifyAuth {
     }
 
     /// Installs or reinstalls the shop and stores the exchanged pair in the lock's transaction,
-    /// which the caller commits.
+    /// which the caller commits. If the token row has changed since `prior` was read, nothing is
+    /// stored and the result is a conflict (every in-band writer holds the shop's lock, so only
+    /// an out-of-band write can cause it).
     async fn store_exchanged(
         &self,
         tx: &mut TenantTx,
-        existing: Option<ShopRef>,
+        prior: Prior,
         shop: &ShopDomain,
         user_id: Option<&str>,
         offline: &OfflineToken,
         now: OffsetDateTime,
     ) -> Result<ShopId, AuthError> {
-        let (shop_id, action) = if let Some(found) = existing {
+        let (shop_id, action) = if let Some(found) = prior.existing {
             shops::reinstall(tx, found.shop, &offline.scopes, shopify::API_VERSION)
                 .await?
                 .ok_or(DbError::Forbidden)?;
@@ -297,7 +321,12 @@ impl ShopifyAuth {
             )
         };
         let sealed = self.seal(shop_id, offline, now)?;
-        shops::put_tokens(tx, shop_id, &sealed).await?;
+        if shops::put_tokens(tx, shop_id, prior.claimed, &sealed)
+            .await?
+            .is_none()
+        {
+            return Err(DbError::Conflict("shopify_tokens.version".to_owned()).into());
+        }
         jobs::enqueue(tx, keepalive_job(shop_id, now)).await?;
         audit::append(
             tx,

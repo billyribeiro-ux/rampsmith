@@ -201,9 +201,10 @@ pub async fn seed_shop(tx: &mut db::TenantTx, site: domain::SiteId, label: u8) -
     )
     .await
     .unwrap();
-    db::repo::shopify::put_tokens(tx, shop.id, &sealed_tokens(label))
+    let version = db::repo::shopify::put_tokens(tx, shop.id, None, &sealed_tokens(label))
         .await
         .unwrap();
+    assert_eq!(version, Some(0), "a new shop has no tokens to be stale");
     shop.id
 }
 
