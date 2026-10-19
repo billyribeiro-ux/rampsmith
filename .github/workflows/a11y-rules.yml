@@ -37,6 +37,11 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: node pnpm
+      - name: Node version (ADR-029)
+        run: |
+          node --version
+          node -p 'process.release.lts ?? "not an LTS release"'
+          test "$(node --version)" = "v$(grep -Po '^node = "\K[^"]+' .mise.toml)"
       - name: Locate the pnpm store
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"

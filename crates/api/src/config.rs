@@ -3,6 +3,7 @@
 
 use std::net::SocketAddr;
 
+use crypto::KeyRing;
 use secrecy::SecretString;
 use thiserror::Error;
 
@@ -17,6 +18,16 @@ pub struct Config {
     pub db_max_connections: u32,
     /// Reported as `service.version`, normally the image's commit.
     pub service_version: String,
+    /// The Shopify app's client id (`SHOPIFY_CLIENT_ID`).
+    pub shopify_client_id: String,
+    /// The Shopify app's client secret (`SHOPIFY_CLIENT_SECRET`). Signs session tokens.
+    pub shopify_client_secret: SecretString,
+    /// Master keys for envelope encryption (`RAMPSMITH_MASTER_KEYS`, ADR-021).
+    pub master_keys: KeyRing,
+    /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).
+    pub webauthn_rp_id: String,
+    /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
+    pub webauthn_rp_origin: String,
 }
 
 /// A configuration value is missing or malformed.
@@ -70,7 +81,43 @@ impl Config {
                 reason: "must be at least 1".to_owned(),
             });
         }
+        let shopify_client_id =
+            get("SHOPIFY_CLIENT_ID").ok_or(ConfigError::Missing("SHOPIFY_CLIENT_ID"))?;
+        let shopify_client_secret =
+            get("SHOPIFY_CLIENT_SECRET").ok_or(ConfigError::Missing("SHOPIFY_CLIENT_SECRET"))?;
+        let master_keys = KeyRing::parse(
+            &get("RAMPSMITH_MASTER_KEYS").ok_or(ConfigError::Missing("RAMPSMITH_MASTER_KEYS"))?,
+        )
+        .map_err(|e| ConfigError::Invalid {
+            name: "RAMPSMITH_MASTER_KEYS",
+            reason: e.to_string(),
+        })?;
+        let webauthn_rp_id = get("WEBAUTHN_RP_ID").ok_or(ConfigError::Missing("WEBAUTHN_RP_ID"))?;
+        let webauthn_rp_origin =
+            get("WEBAUTHN_RP_ORIGIN").ok_or(ConfigError::Missing("WEBAUTHN_RP_ORIGIN"))?;
+        let origin_host = webauthn_rp_origin
+            .strip_prefix("https://")
+            .or_else(|| webauthn_rp_origin.strip_prefix("http://localhost"))
+            .map(|rest| rest.split([':', '/']).next().unwrap_or_default().to_owned());
+        let rp_id = webauthn_rp_id.trim().to_owned();
+        let origin_ok = match origin_host.as_deref() {
+            Some("") => webauthn_rp_origin.starts_with("http://localhost") && rp_id == "localhost",
+            Some(host) => host == rp_id || host.ends_with(&format!(".{rp_id}")),
+            None => false,
+        };
+        if !origin_ok {
+            return Err(ConfigError::Invalid {
+                name: "WEBAUTHN_RP_ORIGIN",
+                reason: "must be https:// (or http://localhost) on WEBAUTHN_RP_ID or a subdomain"
+                    .to_owned(),
+            });
+        }
         Ok(Self {
+            webauthn_rp_id: rp_id,
+            webauthn_rp_origin: webauthn_rp_origin.trim().to_owned(),
+            shopify_client_id: shopify_client_id.trim().to_owned(),
+            shopify_client_secret: SecretString::from(shopify_client_secret),
+            master_keys,
             database_url: SecretString::from(database_url),
             bind,
             db_max_connections,
@@ -88,11 +135,25 @@ mod tests {
 
     use super::*;
 
+    const KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+
+    /// `pairs` over a complete Shopify and key configuration; an empty value unsets.
     fn config(pairs: &[(&str, &str)]) -> Result<Config, ConfigError> {
-        let vars: HashMap<String, String> = pairs
-            .iter()
-            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-            .collect();
+        let mut vars: HashMap<String, String> = [
+            ("SHOPIFY_CLIENT_ID", "0123456789abcdef"),
+            ("SHOPIFY_CLIENT_SECRET", "shpss_hunter3"),
+            ("RAMPSMITH_MASTER_KEYS", &format!("k1:{KEY}") as &str),
+            ("WEBAUTHN_RP_ID", "app.rampsmith.test"),
+            ("WEBAUTHN_RP_ORIGIN", "https://app.rampsmith.test"),
+        ]
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+        .collect();
+        vars.extend(
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned())),
+        );
         Config::from_lookup(|name| vars.get(name).cloned())
     }
 
@@ -133,9 +194,73 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_url_out_of_debug_output() {
+    fn keeps_secrets_out_of_debug_output() {
         let c = config(&[("DATABASE_URL", "postgres://app:hunter2@db/rampsmith")]).unwrap();
-        assert!(!format!("{c:?}").contains("hunter2"));
+        let debug = format!("{c:?}");
+        assert!(!debug.contains("hunter2"));
+        assert!(!debug.contains("hunter3"));
+        assert!(!debug.contains(KEY));
+    }
+
+    #[test]
+    fn the_webauthn_origin_must_belong_to_the_relying_party() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        for (id, origin) in [
+            ("app.rampsmith.test", "https://app.rampsmith.test"),
+            ("rampsmith.test", "https://app.rampsmith.test:8443"),
+            ("localhost", "http://localhost:5173"),
+        ] {
+            let c =
+                config(&[base, ("WEBAUTHN_RP_ID", id), ("WEBAUTHN_RP_ORIGIN", origin)]).unwrap();
+            assert_eq!(c.webauthn_rp_id, id);
+        }
+        for (id, origin) in [
+            ("app.rampsmith.test", "http://app.rampsmith.test"),
+            ("app.rampsmith.test", "https://evil.test"),
+            ("app.rampsmith.test", "https://notapp.rampsmith.test"),
+            ("rampsmith.test", "http://localhost:5173"),
+        ] {
+            assert!(
+                matches!(
+                    config(&[base, ("WEBAUTHN_RP_ID", id), ("WEBAUTHN_RP_ORIGIN", origin)]),
+                    Err(ConfigError::Invalid {
+                        name: "WEBAUTHN_RP_ORIGIN",
+                        ..
+                    })
+                ),
+                "{id} {origin}"
+            );
+        }
+        for name in ["WEBAUTHN_RP_ID", "WEBAUTHN_RP_ORIGIN"] {
+            assert_eq!(
+                config(&[base, (name, "")]).unwrap_err(),
+                ConfigError::Missing(name)
+            );
+        }
+    }
+
+    #[test]
+    fn requires_shopify_credentials_and_master_keys() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        for name in [
+            "SHOPIFY_CLIENT_ID",
+            "SHOPIFY_CLIENT_SECRET",
+            "RAMPSMITH_MASTER_KEYS",
+        ] {
+            assert_eq!(
+                config(&[base, (name, "")]).unwrap_err(),
+                ConfigError::Missing(name)
+            );
+        }
+        let err = config(&[base, ("RAMPSMITH_MASTER_KEYS", "k1:c2hvcnQ")]).unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigError::Invalid {
+                name: "RAMPSMITH_MASTER_KEYS",
+                ..
+            }
+        ));
+        assert!(!err.to_string().contains("c2hvcnQ"));
     }
 
     #[test]

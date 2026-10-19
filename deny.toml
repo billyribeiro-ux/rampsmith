@@ -31,6 +31,8 @@ allow = [
   "ISC",
   "MIT",
   "MIT-0",
+  # webauthn-rs (ADR-024): file-level copyleft, used unmodified.
+  "MPL-2.0",
   "Unicode-3.0",
   "Zlib",
 ]
@@ -45,8 +47,9 @@ wildcards = "deny"
 allow-wildcard-paths = true
 highlight = "all"
 deny = [
-  { crate = "openssl", use-instead = "rustls" },
-  { crate = "openssl-sys", use-instead = "rustls" },
+  # TLS is rustls everywhere. OpenSSL is allowed only for WebAuthn verification (ADR-024).
+  { crate = "openssl", use-instead = "rustls", wrappers = ["webauthn-rs-core", "webauthn-attestation-ca", "webauthn-authenticator-rs"] },
+  { crate = "openssl-sys", use-instead = "rustls", wrappers = ["openssl", "webauthn-rs-core", "webauthn-attestation-ca", "webauthn-authenticator-rs"] },
 ]
 # Duplicates that cannot be removed yet, each with the reason. A version requirement keeps a
 # skip valid across patch releases; a new major generation needs a fresh decision.
@@ -65,6 +68,14 @@ skip = [
   { crate = "hashbrown@0.16", reason = "hashlink 0.11 (sqlx-core) depends on hashbrown 0.16" },
   { crate = "syn@2", reason = "most proc-macro crates have not moved to syn 3 yet" },
   { crate = "tower-http@0.6", reason = "reqwest 0.13 (OTLP exporter) depends on tower-http 0.6; the api uses 0.7 (PLAN §7)" },
+  # webauthn-rs 0.5 (ADR-024) and its software authenticator, used in tests, are on older
+  # generations of these crates.
+  { crate = "base64@0.21", reason = "base64urlsafedata 0.5 (webauthn-rs) depends on base64 0.21" },
+  { crate = "pastey@0.1", reason = "base64urlsafedata 0.5 (webauthn-rs) depends on pastey 0.1" },
+  { crate = "thiserror@1", reason = "webauthn-rs-core 0.5 depends on thiserror 1" },
+  { crate = "synstructure@0.13", reason = "asn1-rs-derive 0.5 (der-parser 9, webauthn-rs-core) depends on synstructure 0.13" },
+  { crate = "thiserror-impl@1", reason = "comes with thiserror 1 (webauthn-rs-core)" },
+  { crate = "untrusted@0.7", reason = "jsonwebtoken 11 enables aws-lc-rs default features, whose ring-compatible API uses untrusted 0.7; rustls-webpki uses 0.9" },
 ]
 skip-tree = []
 

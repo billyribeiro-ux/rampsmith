@@ -1,4 +1,4 @@
-import { globSync, readFileSync } from 'node:fs';
+import { globSync, readFileSync, statSync } from 'node:fs';
 import { join, matchesGlob, sep } from 'node:path';
 import { applyAllowlist, parseAllowlist } from './allowlist.ts';
 import { ALWAYS_EXCLUDED, parseConfig } from './config.ts';
@@ -50,7 +50,7 @@ function plural(n: number, word: string): string {
   return `${String(n)} ${word}${n === 1 ? '' : 's'}`;
 }
 
-/** Lists the files to scan, as sorted POSIX paths relative to the root. */
+/** Lists the regular files to scan, as sorted POSIX paths relative to the root. */
 export function discoverFiles(
   cwd: string,
   include: readonly string[],
@@ -60,7 +60,8 @@ export function discoverFiles(
   const found = new Set<string>();
   for (const path of globSync([...include], { cwd })) {
     const posix = path.split(sep).join('/');
-    if (!excluded.some((glob) => matchesGlob(posix, glob))) {
+    // A glob such as `listing/**/*` also matches directories, which cannot be read as text.
+    if (!excluded.some((glob) => matchesGlob(posix, glob)) && statSync(join(cwd, path)).isFile()) {
       found.add(posix);
     }
   }

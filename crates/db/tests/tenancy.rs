@@ -15,11 +15,11 @@
 mod support;
 
 use db::Db;
-use db::repo::{audit, findings, fixes, occurrences, scans, sites, tenants};
+use db::repo::{audit, findings, fixes, occurrences, scans, shopify, sites, tenants};
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
-use support::{Graph, app_pool, assert_empty, owner_pool, seed};
+use support::{Graph, app_pool, assert_empty, owner_pool, sealed_tokens, seed};
 
 async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool, Graph, Graph) {
     let pool = app_pool(opts, conn).await;
@@ -159,6 +159,8 @@ async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
     assert_eq!(entries.len(), 1);
     tx.rollback().await.unwrap();
 
+    assert_shopify_isolates(db, a, b).await;
+
     // Tenant B's rows are untouched by tenant A's attempted writes.
     let mut tx = db.tenant(b.tenant).await.unwrap();
     assert_eq!(
@@ -177,6 +179,58 @@ async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
         fixes::get(&mut tx, b.fix).await.unwrap().unwrap().status,
         domain::FixStatus::Proposed
     );
+    let tokens = shopify::get_tokens(&mut tx, b.shop).await.unwrap().unwrap();
+    assert_eq!(tokens.version, 0);
+    assert_eq!(tokens.tokens.access_ct, sealed_tokens(2).access_ct);
+    assert!(
+        sites::get(&mut tx, b.site)
+            .await
+            .unwrap()
+            .unwrap()
+            .verified_at
+            .is_none()
+    );
+}
+
+async fn assert_shopify_isolates(db: &Db, a: Graph, b: Graph) {
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        sites::mark_verified(&mut tx, b.site, "dns_txt")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    assert!(shopify::get(&mut tx, b.shop).await.unwrap().is_none());
+    assert!(
+        shopify::reinstall(&mut tx, b.shop, &[], "2026-10")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        shopify::get_tokens(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        shopify::rotate(&mut tx, b.shop, 0, &sealed_tokens(9))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(!shopify::delete_tokens(&mut tx, b.shop).await.unwrap());
+    tx.rollback().await.unwrap();
+
+    // Storing tokens for another tenant's shop fails instead of overwriting them.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        shopify::put_tokens(&mut tx, b.shop, &sealed_tokens(9))
+            .await
+            .is_err()
+    );
+    tx.rollback().await.unwrap();
 }
 
 #[sqlx::test]
@@ -220,7 +274,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 10] = [
+const TENANT_TABLES: [&str; 11] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -231,6 +285,7 @@ const TENANT_TABLES: [&str; 10] = [
     "fixes",
     "fix_findings",
     "audit_log",
+    "scan_pages",
 ];
 
 #[sqlx::test]

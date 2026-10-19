@@ -10,6 +10,12 @@ packages/contracts-ts/src/generated/
 packages/contracts-ts/schemas/
 packages/contracts-ts/openapi/
 **/.sqlx/
+apps/web/src/lib/paraglide/
+apps/web/project.inlang/*
+!apps/web/project.inlang/settings.json
+apps/web/test-results/
+**/.vitest/
+apps/web/playwright-report/
 
 # Prose is written by hand and exported from the planning doc; Prettier's table padding
 # would rewrite every table on each edit. Code, config and data files are all checked.

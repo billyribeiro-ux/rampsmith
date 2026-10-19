@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": ["$app/tsconfig", "@rampsmith/tsconfig/base.json"],
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["node", "$app/types"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "checkJs": true,
+    "allowJs": true
+  },
+  "include": ["src", "tests", "*.ts"],
+  "exclude": ["src/lib/paraglide"]
+}

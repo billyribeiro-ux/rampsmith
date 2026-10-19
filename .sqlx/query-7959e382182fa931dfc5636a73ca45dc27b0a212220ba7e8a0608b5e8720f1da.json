@@ -1,0 +1,115 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_shops\n              set status = 'installed', scopes = $3, api_version = $4,\n                  installed_at = case when status = 'installed' then installed_at else now() end,\n                  uninstalled_at = null\n            where tenant_id = $1 and id = $2\n        returning id, site_id, shop_domain, scopes, api_version, status, installed_at, uninstalled_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "shop_domain",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "shop_domain"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "api_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "api_version"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "installed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "installed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "uninstalled_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "uninstalled_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "TextArray",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "7959e382182fa931dfc5636a73ca45dc27b0a212220ba7e8a0608b5e8720f1da"
+}
