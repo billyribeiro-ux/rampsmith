@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>A menu button that navigates</title>
+    <!--
+      The only menu toggle navigates to another page of the store. The script must report it
+      and bring the page back.
+    -->
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <button type="button" aria-expanded="false" id="go">Menu</button>
+      </nav>
+    </header>
+    <script>
+      document.getElementById('go').addEventListener('click', () => {
+        location.href = '/no-states.html';
+      });
+    </script>
+  </body>
+</html>

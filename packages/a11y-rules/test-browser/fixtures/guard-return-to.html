@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout guard: the theme adds return_to to the cart post</title>
+    <!--
+      The form is clean, but the theme script adds return_to=/checkout to its add-to-cart
+      request. The network guard must stop the request.
+    -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form id="f" action="/cart/add" method="post">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+    <script>
+      document.getElementById('f').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const body = new FormData(event.target);
+        body.append('return_to', '/checkout');
+        await fetch('/cart/add.js', { method: 'POST', body }).catch(() => undefined);
+      });
+    </script>
+  </body>
+</html>

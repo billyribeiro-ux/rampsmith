@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Service worker guard</title>
+    <!--
+      The page registers a service worker on load. In a scan context registration is blocked;
+      in a context that allows it, the guard must refuse to run.
+    -->
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <details>
+          <summary id="menu-toggle">Shop</summary>
+          <ul id="menu-list">
+            <li><a href="/collections/dresses">Dresses</a></li>
+            <li><a href="/collections/shirts">Shirts</a></li>
+          </ul>
+        </details>
+      </nav>
+    </header>
+    <script>
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+      }
+    </script>
+  </body>
+</html>
