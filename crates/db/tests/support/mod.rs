@@ -40,9 +40,11 @@ pub struct Graph {
     pub scan: domain::ScanId,
     pub finding: domain::FindingId,
     pub fix: domain::FixId,
+    pub shop: domain::ShopId,
 }
 
-/// Creates a tenant with one site, scan, finding, occurrence, fix and audit entry.
+/// Creates a tenant with one site, Shopify shop and tokens, scan, finding, occurrence, fix
+/// and audit entry.
 pub async fn seed(db: &Db, label: u8) -> Graph {
     let tenant = TenantId::new();
     let mut tx = db.tenant(tenant).await.unwrap();
@@ -127,6 +129,7 @@ pub async fn seed(db: &Db, label: u8) -> Graph {
     )
     .await
     .unwrap();
+    let shop = seed_shop(&mut tx, site.id, label).await;
     tx.commit().await.unwrap();
     Graph {
         tenant,
@@ -134,6 +137,40 @@ pub async fn seed(db: &Db, label: u8) -> Graph {
         scan: scan.id,
         finding: finding.id,
         fix: fix.id,
+        shop,
+    }
+}
+
+/// Installs `store-<label>.myshopify.com` on `site` with tokens.
+pub async fn seed_shop(tx: &mut db::TenantTx, site: domain::SiteId, label: u8) -> domain::ShopId {
+    let shop = db::repo::shopify::install(
+        tx,
+        &db::repo::shopify::NewShop {
+            site_id: site,
+            shop_domain: format!("store-{label}.myshopify.com"),
+            scopes: vec!["read_products".to_owned()],
+            api_version: "2026-10".to_owned(),
+        },
+    )
+    .await
+    .unwrap();
+    db::repo::shopify::put_tokens(tx, shop.id, &sealed_tokens(label))
+        .await
+        .unwrap();
+    shop.id
+}
+
+/// Placeholder ciphertext; the repository stores bytes and never decrypts.
+pub fn sealed_tokens(label: u8) -> db::repo::shopify::SealedTokens {
+    // A fixed instant: rows round-trip at microsecond precision, so tests compare whole values.
+    let now = time::OffsetDateTime::from_unix_timestamp(1_792_300_000).unwrap()
+        + time::Duration::minutes(i64::from(label));
+    db::repo::shopify::SealedTokens {
+        access_ct: vec![label, 1, 2, 3],
+        refresh_ct: vec![label, 4, 5, 6],
+        key_id: "k1".to_owned(),
+        access_expires_at: now + time::Duration::hours(1),
+        refresh_expires_at: now + time::Duration::days(90),
     }
 }
 

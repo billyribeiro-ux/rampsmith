@@ -1,0 +1,30 @@
+# Shopify app configuration (PLAN §14). Shopify-managed installation: scopes live here and are
+# requested at install, so there is no OAuth redirect flow (ADR-022).
+#
+# `client_id` and the URLs are filled in by `shopify app config link` once the founder's
+# Partner account and app exist (docs/runbooks/shopify-dev-store.md). The client id is public;
+# the client secret never goes in this file.
+name = "Rampsmith"
+handle = "rampsmith"
+client_id = ""
+application_url = "https://rampsmith.invalid"
+embedded = true
+
+[access_scopes]
+# Each scope is justified in PLAN §14; no theme write access, no customer data.
+scopes = "read_products,write_products,read_files,write_files,read_themes,read_content,write_content,read_online_store_navigation,write_online_store_navigation,read_locales"
+use_legacy_install_flow = false
+
+[auth]
+# Required before the app is public; token exchange does not use it.
+redirect_urls = ["https://rampsmith.invalid/auth/callback"]
+
+[webhooks]
+api_version = "2026-10"
+# Subscriptions arrive with the webhook intake (R1) and the compliance topics (R2).
+
+[pos]
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true

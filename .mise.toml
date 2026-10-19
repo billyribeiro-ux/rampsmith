@@ -32,6 +32,11 @@ SQLX_OFFLINE = "true"
 description = "Install JavaScript dependencies exactly as locked"
 run = "pnpm install --frozen-lockfile"
 
+[tasks."web:sync"]
+description = "Compile the web app's messages (Paraglide) and generate SvelteKit's types"
+depends = ["setup"]
+run = "pnpm --filter @rampsmith/web run sync"
+
 [tasks."db:migrate"]
 description = "Create the database in DATABASE_URL if needed and apply every migration"
 run = ["sqlx database create", "sqlx migrate run --source crates/db/migrations"]
@@ -64,7 +69,7 @@ run = "cargo sqlx prepare --workspace --check -- --all-targets --all-features"
 
 [tasks."check:eslint"]
 description = "ESLint with zero warnings allowed"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run lint"
 
 [tasks."check:prettier"]
@@ -74,18 +79,22 @@ run = "pnpm run format:check"
 
 [tasks."check:types"]
 description = "tsc --noEmit and svelte-check --fail-on-warnings in every package"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run typecheck"
 
 [tasks."check:knip"]
 description = "Unused files, exports and dependencies"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run knip"
 
 [tasks."check:claims"]
 description = "Banned claims (PLAN §3) in UI strings, emails, listing and marketing copy"
 depends = ["setup"]
 run = "node packages/claims-lint/src/main.ts"
+
+[tasks."check:node-pins"]
+description = "Every Node.js pin (engines, @types/node, images, CI) agrees with this file (ADR-029)"
+run = "node packages/node-pins/src/main.ts"
 
 [tasks."contracts:generate"]
 description = "Regenerate JSON Schemas, the OpenAPI document and their TypeScript types (ADR-009)"
@@ -119,8 +128,25 @@ run = "cargo nextest run --workspace --all-features --locked"
 
 [tasks."test:ts"]
 description = "Vitest in every package"
-depends = ["setup"]
+depends = ["setup", "web:sync"]
 run = "pnpm run test"
+
+[tasks."build:api"]
+description = "Debug build of the api, which the browser tests run against a real database"
+run = "cargo build --locked -p rampsmith-api --bin api"
+
+[tasks."build:egress"]
+description = "Debug build of the egress proxy, which the engine's browser tests scan through"
+run = "cargo build --locked -p rampsmith-egress --bin egress"
+
+[tasks."test:e2e"]
+description = "Browser tests in Chromium: the ui primitives (axe and keyboard); the web app against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks; the engine scanning through the real egress proxy into PostgreSQL"
+depends = ["setup", "web:sync", "build:api", "build:egress"]
+run = [
+  "pnpm --filter @rampsmith/ui run test:browser",
+  "pnpm --filter @rampsmith/web run test:e2e",
+  "pnpm --filter @rampsmith/engine run test:e2e",
+]
 
 [tasks.verify]
 description = "Full gate: every static check, then every test suite"

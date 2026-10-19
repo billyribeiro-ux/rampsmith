@@ -4,8 +4,10 @@
 //! route is declared with `#[utoipa::path]` and registered through `OpenApiRouter`, so the
 //! OpenAPI document and the router cannot disagree (ADR-009, ADR-020).
 
+pub mod auth;
 pub mod config;
 mod health;
+pub mod shopify;
 
 use axum::Router;
 use db::Db;
@@ -19,6 +21,8 @@ use utoipa_axum::routes;
 pub struct AppState {
     db: Db,
     expected_schema: i64,
+    shopify: Option<shopify_auth::ShopifyAuth>,
+    identity: Option<identity::Identity>,
 }
 
 impl AppState {
@@ -28,7 +32,23 @@ impl AppState {
         Self {
             db,
             expected_schema: db::expected_schema_version(),
+            shopify: None,
+            identity: None,
         }
+    }
+
+    /// Enables dashboard sign-in with passkeys. Without it, auth routes answer 503.
+    #[must_use]
+    pub fn with_identity(mut self, identity: identity::Identity) -> Self {
+        self.identity = Some(identity);
+        self
+    }
+
+    /// Enables Shopify session authentication. Without it, Shopify routes answer 503.
+    #[must_use]
+    pub fn with_shopify(mut self, auth: shopify_auth::ShopifyAuth) -> Self {
+        self.shopify = Some(auth);
+        self
     }
 
     /// Overrides the schema version readiness waits for.
@@ -47,14 +67,49 @@ impl AppState {
         license(name = "Proprietary")
     ),
     components(schemas(Problem, ProblemCode)),
-    tags((name = "operations", description = "Liveness and readiness for the platform"))
+    modifiers(&SecuritySchemes),
+    tags(
+        (name = "operations", description = "Liveness and readiness for the platform"),
+        (name = "shopify", description = "The embedded Shopify app's session"),
+        (name = "auth", description = "Standalone dashboard sign-in with passkeys")
+    )
 )]
 struct ApiDoc;
+
+struct SecuritySchemes;
+
+impl utoipa::Modify for SecuritySchemes {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
+        let components = openapi.components.get_or_insert_with(Default::default);
+        let mut scheme = Http::new(HttpAuthScheme::Bearer);
+        scheme.bearer_format = Some("JWT".to_owned());
+        scheme.description = Some(
+            "The App Bridge session (ID) token, forwarded by the web app (ADR-022).".to_owned(),
+        );
+        components.add_security_scheme("shopify_session", SecurityScheme::Http(scheme));
+        let mut session = utoipa::openapi::security::ApiKeyValue::new("Authorization");
+        session.description = Some(
+            "`Session <token>`: the dashboard session token, forwarded by the web app (ADR-024)."
+                .to_owned(),
+        );
+        components.add_security_scheme(
+            "dashboard_session",
+            SecurityScheme::ApiKey(utoipa::openapi::security::ApiKey::Header(session)),
+        );
+    }
+}
 
 fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(health::healthz))
         .routes(routes!(health::readyz))
+        .routes(routes!(shopify::create_session))
+        .routes(routes!(auth::start_registration))
+        .routes(routes!(auth::finish_registration))
+        .routes(routes!(auth::start_sign_in))
+        .routes(routes!(auth::finish_sign_in))
+        .routes(routes!(auth::get_session, auth::delete_session))
 }
 
 /// The OpenAPI document, generated from the handlers.

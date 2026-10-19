@@ -26,6 +26,15 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [018](018-job-queue-protocol.md) | Job queue protocol details | Accepted |
 | [019](019-telemetry.md) | Telemetry wiring | Accepted |
 | [020](020-api-skeleton.md) | api skeleton, OpenAPI pipeline and images | Accepted |
+| [021](021-envelope-encryption.md) | Envelope encryption of secrets at rest | Accepted |
+| [022](022-shopify-authentication.md) | Shopify authentication and offline-token lifecycle | Accepted |
+| [023](023-web-skeleton.md) | Web skeleton, the embedded App Home and its security headers | Accepted |
+| [024](024-passkeys.md) | Passkeys and sessions for the standalone dashboard | Accepted |
+| [025](025-egress-guard-and-scan-tokens.md) | The egress guard, scan tokens and the engine skeleton | Accepted |
+| [026](026-design-system-primitives.md) | Design-system primitives in `packages/ui` | Accepted |
+| [027](027-challenge-detection-from-s2.md) | Challenge detection calibrated by spike S-2 | Accepted |
+| [028](028-service-images.md) | Images for web, engine and egress | Accepted |
+| [029](029-node-26-lts-runtime.md) | Node.js 26 LTS for every Node service (26.12.0 until the LTS release) | Accepted |
 
 ## Template
 

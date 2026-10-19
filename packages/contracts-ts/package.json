@@ -4,6 +4,9 @@
   "private": true,
   "description": "Generated TypeScript types and JSON Schemas for Rampsmith's contracts. Never hand-edited (ADR-009).",
   "type": "module",
+  "engines": {
+    "node": ">=26.12.0 <27"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./schemas/*.json": "./schemas/*.json"

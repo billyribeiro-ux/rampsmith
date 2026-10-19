@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select ensure_finding_occurrence_partitions(3)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ensure_finding_occurrence_partitions",
+        "type_info": "Void",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c9af3db716767825d9c8c07db0015622dd2caf44521de2876efc5ccd6a768041"
+}

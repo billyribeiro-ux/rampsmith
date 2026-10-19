@@ -1,0 +1,24 @@
+[package]
+name = "rampsmith-crypto"
+version = "0.0.0"
+description = "Envelope encryption for secrets at rest: AES-256-GCM data keys wrapped by an environment key ring."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "crypto"
+
+[dependencies]
+aes-gcm.workspace = true
+base64.workspace = true
+secrecy.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

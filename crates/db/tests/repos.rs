@@ -11,7 +11,7 @@
 mod support;
 
 use db::Db;
-use db::repo::{audit, findings, fixes, occurrences, scans, sites};
+use db::repo::{audit, findings, fixes, occurrences, scans, shopify, sites};
 use domain::{
     FindingStatus, FixChannel, FixKind, FixOrigin, FixStatus, Impact, PageState, Platform,
     ScanStatus, ScanTrigger, TenantKind, UserId,
@@ -598,4 +598,242 @@ async fn the_app_role_reads_the_schema_version_this_build_expects(
     let applied = db.schema_version().await.unwrap();
     assert_eq!(applied, Some(db::expected_schema_version()));
     assert!(db::expected_schema_version() >= 20_261_017_000_004);
+}
+
+// --- Shopify shops and tokens (ADR-022) ---------------------------------------------------
+
+#[sqlx::test]
+async fn a_shop_is_found_by_domain_from_the_app_role_without_a_tenant(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let a = seed(&db, 1).await;
+    let b = seed(&db, 2).await;
+
+    let found = db
+        .shop_by_domain("store-2.myshopify.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.tenant, b.tenant);
+    assert_eq!(found.shop, b.shop);
+    assert_eq!(found.status, domain::ShopStatus::Installed);
+    assert_eq!(
+        db.shop_by_domain("store-1.myshopify.com")
+            .await
+            .unwrap()
+            .unwrap()
+            .tenant,
+        a.tenant
+    );
+    assert!(
+        db.shop_by_domain("store-3.myshopify.com")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // Exact match only: no pattern, no case folding.
+    assert!(
+        db.shop_by_domain("store-%.myshopify.com")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.shop_by_domain("STORE-1.myshopify.com")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[sqlx::test]
+async fn a_shop_domain_belongs_to_one_tenant(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let db = app_db(opts, conn).await;
+    let a = seed(&db, 1).await;
+    let other = seed(&db, 2).await;
+    let mut tx = db.tenant(other.tenant).await.unwrap();
+    let err = shopify::install(
+        &mut tx,
+        &shopify::NewShop {
+            site_id: other.site,
+            shop_domain: "store-1.myshopify.com".to_owned(),
+            scopes: vec![],
+            api_version: "2026-10".to_owned(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, db::DbError::Conflict(_)), "{err:?}");
+    let _ = a;
+}
+
+#[sqlx::test]
+async fn shop_domains_and_api_versions_are_checked(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    for (domain, version) in [
+        ("evil.example.com", "2026-10"),
+        ("Store.myshopify.com", "2026-10"),
+        ("new.myshopify.com", "latest"),
+    ] {
+        let mut tx = db.tenant(g.tenant).await.unwrap();
+        let err = shopify::install(
+            &mut tx,
+            &shopify::NewShop {
+                site_id: g.site,
+                shop_domain: domain.to_owned(),
+                scopes: vec![],
+                api_version: version.to_owned(),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, db::DbError::Invalid(_)),
+            "{domain} {version}: {err:?}"
+        );
+    }
+}
+
+#[sqlx::test]
+async fn reinstalling_a_shop_refreshes_scopes_and_clears_uninstall(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    let before = shopify::get(&mut tx, g.shop).await.unwrap().unwrap();
+    let scopes = vec!["read_products".to_owned(), "read_themes".to_owned()];
+    let after = shopify::reinstall(&mut tx, g.shop, &scopes, "2026-10")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.scopes, scopes);
+    assert_eq!(after.status, domain::ShopStatus::Installed);
+    assert_eq!(after.installed_at, before.installed_at, "already installed");
+    assert!(after.uninstalled_at.is_none());
+}
+
+#[sqlx::test]
+async fn token_writes_bump_the_version_and_rotation_is_compare_and_swap(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+
+    let stored = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!(stored.version, 0);
+    assert_eq!(stored.tokens, support::sealed_tokens(1));
+
+    // Exchange replaces the row and bumps the version.
+    let v1 = shopify::put_tokens(&mut tx, g.shop, &support::sealed_tokens(2))
+        .await
+        .unwrap();
+    assert_eq!(v1, 1);
+
+    // A writer holding the current version wins once; a stale one loses and changes nothing.
+    let v2 = shopify::rotate(&mut tx, g.shop, v1, &support::sealed_tokens(3))
+        .await
+        .unwrap();
+    assert_eq!(v2, Some(2));
+    let lost = shopify::rotate(&mut tx, g.shop, v1, &support::sealed_tokens(4))
+        .await
+        .unwrap();
+    assert_eq!(lost, None);
+    let now = shopify::get_tokens(&mut tx, g.shop).await.unwrap().unwrap();
+    assert_eq!(now.version, 2);
+    assert_eq!(now.tokens, support::sealed_tokens(3));
+
+    assert!(shopify::delete_tokens(&mut tx, g.shop).await.unwrap());
+    assert!(
+        shopify::get_tokens(&mut tx, g.shop)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(!shopify::delete_tokens(&mut tx, g.shop).await.unwrap());
+}
+
+#[sqlx::test]
+async fn concurrent_rotations_from_the_same_version_have_one_winner(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let rotate = |label: u8| {
+        let db = db.clone();
+        async move {
+            let mut tx = db.tenant(g.tenant).await.unwrap();
+            let won = shopify::rotate(&mut tx, g.shop, 0, &support::sealed_tokens(label))
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+            won
+        }
+    };
+    let (x, y) = tokio::join!(rotate(10), rotate(11));
+    assert_eq!(
+        [x, y].iter().filter(|w| w.is_some()).count(),
+        1,
+        "{x:?} {y:?}"
+    );
+}
+
+#[sqlx::test]
+async fn the_shop_lock_serialises_holders(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let db = app_db(opts, conn).await;
+    let first = db.shop_lock("store-1.myshopify.com").await.unwrap();
+
+    // A second holder for the same shop waits; another shop does not.
+    let other = db.shop_lock("store-2.myshopify.com").await.unwrap();
+    other.release().await.unwrap();
+    let waiting = {
+        let db = db.clone();
+        tokio::spawn(async move { db.shop_lock("store-1.myshopify.com").await.unwrap() })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!waiting.is_finished(), "second holder did not wait");
+
+    first.release().await.unwrap();
+    let second = tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
+        .await
+        .expect("second holder never got the lock")
+        .unwrap();
+    // Dropping the guard releases the lock too.
+    drop(second);
+    let third = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        db.shop_lock("store-1.myshopify.com"),
+    )
+    .await
+    .expect("a dropped guard kept the lock")
+    .unwrap();
+    third.release().await.unwrap();
+}
+
+#[sqlx::test]
+async fn marking_a_site_verified_keeps_the_first_time(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let db = app_db(opts, conn).await;
+    let g = seed(&db, 1).await;
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    let first = sites::mark_verified(&mut tx, g.site, "shopify_install")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        first.verification_method.as_deref(),
+        Some("shopify_install")
+    );
+    let at = first.verified_at.unwrap();
+    let again = sites::mark_verified(&mut tx, g.site, "shopify_install")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(again.verified_at, Some(at));
 }
