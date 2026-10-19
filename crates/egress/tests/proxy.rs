@@ -324,6 +324,10 @@ async fn the_connection_budget_is_enforced_per_token() {
 struct Capture {
     lines: Arc<Mutex<Vec<String>>>,
     next_span: AtomicU64,
+    /// Each span's metadata and the stack of entered spans, so `Span::current()` works the way
+    /// it does under the production subscriber (the proxy records the scan id through it).
+    spans: Mutex<HashMap<u64, &'static tracing::Metadata<'static>>>,
+    stack: Mutex<Vec<u64>>,
 }
 
 struct Fields<'a>(&'a mut String);
@@ -350,7 +354,9 @@ impl tracing::Subscriber for Capture {
         let mut line = format!("span {}", attributes.metadata().name());
         attributes.record(&mut Fields(&mut line));
         self.push(line);
-        tracing::span::Id::from_u64(self.next_span.fetch_add(1, Ordering::Relaxed))
+        let id = self.next_span.fetch_add(1, Ordering::Relaxed);
+        self.spans.lock().unwrap().insert(id, attributes.metadata());
+        tracing::span::Id::from_u64(id)
     }
 
     fn record(&self, _: &tracing::span::Id, values: &tracing::span::Record<'_>) {
@@ -367,9 +373,26 @@ impl tracing::Subscriber for Capture {
         self.push(line);
     }
 
-    fn enter(&self, _: &tracing::span::Id) {}
+    fn enter(&self, span: &tracing::span::Id) {
+        self.stack.lock().unwrap().push(span.into_u64());
+    }
 
-    fn exit(&self, _: &tracing::span::Id) {}
+    fn exit(&self, span: &tracing::span::Id) {
+        let mut stack = self.stack.lock().unwrap();
+        if let Some(at) = stack.iter().rposition(|id| *id == span.into_u64()) {
+            stack.remove(at);
+        }
+    }
+
+    fn current_span(&self) -> tracing_core::span::Current {
+        let top = self.stack.lock().unwrap().last().copied();
+        match top.and_then(|id| self.spans.lock().unwrap().get(&id).map(|meta| (id, *meta))) {
+            Some((id, meta)) => {
+                tracing_core::span::Current::new(tracing::span::Id::from_u64(id), meta)
+            }
+            None => tracing_core::span::Current::none(),
+        }
+    }
 }
 
 /// The proxy serves allowed and refused requests for named hosts; what it tells `tracing` names
@@ -380,7 +403,12 @@ async fn spans_and_logs_never_contain_the_merchants_host() {
     let _guard = tracing::subscriber::set_default(Capture {
         lines: lines.clone(),
         next_span: AtomicU64::new(1),
+        spans: Mutex::new(HashMap::new()),
+        stack: Mutex::new(Vec::new()),
     });
+    // Other tests in this binary may have cached "no interest" for the proxy's callsites while
+    // no subscriber was set; ask every callsite again now that this one is.
+    tracing::callsite::rebuild_interest_cache();
     let h = test_network().await;
     let t = token(&h, &["shop.test", "private.test"], 20);
 
