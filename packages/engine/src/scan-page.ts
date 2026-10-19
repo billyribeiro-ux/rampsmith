@@ -5,6 +5,7 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import axe from 'axe-core';
 import type { Browser, Page } from 'playwright';
+import { assertLoopbackProxied, contextProxy } from './browser.ts';
 import { detectChallenge, type Challenge } from './challenge.ts';
 import { scrubExcerpt } from './scrub.ts';
 import { criteriaFromTags } from './wcag.ts';
@@ -43,7 +44,7 @@ export interface PageScan {
 export interface ScanOptions {
   readonly url: string;
   /** egress, with the scan token as the proxy password (ADR-025). */
-  readonly proxy?: { readonly server: string; readonly token: string; readonly loopback?: boolean };
+  readonly proxy?: { readonly server: string; readonly token: string };
   readonly viewport?: { readonly width: number; readonly height: number };
   readonly locale?: string;
   readonly userAgent: string;
@@ -129,6 +130,8 @@ async function occurrences(page: Page, rules: readonly AxeRule[]): Promise<Occur
 
 /** Scans one page. Throws on navigation failure, which the caller retries. */
 export async function scanPage(browser: Browser, options: ScanOptions): Promise<PageScan> {
+  // Through egress, loopback is only reachable if Chromium proxies it (audit L2).
+  if (options.proxy !== undefined) assertLoopbackProxied();
   const started = performance.now();
   const timeout = options.timeoutMs ?? 15_000;
   const context = await browser.newContext({
@@ -140,15 +143,7 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
     acceptDownloads: false,
     ...(options.proxy === undefined
       ? {}
-      : {
-          proxy: {
-            server: options.proxy.server,
-            username: 'rampsmith',
-            password: options.proxy.token,
-            // Chromium skips the proxy for loopback unless told otherwise (tests only).
-            ...(options.proxy.loopback === true ? { bypass: '<-loopback>' } : {}),
-          },
-        }),
+      : { proxy: contextProxy(options.proxy.server, options.proxy.token) }),
   });
   try {
     const page = await context.newPage();

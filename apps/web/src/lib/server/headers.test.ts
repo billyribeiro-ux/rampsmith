@@ -29,6 +29,36 @@ describe('securityHeaders', () => {
     }
   });
 
+  it('keeps every dashboard response out of shared caches and the back button (audit L8)', () => {
+    for (const href of [
+      'https://web.example/dashboard',
+      'https://web.example/dashboard/',
+      'https://web.example/dashboard/sign-in',
+      'https://web.example/dashboard/register',
+      'https://web.example/dashboard/__data.json',
+      'https://web.example/dashboard/auth/sign-in/finish',
+    ]) {
+      expect(apply(href).get('cache-control'), href).toBe('private, no-store');
+    }
+  });
+
+  it('replaces a weaker cache policy that a dashboard route set itself', () => {
+    const headers = new Headers({ 'cache-control': 'public, max-age=600' });
+    securityHeaders(new URL('https://web.example/dashboard'), headers);
+    expect(headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('leaves the caching of other routes to the routes', () => {
+    for (const href of [
+      'https://web.example/',
+      'https://web.example/app?shop=demo.myshopify.com',
+      'https://web.example/dashboards',
+      'https://web.example/_app/immutable/entry/start.js',
+    ]) {
+      expect(apply(href).get('cache-control'), href).toBeNull();
+    }
+  });
+
   it('sets the baseline headers, and HSTS only over HTTPS', () => {
     const secure = apply('https://web.example/');
     expect(secure.get('x-content-type-options')).toBe('nosniff');

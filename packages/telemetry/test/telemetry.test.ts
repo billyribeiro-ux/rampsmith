@@ -8,6 +8,8 @@ let running: Telemetry | undefined;
 afterEach(async () => {
   await running?.shutdown();
   running = undefined;
+  // One tracer provider per process; each test starts its own.
+  trace.disable();
 });
 
 describe('startTelemetry', () => {

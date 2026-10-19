@@ -1,13 +1,31 @@
 /**
  * The standalone dashboard's session, held by `web` for the browser (PLAN §16, ADR-024).
- * The api's session token lives only in the `rs_session` cookie (`HttpOnly`, `Secure`,
- * `SameSite=Lax`) and is forwarded as `Authorization: Session <token>`; the browser's scripts
- * never see it. WebAuthn options and responses pass through unchanged.
+ * The api's session token lives only in the `__Host-rs_session` cookie (`HttpOnly`, `Secure`,
+ * `SameSite=Lax`, `Path=/`, no `Domain`) and is forwarded as `Authorization: Session <token>`;
+ * the browser's scripts never see it. WebAuthn options and responses pass through unchanged.
  */
 import type { Cookies } from '@sveltejs/kit';
 import type { ApiClient } from '@rampsmith/contracts-ts';
 
-export const SESSION_COOKIE = 'rs_session';
+/**
+ * The `__Host-` prefix makes a browser refuse the cookie unless it is `Secure`, has `Path=/` and
+ * no `Domain`, so no sibling subdomain or insecure page can set or overwrite it (audit L8,
+ * ADR-055).
+ */
+export const SESSION_COOKIE = '__Host-rs_session';
+
+/**
+ * What the prefix requires, always, whatever scheme `web` thinks the request used. Chromium
+ * and Firefox also accept a `Secure` cookie from `http://localhost`, which is how the browser
+ * tests and `vite dev` run. A cookie without `Secure` is ignored by the browser, and so is a
+ * `Set-Cookie` that tries to delete it, which is why deletion passes the same options.
+ */
+const SESSION_COOKIE_OPTIONS = {
+  path: '/',
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax',
+} as const;
 
 /** A signed-in dashboard user. */
 export interface DashboardUser {
@@ -50,6 +68,11 @@ export async function currentUser(
   return result?.data?.user;
 }
 
+/** Tells the browser to drop the session cookie. */
+export function clearSession(cookies: Cookies): void {
+  cookies.delete(SESSION_COOKIE, SESSION_COOKIE_OPTIONS);
+}
+
 /** Ends the session at the api and clears the cookie. */
 export async function signOut(client: ApiClient, cookies: Cookies): Promise<void> {
   const token = cookies.get(SESSION_COOKIE);
@@ -58,7 +81,7 @@ export async function signOut(client: ApiClient, cookies: Cookies): Promise<void
       .DELETE('/v1/auth/session', { headers: { authorization: `Session ${token}` } })
       .catch(() => undefined);
   }
-  cookies.delete(SESSION_COOKIE, { path: '/' });
+  clearSession(cookies);
 }
 
 /** `POST /dashboard/auth/register/start`. */
@@ -105,7 +128,6 @@ export async function finishCeremony(
   kind: 'register' | 'sign-in',
   body: unknown,
   cookies: Cookies,
-  secure: boolean,
 ): Promise<Response> {
   const answer = ceremonyResponse(body);
   if (answer === undefined) return problem(400, 'bad_request', 'Bad request');
@@ -114,10 +136,7 @@ export async function finishCeremony(
   if (result === undefined) return unavailable();
   if (result.data === undefined) return relayError(result.error, result.response.status);
   cookies.set(SESSION_COOKIE, result.data.token, {
-    path: '/',
-    httpOnly: true,
-    secure,
-    sameSite: 'lax',
+    ...SESSION_COOKIE_OPTIONS,
     expires: new Date(result.data.expires_at),
   });
   return Response.json({ user: result.data.user }, { status: 201, headers: NO_STORE });

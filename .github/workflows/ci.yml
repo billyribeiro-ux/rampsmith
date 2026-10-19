@@ -191,7 +191,21 @@ jobs:
       - name: Install Playwright's pinned Chromium
         run: pnpm --filter @rampsmith/web exec playwright install --with-deps chromium
       - name: Browser tests (axe, keyboard; real api and database for the dashboard)
-        run: mise run test:e2e
+        shell: bash
+        run: |
+          set -o pipefail
+          mise run test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+      - name: Report the end of the browser test output as an annotation
+        if: failure()
+        shell: bash
+        run: |
+          # The job log host is unreachable from the build sessions; this makes the failure
+          # readable through the check-run annotations API.
+          # Colour codes and bundle-size lines are dropped so the failure fits in one annotation.
+          sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r//g' "$RUNNER_TEMP/e2e.log" |
+            grep -vE '\.svelte-kit/output|│ gzip:|^\[test:e2e\] *$' |
+            tail -n 40 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/e2e.tail"
+          echo "::error title=e2e output (last 40 lines)::$(cat "$RUNNER_TEMP/e2e.tail")"
       - name: Keep the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
