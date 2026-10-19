@@ -1,7 +1,8 @@
 import process from 'node:process';
 import { JobFailure, enqueue, runWorker, uuidv7 } from '@rampsmith/queue';
-import { chromium, type Browser } from 'playwright';
+import type { Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { launchBrowser } from '../src/browser.ts';
 import { signScanToken } from '../src/egress-token.ts';
 import { scanPage } from '../src/scan-page.ts';
 import { scanPageHandler } from '../src/worker.ts';
@@ -16,8 +17,9 @@ let egress: Egress;
 
 beforeAll(async () => {
   const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'];
-  browser = await chromium.launch({
-    proxy: { server: 'per-context' },
+  // The engine's own launch settings; the sandbox is off only because the test runs as root.
+  browser = await launchBrowser({
+    chromiumSandbox: false,
     ...(executablePath === undefined ? {} : { executablePath }),
   });
   site = await startSite();
@@ -78,7 +80,7 @@ describe('scanPage', () => {
     const through = await scanPage(browser, {
       url: `${site.origin}/`,
       userAgent: UA,
-      proxy: { server: egress.url, token: token(['127.0.0.1']), loopback: true },
+      proxy: { server: egress.url, token: token(['127.0.0.1']) },
     });
     expect(through.violations.map((v) => v.ruleId)).toContain('image-alt');
     expect(site.requests.length).toBeGreaterThan(before);
@@ -89,7 +91,7 @@ describe('scanPage', () => {
     const refused = await scanPage(browser, {
       url: `${site.origin}/clean`,
       userAgent: UA,
-      proxy: { server: egress.url, token: token(['shop.example']), loopback: true },
+      proxy: { server: egress.url, token: token(['shop.example']) },
     });
     expect(refused.status).toBe(403);
     expect(site.requests.length).toBe(seen);
@@ -127,7 +129,7 @@ describe('the scan.page worker', () => {
       handler: scanPageHandler({
         sql,
         browser,
-        egress: { proxyUrl: egress.url, tokenSecret: EGRESS_SECRET, loopback: true },
+        egress: { proxyUrl: egress.url, tokenSecret: EGRESS_SECRET },
         userAgent: UA,
       }),
     });

@@ -48,10 +48,51 @@ export interface Site {
   close(): Promise<void>;
 }
 
+/**
+ * A page whose script probes the network over WebRTC (UDP, outside any HTTP proxy): an ICE
+ * gather against a `stun:` server and connectivity checks against a remote candidate, both on
+ * the loopback ports in the query. It keeps the DOM changing for about three seconds, so a scan
+ * stays on the page long enough for the packets to leave.
+ */
+const WEBRTC_PROBE = LAYOUT(
+  'WebRTC probe',
+  `<p id="tick">0</p>
+   <script>
+     const query = new URLSearchParams(location.search);
+     const tick = document.getElementById('tick');
+     let ticks = 0;
+     const timer = setInterval(() => {
+       ticks += 1;
+       tick.textContent = String(ticks);
+       if (ticks >= 15) clearInterval(timer);
+     }, 200);
+     (async () => {
+       const a = new RTCPeerConnection({
+         iceServers: [{ urls: 'stun:127.0.0.1:' + query.get('stun') }],
+       });
+       const b = new RTCPeerConnection();
+       a.createDataChannel('probe');
+       await a.setLocalDescription(await a.createOffer());
+       await b.setRemoteDescription(a.localDescription);
+       await b.setLocalDescription(await b.createAnswer());
+       await a.setRemoteDescription(b.localDescription);
+       await a.addIceCandidate({
+         candidate: 'candidate:1 1 udp 2122260223 127.0.0.1 ' + query.get('peer') + ' typ host',
+         sdpMid: '0',
+         sdpMLineIndex: 0,
+       });
+     })().catch(() => undefined);
+   </script>`,
+);
+
 export async function startSite(): Promise<Site> {
   const requests: string[] = [];
   const server: Server = createServer((req, res) => {
     requests.push(req.url ?? '');
+    if ((req.url ?? '').startsWith('/webrtc?')) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(WEBRTC_PROBE);
+      return;
+    }
     const page = PAGES[req.url ?? ''];
     if (page === undefined) {
       res.writeHead(req.url === '/scarf.png' ? 200 : 404, { 'content-type': 'image/png' }).end();
