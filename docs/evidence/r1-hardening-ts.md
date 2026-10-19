@@ -42,3 +42,25 @@ the browser binary: `strings /tmp/chromium | grep force-webrtc-ip-handling-polic
 
 Deploy-time restriction: Railway's documentation lists no outbound filter, so ADR-050 records
 what holds in code and what stays for the founder.
+
+## L10 stored selectors and final URL (ADR-051)
+
+What changed: `packages/engine/src/scrub.ts` gains `scrubSelector` and `scrubUrl` (and a linear
+email scan that replaces the pattern in `scrubExcerpt`); `recordPage` scrubs `target`,
+`html_excerpt` and `page_url` before any statement and fingerprints the scrubbed selector.
+
+Tests written first (`test/scrub.test.ts`, 35 tests, `test/store-scrub.test.ts`, 3 tests against
+PostgreSQL): attribute values in single, double and no quotes, `]` and escaped quotes inside
+values, unterminated selectors, CSS-escaped email ids, frame-crossing `>>>` selectors,
+credentials, query string, fragment, `%40` and plain emails in the path, UUID and hex and
+mixed-case tokens, `data:` and `javascript:` addresses, NUL bytes, and 200,000-character
+hostile inputs. The store test writes four hostile occurrences with a hostile address and then
+reads `row_to_json(finding_occurrences)` back: none of nine planted secrets (an email, an
+`id_token`, a card number, a reset key, a fragment, a password) is in the row.
+
+Before the fix the three store tests failed (`expected [ …(4) ] to deeply equal [ '#[email] > img',
+… ]`, two findings instead of one, and `invalid byte sequence for encoding "UTF8": 0x00`); the
+last shows a hostile page could also make `recordPage` fail for the whole job. The first draft of
+the email pattern backtracked: the hostile-input test took 15.7 s over inputs cut to 4096
+characters and failed its 1.5 s bound; the email scan now looks outward from each `@` and the same
+test runs in milliseconds.
