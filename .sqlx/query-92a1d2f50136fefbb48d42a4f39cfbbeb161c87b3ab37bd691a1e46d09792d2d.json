@@ -1,0 +1,144 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into findings (id, tenant_id, site_id, fingerprint, rule_id, criteria, impact,\n                                 status, first_seen_scan, last_seen_scan, occurrence_count)\n           values ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $8, $9)\n           on conflict (site_id, fingerprint) do update\n              set last_seen_scan = excluded.last_seen_scan,\n                  occurrence_count = excluded.occurrence_count,\n                  impact = excluded.impact,\n                  criteria = excluded.criteria,\n                  status = case when findings.status = 'fixed' then 'open' else findings.status end\n            where findings.tenant_id = excluded.tenant_id\n        returning id, site_id, fingerprint, rule_id, criteria, impact, status, first_seen_scan,\n                  last_seen_scan, occurrence_count",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "fingerprint",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "fingerprint"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "rule_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "criteria",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "criteria"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "impact",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "impact"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "first_seen_scan",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "first_seen_scan"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "last_seen_scan",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "last_seen_scan"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "occurrence_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "occurrence_count"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Text",
+        "TextArray",
+        "Text",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "92a1d2f50136fefbb48d42a4f39cfbbeb161c87b3ab37bd691a1e46d09792d2d"
+}

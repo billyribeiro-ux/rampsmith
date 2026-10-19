@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from webauthn_ceremonies\n            where id = $1 and kind = $2 and expires_at > $3\n        returning state, pending_user_id, pending_email, pending_display_name",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "state",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "webauthn_ceremonies",
+            "name": "state"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "pending_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "webauthn_ceremonies",
+            "name": "pending_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "pending_email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "webauthn_ceremonies",
+            "name": "pending_email"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "pending_display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "webauthn_ceremonies",
+            "name": "pending_display_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f5c29759dd7c8f96adad965c3f457a4f2605eb276aa29d2c11dcf250c619ca81"
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@6.41.0/schema.json",
+  "treatConfigHintsAsErrors": true,
+  "workspaces": {
+    ".": {},
+    "packages/contracts-ts": {
+      "entry": ["test/**/*.test-d.ts"]
+    },
+    "packages/engine": {
+      "entry": ["test/**/*.e2e.ts", "spikes/s*-*.ts"]
+    },
+    "apps/web": {
+      "entry": ["src/env.ts", "tests/**/*.spec.ts"],
+      "project": ["src/**/*.{ts,svelte}", "tests/**/*.ts"],
+      "ignoreDependencies": ["@inlang/plugin-message-format"]
+    }
+  },
+  "ignore": ["packages/contracts-ts/src/generated/**"]
+}

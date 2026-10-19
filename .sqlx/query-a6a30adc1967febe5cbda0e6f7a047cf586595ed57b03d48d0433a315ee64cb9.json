@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update jobs set state = 'cancelled', finished_at = now()\n            where tenant_id = $1 and state = 'ready'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a6a30adc1967febe5cbda0e6f7a047cf586595ed57b03d48d0433a315ee64cb9"
+}

@@ -1,0 +1,165 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into scans (id, tenant_id, site_id, theme_ref, trigger, status, ruleset_version)\n           values ($1, $2, $3, $4, $5, 'queued', $6)\n           returning id, site_id, theme_ref, trigger, status, ruleset_version, pages_planned,\n                     pages_done, created_at, started_at, finished_at, error_code",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "theme_ref",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "theme_ref"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "trigger",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "trigger"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "ruleset_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "ruleset_version"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "pages_planned",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "pages_planned"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "pages_done",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "pages_done"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "started_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "finished_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "finished_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "error_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "error_code"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ae276bb7808975f8e0089079a59129a164671f976bfd99c66ba9e9243e4db2b6"
+}

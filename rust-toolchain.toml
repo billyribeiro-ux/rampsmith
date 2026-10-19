@@ -1,0 +1,5 @@
+# Pinned per PLAN §7. Bump only with the plan updated in the same commit.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+profile = "minimal"

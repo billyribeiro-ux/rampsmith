@@ -1,0 +1,153 @@
+# Single installer for the local toolchain (PLAN §7, §8).
+# Rust is pinned in rust-toolchain.toml and installed by rustup.
+min_version = "2026.10.12"
+
+[tools]
+node = "26.12.0"
+pnpm = "12.14.0"
+postgres = "18.6"
+# Installed first, so the cargo tools below come from their authors' prebuilt binaries.
+cargo-binstall = "1.26.0"
+"cargo:cargo-nextest" = "0.9.148"
+"cargo:cargo-deny" = "0.20.2"
+"cargo:cargo-machete" = "0.9.2"
+# Features force a source build (cargo install); only Postgres and rustls are compiled in.
+"cargo:sqlx-cli" = { version = "0.9.0", features = ["postgres", "rustls"], default-features = false }
+
+[env]
+# Local development database. An exported DATABASE_URL (CI's service container, a deploy)
+# always wins over this default.
+DATABASE_URL = "{{ get_env(name='DATABASE_URL', default='postgres://postgres:postgres@127.0.0.1:5432/rampsmith') }}"
+# sqlx::query! checks every query against the committed .sqlx data, so building never needs
+# a database. `mise run db:prepare` refreshes it; `check:sqlx` proves it is current.
+SQLX_OFFLINE = "true"
+
+# ---------------------------------------------------------------------------
+# Tasks. `mise run verify` is the full local gate and mirrors ci.yml (PLAN §24, §27).
+# ---------------------------------------------------------------------------
+
+[tasks.setup]
+# Every JavaScript task depends on this, so the gate fails on a lockfile or build-script
+# drift that an already-populated node_modules would hide.
+description = "Install JavaScript dependencies exactly as locked"
+run = "pnpm install --frozen-lockfile"
+
+[tasks."web:sync"]
+description = "Compile the web app's messages (Paraglide) and generate SvelteKit's types"
+depends = ["setup"]
+run = "pnpm --filter @rampsmith/web run sync"
+
+[tasks."db:migrate"]
+description = "Create the database in DATABASE_URL if needed and apply every migration"
+run = ["sqlx database create", "sqlx migrate run --source crates/db/migrations"]
+
+[tasks."db:prepare"]
+description = "Refresh the committed sqlx offline query data (.sqlx) after changing a query"
+depends = ["db:migrate"]
+run = "cargo sqlx prepare --workspace -- --all-targets --all-features"
+
+[tasks."check:rust-fmt"]
+description = "rustfmt, check only"
+run = "cargo fmt --all --check"
+
+[tasks."check:clippy"]
+description = "Clippy on every target and feature, warnings are errors"
+run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+
+[tasks."check:cargo-deny"]
+description = "Licenses, advisories, duplicate versions, sources"
+run = "cargo deny --locked check"
+
+[tasks."check:cargo-machete"]
+description = "Unused Rust dependencies"
+run = "cargo machete"
+
+[tasks."check:sqlx"]
+description = "The committed .sqlx data matches every query and the migrated schema"
+depends = ["db:migrate"]
+run = "cargo sqlx prepare --workspace --check -- --all-targets --all-features"
+
+[tasks."check:eslint"]
+description = "ESLint with zero warnings allowed"
+depends = ["setup", "web:sync"]
+run = "pnpm run lint"
+
+[tasks."check:prettier"]
+description = "Prettier, check only"
+depends = ["setup"]
+run = "pnpm run format:check"
+
+[tasks."check:types"]
+description = "tsc --noEmit and svelte-check --fail-on-warnings in every package"
+depends = ["setup", "web:sync"]
+run = "pnpm run typecheck"
+
+[tasks."check:knip"]
+description = "Unused files, exports and dependencies"
+depends = ["setup", "web:sync"]
+run = "pnpm run knip"
+
+[tasks."check:claims"]
+description = "Banned claims (PLAN §3) in UI strings, emails, listing and marketing copy"
+depends = ["setup"]
+run = "node packages/claims-lint/src/main.ts"
+
+[tasks."check:node-pins"]
+description = "Every Node.js pin (engines, @types/node, images, CI) agrees with this file (ADR-029)"
+run = "node packages/node-pins/src/main.ts"
+
+[tasks."contracts:generate"]
+description = "Regenerate JSON Schemas, the OpenAPI document and their TypeScript types (ADR-009)"
+run = [
+  "cargo run --locked --quiet -p rampsmith-contracts --bin gen-schemas -- packages/contracts-ts/schemas",
+  "node packages/contracts-ts/scripts/generate.ts packages/contracts-ts/schemas packages/contracts-ts/src/generated",
+  "cargo run --locked --quiet -p rampsmith-api --bin gen-openapi -- packages/contracts-ts/openapi/api.json",
+  "node packages/contracts-ts/scripts/generate-api.ts packages/contracts-ts/openapi/api.json packages/contracts-ts/src/generated/api.ts",
+]
+
+[tasks."check:contracts"]
+description = "Contract drift: regenerate into a temporary directory and diff against the committed files"
+depends = ["setup"]
+run = """
+set -eu
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cargo run --locked --quiet -p rampsmith-contracts --bin gen-schemas -- "$tmp/schemas"
+node packages/contracts-ts/scripts/generate.ts "$tmp/schemas" "$tmp/generated"
+cargo run --locked --quiet -p rampsmith-api --bin gen-openapi -- "$tmp/openapi/api.json"
+node packages/contracts-ts/scripts/generate-api.ts "$tmp/openapi/api.json" "$tmp/generated/api.ts"
+diff -ru packages/contracts-ts/schemas "$tmp/schemas"
+diff -ru packages/contracts-ts/openapi "$tmp/openapi"
+diff -ru packages/contracts-ts/src/generated "$tmp/generated"
+echo "contracts: generated files match crates/contracts"
+"""
+
+[tasks."test:rust"]
+description = "Rust tests through cargo-nextest"
+run = "cargo nextest run --workspace --all-features --locked"
+
+[tasks."test:ts"]
+description = "Vitest in every package"
+depends = ["setup", "web:sync"]
+run = "pnpm run test"
+
+[tasks."build:api"]
+description = "Debug build of the api, which the browser tests run against a real database"
+run = "cargo build --locked -p rampsmith-api --bin api"
+
+[tasks."build:egress"]
+description = "Debug build of the egress proxy, which the engine's browser tests scan through"
+run = "cargo build --locked -p rampsmith-egress --bin egress"
+
+[tasks."test:e2e"]
+description = "Browser tests in Chromium: the ui primitives (axe and keyboard); the web app against a stub api (embedded) and the real api and database (dashboard), with axe (WCAG 2.2 AA) and keyboard checks; the engine scanning through the real egress proxy into PostgreSQL"
+depends = ["setup", "web:sync", "build:api", "build:egress"]
+run = [
+  "pnpm --filter @rampsmith/ui run test:browser",
+  "pnpm --filter @rampsmith/web run test:e2e",
+  "pnpm --filter @rampsmith/engine run test:e2e",
+]
+
+[tasks.verify]
+description = "Full gate: every static check, then every test suite"
+depends = ["check:*", "test:*"]

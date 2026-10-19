@@ -1,0 +1,62 @@
+# Architecture decision records
+
+Each decision is written here, as its own file, before the code it governs (PLAN §6, §27).
+When official documentation and PLAN.md disagree, the documentation wins: the difference is
+recorded as an ADR and the plan is corrected in the same pull request.
+
+| ADR | Decision | Status |
+| --- | --- | --- |
+| [001](001-rust-axum-control-plane.md) | Rust and Axum for the control plane | Accepted |
+| [002](002-typescript-engine.md) | TypeScript for the engine | Accepted |
+| [003](003-postgres-job-queue.md) | PostgreSQL is the job queue | Accepted |
+| [004](004-never-write-theme-files.md) | Never write theme files; three fix channels | Accepted |
+| [005](005-sveltekit-bff.md) | SvelteKit is a backend-for-frontend | Accepted |
+| [006](006-shared-schema-rls.md) | Shared schema with `tenant_id`, enforced twice | Accepted |
+| [007](007-span-patches.md) | Patches edit source spans only | Accepted |
+| [008](008-billing-rails.md) | Shopify App Pricing; Stripe Billing for everyone else | Accepted |
+| [009](009-generated-contracts.md) | Contracts are generated | Accepted |
+| [010](010-railway-first.md) | Railway first, measured move of browser workers | Accepted |
+| [011](011-model-routing.md) | Claude model routing by task difficulty | Accepted |
+| [012](012-no-redis.md) | No Redis in R0 to R2 | Accepted |
+| 013 | Reserved: evaluate Shopify Next Gen Events in R3 (PLAN §14) | Reserved |
+| [014](014-sandbox-toolchain-gaps.md) | Local verification toolchain when pinned downloads are blocked | Accepted |
+| [015](015-database-tests-on-provided-postgres.md) | Database tests run on a provided PostgreSQL, not testcontainers | Accepted |
+| [016](016-pull-request-gate-mechanics.md) | Pull-request gate mechanics | Accepted |
+| [017](017-composite-tenant-foreign-keys.md) | Composite tenant foreign keys | Accepted |
+| [018](018-job-queue-protocol.md) | Job queue protocol details | Accepted |
+| [019](019-telemetry.md) | Telemetry wiring | Accepted |
+| [020](020-api-skeleton.md) | api skeleton, OpenAPI pipeline and images | Accepted |
+| [021](021-envelope-encryption.md) | Envelope encryption of secrets at rest | Accepted |
+| [022](022-shopify-authentication.md) | Shopify authentication and offline-token lifecycle | Accepted |
+| [023](023-web-skeleton.md) | Web skeleton, the embedded App Home and its security headers | Accepted |
+| [024](024-passkeys.md) | Passkeys and sessions for the standalone dashboard | Accepted |
+| [025](025-egress-guard-and-scan-tokens.md) | The egress guard, scan tokens and the engine skeleton | Accepted |
+| [026](026-design-system-primitives.md) | Design-system primitives in `packages/ui` | Accepted |
+| [027](027-challenge-detection-from-s2.md) | Challenge detection calibrated by spike S-2 | Accepted |
+| [028](028-service-images.md) | Images for web, engine and egress | Accepted |
+| [029](029-node-26-lts-runtime.md) | Node.js 26 LTS for every Node service (26.12.0 until the LTS release) | Accepted |
+| [030](030-phosphor-icons-in-the-svelte-ui.md) | Phosphor icons in the Svelte UI | Accepted |
+| [031](031-shopify-credential-names-and-the-r0-live-dev-store-check.md) | Shopify credential names and the R0 live dev-store check | Accepted |
+| [032](032-token-client-transport-and-error-classes.md) | Token client transport and error classes | Accepted |
+| [033](033-webauthn-origin-validation.md) | WebAuthn origin validation | Accepted |
+
+## Template
+
+```markdown
+# ADR-NNN: Title in sentence case
+
+- Status: Proposed | Accepted | Superseded by ADR-NNN
+- Date: YYYY-MM-DD
+
+## Context
+What forces the decision, with links to the evidence.
+
+## Decision
+What we do, stated so it can be checked.
+
+## Consequences
+What becomes easier, what becomes harder, what must now be true.
+
+## Rejected alternatives
+- Option: why not.
+```

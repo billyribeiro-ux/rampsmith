@@ -1,0 +1,199 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select f.id, f.site_id, f.kind, f.channel, f.status, f.origin, f.model, f.prompt_version,\n                  f.confidence::float8 as \"confidence\", f.diff, f.patch_key, f.approved_by,\n                  f.approved_at, f.applied_at, f.created_at,\n                  array(select ff.finding_id from fix_findings ff\n                         where ff.tenant_id = f.tenant_id and ff.fix_id = f.id\n                         order by ff.finding_id) as \"finding_ids!\"\n             from fixes f where f.tenant_id = $1 and f.id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "origin",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "origin"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "model",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "prompt_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "prompt_version"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "confidence",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "diff",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "diff"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "patch_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "patch_key"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "approved_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "approved_by"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "approved_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "approved_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "applied_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "applied_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "finding_ids!",
+        "type_info": "UuidArray",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      null
+    ]
+  },
+  "hash": "2ed2e0445be93e28c38c98d5e594a977c1d914598ca62d561f1639764f1fe8d0"
+}

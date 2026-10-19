@@ -40,7 +40,7 @@ These have outside waits or approvals. Start them in parallel.
   - Multi-line values: press Cmd/Ctrl+Enter or use the Raw Editor.
 - **Both**: GH and RW.
 - Never put a value in the repo or a chat. Values marked *public* may be shown to builders.
-- When you finish, reply in the Rampsmith chat. Builders then run `rsctl doctor`, which checks each input against its live service (LAUNCH.md B), and the live checks in LAUNCH.md section E.
+- When you finish, run `rsctl doctor` yourself, on your machine or on Railway, where the inputs are (LAUNCH.md B). It checks each input against its live service and prints PASS or FAIL per input, never a value. Then reply in the Rampsmith chat with that output. Live checks in LAUNCH.md section E that need a secret builders cannot read also run on your machine: for the Shopify dev-store check, `docs/runbooks/shopify-dev-store.md` section 3 has the one command.
 
 Docs: [GitHub: use secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets?tool=webui) · [secrets reference](https://docs.github.com/en/actions/reference/security/secrets) · [manage environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) · [gh secret set](https://cli.github.com/manual/gh_secret_set) · [Railway: secrets](https://docs.railway.com/guides/managing-secrets-on-railway.md) · [variables](https://docs.railway.com/variables.md)
 
@@ -142,7 +142,7 @@ Wait until builders commit `shopify.app.toml`. Shopify says App Store apps shoul
 
 Values:
 - `SHOPIFY_API_KEY` = Client ID (*public*) → Both. Railway `production` only; staging needs its own app (see the last section).
-- `SHOPIFY_API_SECRET` = Client secret → Both. Same Railway note.
+- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. Not a GitHub repository secret: no workflow uses it, and any workflow pushed to a branch of this repository can read repository secrets. If a workflow ever needs it, it goes in as a GH env secret on a protected environment (ADR-031).
 
 Docs: [Partner getting started](https://help.shopify.com/en/partners/partner-program/getting-started) · [Partner settings](https://help.shopify.com/partners/manage-account/settings) · [Partner vs Dev Dashboard](https://help.shopify.com/partners/manage-account/dashboard) · [Dev Dashboard](https://shopify.dev/docs/apps/build/dev-dashboard) · [create apps in Dev Dashboard](https://shopify.dev/docs/apps/build/dev-dashboard/create-apps-using-dev-dashboard) · [manage config files](https://shopify.dev/docs/apps/build/cli-for-apps/manage-app-config-files) · [app config link](https://shopify.dev/docs/api/shopify-cli/app/app-config-link) · [app configuration](https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration) · [credentials](https://shopify.dev/docs/apps/build/authentication-authorization/manage-credentials.md) · [distribution](https://shopify.dev/docs/apps/launch/distribution) · [select distribution](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) · [scaffold an app](https://www.shopify.dev/docs/apps/getting-started/create)
 

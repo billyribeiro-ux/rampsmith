@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update passkeys set last_used_at = $2, passkey = coalesce($3, passkey) where id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8657c4c1554a8154ea5a1b18df000cb349fc024ff65ea665f9c48c8732d2dbba"
+}

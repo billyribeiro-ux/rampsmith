@@ -1,0 +1,10 @@
+# Only sources reach the build context.
+.git
+target
+**/node_modules
+**/.svelte-kit
+**/build
+**/dist
+**/coverage
+.env
+.env.*

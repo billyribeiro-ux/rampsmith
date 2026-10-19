@@ -1,0 +1,78 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "with touched as (\n             update web_sessions\n                set last_seen_at = $2,\n                    idle_expires_at = least($2 + $3::interval, absolute_expires_at)\n              where token_hash = $1 and idle_expires_at > $2 and absolute_expires_at > $2\n          returning user_id)\n           select u.id, u.email, u.display_name, u.email_verified_at, u.created_at\n             from users u join touched t on t.user_id = u.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "email_verified_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email_verified_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Timestamptz",
+        "Interval"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "da13ac018133e0d70956c8b4060db05c1cee138606657bf08e4a8695749c2ee4"
+}

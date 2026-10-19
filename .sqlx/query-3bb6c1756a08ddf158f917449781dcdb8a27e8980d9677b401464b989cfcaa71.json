@@ -1,0 +1,101 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select shop_id, access_ct, refresh_ct, key_id, access_expires_at, refresh_expires_at, version\n             from shopify_tokens where tenant_id = $1 and shop_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shop_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "shop_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "access_ct",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "access_ct"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "refresh_ct",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "refresh_ct"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "key_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "key_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "access_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "access_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "refresh_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "refresh_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "shopify_tokens",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3bb6c1756a08ddf158f917449781dcdb8a27e8980d9677b401464b989cfcaa71"
+}

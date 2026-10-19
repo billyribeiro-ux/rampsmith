@@ -1,0 +1,137 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, site_id, fingerprint, rule_id, criteria, impact, status, first_seen_scan,\n                  last_seen_scan, occurrence_count\n             from findings where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "fingerprint",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "fingerprint"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "rule_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "criteria",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "criteria"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "impact",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "impact"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "first_seen_scan",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "first_seen_scan"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "last_seen_scan",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "last_seen_scan"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "occurrence_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "occurrence_count"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d521e90b4d1c00aa725a9a39b39957faadcc221293c1a13863283dc5f88fc294"
+}

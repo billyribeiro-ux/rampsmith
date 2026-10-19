@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, platform, base_url, verified_at, verification_method, primary_locale, created_at\n             from sites where tenant_id = $1 order by created_at, id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "platform",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "platform"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "base_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "base_url"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "verified_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "verified_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "verification_method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "verification_method"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "primary_locale",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "primary_locale"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "5a535525b79670b8825b94c5755f3f6ce4924406514f2a164b8ec0f60b0e2ed1"
+}

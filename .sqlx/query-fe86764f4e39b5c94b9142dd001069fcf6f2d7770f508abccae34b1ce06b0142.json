@@ -1,0 +1,45 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "with decision as (\n             select id, ($4::bool and attempts < max_attempts) as retry from jobs\n              where id = $1 and locked_by = $2 and attempts = $3 and state = 'running'\n              for update\n           )\n           update jobs j set\n             state = case when d.retry then 'ready' else 'dead' end,\n             run_at = case when d.retry then now() + make_interval(secs => $5) else j.run_at end,\n             finished_at = case when d.retry then null else now() end,\n             last_error = jsonb_set($6::jsonb, '{retryable}', to_jsonb(d.retry)),\n             locked_by = null,\n             locked_until = null\n           from decision d\n           where j.id = d.id\n           returning j.state, j.run_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "state"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "run_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "run_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4",
+        "Bool",
+        "Float8",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "fe86764f4e39b5c94b9142dd001069fcf6f2d7770f508abccae34b1ce06b0142"
+}

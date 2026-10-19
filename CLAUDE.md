@@ -32,7 +32,7 @@ run, verified), then the `docs/PLAN.md` sections for your task. PLAN §27 is the
   webhooks, `egress`, encryption or row-level security.
 
 ## Engineering standards (PLAN §8)
-- Node.js 26 LTS everywhere, a founder decision; ADR-016 lists every pin. Pin the first 26.x
+- Node.js 26 LTS everywhere, a founder decision; ADR-029 lists every pin. Pin the first 26.x
   release tagged LTS (due 28 October 2026). Until it exists, everything runs 26.12.0, and releases
   may merge on it (founder decision, 17 Oct 2026, 22:37 UTC); nothing deploys before the LTS pin.
   Changing the major line needs the founder.

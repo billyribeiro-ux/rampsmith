@@ -1,0 +1,86 @@
+# cargo-deny: licenses, advisories, duplicate versions and sources (PLAN §8).
+
+[graph]
+# Production runs on Linux; developers also use macOS. Windows-only crates are out of scope.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+all-features = true
+
+[advisories]
+# Every RustSec advisory fails the gate unless listed here with a reason and an expiry.
+ignore = []
+unmaintained = "workspace"
+unsound = "all"
+yanked = "deny"
+
+[licenses]
+confidence-threshold = 0.93
+# The allowlist is policy, not inventory: a license nobody uses yet is not a warning.
+unused-allowed-license = "allow"
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  # webauthn-rs (ADR-024): file-level copyleft, used unmodified.
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[licenses.private]
+# Workspace crates are proprietary and never published.
+ignore = true
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+deny = [
+  # TLS is rustls everywhere. OpenSSL is allowed only for WebAuthn verification (ADR-024).
+  { crate = "openssl", use-instead = "rustls", wrappers = ["webauthn-rs-core", "webauthn-attestation-ca", "webauthn-authenticator-rs"] },
+  { crate = "openssl-sys", use-instead = "rustls", wrappers = ["openssl", "webauthn-rs-core", "webauthn-attestation-ca", "webauthn-authenticator-rs"] },
+]
+# Duplicates that cannot be removed yet, each with the reason. A version requirement keeps a
+# skip valid across patch releases; a new major generation needs a fresh decision.
+skip = [
+  # RustCrypto's 0.10 generation, still used by sqlx-core 0.9 for SCRAM; the 0.11 generation
+  # is the one PLAN §7 pins (sha2 0.11, hmac 0.13).
+  { crate = "sha2@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "digest@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "block-buffer@0.10", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "crypto-common@0.1", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "cpufeatures@0.2", reason = "sqlx-core 0.9 depends on the RustCrypto 0.10 generation" },
+  { crate = "getrandom@0.3", reason = "rand 0.9 (opentelemetry_sdk) depends on getrandom 0.3; sqlx and our code use rand 0.10" },
+  { crate = "rand@0.9", reason = "opentelemetry_sdk 0.33 depends on rand 0.9; sqlx-postgres 0.9 and our code use rand 0.10" },
+  { crate = "rand_core@0.9", reason = "comes with rand 0.9 (opentelemetry_sdk)" },
+  { crate = "base64@0.22", reason = "sqlx-core 0.9 depends on base64 0.22; hyper-util (reqwest) has moved to 0.23" },
+  { crate = "hashbrown@0.16", reason = "hashlink 0.11 (sqlx-core) depends on hashbrown 0.16" },
+  { crate = "syn@2", reason = "most proc-macro crates have not moved to syn 3 yet" },
+  { crate = "tower-http@0.6", reason = "reqwest 0.13 (OTLP exporter) depends on tower-http 0.6; the api uses 0.7 (PLAN §7)" },
+  # webauthn-rs 0.5 (ADR-024) and its software authenticator, used in tests, are on older
+  # generations of these crates.
+  { crate = "base64@0.21", reason = "base64urlsafedata 0.5 (webauthn-rs) depends on base64 0.21" },
+  { crate = "pastey@0.1", reason = "base64urlsafedata 0.5 (webauthn-rs) depends on pastey 0.1" },
+  { crate = "thiserror@1", reason = "webauthn-rs-core 0.5 depends on thiserror 1" },
+  { crate = "synstructure@0.13", reason = "asn1-rs-derive 0.5 (der-parser 9, webauthn-rs-core) depends on synstructure 0.13" },
+  { crate = "thiserror-impl@1", reason = "comes with thiserror 1 (webauthn-rs-core)" },
+  { crate = "untrusted@0.7", reason = "jsonwebtoken 11 enables aws-lc-rs default features, whose ring-compatible API uses untrusted 0.7; rustls-webpki uses 0.9" },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

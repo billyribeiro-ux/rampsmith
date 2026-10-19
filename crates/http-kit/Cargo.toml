@@ -1,0 +1,29 @@
+[package]
+name = "rampsmith-http-kit"
+version = "0.0.0"
+description = "HTTP plumbing shared by Rampsmith's Axum services: problem+json errors and the middleware stack."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "http_kit"
+
+[dependencies]
+axum.workspace = true
+contracts.workspace = true
+db.workspace = true
+serde_json.workspace = true
+telemetry.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+http-body-util.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

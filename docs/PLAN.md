@@ -174,7 +174,7 @@ Each ADR is written to `docs/adr/` as its own file before the code it governs; A
 | 010 | Railway first, with a measured move of browser workers to dedicated hardware | Usage billing keeps idle cost near zero; you already deploy there; native PostgreSQL PITR | Kubernetes on day one: operations cost with no customer to justify it |
 | 011 | Claude Haiku 5.5 by default, escalate to Sonnet 5.5, Opus 5.5 for offline patch synthesis only | Cost per task ordered by difficulty (section 13) | One model for everything |
 | 012 | No Redis in R0 to R2 | Rate limits and caches fit in Postgres and in-process; one less stateful service | Redis "just in case" |
-| 016 | Node.js 26 LTS for `web`, `engine` and all tooling, on one `trixie-slim` base image | Founder decision: Active LTS at launch and supported until 30 April 2029; one runtime everywhere, pinned exactly | Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028, 13 months after launch; Microsoft's Playwright image for `engine`: its Node version floats |
+| 029 | Node.js 26 LTS for `web`, `engine` and all tooling, Node always from the pinned official `trixie-slim` image (`engine` copies its binary onto Microsoft's Playwright image, ADR-028) | Founder decision: Active LTS at launch and supported until 30 April 2029; one runtime everywhere, pinned exactly | Node 24.22.0: maintenance-only from 20 October 2026 and end of life on 30 April 2028, 13 months after launch; Microsoft's Playwright image with its own NodeSource Node: that version floats |
 
 ### How the parts connect
 
@@ -201,7 +201,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 
 | Tool | Pinned | Note |
 | --- | --- | --- |
-| Node.js | 26 LTS: the first 26.x release tagged LTS, due 28 Oct 2026; 26.12.0 until then | Founder decision (ADR-016). Active LTS from 28 October 2026 to 20 October 2027, then security fixes until 30 April 2029 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)). Node's switch to LTS changes only metadata ([24.11.0 release notes](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)), so 26.12.0 is the code that becomes LTS. Releases may merge on 26.12.0 (founder decision, 17 Oct 2026; ADR-016 amendment); nothing deploys before the LTS pin. `@types/node` 26.6.5. Every package below accepts 26.12.0 in `engines.node`. |
+| Node.js | 26 LTS: the first 26.x release tagged LTS, due 28 Oct 2026; 26.12.0 until then | Founder decision (ADR-029). Active LTS from 28 October 2026 to 20 October 2027, then security fixes until 30 April 2029 ([release schedule](https://github.com/nodejs/Release/blob/main/schedule.json)). Node's switch to LTS changes only metadata ([24.11.0 release notes](https://github.com/nodejs/node/blob/v24.11.0/doc/changelogs/CHANGELOG_V24.md)), so 26.12.0 is the code that becomes LTS. Releases may merge on 26.12.0 (founder decision, 17 Oct 2026; ADR-029 amendment); nothing deploys before the LTS pin. `@types/node` 26.6.5. Every package below accepts 26.12.0 in `engines.node`. |
 | pnpm | 12.14.0 | Managed by mise, never Corepack |
 | Rust | 1.99.1 (15 Oct 2026), edition 2024 | [Rust releases](https://blog.rust-lang.org/releases); managed by rustup, pinned in `rust-toolchain.toml` |
 | PostgreSQL | 18.6 | 19 is at RC1 (15 Oct 2026); adopt it at 19.1 ([postgresql.org](https://www.postgresql.org/)) |
@@ -234,7 +234,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `tower` / `tower-http` | 0.5.3 / 0.7.1 | Middleware: timeouts, compression, tracing, request IDs |
 | `sqlx` / `sqlx-cli` | 0.9.0 / 0.9.0 | Compile-time checked queries, migrations |
 | `serde` / `serde_json` | 1.0.229 / 1.0.154 |  |
-| `utoipa` | 6.0.0 | OpenAPI generation |
+| `utoipa` / `utoipa-axum` | 6.0.0 / 0.3.0 | OpenAPI generation; routes registered through `utoipa-axum` (ADR-020) |
 | `schemars` | 1.2.3 | JSON Schema for job payloads |
 | `validator` | 0.21.0 | Request validation |
 | `thiserror` / `anyhow` | 2.0.21 / 1.0.104 | Typed errors in libraries; `anyhow` only in binaries' `main` |
@@ -251,9 +251,9 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | `async-stripe` | 0.41.0 | Stripe Billing for non-Shopify customers |
 | `aws-sdk-s3` | 1.152.0 | Cloudflare R2 through the S3 API |
 | `governor` | 0.10.4 | In-process rate limiting |
-| `hickory-resolver` / `ipnet` / `url` | 0.26.3 / 2.12.2 / 2.5.8 | Server-side request forgery guard (section 18) |
+| `hyper` / `ipnet` / `url` | 1.12.0 / 2.12.2 / 2.5.8 | Server-side request forgery guard (section 18); names resolve through the system resolver, not `hickory-resolver` (ADR-025) |
 | `clap` | 4.6.7 | Admin CLI |
-| `insta` / `proptest` / `testcontainers` / `wiremock` | 1.49.0 / 1.12.0 / 0.28.0 / 0.6.5 | Tests |
+| `insta` / `proptest` / `wiremock` | 1.49.0 / 1.12.0 / 0.6.5 | Tests; database tests use `#[sqlx::test]` on a provided PostgreSQL instead of `testcontainers` (ADR-015) |
 | `cargo-nextest` | 0.9.148 | Test runner |
 
 ### Engine (`engine`)
@@ -277,7 +277,7 @@ Every version below was read from npm, crates.io or the vendor's release page on
 | --- | --- |
 | Shopify Admin GraphQL API | 2026-10 |
 | Shopify CLI | 4.9.4, for app configuration and the theme app extension |
-| App Bridge and Polaris | Shopify CDN script tags; Polaris pinned to a versioned release, not the floating tag |
+| App Bridge and Polaris | Shopify CDN script tags; Polaris pinned to `polaris-1.1.js`; App Bridge is only published as Shopify's evergreen `app-bridge.js`, which App Review requires (ADR-023) |
 | Claude models | `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` ([models overview](https://platform.claude.com/docs/en/models/overview)) |
 
 Upgrade policy: exact versions in `pnpm-lock.yaml` and `Cargo.lock`; Renovate opens grouped weekly pull requests; nothing merges without the full gate in section 24.
@@ -360,8 +360,9 @@ One PostgreSQL 18 database holds every tenant in a shared schema, isolated twice
 
 - Every tenant-owned table has `tenant_id uuid not null` and a policy `USING (tenant_id = current_setting('app.tenant_id')::uuid)`.
 - The application role has no `BYPASSRLS`. A Rust `TenantTx` type opens each transaction with `SET LOCAL app.tenant_id`, and repository functions accept only `&mut TenantTx`, so unscoped access does not compile.
-- System jobs run as a separate role that must still set the tenant per job. Cross-tenant reads exist only in `rsctl`, and each one is audited.
+- System jobs run as a separate role that must still set the tenant per job. Cross-tenant reads exist only in `rsctl`, and each one is audited. The one exception is `app_shop_by_domain`, which maps a shop domain to its tenant and shop ids after a session token or webhook signature for that domain has been verified (ADR-022).
 - An isolation test suite creates two tenants and asserts that every repository function returns nothing across the boundary.
+- References between tenant-owned rows are composite foreign keys on `(id, tenant_id)`, so a row can never point at another tenant's row, even when written by the owner (ADR-017). The SQL below shows columns; `crates/db/migrations/` holds the full constraints.
 
 ### Core tables
 
@@ -469,8 +470,9 @@ create table fixes (
 );
 
 create table fix_findings (
-  fix_id uuid not null references fixes(id),
-  finding_id uuid not null references findings(id),
+  fix_id uuid not null,
+  finding_id uuid not null,
+  tenant_id uuid not null,                  -- ADR-017: every tenant-owned table carries it
   primary key (fix_id, finding_id)
 );
 
@@ -493,7 +495,7 @@ create table audit_log (                    -- append-only; update and delete re
 | --- | --- |
 | `users`, `passkeys`, `organizations`, `memberships` | Standalone-dashboard identity; roles `owner`, `admin`, `member`, `viewer` |
 | `themes` | Shopify theme id, role, snapshot key in R2, SHA-256 of the snapshot |
-| `scan_pages` | Each page and state scanned: URL, page type, HTTP status, duration, screenshot key |
+| `scan_pages` | Each page and state scanned: URL, page state, HTTP status, duration, challenge if blocked, violation count; unique per scan, URL and state so a re-run job records nothing twice (ADR-025). Page type and screenshot key arrive with the full scan in R1 |
 | `data_fix_snapshots` | Before and after values per resource and field, which powers one-click undo |
 | `github_installations`, `repos`, `pull_requests` | GitHub App installs, connected theme repositories, pull-request state |
 | `theme_packages` | Patched theme archives, their SHA-256, the uploaded preview theme id, the verification scan |
@@ -792,13 +794,13 @@ Requested in `shopify.app.toml`, each one justified in the App Store submission 
 
 1. The app uses Shopify-managed installation: scopes come from `shopify.app.toml`, so there is no OAuth redirect dance at install.
 2. Every request from the embedded UI carries a fresh session token from App Bridge, which lasts one minute. SvelteKit's server forwards it to `api` in the `Authorization` header.
-3. `api` verifies the token with HS256 and the app's client secret, then checks: `aud` equals the client id; `exp` and `nbf` hold with at most 5 seconds of clock leeway; `dest` is a valid `*.myshopify.com` host; `iss` is that host's `/admin`.
-4. With no valid offline token on file, `api` performs token exchange with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token_type=urn:ietf:params:oauth:token-type:id_token`, and `expiring=1`.
+3. `api` verifies the token with HS256 and the app's client secret, then checks: `aud` equals the client id; `exp` and `nbf` hold with at most 5 seconds of clock leeway; `dest` is a valid `*.myshopify.com` host; the hostnames of `iss` and `dest` match (shopify.dev's rule, ADR-022). Any failure answers 401 with `X-Shopify-Retry-Invalid-Session-Request: 1`.
+4. With no valid offline token on file, `api` performs token exchange with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token_type=urn:ietf:params:oauth:token-type:id_token`, `requested_token_type=urn:shopify:params:oauth:token-type:offline-access-token` and `expiring=1`. Exchange and refresh for one shop never run concurrently (each retires the other's result), so both hold a per-shop advisory lock (ADR-022).
 5. Access and refresh tokens are encrypted with a per-row data key (AES-256-GCM) wrapped by a master key held only in the environment.
 6. Background jobs refresh any access token within 10 minutes of expiry. Refresh tokens rotate on every use, so the update is a compare-and-swap on the row's `version` column; a lost race re-reads instead of overwriting.
 7. A refresh token unused for 90 days expires and forces re-authentication, so every installed shop gets at least a weekly scheduled job that keeps its token fresh.
 
-**Spike S-4:** confirm how the initial document request carries the ID token (search parameter or header) for a non-Remix app, before building the SvelteKit hook around it.
+**Spike S-4:** confirm how the initial document request carries the ID token (search parameter or header) for a non-Remix app, before building the SvelteKit hook around it. Answered from the documentation on 2026-10-17 (`docs/spikes/S-4-initial-document-token.md`): the document request is unauthenticated and carries no data; data requests carry the token as a Bearer header. Live observation waits for a development store.
 
 ### Admin GraphQL client
 
@@ -899,7 +901,7 @@ The `push` webhook on the connected branch starts a job that reads the live them
 
 ## 16. Web dashboard and public free scanner
 
-One SvelteKit app serves three surfaces: the Shopify embedded admin, a standalone dashboard for agencies and non-Shopify sites, and the public marketing site with its free scanner. All three render on the server and work before JavaScript loads.
+One SvelteKit app serves three surfaces: the Shopify embedded admin, a standalone dashboard for agencies and non-Shopify sites, and the public marketing site with its free scanner. All three render on the server; the marketing site and the dashboard work before JavaScript loads, while the embedded admin's data arrives after App Bridge supplies a session token (ADR-023).
 
 ### Standalone dashboard
 
@@ -933,7 +935,7 @@ Rampsmith's own interface has to survive Rampsmith's own scanner, so each primit
 - Dialog on native `<dialog>` with focus moved in and restored on close
 - Tabs, Combobox, Disclosure, Menu button
 - Data table with `aria-sort` on sortable headers
-- Toast with `role="status"`; errors never auto-dismiss
+- Toast with `role="status"`; errors go to a `role="alert"` region and never auto-dismiss (ADR-026)
 - Colour tokens at 4.5:1 for text and 3:1 for UI boundaries; a visible `:focus-visible` ring; `prefers-reduced-motion` honoured
 
 The embedded admin uses Polaris web components for consistency with Shopify. Only the diff viewer and the evidence viewer are custom there, styled with Polaris tokens.
@@ -1001,7 +1003,7 @@ The two threats unique to Rampsmith are a headless browser that loads hostile pa
 | Threat | Control |
 | --- | --- |
 | One tenant reads another's data | Row-level security plus compile-time tenant scoping; the isolation suite runs on every pull request (section 9) |
-| Server-side request forgery through scanned URLs | Chromium sends all traffic through `egress-guard`, a small Rust forward proxy deployed as the `egress` service and reachable only by the engine. It resolves DNS itself, refuses loopback, private, link-local (including cloud metadata), CGNAT, unique-local and IPv4-mapped addresses, re-checks on every redirect, and enforces a request budget per page. Resolving and connecting in one place also defeats DNS rebinding. |
+| Server-side request forgery through scanned URLs | Chromium sends all traffic through `egress-guard`, a small Rust forward proxy deployed as the `egress` service and reachable only by the engine. It resolves DNS itself, refuses loopback, private, link-local (including cloud metadata), CGNAT, unique-local and IPv4-mapped addresses, re-checks on every redirect, and enforces a connection budget per page. Each page job carries a signed, two-minute scan token naming the hosts it may reach (ADR-025). Resolving and connecting in one place also defeats DNS rebinding. |
 | A hostile page exploits the browser | Chromium's sandbox stays on; the container runs as non-root with a seccomp profile; one fresh context per page; hard time and memory limits; Playwright updated within 7 days of each release |
 | Prompt injection from page or product text | Claude gets no tools and no secrets. Untrusted text is passed as delimited data, outputs must match a JSON Schema, and nothing AI-written ships without human approval |
 | Theft of Shopify or GitHub tokens | Envelope encryption with per-row data keys; master key only in the environment; `secrecy` keeps values out of logs; minimal scopes; one-hour GitHub tokens held in memory |
@@ -1204,9 +1206,9 @@ Everything runs on Railway in a US region at launch, as immutable images tagged 
 | Service | Image | Notes |
 | --- | --- | --- |
 | `web` | `node:<26 LTS version>-trixie-slim` pinned by digest, multi-stage build, `adapter-node` | Health check on `/healthz` |
-| `api` | Rust release binary on a distroless base | `/healthz` for liveness; `/readyz` checks the database and the migration version |
+| `api` | Rust release binary on `debian:trixie-slim` pinned by digest, with Debian security updates applied at build (it links the system OpenSSL for `webauthn-rs-core`; ADR-020, ADR-028) | `/healthz` for liveness; `/readyz` checks the database and the migration version |
 | `ctl` | Same image as `api`, different command | Scheduler leadership through the advisory lock |
-| `engine` | The same Node 26 LTS `trixie-slim` image, pinned by digest; Chromium and its system libraries from `playwright install --with-deps chromium`, which supports Debian 13 in Playwright 1.64.1 | Non-root, seccomp profile, Chromium sandbox on |
+| `engine` | Microsoft's Playwright 1.64.1 image pinned by digest, with its own Node removed and Node 26's binary copied from the pinned `node:<26 LTS version>-trixie-slim` image (ADR-028, ADR-029 amendment of 19 Oct 2026) | Non-root, seccomp profile, Chromium sandbox on |
 | `egress` | Rust release binary | The request-forgery guard; reachable only by `engine` on the private network |
 | PostgreSQL 18 | Railway PostgreSQL with PITR enabled | Direct connections for `LISTEN`; a connection pool per service |
 
@@ -1250,7 +1252,7 @@ The two things that must never be wrong are a patch that breaks a merchant's the
 | Component | Tests | Tools |
 | --- | --- | --- |
 | Rust domain crates | Unit and property tests: fingerprint normalization, encryption round trips, entitlement limits, backoff schedules | `cargo-nextest`, `proptest`, `insta` |
-| Rust data layer | Migrations applied to a real PostgreSQL 18; the cross-tenant isolation suite; queue claim, lease expiry and fencing under concurrency | `testcontainers`, `sqlx` |
+| Rust data layer | Migrations applied to a real PostgreSQL 18; the cross-tenant isolation suite; queue claim, lease expiry and fencing under concurrency | `#[sqlx::test]` on the CI service container or local PostgreSQL (ADR-015) |
 | Rust integrations | Shopify, GitHub, Stripe and Anthropic faked at the HTTP layer, including 429s, 5xx responses, `userErrors` and malformed bodies | `wiremock` |
 | `liquid-patch` | One golden before-and-after pair per recipe per theme in the corpus; every recipe applied twice equals once; output re-parses and passes `theme-check` | Vitest |
 | Scanner rules | A fixture site with one seeded violation per rule and per state, and clean twins of each page; precision and recall reported per rule each release | Playwright, Vitest |
@@ -1435,16 +1437,16 @@ Pre-approved by the founder on 17 October 2026: the pricing in section 20 as wri
 
 ### Order of work for R0
 
-1. Monorepo bootstrap per section 8: `.mise.toml`, `rust-toolchain.toml`, workspaces, shared strict configs, `mise run verify`.
-2. The pull-request gate in section 24, including `claims-lint` and contract-drift checks.
-3. `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
-4. The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.
-5. Telemetry in all three runtimes (section 21).
-6. `api` skeleton: health and readiness, problem+json errors, OpenAPI generation.
-7. Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here.
-8. `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys.
-9. `egress` and an `engine` skeleton that scans one page through it. Spikes S-1 and S-2 run here.
-10. `packages/ui` primitives with their axe and keyboard tests.
+1. [x] Monorepo bootstrap per section 8: `.mise.toml`, `rust-toolchain.toml`, workspaces, shared strict configs, `mise run verify`.
+2. [x] The pull-request gate in section 24, including `claims-lint` and contract-drift checks (images and preview stages follow their deployables, ADR-016).
+3. [x] `crates/domain`, then `crates/db` with the section 9 migrations, row-level security and the isolation suite.
+4. [x] The queue in Rust and TypeScript (section 10), with the kill-mid-job and fencing tests.
+5. [x] Telemetry in all three runtimes (section 21); the web runtime's tracing is configured with its skeleton in step 8 (ADR-019).
+6. [x] `api` skeleton: health and readiness, problem+json errors, OpenAPI generation (ADR-020).
+7. [x] Shopify authentication on a development store: session-token verification, token exchange with `expiring=1`, envelope encryption, refresh and rotation (section 14). Spike S-4 runs here. Built and tested against a mock Shopify (ADR-021, ADR-022); the live development-store run waits for the founder's Partner account (`docs/runbooks/shopify-dev-store.md`).
+8. [x] `web` skeleton: the embedded App Home with App Bridge and Polaris, plus the standalone shell with passkeys (ADR-023, ADR-024). The emailed sign-in link waits for an email provider account.
+9. [x] `egress` and an `engine` skeleton that scans one page through it (ADR-025). Spikes S-1 and S-2 run here, both answered (`docs/spikes/`): S-2 found 0 of 50 Shopify stores challenged in two runs a day apart, and the detector was recalibrated twice from their evidence (ADR-027); S-1 found 64 of the tag set's 70 rules run, `target-size` among them, and Dawn passing 2.5.8 on every page checked.
+10. [x] `packages/ui` primitives with their axe and keyboard tests (ADR-026), now used by the standalone web pages.
 
 Then R1 in the order of section 5, and so on.
 

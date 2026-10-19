@@ -1,0 +1,90 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "LicenseRef-Proprietary"
+publish = false
+repository = "https://github.com/billyribeiro-ux/rampsmith"
+
+# Versions were read from crates.io on 2026-10-17 (docs/evidence/versions-2026-10-17.md).
+# Cargo.lock pins the exact resolution; add a crate here only when a member uses it.
+[workspace.dependencies]
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc", "getrandom", "zeroize"] }
+anyhow = "1.0.104"
+axum = "0.8.9"
+base64 = "0.23.1"
+bytes = "1.12.1"
+contracts = { package = "rampsmith-contracts", path = "crates/contracts" }
+crypto = { package = "rampsmith-crypto", path = "crates/crypto" }
+db = { package = "rampsmith-db", path = "crates/db" }
+domain = { package = "rampsmith-domain", path = "crates/domain" }
+hmac = "0.13.0"
+http-body-util = "0.1.5"
+http-kit = { package = "rampsmith-http-kit", path = "crates/http-kit" }
+hyper = "1.12.0"
+hyper-util = "0.1.21"
+identity = { package = "rampsmith-identity", path = "crates/identity" }
+ipnet = "2.12.2"
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+opentelemetry = "0.33.1"
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
+opentelemetry_sdk = { version = "0.33.1", features = ["rt-tokio"] }
+proptest = "1.12.0"
+queue = { package = "rampsmith-queue", path = "crates/queue" }
+rand = "0.10.3"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form", "json", "http2"] }
+schemars = "1.2.3"
+secrecy = "0.10.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+shopify = { package = "rampsmith-shopify", path = "crates/shopify" }
+shopify-auth = { package = "rampsmith-shopify-auth", path = "crates/shopify-auth" }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros", "migrate", "uuid", "time", "json"] }
+telemetry = { package = "rampsmith-telemetry", path = "crates/telemetry" }
+thiserror = "2.0.21"
+time = "0.3.55"
+tokio = "1.53.3"
+tower = "0.5.3"
+tower-http = { version = "0.7.1", features = ["catch-panic", "limit", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
+tracing = "0.1.44"
+tracing-opentelemetry = "0.34.0"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+url = "2.5.8"
+utoipa = { version = "6.0.0", features = ["macros", "uuid"] }
+utoipa-axum = "0.3.0"
+uuid = "1.28.0"
+webauthn-authenticator-rs = { version = "0.5.5", default-features = false, features = ["softpasskey"] }
+webauthn-rs = { version = "0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
+wiremock = "0.6.5"
+zeroize = "1.9.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+# PLAN §8: denied outside tests (clippy.toml allows them in tests).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+indexing_slicing = "deny"
+# Broader quality bar; CI runs Clippy with -D warnings, so warnings fail the gate.
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

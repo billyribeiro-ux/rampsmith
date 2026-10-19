@@ -1,0 +1,42 @@
+[package]
+name = "rampsmith-ctl"
+version = "0.0.0"
+description = "Rampsmith's Rust-side jobs: Shopify token refresh now, webhooks, writes and pull requests later; plus the leader's reaper and partition maintenance."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "ctl"
+
+[[bin]]
+name = "ctl"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+contracts.workspace = true
+crypto.workspace = true
+db.workspace = true
+domain.workspace = true
+queue.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
+shopify.workspace = true
+shopify-auth.workspace = true
+sqlx.workspace = true
+telemetry.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+jsonwebtoken.workspace = true
+url.workspace = true
+uuid.workspace = true
+wiremock.workspace = true
+
+[lints]
+workspace = true
