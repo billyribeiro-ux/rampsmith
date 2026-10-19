@@ -1319,7 +1319,7 @@ Each image is built once, tested, signed, and promoted unchanged from preview to
 
 ### Repository rules
 
-- `main` is protected: required checks, linear history, squash merges titled in Conventional Commits.
+- `main` is protected: required checks, and squash merges titled in Conventional Commits, except that a branch other branches are built on (a release branch such as `r0-foundations`) merges with a merge commit, so history is not linear (ADR-034).
 - Workflows default to `permissions: read-all`; each job asks only for what it needs; the Railway deploy token exists only in protected environments.
 - Renovate opens grouped weekly updates and waits a minimum release age before proposing a new version.
 - The changelog is generated from commit titles.

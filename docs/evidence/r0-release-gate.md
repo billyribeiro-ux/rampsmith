@@ -89,6 +89,30 @@ names 403 for bad credentials). Fixed by hedging that sentence and the test head
 line; the same commit gives runbook section 4 to the founder, wraps ADR-031 §3, and marks the
 dated note in `r0-gate-fixes.md` as superseded.
 
-## Round 5 verdict
+Fix commits: `9280ddb` (the runbook and test-header hedges, the gate record) and `9c485fa`
+(STATUS.md: lane S2 also owns the two `config.rs` files that F4 touches), merged as `ea4f1a1`.
 
-Recorded below by the architect after the `release-verifier` run.
+## Round 5: `ea4f1a1`, verifier **PASS** (19 Oct 2026)
+
+- CI on the head: [run 39307060823](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39307060823),
+  `success`, 8 of 8 (`rust`, `node`, `contracts`, `e2e`, `images (api)`, `images (egress)`,
+  `images (engine)`, `images (web)`), on Rust 1.99.1, Node 26.12.0 and PostgreSQL 18.6; the
+  `rust` check run's only annotation is the live dev-store check's skip notice.
+- PLAN §5 R0 exit criteria: zero warnings in Rust, TypeScript and Svelte; the queue survives a
+  worker kill mid-job with no lost or duplicated job (Rust and TypeScript); the design
+  primitives pass axe with zero violations. All PASS.
+- Round 1's blockers 1 to 6, round 2's three items, round 3's six items and round 4's item: all
+  PASS. The end-to-end read of runbook sections 3 and 4, LAUNCH.md's R0 row and ADR-031 found no
+  sentence claiming more than the code and Shopify's documentation support.
+- Node 26.12.0 everywhere ADR-029 lists; the 26.x LTS release is not out, so merging is allowed
+  and deploying is not.
+- Wording nits it listed as non-blocking (the `SHOPIFY_CLIENT` list in ADR-031 §1, one sentence in
+  ADR-032's consequences, the runbook's error table, note 1 in `r0-gate-fixes.md`) are left for
+  the next change to those files; STATUS.md's lane S2 cell is corrected on `main`.
+
+Security: the R0 audit (`r0-security-audit-2026-10-19.md`) and the lane S1 audit
+(`r0-s1-security-audit-2026-10-19.md`) both PASS; their medium findings are fixed (O1) or owned
+by lanes S2 and S3 (M1 to M6, draft PRs #15 and #16).
+
+After the PASS, only this record and ADR-034 (R0 merges with a merge commit so that the
+branches built on it keep their history) were added; CI ran again on them before the merge.
