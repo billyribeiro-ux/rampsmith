@@ -1,0 +1,35 @@
+<div class="banner">
+  {%- if section.settings.image != blank -%}
+    <div class="banner__media">
+      <img
+        src="{{ section.settings.image | image_url: width: 1600 }}"
+        width="{{ section.settings.image.width }}"
+        height="{{ section.settings.image.height }}"
+        loading="eager"
+        class="banner__image"
+        alt="{{ section.settings.image.alt | escape }}"
+      >
+    </div>
+  {%- endif -%}
+  <div class="banner__content page-width">
+    <h1 class="banner__heading">{{ section.settings.heading | escape }}</h1>
+    {%- if section.settings.button_label != blank -%}
+      <a href="{{ section.settings.button_link }}" class="button button--primary">
+        {{- section.settings.button_label | escape -}}
+      </a>
+    {%- endif -%}
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Image banner",
+  "settings": [
+    { "type": "image_picker", "id": "image", "label": "Image" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Image banner" },
+    { "type": "text", "id": "button_label", "label": "Button label" },
+    { "type": "url", "id": "button_link", "label": "Button link" }
+  ],
+  "presets": [{ "name": "Image banner" }]
+}
+{% endschema %}

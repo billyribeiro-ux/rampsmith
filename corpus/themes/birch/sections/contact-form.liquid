@@ -1,0 +1,23 @@
+<div class="contact-page">
+	<h1 class="contact-page__title">{{ page.title }}</h1>
+	<div class="rte">{{ page.content }}</div>
+  {% form 'contact' %}
+		<label for="ContactName">{{ 'contact.form.name' | t }}</label>
+		<input type="text" id="ContactName" name="contact[name]" autocomplete="name">
+
+		<label for="ContactEmail">{{ 'contact.form.email' | t }}</label>
+		<input type="email" id="ContactEmail" name="contact[email]" autocomplete="email">
+
+		<p class="contact-page__hint">{{ 'contact.form.message' | t }}</p>
+		<textarea
+			rows="6"
+			id="ContactMessage"
+			name="contact[body]"></textarea>
+
+		<button type="submit" class="btn">{{ 'contact.form.send' | t }}</button>
+  {% endform %}
+</div>
+
+{% schema %}
+{ "name": "Contact form", "settings": [] }
+{% endschema %}

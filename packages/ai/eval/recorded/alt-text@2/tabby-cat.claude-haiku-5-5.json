@@ -1,0 +1,37 @@
+{
+  "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
+  "prompt_version": "alt-text@2",
+  "model": "claude-haiku-5-5",
+  "image_id": "tabby-cat",
+  "request_sha256": "99df5b33d1704560e1c52b6da37edd0cb505baadbbae09d6781c0f0459346ba8",
+  "response": {
+    "id": "msg_eval_tabby_cat_claude_haiku_5_5",
+    "container": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"alt\":\"Close-up of a brown striped tabby cat with green eyes looking at the camera\",\"decorative\":false,\"contains_text\":false,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.94}",
+        "citations": null
+      }
+    ],
+    "diagnostics": null,
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": null,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 956,
+      "output_tokens": 68,
+      "output_tokens_details": null,
+      "server_tool_use": null,
+      "service_tier": "standard",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seeded keyboard failures</title>
+    <!--
+      Seeded: one stop with no focus indicator (#no-ring), one stop that stays off screen
+      (#offscreen-link), one clipped by an ancestor that cannot scroll (#clipped-link), one
+      keyboard trap (#trap-a / #trap-b). Controls that must NOT be flagged: the default focus
+      ring (#first), a :focus-visible ring (#ring), a visually hidden radio whose label shows
+      focus (#pill-a), the native audio controls, and a fixed link inside a clipping box that
+      does not clip it (#to-top).
+    -->
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        margin: 16px;
+      }
+      #no-ring {
+        outline: none;
+        border: 1px solid #555;
+        background: #eee;
+        padding: 6px 12px;
+      }
+      #no-ring:focus {
+        outline: none;
+      }
+      #ring:focus {
+        outline: none;
+      }
+      #ring:focus-visible {
+        outline: 3px solid #b3005e;
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid #555;
+        padding: 4px 12px;
+      }
+      input:focus-visible + .pill {
+        box-shadow: 0 0 0 3px #b3005e;
+      }
+      #offscreen-link {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+      }
+      .trap {
+        border: 1px dashed #999;
+        padding: 8px;
+        margin-top: 16px;
+      }
+      .trap button:focus-visible {
+        outline: 3px solid #b3005e;
+      }
+    </style>
+  </head>
+  <body>
+    <a id="first" href="#one">First link</a>
+    <button id="no-ring" type="button">No focus ring</button>
+    <button id="ring" type="button">Visible ring</button>
+    <fieldset>
+      <legend>Colour</legend>
+      <input type="radio" class="visually-hidden" id="pill-a" name="Colour" value="Sand" checked />
+      <label class="pill" for="pill-a">Sand</label>
+      <input type="radio" class="visually-hidden" id="pill-b" name="Colour" value="Sea" />
+      <label class="pill" for="pill-b">Sea</label>
+    </fieldset>
+    <audio controls src="/media/tone.wav" aria-label="Sample"></audio>
+    <a id="offscreen-link" href="#nowhere">Off-screen link</a>
+    <div style="overflow: clip; width: 200px; height: 40px">
+      <div style="transform: translateX(300px)">
+        <a id="clipped-link" href="#slide-2">Slide 2</a>
+      </div>
+    </div>
+    <div style="overflow: hidden; height: 20px">
+      <a id="to-top" href="#top" style="position: fixed; right: 16px; bottom: 16px">Back to top</a>
+    </div>
+    <div class="trap" id="trap">
+      <p>A widget that keeps Tab inside it and ignores Escape.</p>
+      <button id="trap-a" type="button">Trap A</button>
+      <button id="trap-b" type="button">Trap B</button>
+    </div>
+    <a id="after" href="#after">Never reached</a>
+    <script>
+      const a = document.getElementById('trap-a');
+      const b = document.getElementById('trap-b');
+      document.getElementById('trap').addEventListener('keydown', (event) => {
+        if (event.key !== 'Tab') return;
+        event.preventDefault();
+        (document.activeElement === a ? b : a).focus();
+      });
+    </script>
+  </body>
+</html>

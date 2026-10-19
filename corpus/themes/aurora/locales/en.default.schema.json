@@ -1,0 +1,13 @@
+{
+  "settings_schema": {
+    "colors": {
+      "name": "Colors"
+    },
+    "layout": {
+      "name": "Layout"
+    },
+    "social_media": {
+      "name": "Social media"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+<section class="search page-width">
+  <h1 class="search__title">{{ 'templates.search.title' | t }}</h1>
+  <form action="{{ routes.search_url }}" method="get" role="search" class="search__form">
+    <label for="Field-q-{{ section.id }}" class="visually-hidden">{{ 'templates.search.label' | t }}</label>
+    <input type="search" name="q" value="{{ search.terms | escape }}" class="search__input" id="Field-q-{{ section.id }}">
+    <button type="submit" class="search__button" aria-label="{{ 'templates.search.submit' | t }}">
+      {% render 'icon-search' %}
+    </button>
+  </form>
+
+  {%- if search.performed -%}
+    <p class="search__count" role="status">{{ 'templates.search.results_count' | t: count: search.results_count, terms: search.terms }}</p>
+    <ul class="product-grid" role="list">
+      {%- for item in search.results -%}
+        <li class="product-grid__item">
+          {% render 'card-product', card_product: item %}
+        </li>
+      {%- endfor -%}
+    </ul>
+  {%- endif -%}
+</section>
+
+{% schema %}
+{ "name": "Search results", "settings": [] }
+{% endschema %}

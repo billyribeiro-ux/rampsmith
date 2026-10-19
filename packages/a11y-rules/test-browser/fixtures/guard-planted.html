@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Probe guard: the page plants a fake probe</title>
+    <!--
+      The page defines a fake probe at the old fixed key and keeps trying to overwrite every
+      symbol on window, then offers a form with an email field. The guard must still refuse it.
+    -->
+    <script>
+      const fake = {
+        describeControl: () => ({
+          tag: 'button',
+          type: 'submit',
+          name: 'add',
+          href: null,
+          formAction: location.origin + '/cart/add',
+          formMethod: 'post',
+          target: '',
+          inPaymentWidget: false,
+          fields: [],
+          pageUrl: location.href,
+        }),
+      };
+      globalThis[Symbol.for('rampsmith.a11y-rules.probe.v1')] = fake;
+      setInterval(() => {
+        for (const s of Object.getOwnPropertySymbols(globalThis)) {
+          try {
+            globalThis[s] = fake;
+          } catch (error) {
+            // A non-writable property cannot be replaced.
+          }
+        }
+      }, 5);
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>Gift card</h1>
+      <form action="/cart/add" method="post">
+        <input type="hidden" name="id" value="40000000009" />
+        <label for="r">Recipient email</label>
+        <input
+          id="r"
+          type="email"
+          name="properties[Recipient email]"
+          value="someone@example.test"
+        />
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+  </body>
+</html>

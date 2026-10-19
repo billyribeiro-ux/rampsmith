@@ -1,0 +1,51 @@
+Rampsmith
+
+Your weekly summary
+===================
+
+Here is how Example Outfitters did in the week to October 17, 2026.
+
+Summary
+-------
+
+Automated WCAG 2.2 AA checks: Passes 44 of 50
+The week before: Passes 41 of 50
+New issues: 2
+Issues resolved: 7
+Fixes awaiting approval: 4
+Next scan: October 24, 2026
+
+Open issues by impact on shoppers
+---------------------------------
+
+Critical: 0
+Serious: 3
+Moderate: 5
+Minor: 2
+
+Open Rampsmith:
+https://admin.shopify.com/store/fixture-store/apps/rampsmith
+
+| Automated checks find only part of all accessibility issues. Rampsmith
+| lists what it checked and what still needs a person to review.
+|
+| Deque, the maker of axe-core, reports that axe-core finds on average 57%
+| of WCAG issues automatically.
+
+____________________________________________________________________________
+
+You received this email because notifications for Example Outfitters are
+sent to this address.
+
+Manage email preferences:
+https://app.rampsmith.example/settings/email
+
+Turn off emails like this one:
+https://app.rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

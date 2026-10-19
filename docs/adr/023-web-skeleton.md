@@ -27,6 +27,7 @@ never a wildcard ("Set up iframe protection", the `STATIC_FRAME_ANCESTORS` check
 1. `apps/web` is SvelteKit 3.1 with `adapter-node`, runes only, `#lib/*` imports, config in
    `vite.config.ts`, environment variables declared and validated in `src/env.ts`
    (`API_URL` private, `SHOPIFY_CLIENT_ID` public; both required at runtime, optional at build).
+   The public variable is now `SHOPIFY_API_KEY` (renamed by ADR-031).
 2. **App Bridge is the one evergreen script.** Shopify publishes it only unversioned and
    requires the latest; this is the documented exception to "no floating CDN tags" (CLAUDE.md),
    and the documentation wins. **Polaris is pinned** to `polaris-1.1.js`; moving to a new

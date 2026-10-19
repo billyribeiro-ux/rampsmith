@@ -1,0 +1,23 @@
+{%- liquid
+  assign slide_count = section.blocks.size
+-%}
+<div class="carousel" data-slides="{{ slide_count }}">
+  <div class="carousel__track">
+    {% content_for 'blocks' %}
+  </div>
+  <div class="carousel__dots">
+    {%- for block in section.blocks -%}
+      <button type="button" class="carousel__dot"{% if forloop.first %} aria-current="true"{% endif %}>
+        <span class="visually-hidden">{{ 'sections.carousel.slide' | t: number: forloop.index }}</span>
+      </button>
+    {%- endfor -%}
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Carousel",
+  "blocks": [{ "type": "slide" }],
+  "settings": []
+}
+{% endschema %}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout guard: the add-to-cart post redirects into checkout</title>
+    <!--
+      A plain product form; the server answers its post with 302 to /checkouts/... The network
+      guard must stop the redirect before the browser follows it.
+    -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form action="/cart/add?fixture=to-checkout" method="post">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="add">Add to cart</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seeded focus obscured</title>
+    <!--
+      Seeded: a fixed announcement bar (#announcement-bar) laid over the top of the page with no
+      offset, covering the first header link, and a fixed cookie banner (#cookie-banner)
+      covering a link that sits in the bottom of the first screen. Browsers do not scroll an
+      element that is already inside the viewport when it receives focus, so both stay hidden.
+      Must NOT be reported: links further down, which the browser scrolls into clear view.
+    -->
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+      }
+      #announcement-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 64px;
+        background: #222;
+        color: #fff;
+        z-index: 3;
+      }
+      #cookie-banner {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 150px;
+        background: #222;
+        color: #fff;
+        z-index: 4;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      #cookie-banner a {
+        color: #fff;
+      }
+      .row {
+        display: block;
+        margin: 0 16px;
+        padding: 4px 0;
+      }
+      #under-bar {
+        position: absolute;
+        top: 16px;
+        left: 0;
+      }
+      #under-banner {
+        position: absolute;
+        top: 700px;
+        left: 0;
+      }
+      .tall {
+        height: 2400px;
+        position: relative;
+      }
+      #far-down {
+        position: absolute;
+        top: 1500px;
+        left: 0;
+      }
+      :focus-visible {
+        outline: 3px solid #b3005e;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="announcement-bar" role="region" aria-label="Announcement">Free returns this week</div>
+    <div class="tall">
+      <a class="row" id="under-bar" href="#sale">Sale</a>
+      <a class="row" id="under-banner" href="#new">New arrivals</a>
+      <a class="row" id="far-down" href="#more">More products</a>
+    </div>
+    <div id="cookie-banner" role="region" aria-label="Cookies">
+      We use cookies. <a href="#cookies">Cookie settings</a>
+    </div>
+  </body>
+</html>

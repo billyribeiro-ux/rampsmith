@@ -1,0 +1,22 @@
+{
+  "accessibility": {
+    "skip_to_text": "Skip to content"
+  },
+  "general": {
+    "search": {
+      "label": "Search",
+      "reset": "Clear search"
+    },
+    "social": {
+      "facebook": "Facebook",
+      "pinterest": "Pinterest"
+    }
+  },
+  "products": {
+    "quantity": {
+      "label": "Quantity",
+      "decrease": "Decrease quantity",
+      "increase": "Increase quantity"
+    }
+  }
+}

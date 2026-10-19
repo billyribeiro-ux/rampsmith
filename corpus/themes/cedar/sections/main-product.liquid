@@ -1,0 +1,18 @@
+<div class="product">
+  <div class="product__media">
+    {%- for media in product.media -%}
+      {{ media | image_url: width: 800 | image_tag: class: 'product__image', loading: 'lazy' }}
+    {%- endfor -%}
+  </div>
+  <div class="product__info">
+    {% content_for 'blocks' %}
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Product information",
+  "blocks": [{ "type": "@theme" }],
+  "settings": []
+}
+{% endschema %}

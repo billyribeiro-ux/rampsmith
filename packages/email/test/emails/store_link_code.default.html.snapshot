@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><meta name="format-detection" content="telephone=no, date=no, address=no, email=no"><title>A store-link code for your agency</title>
+<style>:root{color-scheme:light dark;supported-color-schemes:light dark;}body{margin:0;padding:0;}@media (prefers-color-scheme: dark){.rs-page{background-color:#0b0f14 !important;color:#f3f4f6 !important;}.rs-card{background-color:#151b23 !important;border-color:#374151 !important;}.rs-text{color:#f3f4f6 !important;}.rs-muted{color:#b6c0cc !important;}.rs-link{color:#93c5fd !important;}.rs-button{background-color:#93c5fd !important;border-color:#93c5fd !important;color:#0b0f14 !important;}.rs-subtle{background-color:#0b0f14 !important;border-color:#9ca3af !important;}.rs-row{border-color:#374151 !important;}}@media (max-width: 480px){.rs-card{padding:24px 16px !important;}}</style>
+</head>
+<body class="rs-page" style="margin:0;padding:0;background-color:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%"><div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;opacity:0;mso-hide:all">Enter the code in your Rampsmith dashboard to link the store.</div>
+<div role="article" aria-roledescription="email" aria-label="A store-link code for your agency" lang="en" dir="ltr" class="rs-page" style="background-color:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:24px 12px"><!--[if mso]><table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+<div style="max-width:600px;margin:0 auto"><div class="rs-card" style="background-color:#ffffff;border:1px solid #d1d5db;border-radius:8px;padding:32px 24px"><p class="rs-text" style="margin:0 0 24px;font-size:16px;line-height:24px;color:#111827;font-weight:700;letter-spacing:0.02em">Rampsmith</p>
+<h1 class="rs-text" style="margin:0 0 16px;font-size:24px;line-height:32px;font-weight:700;color:#111827">Link a store to your agency</h1>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">The owner of the store “<bdi>Example Outfitters</bdi>” shared a one-time code so that your agency can work on the store in Rampsmith.</p>
+<p class="rs-text" style="margin:0 0 8px;font-size:16px;line-height:24px;color:#111827;font-weight:600">Store-link code</p>
+<p class="rs-text rs-subtle" style="margin:0 0 16px;padding:12px 16px;background-color:#f3f4f6;border:1px solid #6b7280;border-radius:6px;color:#111827;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace;font-size:24px;line-height:32px;letter-spacing:0.12em;word-break:break-all"><code style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace">TEST-K7QX-M2PL</code></p>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">Sign in to your Rampsmith dashboard, choose Link a store, and enter the code.</p>
+<p style="margin:24px 0"><a class="rs-button" href="https://app.rampsmith.example/agency/link-store" style="display:inline-block;background-color:#1d4ed8;border:2px solid #1d4ed8;border-radius:6px;color:#ffffff;font-size:16px;font-weight:600;line-height:24px;padding:10px 20px;text-decoration:none">Open the dashboard</a></p>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">The code works once and expires on <bdi>October 18, 2026 at 10:00 AM UTC</bdi>.</p>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">Linking gives your agency access to this one store only. The store owner can remove that access at any time.</p>
+<p class="rs-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827">If you did not expect this code, ignore this email. Nothing happens unless someone enters it.</p>
+</div>
+<div style="padding:24px 8px 0"><p class="rs-muted" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#4b5563">You received this email because the owner of the store “<bdi>Example Outfitters</bdi>” asked Rampsmith to send this code to this address.</p>
+<p class="rs-muted" style="margin:0 0 12px;font-size:14px;line-height:22px;color:#4b5563">Questions? Write to <a class="rs-link" href="mailto:support@rampsmith.example" style="color:#1d4ed8;text-decoration:underline"><bdi>support@rampsmith.example</bdi></a>.</p>
+</div>
+</div>
+<!--[if mso]></td></tr>
+</table>
+<![endif]-->
+</div>
+</body></html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seeded reflow failure</title>
+    <!--
+      Seeded: #fixed-width is 600px wide and forces horizontal scrolling at 320px. Exempt and
+      must NOT be reported: a wide data table, a preformatted block, and a horizontally
+      scrolling carousel whose box fits the viewport.
+    -->
+    <style>
+      body {
+        margin: 0;
+        padding: 0 8px;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+      }
+      #fixed-width {
+        width: 600px;
+        background: #f3e8d8;
+      }
+      .carousel {
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      .carousel span {
+        display: inline-block;
+        width: 280px;
+        height: 60px;
+        background: #ddd;
+        margin-right: 8px;
+      }
+      pre {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Responsive text that wraps.</p>
+    <div id="fixed-width">A promotion banner fixed at 600 pixels wide.</div>
+    <table>
+      <tr>
+        <th>Size</th>
+        <th>Chest</th>
+        <th>Waist</th>
+        <th>Hip</th>
+        <th>Length</th>
+        <th>Sleeve</th>
+      </tr>
+      <tr>
+        <td>Small</td>
+        <td>86 centimetres</td>
+        <td>70 centimetres</td>
+        <td>94 centimetres</td>
+        <td>110 centimetres</td>
+        <td>60 centimetres</td>
+      </tr>
+    </table>
+    <pre>const sku = 'LINEN-DRESS-SAND-SMALL-0001-ABCDEFGHIJKLMNOP';</pre>
+    <div class="carousel"><span></span><span></span><span></span></div>
+  </body>
+</html>

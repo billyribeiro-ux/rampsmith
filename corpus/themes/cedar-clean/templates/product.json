@@ -1,0 +1,22 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "title": { "type": "product-title", "settings": {} },
+        "picker": { "type": "variant-picker", "settings": {} },
+        "buy": { "type": "buy-buttons", "settings": {} },
+        "details": {
+          "type": "accordion",
+          "settings": {
+            "heading": "Materials and care",
+            "body": "Washed European linen. Machine wash cold."
+          }
+        }
+      },
+      "block_order": ["title", "picker", "buy", "details"],
+      "settings": {}
+    }
+  },
+  "order": ["main"]
+}

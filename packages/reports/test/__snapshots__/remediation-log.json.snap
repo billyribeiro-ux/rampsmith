@@ -1,0 +1,171 @@
+{
+  "format": "rampsmith.remediation-log",
+  "version": 1,
+  "generatedAt": "2026-10-18T10:00:00Z",
+  "site": {
+    "name": "Example Goods",
+    "url": "https://example-goods.example/",
+    "platform": "shopify"
+  },
+  "entries": [
+    {
+      "fixId": "01920000-0000-7000-8000-000000000001",
+      "kind": "data",
+      "channel": "admin_api",
+      "origin": "ai",
+      "model": "claude-haiku-5-5",
+      "status": "verified",
+      "proposedAt": "2026-10-01T10:00:00Z",
+      "approvedAt": "2026-10-01T11:00:00Z",
+      "approvedBy": {
+        "kind": "user",
+        "name": "Approver A"
+      },
+      "appliedAt": "2026-10-01T11:00:05Z",
+      "change": {
+        "kind": "data",
+        "resource": "gid://shopify/MediaImage/1001",
+        "field": "alt",
+        "before": "IMG_0042.jpg",
+        "after": "Blue linen shirt, front view"
+      },
+      "verification": {
+        "result": "passed",
+        "scanId": "01920000-0000-7000-8000-0000000000a1",
+        "verifiedAt": "2026-10-02T03:00:00Z"
+      },
+      "reverts": null,
+      "findings": [
+        {
+          "findingId": "01920000-0000-7000-8000-0000000000f1",
+          "ruleId": "rs-media-alt-filename",
+          "criteria": [
+            "1.1.1"
+          ],
+          "impact": "serious",
+          "summary": "A product image uses a file name as its alt text."
+        }
+      ]
+    },
+    {
+      "fixId": "01920000-0000-7000-8000-000000000002",
+      "kind": "code",
+      "channel": "github_pr",
+      "origin": "rule",
+      "model": null,
+      "status": "applied",
+      "proposedAt": "2026-10-05T08:00:00Z",
+      "approvedAt": "2026-10-05T09:30:00Z",
+      "approvedBy": {
+        "kind": "user",
+        "name": "Approver B"
+      },
+      "appliedAt": "2026-10-06T14:00:00Z",
+      "change": {
+        "kind": "code",
+        "reference": "https://github.com/example/theme/pull/7"
+      },
+      "verification": {
+        "result": "pending",
+        "scanId": null,
+        "verifiedAt": null
+      },
+      "reverts": null,
+      "findings": [
+        {
+          "findingId": "01920000-0000-7000-8000-0000000000f2",
+          "ruleId": "button-name",
+          "criteria": [
+            "4.1.2"
+          ],
+          "impact": "critical",
+          "summary": "The menu button has no accessible name."
+        },
+        {
+          "findingId": "01920000-0000-7000-8000-0000000000f3",
+          "ruleId": "rs-focus-indicator-missing",
+          "criteria": [
+            "2.4.7"
+          ],
+          "impact": "serious",
+          "summary": "The menu button shows no focus indicator."
+        }
+      ]
+    },
+    {
+      "fixId": "01920000-0000-7000-8000-000000000003",
+      "kind": "data",
+      "channel": "admin_api",
+      "origin": "human",
+      "model": null,
+      "status": "reverted",
+      "proposedAt": "2026-10-07T08:00:00Z",
+      "approvedAt": "2026-10-07T08:05:00Z",
+      "approvedBy": {
+        "kind": "user",
+        "name": "Approver A"
+      },
+      "appliedAt": "2026-10-07T08:05:02Z",
+      "change": {
+        "kind": "data",
+        "resource": "gid://shopify/Product/2002",
+        "field": "descriptionHtml",
+        "before": "\u003cp\u003eClick here\u003c/p\u003e",
+        "after": "\u003cp\u003eRead the care guide\u003c/p\u003e"
+      },
+      "verification": {
+        "result": "reverted",
+        "scanId": null,
+        "verifiedAt": null
+      },
+      "reverts": null,
+      "findings": [
+        {
+          "findingId": "01920000-0000-7000-8000-0000000000f4",
+          "ruleId": "rs-rich-text-link-vague",
+          "criteria": [
+            "2.4.4"
+          ],
+          "impact": "moderate",
+          "summary": "A link says \"click here\" and does not say where it goes."
+        }
+      ]
+    },
+    {
+      "fixId": "01920000-0000-7000-8000-000000000004",
+      "kind": "data",
+      "channel": "admin_api",
+      "origin": "rule",
+      "model": null,
+      "status": "proposed",
+      "proposedAt": "2026-10-08T08:00:00Z",
+      "approvedAt": null,
+      "approvedBy": null,
+      "appliedAt": null,
+      "change": {
+        "kind": "data",
+        "resource": "gid://shopify/MediaImage/1003",
+        "field": "alt",
+        "before": "",
+        "after": "Wool scarf in green"
+      },
+      "verification": {
+        "result": "not_applied",
+        "scanId": null,
+        "verifiedAt": null
+      },
+      "reverts": "01920000-0000-7000-8000-000000000003",
+      "findings": [
+        {
+          "findingId": "01920000-0000-7000-8000-0000000000f5",
+          "ruleId": "rs-media-alt-empty",
+          "criteria": [
+            "1.1.1"
+          ],
+          "impact": "serious",
+          "summary": "A product image has no alt text."
+        }
+      ]
+    }
+  ]
+}

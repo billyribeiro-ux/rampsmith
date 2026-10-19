@@ -1,0 +1,45 @@
+Rampsmith
+
+6 fixes approved
+================
+
+6 fixes for Example Outfitters were approved on October 17, 2026.
+
+Approved fixes
+--------------
+
+- Add alt text to 12 product images (WCAG 1.1.1, store data)
+- Name the cart icon link (WCAG 2.4.4, pull request)
+
+And 4 more.
+
+What happens next
+-----------------
+
+- Store data fixes are written through Shopify's Admin API. Rampsmith then
+  re-scans the affected pages to verify them.
+- Code fixes go to your developer as a pull request. Rampsmith verifies them
+  after it is merged.
+
+The remediation log records who approved each fix, and when.
+
+Review fixes:
+https://admin.shopify.com/store/fixture-store/apps/rampsmith/fixes
+
+____________________________________________________________________________
+
+You received this email because notifications for Example Outfitters are
+sent to this address.
+
+Manage email preferences:
+https://app.rampsmith.example/settings/email
+
+Turn off emails like this one:
+https://app.rampsmith.example/email/unsubscribe?t=TESTONLYunsub55aa66bb77cc88dd99
+
+Questions? Write to support@rampsmith.example.
+
+Rampsmith
+100 Example Street
+Springfield, EX 00000
+United States (test fixture)

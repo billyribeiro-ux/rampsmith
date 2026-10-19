@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout guard: the only add button goes to checkout</title>
+    <!-- The product form's only submit button is named "checkout"; the script must refuse it. -->
+  </head>
+  <body>
+    <main>
+      <h1>Linen Dress</h1>
+      <form action="/cart/add" method="post">
+        <input type="hidden" name="id" value="40000000001" />
+        <button type="submit" name="checkout">Buy now</button>
+      </form>
+    </main>
+  </body>
+</html>

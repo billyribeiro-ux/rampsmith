@@ -1,0 +1,25 @@
+<div class="collection">
+  {% if collection.image %}
+		<img src="{{ collection.image | img_url: '1200x' }}" class="collection-hero__image" width="1200" height="800">
+  {% endif %}
+	<h1 class="collection__title">{{ collection.title }}</h1>
+
+	<div class="collection-sort">
+		<span class="collection-sort__label">{{ 'collections.sorting.title' | t }}</span>
+		<select name="sort_by" id="SortBy" class="collection-sort__select">
+			<option value="manual">{{ 'collections.sorting.featured' | t }}</option>
+			<option value="price-ascending">{{ 'collections.sorting.price_ascending' | t }}</option>
+			<option value="price-descending">{{ 'collections.sorting.price_descending' | t }}</option>
+		</select>
+	</div>
+
+	<div class="grid">
+    {% for product in collection.products %}
+      {% render 'product-card', product: product %}
+    {% endfor %}
+	</div>
+</div>
+
+{% schema %}
+{ "name": "Collection pages", "settings": [] }
+{% endschema %}

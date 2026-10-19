@@ -1,0 +1,6 @@
+{
+  "sections": {
+    "main": { "type": "main-collection", "settings": { "per_page": 1 } }
+  },
+  "order": ["main"]
+}

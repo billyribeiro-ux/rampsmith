@@ -161,38 +161,92 @@ async fn refresh_status(status: u16) -> TokenError {
 
 #[tokio::test]
 async fn a_400_on_exchange_means_the_id_token_is_stale() {
+    // shopify.dev, "Authenticate an embedded app without a template": "If the ID token is
+    // expired or otherwise invalid, Shopify returns a 400 Bad Request."
     let error = exchange_status(400).await;
     assert_eq!(error, TokenError::InvalidSubjectToken);
     assert!(!error.is_retryable());
 }
 
 #[tokio::test]
-async fn a_401_on_refresh_means_the_grant_was_revoked() {
+async fn a_401_on_refresh_means_the_refresh_token_is_dead() {
+    // "A 401 is terminal (expired, revoked, replayed outside the retry window, or the app was
+    // uninstalled)."
     let error = refresh_status(401).await;
     assert_eq!(error, TokenError::Revoked);
     assert!(!error.is_retryable());
 }
 
 #[tokio::test]
+async fn a_403_means_the_client_credentials_were_rejected_and_never_retries() {
+    for error in [exchange_status(403).await, refresh_status(403).await] {
+        assert_eq!(error, TokenError::CredentialsRejected);
+        assert!(!error.is_retryable());
+    }
+}
+
+#[tokio::test]
 async fn throttling_and_server_errors_are_retryable() {
-    for status in [429, 500, 502, 503] {
+    for status in [429, 500, 502, 503, 504] {
         let error = refresh_status(status).await;
         assert!(error.is_retryable(), "{status}: {error:?}");
         let error = exchange_status(status).await;
         assert!(error.is_retryable(), "{status}: {error:?}");
+    }
+    assert_eq!(exchange_status(429).await, TokenError::RateLimited);
+    assert_eq!(
+        refresh_status(503).await,
+        TokenError::Upstream { status: 503 }
+    );
+}
+
+#[tokio::test]
+async fn each_status_lands_in_exactly_the_class_the_documentation_gives_it() {
+    // (grant, status, expected). Every class appears for the grant it belongs to, and the
+    // same status means something else for the other grant.
+    #[derive(Clone, Copy)]
+    enum Grant {
+        Exchange,
+        Refresh,
+    }
+    let table = [
+        (Grant::Exchange, 400, TokenError::InvalidSubjectToken),
+        (Grant::Refresh, 400, TokenError::Rejected { status: 400 }),
+        (Grant::Exchange, 401, TokenError::Rejected { status: 401 }),
+        (Grant::Refresh, 401, TokenError::Revoked),
+        (Grant::Exchange, 403, TokenError::CredentialsRejected),
+        (Grant::Refresh, 403, TokenError::CredentialsRejected),
+        (Grant::Exchange, 404, TokenError::Rejected { status: 404 }),
+        (Grant::Refresh, 404, TokenError::Rejected { status: 404 }),
+        (Grant::Exchange, 422, TokenError::Rejected { status: 422 }),
+        (Grant::Refresh, 422, TokenError::Rejected { status: 422 }),
+        (Grant::Exchange, 429, TokenError::RateLimited),
+        (Grant::Refresh, 429, TokenError::RateLimited),
+        (Grant::Exchange, 500, TokenError::Upstream { status: 500 }),
+        (Grant::Refresh, 502, TokenError::Upstream { status: 502 }),
+        (Grant::Exchange, 503, TokenError::Upstream { status: 503 }),
+        (Grant::Refresh, 504, TokenError::Upstream { status: 504 }),
+    ];
+    for (grant, status, expected) in table {
+        let got = match grant {
+            Grant::Exchange => exchange_status(status).await,
+            Grant::Refresh => refresh_status(status).await,
+        };
+        assert_eq!(got, expected, "status {status}");
     }
 }
 
 #[tokio::test]
 async fn other_client_errors_are_rejections_that_do_not_retry() {
-    for status in [400, 403, 404] {
+    for status in [400, 404, 409, 422] {
         let error = refresh_status(status).await;
         assert_eq!(error, TokenError::Rejected { status }, "{status}");
         assert!(!error.is_retryable());
     }
-    for status in [401, 403] {
+    for status in [401, 404, 409, 422] {
         let error = exchange_status(status).await;
         assert_eq!(error, TokenError::Rejected { status }, "{status}");
+        assert!(!error.is_retryable());
     }
 }
 
@@ -200,8 +254,14 @@ async fn other_client_errors_are_rejections_that_do_not_retry() {
 async fn errors_never_carry_response_bodies() {
     for error in [
         exchange_status(400).await,
+        exchange_status(403).await,
+        exchange_status(404).await,
+        exchange_status(429).await,
         exchange_status(500).await,
         refresh_status(401).await,
+        refresh_status(403).await,
+        refresh_status(404).await,
+        refresh_status(503).await,
     ] {
         let text = format!("{error} {error:?}");
         assert!(!text.contains("leak"), "{text}");
@@ -242,6 +302,44 @@ async fn a_slow_endpoint_times_out_as_a_retryable_transport_error() {
         .unwrap_err();
     assert_eq!(error, TokenError::Transport);
     assert!(error.is_retryable());
+}
+
+#[tokio::test]
+async fn redirects_are_never_followed_so_the_client_secret_is_never_resent() {
+    // 307 and 308 would repeat the POST, form body and all, at the Location (audit L3).
+    for status in [301, 302, 307, 308] {
+        let elsewhere = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(token_body()))
+            .expect(0)
+            .mount(&elsewhere)
+            .await;
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(TOKEN_PATH))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("location", format!("{}/steal", elsewhere.uri())),
+            )
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let error = client(&server)
+            .exchange(&shop(), "id.token")
+            .await
+            .unwrap_err();
+        assert_eq!(error, TokenError::Rejected { status }, "{status}");
+        assert!(!error.is_retryable());
+        let error = client(&server)
+            .refresh(&shop(), &SecretString::from("shprt_old"))
+            .await
+            .unwrap_err();
+        assert_eq!(error, TokenError::Rejected { status }, "{status}");
+        // One request each, exchange and refresh, and nothing at the redirect target.
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
+        assert!(elsewhere.received_requests().await.unwrap().is_empty());
+    }
 }
 
 #[test]

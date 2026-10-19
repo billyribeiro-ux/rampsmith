@@ -1,7 +1,7 @@
 use std::fmt;
 use std::time::Duration;
 
-use reqwest::StatusCode;
+use reqwest::{StatusCode, redirect};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use tracing::{debug, instrument};
@@ -15,9 +15,10 @@ const OFFLINE_TOKEN: &str = "urn:shopify:params:oauth:token-type:offline-access-
 /// Where token requests go.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenEndpoint {
-    /// `https://<shop>/admin/oauth/access_token`.
+    /// `https://<shop>/admin/oauth/access_token`. A client built for it speaks HTTPS only.
     Shopify,
-    /// `<base>/<shop>/admin/oauth/access_token`, for tests against a mock server.
+    /// `<base>/<shop>/admin/oauth/access_token`, for tests against a mock server on plain
+    /// HTTP. Never use it in a deployed service.
     Base(String),
 }
 
@@ -60,17 +61,36 @@ impl fmt::Debug for OfflineToken {
 }
 
 /// Why a token request failed. Response bodies are never kept: they can echo secrets.
+///
+/// The classes follow shopify.dev, "Authenticate an embedded app without a template":
+///
+/// | Grant    | Status        | Class                                 |
+/// | -------- | ------------- | ------------------------------------- |
+/// | exchange | 400           | [`Self::InvalidSubjectToken`]         |
+/// | refresh  | 401           | [`Self::Revoked`]                     |
+/// | either   | 403           | [`Self::CredentialsRejected`]         |
+/// | either   | 429           | [`Self::RateLimited`]                 |
+/// | either   | 5xx           | [`Self::Upstream`]                    |
+/// | either   | anything else | [`Self::Rejected`]                    |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum TokenError {
-    /// Exchange answered 400: the ID token is stale or invalid. Answer the browser 401 with
-    /// `X-Shopify-Retry-Invalid-Session-Request: 1` so App Bridge retries with a fresh one.
+    /// Exchange answered 400: the ID token is expired or otherwise invalid, which a fresh
+    /// one fixes. Answer the browser 401 with `X-Shopify-Retry-Invalid-Session-Request: 1`
+    /// so App Bridge retries with a fresh token.
     #[error("Shopify rejected the session token")]
     InvalidSubjectToken,
-    /// Refresh answered 401: the grant is revoked. The merchant must open the app again.
+    /// Refresh answered 401: the refresh token is dead (expired, revoked, replayed outside
+    /// the retry window, or the app was uninstalled). The merchant must open the app again.
     #[error("Shopify revoked the grant")]
     Revoked,
-    /// Shopify refused the request for a reason a retry cannot fix (bad credentials, bad
-    /// request). Exchange answers 401 and 403 here: the client credentials are wrong.
+    /// Shopify answered 403: it does not accept this app's client id and secret. The same
+    /// request fails however long it waits, so it is never retried, and a fresh ID token does
+    /// not fix it: the app answers 5xx, not 401, and the operator checks `SHOPIFY_API_KEY`
+    /// and `SHOPIFY_API_SECRET`.
+    #[error("Shopify rejected the app's client credentials")]
+    CredentialsRejected,
+    /// Shopify refused the request for another reason a retry cannot fix, such as a malformed
+    /// request, an unknown shop or a redirect (never followed).
     #[error("Shopify rejected the token request with status {status}")]
     Rejected {
         /// The HTTP status.
@@ -139,6 +159,11 @@ enum Grant {
 
 impl TokenClient {
     /// A client whose requests time out after `timeout`.
+    ///
+    /// The client never follows a redirect, because a repeated POST (307, 308) would resend
+    /// the client secret to wherever the response points (audit L3); a redirect is a
+    /// [`TokenError::Rejected`]. Built for [`TokenEndpoint::Shopify`] it also refuses any
+    /// URL that is not `https`.
     pub fn new(
         client_id: &str,
         client_secret: SecretString,
@@ -146,6 +171,8 @@ impl TokenClient {
         timeout: Duration,
     ) -> Result<Self, TokenError> {
         let http = reqwest::Client::builder()
+            .redirect(redirect::Policy::none())
+            .https_only(endpoint == TokenEndpoint::Shopify)
             .timeout(timeout)
             .connect_timeout(timeout)
             .user_agent(concat!("rampsmith/", env!("CARGO_PKG_VERSION")))
@@ -163,7 +190,10 @@ impl TokenClient {
     /// "Authenticate an embedded app without a template"). Retires every other refresh
     /// token of this app on this shop, so never run it concurrently with [`Self::refresh`]
     /// for the same shop.
-    #[instrument(skip_all, fields(shop = %shop), err(Display))]
+    ///
+    /// Nothing is logged but the span and the error's fixed text: no shop domain (PLAN §19
+    /// logs ids, and the caller owns them), token, secret or response body.
+    #[instrument(skip_all, err(Display))]
     pub async fn exchange(
         &self,
         shop: &ShopDomain,
@@ -183,7 +213,7 @@ impl TokenClient {
 
     /// Trades a refresh token for a new pair. The presented refresh token stays usable
     /// until the new one is used, so a lost response can be retried.
-    #[instrument(skip_all, fields(shop = %shop), err(Display))]
+    #[instrument(skip_all, err(Display))]
     pub async fn refresh(
         &self,
         shop: &ShopDomain,
@@ -247,8 +277,45 @@ fn classify(status: StatusCode, grant: Grant) -> TokenError {
     match (status.as_u16(), grant) {
         (400, Grant::Exchange) => TokenError::InvalidSubjectToken,
         (401, Grant::Refresh) => TokenError::Revoked,
+        (403, _) => TokenError::CredentialsRejected,
         (429, _) => TokenError::RateLimited,
         (code, _) if status.is_server_error() => TokenError::Upstream { status: code },
         (code, _) => TokenError::Rejected { status: code },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn a_client_built_for_shopify_refuses_plain_http() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let mut client = TokenClient::new(
+            "client-id",
+            SecretString::from("client-secret"),
+            TokenEndpoint::Shopify,
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        // The HTTP client was built for Shopify's endpoint; aim it at plain HTTP.
+        client.endpoint = TokenEndpoint::Base(server.uri());
+        let shop = ShopDomain::parse("demo-store.myshopify.com").unwrap();
+        let error = client.exchange(&shop, "id.token").await.unwrap_err();
+        assert_eq!(error, TokenError::Transport);
+        let error = client
+            .refresh(&shop, &SecretString::from("shprt_old"))
+            .await
+            .unwrap_err();
+        assert_eq!(error, TokenError::Transport);
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 }

@@ -1,0 +1,37 @@
+{
+  "provenance": "authored: written by the WS-12 stream in the documented Messages API response shape, not captured from the API; replace with `pnpm --filter @rampsmith/ai run eval -- --live --record` once ANTHROPIC_API_KEY is set (LAUNCH.md section C, row 5)",
+  "prompt_version": "alt-text@2",
+  "model": "claude-sonnet-5-5",
+  "image_id": "tea-box",
+  "request_sha256": "d152988927318b984d26076aba75bdcbf273c73e0ebab7a6e1bb0686382d9b81",
+  "response": {
+    "id": "msg_eval_tea_box_claude_sonnet_5_5",
+    "container": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"alt\":\"Teal Harbour Tea Co. Earl Grey box, 20 tea bags, 40 g; ingredients: black tea and natural bergamot flavouring\",\"decorative\":false,\"contains_text\":true,\"instruction_like_text\":false,\"language\":\"en\",\"confidence\":0.9}",
+        "citations": null
+      }
+    ],
+    "diagnostics": null,
+    "model": "claude-sonnet-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": null,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 1036,
+      "output_tokens": 128,
+      "output_tokens_details": null,
+      "server_tool_use": null,
+      "service_tier": "standard",
+      "speed": "standard"
+    }
+  }
+}

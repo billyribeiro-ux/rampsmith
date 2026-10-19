@@ -1,0 +1,37 @@
+[
+  {
+    "name": "theme_info",
+    "theme_name": "Birch",
+    "theme_version": "3.2.0",
+    "theme_author": "Rampsmith corpus",
+    "theme_documentation_url": "https://github.com/billyribeiro-ux/rampsmith/tree/main/corpus",
+    "theme_support_url": "https://github.com/billyribeiro-ux/rampsmith/issues"
+  },
+  {
+    "name": "Colors",
+    "settings": [
+      { "type": "color", "id": "color_body_text", "label": "Body text", "default": "#2b2b2b" },
+      { "type": "color", "id": "color_body_bg", "label": "Background", "default": "#ffffff" },
+      { "type": "color", "id": "color_button", "label": "Buttons", "default": "#7a3e1d" },
+      {
+        "type": "color",
+        "id": "color_announcement_text",
+        "label": "Announcement text",
+        "default": "#555555"
+      },
+      {
+        "type": "color",
+        "id": "color_announcement_bg",
+        "label": "Announcement background",
+        "default": "#fafafa"
+      }
+    ]
+  },
+  {
+    "name": "Social media",
+    "settings": [
+      { "type": "text", "id": "social_pinterest_link", "label": "Pinterest" },
+      { "type": "text", "id": "social_youtube_link", "label": "YouTube" }
+    ]
+  }
+]

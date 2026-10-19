@@ -1,0 +1,177 @@
+# Nightly logical backup (PLAN §22; ADR-171 to ADR-174): pg_dump -Fc of the database, encrypted
+# with age to public recipients, uploaded to the R2 backups bucket under a dated key, verified
+# by size and sha256, and pruned to 30 daily and 12 monthly backups.
+#
+# It runs in the GitHub environments `backup-production` and `backup-staging`, not in
+# `production` and `staging`: those carry the founder as a required reviewer (PLAN §24), and a
+# reviewer gate would hold every scheduled run until someone clicks. The backup environments must
+# keep that setting off. Their secrets are the backup's alone: R2 credentials for one bucket,
+# the backup database login, and the Railway token. The private age key is in neither of them.
+#
+# Until LAUNCH.md section C rows 6 (Cloudflare R2) and 8 (the Railway project) are done the job
+# skips with a warning annotation that names them (infra/backup/gate.sh). Scheduled workflows run
+# from the default branch only, may start late, and are disabled by GitHub after 60 days without
+# repository activity; docs/runbooks/restore-from-logical-backup.md covers how to notice.
+name: backup
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment to back up
+        type: choice
+        options: [all, production, staging]
+        default: all
+
+permissions: read-all
+
+env:
+  # postgres:18.6-bookworm, index digest read from Docker Hub on 2026-10-17 (same as ci.yml).
+  RD_IMAGE: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+  # age v1.3.2 (FiloSottile/age release asset); the SHA-256 was computed on 2026-10-19.
+  AGE_VERSION: v1.3.2
+  AGE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
+  # Railway CLI 5.70.0, the pin of infra/railway/tools/railway-cli.sha256 (ADR-185).
+  RAILWAY_CLI_ASSET: railway-v5.70.0-x86_64-unknown-linux-musl.tar.gz
+  RAILWAY_CLI_URL: https://github.com/railwayapp/cli/releases/download/v5.70.0/railway-v5.70.0-x86_64-unknown-linux-musl.tar.gz
+  RAILWAY_CLI_SHA256: f518230646acc7a6a7a67365e7642618f659d5d8cdd7cf8c180336140d0504eb
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      environments: ${{ steps.pick.outputs.environments }}
+    steps:
+      - id: pick
+        env:
+          CHOICE: ${{ inputs.environment }}
+        run: |
+          case "${CHOICE:-all}" in
+            all) list='["production","staging"]' ;;
+            production) list='["production"]' ;;
+            staging) list='["staging"]' ;;
+            *) echo "::error::unknown environment '${CHOICE}'"; exit 1 ;;
+          esac
+          echo "environments=${list}" >>"$GITHUB_OUTPUT"
+
+  backup:
+    name: backup (${{ matrix.environment }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: backup-${{ matrix.environment }}
+    permissions:
+      contents: read
+    concurrency:
+      group: backup-${{ matrix.environment }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.plan.outputs.environments) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the inputs this backup needs
+        id: gate
+        env:
+          BACKUP_ENVIRONMENT: ${{ matrix.environment }}
+          BACKUP_SOURCE: ${{ vars.BACKUP_SOURCE || 'railway-ssh' }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_BACKUPS: ${{ vars.R2_BUCKET_BACKUPS }}
+          BACKUP_AGE_RECIPIENTS: ${{ vars.BACKUP_AGE_RECIPIENTS }}
+          BACKUP_DB_NAME: ${{ vars.BACKUP_DB_NAME }}
+          BACKUP_DB_PASSWORD: ${{ secrets.BACKUP_DB_PASSWORD }}
+          BACKUP_DB_HOST: ${{ vars.BACKUP_DB_HOST || 'localhost' }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          BACKUP_RAILWAY_PROJECT_ID: ${{ vars.BACKUP_RAILWAY_PROJECT_ID }}
+          BACKUP_RAILWAY_ENVIRONMENT: ${{ vars.BACKUP_RAILWAY_ENVIRONMENT }}
+          BACKUP_RAILWAY_SERVICE: ${{ vars.BACKUP_RAILWAY_SERVICE }}
+          BACKUP_RAILWAY_SSH_PRIVATE_KEY: ${{ secrets.BACKUP_RAILWAY_SSH_PRIVATE_KEY }}
+        run: infra/backup/gate.sh
+
+      - name: Install age (pinned release, SHA-256 checked)
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dl" "$RUNNER_TEMP/tools"
+          curl -sSfL --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+            -o "$RUNNER_TEMP/dl/age.tgz" \
+            "https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-linux-amd64.tar.gz"
+          echo "${AGE_SHA256}  $RUNNER_TEMP/dl/age.tgz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/dl/age.tgz" -C "$RUNNER_TEMP/tools" --strip-components=1 age/age
+          "$RUNNER_TEMP/tools/age" --version
+          echo "AGE_BIN=$RUNNER_TEMP/tools/age" >>"$GITHUB_ENV"
+
+      - name: Provide the PostgreSQL 18 client programs (pinned image)
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          docker pull --quiet "$RD_IMAGE"
+          bin="$RUNNER_TEMP/pgbin"
+          mkdir -p "$bin"
+          for tool in pg_dump pg_restore psql; do
+            cat >"$bin/$tool" <<EOF
+          #!/usr/bin/env bash
+          exec docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE -e PGSSLMODE -e PGSSLROOTCERT -e PGCONNECT_TIMEOUT "$RD_IMAGE" $tool "\$@"
+          EOF
+            chmod +x "$bin/$tool"
+          done
+          "$bin/pg_restore" --version
+          echo "PGBIN=$bin" >>"$GITHUB_ENV"
+
+      - name: Install the Railway CLI (pinned release, SHA-256 checked)
+        if: steps.gate.outputs.configured == 'true' && (vars.BACKUP_SOURCE || 'railway-ssh') == 'railway-ssh'
+        env:
+          SSH_KEY: ${{ secrets.BACKUP_RAILWAY_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dl" "$RUNNER_TEMP/railway"
+          curl -sSfL --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+            -o "$RUNNER_TEMP/dl/$RAILWAY_CLI_ASSET" "$RAILWAY_CLI_URL"
+          echo "${RAILWAY_CLI_SHA256}  $RUNNER_TEMP/dl/$RAILWAY_CLI_ASSET" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/dl/$RAILWAY_CLI_ASSET" -C "$RUNNER_TEMP/railway" railway
+          "$RUNNER_TEMP/railway/railway" --version
+          umask 077
+          printf '%s\n' "$SSH_KEY" >"$RUNNER_TEMP/railway_ssh_key"
+          {
+            echo "RAILWAY_BIN=$RUNNER_TEMP/railway/railway"
+            echo "BACKUP_RAILWAY_SSH_KEY_FILE=$RUNNER_TEMP/railway_ssh_key"
+          } >>"$GITHUB_ENV"
+
+      - name: Back up, verify and prune
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          BACKUP_ENVIRONMENT: ${{ matrix.environment }}
+          BACKUP_SOURCE: ${{ vars.BACKUP_SOURCE || 'railway-ssh' }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_BACKUPS: ${{ vars.R2_BUCKET_BACKUPS }}
+          BACKUP_AGE_RECIPIENTS: ${{ vars.BACKUP_AGE_RECIPIENTS }}
+          BACKUP_DB_HOST: ${{ vars.BACKUP_DB_HOST || 'localhost' }}
+          BACKUP_DB_PORT: ${{ vars.BACKUP_DB_PORT || '5432' }}
+          BACKUP_DB_USER: ${{ vars.BACKUP_DB_USER || 'rampsmith_backup' }}
+          BACKUP_DB_NAME: ${{ vars.BACKUP_DB_NAME }}
+          BACKUP_DB_PASSWORD: ${{ secrets.BACKUP_DB_PASSWORD }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          BACKUP_RAILWAY_PROJECT_ID: ${{ vars.BACKUP_RAILWAY_PROJECT_ID }}
+          BACKUP_RAILWAY_ENVIRONMENT: ${{ vars.BACKUP_RAILWAY_ENVIRONMENT }}
+          BACKUP_RAILWAY_SERVICE: ${{ vars.BACKUP_RAILWAY_SERVICE }}
+        run: |
+          rc=0
+          infra/backup/backup.sh || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "::warning::backup of ${BACKUP_ENVIRONMENT} skipped: the script reports it is not configured (LAUNCH.md section C rows 6 and 8)"
+            exit 0
+          fi
+          exit "$rc"

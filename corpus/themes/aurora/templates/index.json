@@ -1,0 +1,24 @@
+{
+  "sections": {
+    "banner": {
+      "type": "image-banner",
+      "settings": {
+        "image": "shopify://shop_images/hero-linen.jpg",
+        "heading": "Made for long weekends",
+        "button_label": "Shop the summer edit",
+        "button_link": "/collections/summer-edit"
+      }
+    },
+    "featured": {
+      "type": "featured-collection",
+      "settings": {
+        "title": "New this season",
+        "description": "Small batches, restocked every spring.",
+        "description_color": "#a0a0a0",
+        "collection": "summer-edit",
+        "products_to_show": 4
+      }
+    }
+  },
+  "order": ["banner", "featured"]
+}

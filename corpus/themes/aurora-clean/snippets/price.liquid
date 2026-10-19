@@ -1,0 +1,10 @@
+<div class="price{% if product.compare_at_price > product.price %} price--on-sale{% endif %}">
+  {%- if product.compare_at_price > product.price -%}
+    <span class="visually-hidden">{{ 'products.product.price.sale_price' | t }}</span>
+    <span class="price__sale">{{ product.price | money }}</span>
+    <span class="visually-hidden">{{ 'products.product.price.regular_price' | t }}</span>
+    <s class="price__compare">{{ product.compare_at_price | money }}</s>
+  {%- else -%}
+    <span class="price__regular">{{ product.price | money }}</span>
+  {%- endif -%}
+</div>

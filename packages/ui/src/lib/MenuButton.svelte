@@ -3,6 +3,7 @@
   // In the menu, Up and Down move (wrapping), Home and End jump, a letter moves to the next
   // item starting with it, Enter or Space chooses, Escape closes and returns focus, and Tab
   // closes and moves on.
+  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
   import { tick } from 'svelte';
 
   interface Item {
@@ -130,9 +131,7 @@
     onkeydown={buttonKeydown}
   >
     {label}
-    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
-      <path d="M3 6l5 5 5-5z" fill="currentColor" />
-    </svg>
+    <CaretDownIcon size={12} weight="bold" aria-hidden="true" />
   </button>
   <ul
     role="menu"

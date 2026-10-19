@@ -1,0 +1,37 @@
+{
+  "accessibility": {
+    "skip_to_content": "Skip to content"
+  },
+  "general": {
+    "navigation": {
+      "main": "Main menu"
+    },
+    "pagination": {
+      "label": "Pages"
+    },
+    "password_page": {
+      "admin_link": "Store owner? Log in here",
+      "placeholder": "Password",
+      "enter": "Enter"
+    }
+  },
+  "newsletter": {
+    "label": "Email",
+    "submit": "Subscribe"
+  },
+  "products": {
+    "product": {
+      "add_to_cart": "Add to cart"
+    }
+  },
+  "sections": {
+    "carousel": {
+      "slide": "Slide {{ number }}"
+    }
+  },
+  "templates": {
+    "cart": {
+      "title": "Cart"
+    }
+  }
+}

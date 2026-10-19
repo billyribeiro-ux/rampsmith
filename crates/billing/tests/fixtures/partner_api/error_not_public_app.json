@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "message": "Only public apps can access active subscription",
+      "locations": [
+        {
+          "line": 2,
+          "column": 3
+        }
+      ],
+      "path": ["activeSubscription"]
+    }
+  ],
+  "data": {
+    "activeSubscription": null
+  }
+}
