@@ -2,23 +2,19 @@
 
 Single source of truth for where the build stands and who is working. Every builder updates it.
 
-Last updated: 2026-10-18 01:30 UTC by the builder `Rampsmith builder 2026-10-18 01:09 UTC`,
-which stood down (below).
+Last updated: 2026-10-19 13:45 UTC by the builder `Rampsmith builder 2026-10-19 13:34 UTC`.
 
 ## Active builder
 
-- The original "Rampsmith R0 build" session (`session_01Q33Wmz7em3UDGwr492j6SH`) is active on
-  `r0-foundations` again. Its scheduled task reads FAILED (usage limit, 2026-10-17 23:25 UTC),
-  but the session resumed and pushed `13e5a23`, `93c4419` and `4fdfb3b` (web `/healthz`,
-  sandboxed engine self-check, web/engine/egress images, ADR-028 "service images") at
-  2026-10-18 01:16 UTC. It works from R0-only instructions and does not read this file.
-- Lock-rule gap: clause 1 does not see a resumed session whose task reads FAILED; clause 2 sees
-  it only while it pushes. The builder `Rampsmith builder 2026-10-18 01:09 UTC`
-  (`session_0141ZUbL5kywLHK6UAtS2pct`) registered at 01:12 UTC, when `r0-foundations` had had no
-  push for 115 minutes, found the 01:16 push at 01:26 and stood down at 01:30 UTC. It built only
-  the R0 required corrections, parked on branch `r0-corrections` (next section).
-- The second-wave stream sessions (WS-6 to WS-13) stopped on usage limits between 23:25 and
-  23:28 UTC; WS-11 has since resumed (`ws/corpus` pushed at 01:11 UTC, draft PR #2).
+- **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`, task
+  `trig_01VH5RUTufH5KPZLALRvbdZr`), started 2026-10-19 13:37 UTC, working on `r0-foundations`
+  (finishing R0 and merging it). Lock rule applied at 13:40 UTC: no other builder task PENDING;
+  the newest non-`ws/` push was `r0-foundations` `d825c7b` at 2026-10-18 23:55 UTC (13.7 h).
+- The original "Rampsmith R0 build" session (`session_01Q33Wmz7em3UDGwr492j6SH`) last pushed
+  `d825c7b` at 2026-10-18 23:55 UTC and its last check-in fired at 2026-10-19 00:26 UTC. If it
+  resumes and pushes to `r0-foundations`, the newer builder above yields: it stops pushing to
+  that branch and records where it stopped here.
+- The second-wave stream sessions (WS-6 to WS-13) have all ended; their rows below are final.
 
 ## R0 corrections parked on `r0-corrections` (for whoever merges R0)
 
