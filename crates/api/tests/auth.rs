@@ -16,7 +16,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use db::Db;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sqlx::Executor;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower::ServiceExt;
 use webauthn_authenticator_rs::WebauthnAuthenticator;
@@ -25,19 +24,14 @@ use webauthn_authenticator_rs::prelude::{
 };
 use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 
+mod support;
+
+use support::app_login_pool;
+
 const ORIGIN: &str = "https://app.rampsmith.test";
 
 async fn state(opts: PgPoolOptions, conn: PgConnectOptions) -> AppState {
-    let pool = opts
-        .after_connect(|c, _| {
-            Box::pin(async move {
-                c.execute("set role rampsmith_app").await?;
-                Ok(())
-            })
-        })
-        .connect_with(conn)
-        .await
-        .unwrap();
+    let pool = app_login_pool(opts, conn).await;
     let db = Db::from_pool(pool);
     let identity =
         identity::Identity::new(db.clone(), "app.rampsmith.test", ORIGIN, "Rampsmith").unwrap();
@@ -246,7 +240,7 @@ async fn without_identity_configured_auth_is_unavailable(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
-    let state = AppState::new(Db::from_pool(opts.connect_with(conn).await.unwrap()));
+    let state = AppState::new(Db::from_pool(app_login_pool(opts, conn).await));
     let (status, _) = call(&state, Method::POST, "/v1/auth/sign-in/start", None, None).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }

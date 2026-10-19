@@ -3,9 +3,10 @@
 
 use axum::Json;
 use axum::extract::State;
+use db::{RoleError, RuntimeRole};
 use http_kit::{ApiError, ProblemCode};
 use serde::Serialize;
-use tracing::warn;
+use tracing::{error, warn};
 use utoipa::ToSchema;
 
 use crate::AppState;
@@ -41,7 +42,9 @@ pub(crate) async fn healthz() -> Json<Health> {
     Json(Health { status: "ok" })
 }
 
-/// Readiness: the database answers and holds at least this build's newest migration.
+/// Readiness: the database answers, the connection is a plain application login that
+/// row-level security binds (ADR-040), and the database holds at least this build's newest
+/// migration.
 #[utoipa::path(
     get,
     path = "/readyz",
@@ -55,6 +58,18 @@ pub(crate) async fn healthz() -> Json<Health> {
 )]
 pub(crate) async fn readyz(State(state): State<AppState>) -> Result<Json<Readiness>, ApiError> {
     let unavailable = |why: &str| ApiError::new(ProblemCode::Unavailable).detail(why.to_owned());
+    match state.db.verify_runtime_role(RuntimeRole::App).await {
+        Ok(()) => {}
+        Err(refused @ RoleError::Refused { .. }) => {
+            // The role and what is wrong with it are for the operator, not the caller.
+            error!(%refused, "readiness: the database login is not fit to serve tenants");
+            return Err(unavailable("The database role is not an application role."));
+        }
+        Err(RoleError::Unreachable(error)) => {
+            warn!(%error, "readiness: database unavailable");
+            return Err(unavailable("The database is not reachable."));
+        }
+    }
     let applied = match state.db.schema_version().await {
         Ok(version) => version.unwrap_or(0),
         Err(error) => {

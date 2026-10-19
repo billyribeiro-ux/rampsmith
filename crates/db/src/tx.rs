@@ -38,6 +38,11 @@ impl Db {
         Self { pool }
     }
 
+    /// The pool, for the sibling modules of this crate only.
+    pub(crate) const fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// Opens a transaction scoped to `tenant`: row-level security applies to every
     /// statement inside it.
     pub async fn tenant(&self, tenant: TenantId) -> Result<TenantTx, DbError> {

@@ -19,17 +19,12 @@ use sqlx::Executor;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower::ServiceExt;
 
+mod support;
+
+use support::app_login_pool;
+
 async fn app_db(opts: PgPoolOptions, conn: PgConnectOptions) -> Db {
-    let pool = opts
-        .after_connect(|c, _| {
-            Box::pin(async move {
-                c.execute("set role rampsmith_app").await?;
-                Ok(())
-            })
-        })
-        .connect_with(conn)
-        .await
-        .unwrap();
+    let pool = app_login_pool(opts, conn).await;
     Db::from_pool(pool)
 }
 
@@ -70,6 +65,44 @@ async fn readiness_reports_the_applied_schema_version(opts: PgPoolOptions, conn:
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["status"], "ready");
     assert_eq!(body["schema_version"], db::expected_schema_version());
+}
+
+/// A superuser reads every tenant (row-level security does not apply to it), so the api must
+/// not report ready on one. There is no setting that turns this off (ADR-040).
+#[sqlx::test(migrations = "../db/migrations")]
+async fn readiness_refuses_a_superuser_connection(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let pool = opts.connect_with(conn).await.unwrap();
+    let (status, content_type, body) = get(AppState::new(Db::from_pool(pool)), "/readyz").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(content_type, "application/problem+json");
+    assert_eq!(body["code"], "unavailable");
+    let detail = body["detail"].as_str().unwrap();
+    assert!(detail.contains("database role"), "{detail}");
+    assert!(
+        !detail.contains("postgres"),
+        "the role name stays in the logs: {detail}"
+    );
+}
+
+/// `SET ROLE rampsmith_app` from a superuser login can be undone with `RESET ROLE`.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn readiness_refuses_a_superuser_that_switched_to_the_application_role(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let pool = opts
+        .after_connect(|c, _| {
+            Box::pin(async move {
+                c.execute("set role rampsmith_app").await?;
+                Ok(())
+            })
+        })
+        .connect_with(conn)
+        .await
+        .unwrap();
+    let (status, _, body) = get(AppState::new(Db::from_pool(pool)), "/readyz").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["code"], "unavailable");
 }
 
 #[sqlx::test(migrations = "../db/migrations")]

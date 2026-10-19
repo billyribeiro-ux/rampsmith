@@ -21,27 +21,21 @@ use secrecy::SecretString;
 use serde_json::{Value, json};
 use shopify::{SessionTokenVerifier, TokenClient, TokenEndpoint};
 use shopify_auth::ShopifyAuth;
-use sqlx::Executor;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower::ServiceExt;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+mod support;
+
+use support::app_login_pool;
 
 const CLIENT_ID: &str = "0123456789abcdef0123456789abcdef";
 const SECRET: &str = "shpss_api_test";
 const RETRY: &str = "x-shopify-retry-invalid-session-request";
 
 async fn state(opts: PgPoolOptions, conn: PgConnectOptions, shopify: &MockServer) -> AppState {
-    let pool = opts
-        .after_connect(|c, _| {
-            Box::pin(async move {
-                c.execute("set role rampsmith_app").await?;
-                Ok(())
-            })
-        })
-        .connect_with(conn)
-        .await
-        .unwrap();
+    let pool = app_login_pool(opts, conn).await;
     let db = Db::from_pool(pool);
     let auth = ShopifyAuth::new(
         db.clone(),
@@ -220,7 +214,7 @@ async fn without_shopify_configured_the_route_is_unavailable(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
-    let pool = opts.connect_with(conn).await.unwrap();
+    let pool = app_login_pool(opts, conn).await;
     let state = AppState::new(Db::from_pool(pool));
     let answer = post_session(state, Some("Bearer x")).await;
     assert_eq!(answer.status, StatusCode::SERVICE_UNAVAILABLE);

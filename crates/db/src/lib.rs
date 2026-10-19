@@ -8,9 +8,11 @@
 
 mod error;
 pub mod repo;
+mod roles;
 mod tx;
 
 pub use error::DbError;
+pub use roles::{RoleError, RoleViolation, RuntimeRole};
 pub use tx::{Db, IdentityTx, ShopLock, ShopRef, TenantTx};
 
 /// The workspace migrations, embedded at compile time. Deploys run them before traffic

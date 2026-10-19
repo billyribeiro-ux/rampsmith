@@ -22,11 +22,15 @@ use secrecy::SecretString;
 use serde_json::json;
 use shopify::{SessionTokenVerifier, TokenClient, TokenEndpoint};
 use shopify_auth::{RefreshOutcome, ShopSession, ShopifyAuth};
+use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::{Executor, PgPool};
 use time::{Duration, OffsetDateTime};
 use wiremock::matchers::method;
 use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
+
+mod support;
+
+use support::worker_login_pool;
 
 const CLIENT_ID: &str = "0123456789abcdef0123456789abcdef";
 const SECRET: &str = "shpss_ctl_test";
@@ -53,16 +57,7 @@ fn body(n: u32) -> serde_json::Value {
 }
 
 async fn worker_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
-    opts.max_connections(8)
-        .after_connect(|c, _| {
-            Box::pin(async move {
-                c.execute("set role rampsmith_worker").await?;
-                Ok(())
-            })
-        })
-        .connect_with(conn)
-        .await
-        .unwrap()
+    worker_login_pool(opts, conn).await
 }
 
 struct World {
@@ -363,4 +358,76 @@ async fn the_leader_reaps_expired_leases_and_keeps_partitions_ahead(
     .await
     .unwrap();
     assert!(partitions >= 4, "{partitions}");
+}
+
+// --- The runtime role guard (audit M4, ADR-040) ----------------------------------------------
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn startup_accepts_a_login_member_of_rampsmith_worker(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = Db::from_pool(worker_pool(opts, conn).await);
+    let verified = ctl::startup::require_worker_role(
+        &db,
+        StdDuration::from_millis(10),
+        std::future::pending::<()>(),
+    )
+    .await
+    .unwrap();
+    assert!(verified);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn startup_refuses_a_superuser_at_once(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let db = Db::from_pool(opts.connect_with(conn).await.unwrap());
+    let error = ctl::startup::require_worker_role(
+        &db,
+        StdDuration::from_mins(1),
+        std::future::pending::<()>(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(error, db::RoleError::Refused { .. }), "{error:?}");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn startup_refuses_a_superuser_that_switched_to_the_worker_role(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let pool = opts
+        .after_connect(|c, _| {
+            Box::pin(async move {
+                sqlx::Executor::execute(c, "set role rampsmith_worker").await?;
+                Ok(())
+            })
+        })
+        .connect_with(conn)
+        .await
+        .unwrap();
+    let error = ctl::startup::require_worker_role(
+        &Db::from_pool(pool),
+        StdDuration::from_mins(1),
+        std::future::pending::<()>(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(error, db::RoleError::Refused { .. }), "{error:?}");
+}
+
+#[tokio::test]
+async fn startup_waits_for_an_unreachable_database_and_stops_on_shutdown() {
+    let pool = PgPoolOptions::new()
+        .acquire_timeout(StdDuration::from_millis(200))
+        .connect_lazy("postgres://nobody@127.0.0.1:9/none")
+        .unwrap();
+    let verified = ctl::startup::require_worker_role(
+        &Db::from_pool(pool),
+        StdDuration::from_millis(20),
+        tokio::time::sleep(StdDuration::from_millis(300)),
+    )
+    .await
+    .unwrap();
+    assert!(!verified, "shutdown must end the wait without a verdict");
 }
