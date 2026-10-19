@@ -1,0 +1,16 @@
+{%- unless product.has_only_default_variant -%}
+  <div class="variant-picker" {{ block.shopify_attributes }}>
+    <p class="variant-picker__label" id="VariantLabel-{{ block.id }}">{{ product.options.first | escape }}</p>
+    <ul class="variant-picker__list" role="listbox" aria-labelledby="VariantLabel-{{ block.id }}">
+      {%- for variant in product.variants -%}
+        <li class="variant-picker__option{% if forloop.first %} is-selected{% endif %}" role="option" aria-selected="{% if forloop.first %}true{% else %}false{% endif %}" data-value="{{ variant.id }}">
+          {{- variant.title | escape -}}
+        </li>
+      {%- endfor -%}
+    </ul>
+  </div>
+{%- endunless -%}
+
+{% schema %}
+{ "name": "Variant picker", "settings": [] }
+{% endschema %}

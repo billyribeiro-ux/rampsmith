@@ -1,0 +1,13 @@
+<header class="site-header">
+  {% content_for 'blocks' %}
+</header>
+
+{% schema %}
+{
+  "name": "Header",
+  "tag": "div",
+  "class": "header-section",
+  "blocks": [{ "type": "@theme" }],
+  "settings": []
+}
+{% endschema %}

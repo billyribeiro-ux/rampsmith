@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rampsmith:corpus:runner-report:1",
+  "title": "Rampsmith corpus runner: report",
+  "description": "The two R2 gates the corpus decides and everything that decided them (corpus/CONTRACT.md, Outputs; ADR-203). buildReport in packages/corpus-tools produces it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mapping", "fixes", "regressions", "gates", "passed"],
+  "properties": {
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "denominator",
+        "correct",
+        "wrongAboveThreshold",
+        "belowThreshold",
+        "needsReview",
+        "unmapped",
+        "missing",
+        "accuracy",
+        "passed",
+        "verdicts"
+      ],
+      "properties": {
+        "threshold": {
+          "const": 0.9
+        },
+        "denominator": {
+          "$ref": "#/$defs/count"
+        },
+        "correct": {
+          "$ref": "#/$defs/count"
+        },
+        "wrongAboveThreshold": {
+          "$ref": "#/$defs/count"
+        },
+        "belowThreshold": {
+          "$ref": "#/$defs/count"
+        },
+        "needsReview": {
+          "$ref": "#/$defs/count"
+        },
+        "unmapped": {
+          "$ref": "#/$defs/count"
+        },
+        "missing": {
+          "$ref": "#/$defs/count"
+        },
+        "accuracy": {
+          "$ref": "#/$defs/ratio"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "verdicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["finding", "verdict"],
+            "properties": {
+              "finding": {
+                "$ref": "#/$defs/findingId"
+              },
+              "verdict": {
+                "enum": [
+                  "correct",
+                  "wrong-above-threshold",
+                  "below-threshold",
+                  "needs-review",
+                  "unmapped",
+                  "missing"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "fixes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targeted", "fixed", "fixRate", "verdicts", "unexpected"],
+      "properties": {
+        "targeted": {
+          "$ref": "#/$defs/count"
+        },
+        "fixed": {
+          "$ref": "#/$defs/count"
+        },
+        "fixRate": {
+          "$ref": "#/$defs/ratio"
+        },
+        "verdicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["finding", "verdict"],
+            "properties": {
+              "finding": {
+                "$ref": "#/$defs/findingId"
+              },
+              "verdict": {
+                "enum": [
+                  "fixed",
+                  "still-firing",
+                  "not-patched",
+                  "refused-as-expected",
+                  "review",
+                  "missing",
+                  "unexpected"
+                ]
+              }
+            }
+          }
+        },
+        "unexpected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["finding", "expected", "actual"],
+            "properties": {
+              "finding": {
+                "$ref": "#/$defs/findingId"
+              },
+              "expected": {
+                "type": "string"
+              },
+              "actual": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "regressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["theme", "page", "kind", "detail"],
+        "properties": {
+          "theme": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "render-failed",
+              "page-missing",
+              "new-result",
+              "unexplained-drop",
+              "theme-check"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapping", "fixes"],
+      "properties": {
+        "mapping": {
+          "type": "boolean"
+        },
+        "fixes": {
+          "type": "boolean"
+        }
+      }
+    },
+    "passed": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ratio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "findingId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$"
+    }
+  }
+}

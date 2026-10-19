@@ -1,0 +1,52 @@
+[
+  {
+    "name": "theme_info",
+    "theme_name": "Aurora",
+    "theme_version": "1.0.0",
+    "theme_author": "Rampsmith corpus",
+    "theme_documentation_url": "https://github.com/billyribeiro-ux/rampsmith/tree/main/corpus",
+    "theme_support_url": "https://github.com/billyribeiro-ux/rampsmith/issues"
+  },
+  {
+    "name": "t:settings_schema.colors.name",
+    "settings": [
+      { "type": "color", "id": "color_text", "label": "Text", "default": "#1f1f1f" },
+      { "type": "color", "id": "color_background", "label": "Background", "default": "#ffffff" },
+      { "type": "color", "id": "color_accent", "label": "Accent", "default": "#1f4d3a" },
+      {
+        "type": "color",
+        "id": "color_announcement_text",
+        "label": "Announcement text",
+        "default": "#5c5c5c"
+      },
+      {
+        "type": "color",
+        "id": "color_announcement_background",
+        "label": "Announcement background",
+        "default": "#f4f1ec"
+      }
+    ]
+  },
+  {
+    "name": "t:settings_schema.layout.name",
+    "settings": [
+      {
+        "type": "range",
+        "id": "page_width",
+        "min": 1000,
+        "max": 1600,
+        "step": 100,
+        "unit": "px",
+        "label": "Page width",
+        "default": 1200
+      }
+    ]
+  },
+  {
+    "name": "t:settings_schema.social_media.name",
+    "settings": [
+      { "type": "text", "id": "social_facebook_link", "label": "Facebook" },
+      { "type": "text", "id": "social_instagram_link", "label": "Instagram" }
+    ]
+  }
+]

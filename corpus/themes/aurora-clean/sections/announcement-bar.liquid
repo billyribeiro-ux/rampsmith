@@ -1,0 +1,22 @@
+<div class="announcement-bar" role="region" aria-label="{{ 'sections.header.announcement' | t }}">
+  <div class="page-width">
+    {%- if section.settings.link != blank -%}
+      <a href="{{ section.settings.link }}" class="announcement-bar__link">
+        <p class="announcement-bar__message">{{ section.settings.text | escape }}</p>
+      </a>
+    {%- else -%}
+      <p class="announcement-bar__message">{{ section.settings.text | escape }}</p>
+    {%- endif -%}
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Announcement bar",
+  "class": "announcement-bar-section",
+  "settings": [
+    { "type": "text", "id": "text", "label": "Text", "default": "Welcome to our store" },
+    { "type": "url", "id": "link", "label": "Link" }
+  ]
+}
+{% endschema %}

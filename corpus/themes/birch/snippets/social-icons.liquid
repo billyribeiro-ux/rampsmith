@@ -1,0 +1,8 @@
+<ul class="social-icons">
+	{% if settings.social_pinterest_link != blank %}
+		<li><a href="{{ settings.social_pinterest_link }}" class="social-icons__link" title="Pinterest"><i class="icon icon-pinterest" aria-hidden="true"></i></a></li>
+	{% endif %}
+	{% if settings.social_youtube_link != blank %}
+		<li><a href="{{ settings.social_youtube_link }}" class="social-icons__link"><i class="icon icon-youtube" aria-hidden="true"></i></a></li>
+	{% endif %}
+</ul>

@@ -1,0 +1,12 @@
+{
+  "type": "footer",
+  "name": "Footer",
+  "sections": {
+    "newsletter": {
+      "type": "newsletter",
+      "settings": { "heading": "Field notes", "note": "One letter a month. Unsubscribe any time." }
+    },
+    "footer": { "type": "footer", "settings": { "menu": "footer" } }
+  },
+  "order": ["newsletter", "footer"]
+}

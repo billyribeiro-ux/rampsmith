@@ -1,0 +1,15 @@
+<footer class="site-footer">
+  <ul class="footer-menu" role="list">
+    {%- for link in section.settings.menu.links -%}
+      <li><a class="footer-menu__link" href="{{ link.url }}">{{ link.title | escape }}</a></li>
+    {%- endfor -%}
+  </ul>
+  <p class="site-footer__copyright">&copy; {{ 'now' | date: '%Y' }} {{ shop.name }}</p>
+</footer>
+
+{% schema %}
+{
+  "name": "Footer",
+  "settings": [{ "type": "link_list", "id": "menu", "label": "Menu", "default": "footer" }]
+}
+{% endschema %}
