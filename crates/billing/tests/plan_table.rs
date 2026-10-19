@@ -33,7 +33,7 @@ const PLAN_20: [Row; 4] = [
         features: &[Feature::DataFixes],
     },
     // | Starter | $79 | $790 | Weekly; 3 samples per template |
-    // | Data fixes; patched theme package with the 6 core recipes | 2,000 |
+    // | Data fixes; the 6 core recipes as GitHub pull requests (ADR-141) | 2,000 |
     Row {
         plan: Plan::Starter,
         monthly_cents: 7_900,
@@ -48,11 +48,11 @@ const PLAN_20: [Row; 4] = [
         features: &[
             Feature::DataFixes,
             Feature::CoreRecipes,
-            Feature::ThemePackage,
+            Feature::GithubPullRequests,
         ],
     },
     // | Growth | $199 | $1,990 | Daily; 10 samples per template |
-    // | Adds GitHub pull requests, every recipe, description rewrites, regression alerts | 10,000 |
+    // | Adds every recipe, description rewrites, regression alerts | 10,000 |
     Row {
         plan: Plan::Growth,
         monthly_cents: 19_900,
@@ -67,7 +67,6 @@ const PLAN_20: [Row; 4] = [
         features: &[
             Feature::DataFixes,
             Feature::CoreRecipes,
-            Feature::ThemePackage,
             Feature::GithubPullRequests,
             Feature::EveryRecipe,
             Feature::DescriptionRewrites,
@@ -90,7 +89,6 @@ const PLAN_20: [Row; 4] = [
         features: &[
             Feature::DataFixes,
             Feature::CoreRecipes,
-            Feature::ThemePackage,
             Feature::GithubPullRequests,
             Feature::EveryRecipe,
             Feature::DescriptionRewrites,
@@ -213,8 +211,7 @@ fn every_feature_has_a_minimum_plan() {
     let expected = [
         (Feature::DataFixes, Plan::Free),
         (Feature::CoreRecipes, Plan::Starter),
-        (Feature::ThemePackage, Plan::Starter),
-        (Feature::GithubPullRequests, Plan::Growth),
+        (Feature::GithubPullRequests, Plan::Starter),
         (Feature::EveryRecipe, Plan::Growth),
         (Feature::DescriptionRewrites, Plan::Growth),
         (Feature::RegressionAlerts, Plan::Growth),

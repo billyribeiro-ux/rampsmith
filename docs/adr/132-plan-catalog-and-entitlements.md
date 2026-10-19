@@ -33,8 +33,8 @@ feature." PLAN §20 cites this as "Built for Shopify 4.1", which is not the curr
    2,000, 10,000 and 50,000 per monthly window, ADR-133); image alt-text fixes (Free: the first
    25 images; paid plans: all); and the feature set.
 4. Features are the PLAN §20 fix-channel cells, cumulative by tier: Free `data_fixes`;
-   Starter adds `core_recipes` and `theme_package`; Growth adds `github_pull_requests`,
-   `every_recipe`, `description_rewrites`, `regression_alerts`; Pro adds
+   Starter adds `core_recipes` and `github_pull_requests` (ADR-141 retired `theme_package` on
+   19 October 2026); Growth adds `every_recipe`, `description_rewrites`, `regression_alerts`; Pro adds
    `ai_widget_proposals`, `multi_language_statements`, `priority_queue`. UI text for them lives
    in the web app's message catalogs (PLAN §8); the crate exposes only stable keys.
 5. Gates are derived from `entitlements`, never from a second table: `feature_gate(plan,
