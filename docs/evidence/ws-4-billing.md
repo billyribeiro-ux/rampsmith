@@ -119,3 +119,79 @@ The Partner API answers are recorded fixtures copied from the documented shapes.
 check (each plan selected on a development store, `plan_handle` and the item `handle` equal to
 the plan handle, Free and cancellation behaving as ADR-131 models) needs LAUNCH.md section C
 inputs 1 to 3 plus `SHOPIFY_APP_GID`; ADR-131 proposes its section E row.
+
+## Merge with `r0-foundations`, the shop-domain fix and CI (19 October 2026, third stream wave)
+
+Agent W3 brought the branch to merge-ready. Pull request #11 (draft, into `r0-foundations`,
+"WS-4: Entitlements and App Pricing (do not merge; stream CI)").
+
+**The merge.** `origin/r0-foundations` at `6bb8116` merged in by merge commit `96aca38`; no
+history was rewritten. One conflict, `Cargo.lock`: r0-foundations' lockfile was taken and cargo
+added `rampsmith-billing` and its dependency on `rampsmith-shopify`. Two recorded Partner API
+fixtures were reformatted by Prettier, which now checks `crates/billing` on `r0-foundations`.
+
+**Known fix: `billing::ShopDomain` replaced by `shopify::ShopDomain`** (ADR-231, new; ADR-131 and
+ADR-134 updated). `crates/shopify` is untouched.
+
+- `crates/billing/Cargo.toml`: `shopify.workspace = true`. The module `billing::shopify` and the
+  crate `shopify` share a name, so the module writes `::shopify::ShopDomain` and `lib.rs`
+  re-exports with `self::shopify::...`.
+- `billing::ShopDomain`, `IdError::ShopDomain` and the `FromStr` impl are deleted;
+  `plan_selection_url` takes `&shopify::ShopDomain`. That type has no `store_handle()`, so a
+  private `store_handle()` in `crates/billing/src/shopify.rs` strips `.myshopify.com`.
+- Tests: `store_handles_drop_the_myshopify_suffix` and
+  `shop_domains_that_could_change_the_url_are_refused` replace the old
+  `shop_domains_follow_the_database_constraint`. The URL is built without encoding, so the
+  second test pins ten shapes that `shopify::ShopDomain` must keep refusing: empty, the bare
+  suffix, a leading hyphen, a host that continues past the suffix, another domain, a space, an
+  underscore, a further subdomain, a scheme and a trailing slash. A failure means the
+  hosted-plan-page URL could be steered.
+
+**Clippy 1.99 fix.** The first CI run (run
+[39287089064](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39287089064), head
+`96aca38`) failed in the `rust` job: `assert_is_empty` flags `assert!(x.is_empty())` in five
+places in `crates/billing/tests/reconcile.rs`. Commit `246330e` compares those against an empty
+array (`assert_eq!(x.events, [] as [BillingEvent; 0])`), which prints the events on failure.
+`BillingEvent` is written bare because the workspace's `unused_qualifications` lint rejects
+`billing::BillingEvent` inside the crate's own tests. No behaviour changed.
+
+**Local gate on the merged head** (rustc 1.97.0, `CARGO_BUILD_JOBS=1`): rustfmt, Clippy
+`-D warnings` on the crate, cargo-deny, cargo-machete, `RUSTDOCFLAGS='-D warnings'` rustdoc,
+Prettier and claims-lint pass.
+
+```text
+$ cargo test -p rampsmith-billing --locked
+test result: ok. 40 passed   (src/lib.rs)
+test result: ok. 6 passed    (tests/monotonic.rs)
+test result: ok. 13 passed   (tests/partner_api.rs)
+test result: ok. 10 passed   (tests/plan_table.rs)
+test result: ok. 26 passed   (tests/reconcile.rs)
+test result: ok. 3 passed    (tests/reconcile_props.rs)
+test result: ok. 8 passed    (tests/sweep.rs)
+```
+
+106 tests, none ignored or skipped (the 105 recorded above, plus one: the shop-domain fix
+replaced one unit test with two).
+
+**CI on head `246330e`.**
+
+| Workflow | Run | Conclusion |
+| --- | --- | --- |
+| `ci.yml` | [39289539784](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39289539784) | success: rust (rustfmt, Clippy `-D warnings`, cargo-deny, cargo-machete, nextest on PostgreSQL 18.6), node, contracts, e2e, four image builds |
+
+**Owed before merge: `security-auditor` at effort max.** The crate decides which paid features a
+shop may use and holds the Partner API token's request shape. CLAUDE.md requires the
+`security-auditor` subagent at effort `max` for changes to tokens and for anything that gates
+access. No result for this branch is recorded (the earlier run's result was never saved) and W3
+may not run it. The integrator runs it on `crates/billing` at the merge head and records the
+verdict in this file before the branch merges.
+
+**Integration notes.**
+
+1. Optional follow-up in `crates/shopify` (not this stream's): a `store_handle()` method on
+   `shopify::ShopDomain`, after which billing's private function can go (ADR-231).
+2. `docs/adr/README.md` has no rows for ADR-131 to ADR-134 and ADR-231.
+3. The live check in the section above still waits on LAUNCH.md section C inputs 1 to 3 plus
+   `SHOPIFY_APP_GID` (section E row proposed in ADR-131).
+4. FOUNDER_SETUP (WS-5, `ws/launch-docs`) fixes the plan handles `free`, `starter`, `growth` and
+   `pro` that this crate reads; a change to either side needs the other.
