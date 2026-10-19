@@ -24,8 +24,12 @@ he does not need to approve anything. From now on:
   39311633005. Two integration fixes: Node pins in four packages and `deploy.yml` (`37cf3f7`),
   and the Railway config and image smoke test using R0's `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`
   (`894bd04`). The `ws/` branches are frozen; new work branches from `main`. ADR index rows,
-  ADR-141's decision and PLAN §20 are on `main`. Owed, by the architect chat, on `main`: the
-  `security-auditor` on W1, W2, WS-3 and WS-4, fixed forward.
+  ADR-141's decision and PLAN §20 are on `main`. Stream PRs #2 to #14 are closed as integrated.
+- **Security audits of the integrated code** (`docs/evidence/integration-security-audits-2026-10-19.md`):
+  GitHub App and billing **PASS** (3 medium, 9 low; L5 fixed by PR #20). `rsctl` and backup ops
+  **FAIL**: H1 (backup secrets fall back to repository secrets) and H2 (`railway-ssh` holds a
+  workspace token) must be fixed **before the founder adds any input**; nothing is exposed while
+  no secret exists. The fixes are the next builder's first task, ahead of the R1 lanes.
 - **Lanes S2 and S3 (PRs #15, #16): the architect chat takes them over now** (no push for two
   hours while red; the builder's disk is full). Builder: do not push to `r1-hardening` or
   `r1-hardening-ts`; if you hold unpushed fixes for them, push them to a new branch and say so
