@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "id": "production-daily-cost-cap-60d",
+      "enabled": true,
+      "conditions": { "prefix": "production/daily/" },
+      "deleteObjectsTransition": { "condition": { "type": "Age", "maxAge": 5184000 } }
+    },
+    {
+      "id": "production-monthly-cost-cap-450d",
+      "enabled": true,
+      "conditions": { "prefix": "production/monthly/" },
+      "deleteObjectsTransition": { "condition": { "type": "Age", "maxAge": 38880000 } }
+    },
+    {
+      "id": "staging-daily-cost-cap-60d",
+      "enabled": true,
+      "conditions": { "prefix": "staging/daily/" },
+      "deleteObjectsTransition": { "condition": { "type": "Age", "maxAge": 5184000 } }
+    },
+    {
+      "id": "staging-monthly-cost-cap-450d",
+      "enabled": true,
+      "conditions": { "prefix": "staging/monthly/" },
+      "deleteObjectsTransition": { "condition": { "type": "Age", "maxAge": 38880000 } }
+    }
+  ]
+}
