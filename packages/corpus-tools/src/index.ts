@@ -61,13 +61,26 @@ export { validate, type SchemaName } from './schema.ts';
 export { CORPUS_ROOT } from './paths.ts';
 export {
   ORIGIN,
+  checkPage,
   checkTheme,
   launchChromium,
   occurrencesFor,
   runPage,
+  type CheckOptions,
   type PageResult,
   type PageRun,
 } from './browser/check.ts';
+export {
+  runCorpus,
+  runTheme,
+  type CorpusRun,
+  type FindingResult,
+  type FixDetail,
+  type MappingDetail,
+  type RunOptions,
+  type ThemeRun,
+} from './runner/run.ts';
+export { categoryRows, jsonReport, type CategoryRow, type JsonReport } from './runner/report.ts';
 export {
   goldenContext,
   loadCorpus,

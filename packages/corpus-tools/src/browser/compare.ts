@@ -11,6 +11,8 @@ export interface AxeNode {
   readonly impact: Impact | null;
   readonly index: number;
   readonly target: string;
+  /** Data axe-core's checks reported for the node, by check id (`color-contrast`, `target-size`). */
+  readonly data?: Readonly<Record<string, unknown>>;
 }
 
 /** A golden occurrence with its selector resolved on the rendered page. */

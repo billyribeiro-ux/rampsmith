@@ -297,6 +297,9 @@ importers:
 
   packages/corpus-tools:
     dependencies:
+      '@rampsmith/liquid-patch':
+        specifier: workspace:*
+        version: link:../liquid-patch
       '@shopify/liquid-html-parser':
         specifier: 2.10.2
         version: 2.10.2
@@ -377,6 +380,9 @@ importers:
       postcss:
         specifier: 8.5.30
         version: 8.5.30
+      postcss-selector-parser:
+        specifier: 7.1.6
+        version: 7.1.6
     devDependencies:
       '@rampsmith/tsconfig':
         specifier: workspace:*
@@ -2375,10 +2381,6 @@ packages:
     resolution: {integrity: sha512-zkd+e9S1AQHhmaBKye9zlFHWjOwVgqXl1q3ECYy8561K7qxR2cREf/STLskulBFd78k6AOFeA+ff1TtEzk9bAA==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.31:
-    resolution: {integrity: sha512-YUbWYCgErwnMAVkjUnYa+KlMBzGpHwiIt/DE7f0G33AuX2LH9UcTk6KgWxd3zRU+pN3u/C+Xl3EnMLM4Hea7Sg==}
-    engines: {node: ^10 || ^12 || >=14}
-
   postgres@3.4.9:
     resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
     engines: {node: '>=12'}
@@ -3575,8 +3577,8 @@ snapshots:
       line-column: 1.0.2
       lodash: 4.18.1
       minimatch: 10.2.6
-      postcss: 8.5.31
-      postcss-safe-parser: 7.1.0(postcss@8.5.31)
+      postcss: 8.5.30
+      postcss-safe-parser: 7.1.0(postcss@8.5.30)
       postcss-selector-parser: 7.1.6
       vscode-json-languageservice: 5.7.2
       vscode-uri: 3.2.0
@@ -4528,10 +4530,6 @@ snapshots:
     dependencies:
       postcss: 8.5.30
 
-  postcss-safe-parser@7.1.0(postcss@8.5.31):
-    dependencies:
-      postcss: 8.5.31
-
   postcss-scss@4.0.9(postcss@8.5.30):
     dependencies:
       postcss: 8.5.30
@@ -4542,12 +4540,6 @@ snapshots:
       util-deprecate: 1.0.2
 
   postcss@8.5.30:
-    dependencies:
-      nanoid: 3.3.20
-      picocolors: 1.1.1
-      source-map-js: 1.2.2
-
-  postcss@8.5.31:
     dependencies:
       nanoid: 3.3.20
       picocolors: 1.1.1

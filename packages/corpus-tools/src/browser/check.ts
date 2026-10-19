@@ -4,6 +4,7 @@
 import { crc32, deflateSync } from 'node:zlib';
 import axe, { type AxeResults, type RunOptions } from 'axe-core';
 import { chromium, type Browser, type Route } from 'playwright-core';
+import type { RenderedElement } from '@rampsmith/liquid-patch';
 import type { GoldenFile, Impact, Outcome } from '../golden.ts';
 import type { ThemeEntry } from '../manifest.ts';
 import {
@@ -106,6 +107,11 @@ export interface PageRun {
   /** Every rule axe-core ran on the page (any result type), to prove a golden rule ran. */
   readonly rulesRun: readonly string[];
   readonly occurrences: readonly ResolvedOccurrence[];
+  /**
+   * The elements the page's result nodes and golden occurrences name, by their index in
+   * document order, described for the source mapper (tag, attributes, text, ancestors).
+   */
+  readonly elements: Readonly<Record<number, RenderedElement>>;
 }
 
 export interface PageResult extends PageRun {
@@ -117,6 +123,8 @@ export interface PageResult extends PageRun {
    * when `@rampsmith/a11y-rules` is in the workspace (CONTRACT.md, check 6).
    */
   readonly customSelectorMismatch: PageComparison['countMismatch'];
+  /** The custom-rule occurrences with their selectors resolved on this page. */
+  readonly customOccurrences: readonly ResolvedOccurrence[];
 }
 
 interface Wanted {
@@ -156,6 +164,7 @@ interface InPageResult {
   readonly nodes: AxeNode[];
   readonly rulesRun: string[];
   readonly indices: number[][];
+  readonly elements: Record<number, RenderedElement>;
 }
 
 /** Renders, loads and checks one page in a fresh browser context. */
@@ -204,12 +213,19 @@ export async function runPage(
           for (const rule of list) {
             for (const node of rule.nodes) {
               const element: Element | undefined = node.element;
+              const data: Record<string, unknown> = {};
+              for (const check of [...node.any, ...node.all, ...node.none]) {
+                if (check.data !== null && typeof check.data === 'object') {
+                  data[check.id] = JSON.parse(JSON.stringify(check.data)) as unknown;
+                }
+              }
               nodes.push({
                 rule: rule.id,
                 outcome,
                 impact: node.impact ?? null,
                 index: element === undefined ? -1 : (indexOf.get(element) ?? -1),
                 target: node.target.map(String).join(' >>> '),
+                data,
               });
             }
           }
@@ -223,15 +239,86 @@ export async function runPage(
         const indices = selectors.map((selector) =>
           Array.from(document.querySelectorAll(selector)).map((el) => indexOf.get(el) ?? -1),
         );
-        return { nodes, rulesRun: [...new Set(rulesRun)].sort(), indices };
+        const attributesOf = (el: Element): Record<string, string> =>
+          Object.fromEntries(Array.from(el.attributes, (a) => [a.name.toLowerCase(), a.value]));
+        const nodeOf = (el: Element) => {
+          const previous: { tag: string; attributes: Record<string, string> }[] = [];
+          for (let s = el.previousElementSibling; s !== null; s = s.previousElementSibling) {
+            previous.push({ tag: s.tagName.toLowerCase(), attributes: attributesOf(s) });
+          }
+          let following = 0;
+          for (let s = el.nextElementSibling; s !== null; s = s.nextElementSibling) following += 1;
+          return {
+            tag: el.tagName.toLowerCase(),
+            attributes: attributesOf(el),
+            previous,
+            following,
+          };
+        };
+        const wanted = new Set<number>();
+        for (const n of nodes) if (n.index >= 0) wanted.add(n.index);
+        for (const list of indices) for (const i of list) if (i >= 0) wanted.add(i);
+        const elements: Record<number, RenderedElement> = {};
+        for (const i of wanted) {
+          const el = all[i];
+          if (el === undefined) continue;
+          const ancestors = [];
+          for (let p = el.parentElement; p !== null; p = p.parentElement) ancestors.push(nodeOf(p));
+          elements[i] = {
+            ...nodeOf(el),
+            text: el.textContent.replace(/\s+/g, ' ').trim(),
+            ancestors,
+          };
+        }
+        return { nodes, rulesRun: [...new Set(rulesRun)].sort(), indices, elements };
       },
       [options.tags, wanted.map((w) => w.selector)] as const,
     );
     const occurrences = wanted.map((w, i) => ({ ...w, indices: result.indices[i] ?? [] }));
-    return { page: spec.id, nodes: result.nodes, rulesRun: result.rulesRun, occurrences };
+    return {
+      page: spec.id,
+      nodes: result.nodes,
+      rulesRun: result.rulesRun,
+      occurrences,
+      elements: result.elements,
+    };
   } finally {
     await context.close();
   }
+}
+
+export interface CheckOptions {
+  readonly tags: readonly string[];
+  readonly viewport: { width: number; height: number };
+}
+
+/** Renders and checks one page of a theme against its golden file. */
+export async function checkPage(
+  browser: Browser,
+  renderer: ThemeRenderer,
+  spec: PageSpec,
+  golden: GoldenFile,
+  options: CheckOptions,
+): Promise<PageResult> {
+  const axeWanted = occurrencesFor(golden, spec.id, 'axe');
+  const customWanted = occurrencesFor(golden, spec.id, 'rampsmith-browser');
+  const run = await runPage(browser, renderer, spec, [...axeWanted, ...customWanted], options);
+  const axeOccurrences = run.occurrences.slice(0, axeWanted.length);
+  const customOccurrences = run.occurrences.slice(axeWanted.length);
+  return {
+    ...run,
+    occurrences: axeOccurrences,
+    comparison: comparePage(axeOccurrences, run.nodes),
+    customOccurrences,
+    customSelectorMismatch: customOccurrences
+      .filter((o) => o.indices.length !== o.expectedCount)
+      .map((o) => ({
+        finding: o.finding,
+        selector: o.selector,
+        expected: o.expectedCount,
+        actual: o.indices.length,
+      })),
+  };
 }
 
 /** Checks every page of a theme against its golden file. */
@@ -240,31 +327,11 @@ export async function checkTheme(
   renderer: ThemeRenderer,
   entry: ThemeEntry,
   golden: GoldenFile,
-  options: {
-    readonly tags: readonly string[];
-    readonly viewport: { width: number; height: number };
-  },
+  options: CheckOptions,
 ): Promise<PageResult[]> {
   const results: PageResult[] = [];
   for (const spec of entry.pages) {
-    const axeWanted = occurrencesFor(golden, spec.id, 'axe');
-    const customWanted = occurrencesFor(golden, spec.id, 'rampsmith-browser');
-    const run = await runPage(browser, renderer, spec, [...axeWanted, ...customWanted], options);
-    const axeOccurrences = run.occurrences.slice(0, axeWanted.length);
-    const customOccurrences = run.occurrences.slice(axeWanted.length);
-    results.push({
-      ...run,
-      occurrences: axeOccurrences,
-      comparison: comparePage(axeOccurrences, run.nodes),
-      customSelectorMismatch: customOccurrences
-        .filter((o) => o.indices.length !== o.expectedCount)
-        .map((o) => ({
-          finding: o.finding,
-          selector: o.selector,
-          expected: o.expectedCount,
-          actual: o.indices.length,
-        })),
-    });
+    results.push(await checkPage(browser, renderer, spec, golden, options));
   }
   return results;
 }

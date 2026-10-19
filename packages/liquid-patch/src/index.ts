@@ -60,7 +60,30 @@ export {
   toPointer,
   type JsonValue,
 } from './json.ts';
+export { Mapper } from './map/map.ts';
+export {
+  CONFIDENCE_THRESHOLD,
+  type DataSpan,
+  type ElementSpan,
+  type FindingToMap,
+  type MapCandidate,
+  type MapEvidence,
+  type MapOutcome,
+  type MappedJsonValue,
+  type MappedSpan,
+  type RenderedElement,
+  type RenderedNode,
+  type RenderedResource,
+  type Sibling,
+} from './map/types.ts';
 export { buildPatch, type FilePatch, type PatchError, type PatchResult } from './patch.ts';
+export {
+  hasRecipe,
+  planFix,
+  type ContrastEvidence,
+  type FixParams,
+  type FixRequest,
+} from './plan.ts';
 export {
   chooseCandidate,
   contrast,

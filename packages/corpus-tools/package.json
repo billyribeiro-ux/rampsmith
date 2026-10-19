@@ -13,6 +13,7 @@
     "corpus": "node src/cli.ts"
   },
   "dependencies": {
+    "@rampsmith/liquid-patch": "workspace:*",
     "@shopify/liquid-html-parser": "2.10.2",
     "ajv": "8.20.0",
     "axe-core": "4.14.0",

@@ -29,8 +29,41 @@ export function scored(theme: string, findings: readonly GoldenFinding[]): Score
   }));
 }
 
+/**
+ * Where a mapper says a finding belongs: a golden span without the fields mappers need not send
+ * (anchors, CSS selectors; corpus/schema/runner-records.schema.json).
+ */
+export type SpanLocation =
+  | {
+      readonly kind: 'element';
+      readonly file: string;
+      readonly start: number;
+      readonly tag: string;
+    }
+  | {
+      readonly kind: 'json-value';
+      readonly file: string;
+      readonly pointer: string;
+      readonly start: number;
+      readonly end: number;
+    }
+  | {
+      readonly kind: 'css-declaration';
+      readonly file: string;
+      readonly start: number;
+      readonly end: number;
+      readonly property: string;
+    }
+  | {
+      readonly kind: 'data';
+      readonly resource: string;
+      readonly field: string;
+      readonly start?: number;
+      readonly end?: number;
+    };
+
 /** True when the mapper's span is the golden span (CONTRACT.md, "Span equality"). */
-export function spansEqual(golden: Span, actual: Span): boolean {
+export function spansEqual(golden: SpanLocation, actual: SpanLocation): boolean {
   switch (golden.kind) {
     case 'element':
       return (
@@ -70,7 +103,7 @@ export function spansEqual(golden: Span, actual: Span): boolean {
 export interface MappingRecord {
   readonly finding: string;
   readonly status: 'mapped' | 'needs_review' | 'unmapped';
-  readonly span?: Span;
+  readonly span?: SpanLocation;
   readonly confidence?: number;
 }
 

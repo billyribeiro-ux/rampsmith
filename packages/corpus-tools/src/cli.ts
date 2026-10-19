@@ -2,10 +2,12 @@
 // - `render <theme> <out-dir>` writes every page of a theme, rendered statically, plus its
 //   assets, for inspection in a browser;
 // - `scan <theme>` prints every axe-core result node of every page, as JSON lines;
+// - `run [<theme>...] [--golden-spans] [--out <file>]` runs the integrated runner (ADR-247),
+//   writes the JSON report (default test-results/corpus-report.json) and exits 1 below a gate;
 // - `spans [--write]` re-finds every golden span from its anchor or pointer after a theme or
 //   fixture edit, and with --write stores the new offsets (run Prettier afterwards).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { launchChromium, runPage } from './browser/check.ts';
 import { loadCorpus } from './corpus.ts';
 import type { GoldenFile, Span } from './golden.ts';
@@ -14,6 +16,8 @@ import { relocate } from './spans.ts';
 import { loadManifest, storeEntry, themeDir, type Manifest, type ThemeEntry } from './manifest.ts';
 import { ThemeRenderer } from './render/renderer.ts';
 import { loadStore, storeObjects } from './render/store.ts';
+import { jsonReport } from './runner/report.ts';
+import { runCorpus } from './runner/run.ts';
 import { loadTheme } from './render/theme.ts';
 
 function rendererFor(
@@ -107,11 +111,51 @@ function spans(write: boolean): void {
   if (failures > 0) process.exitCode = 1;
 }
 
+/**
+ * Runs the integrated runner (ADR-247) on every failing theme, or on the named ones, writes the
+ * JSON report, prints the gate numbers, and exits 1 when a gate fails.
+ */
+async function runAll(outPath: string, themes: readonly string[], golden: boolean): Promise<void> {
+  const corpus = loadCorpus();
+  const browser = await launchChromium();
+  try {
+    const options = { spans: golden ? ('golden' as const) : ('mapper' as const), themes };
+    const run = await runCorpus(browser, corpus, options);
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, `${JSON.stringify(jsonReport(run, options), null, 2)}\n`);
+    const { mapping, fixes, regressions, gates } = run.report;
+    process.stdout.write(
+      `mapping ${String(mapping.correct)}/${String(mapping.denominator)} correct, ` +
+        `${String(mapping.wrongAboveThreshold)} wrong above ${String(mapping.threshold)}\n` +
+        `fixes ${String(fixes.fixed)}/${String(fixes.targeted)} targeted fixed, ` +
+        `${String(regressions.length)} regression(s)\n` +
+        `gates: mapping ${gates.mapping ? 'pass' : 'FAIL'}, fixes ${gates.fixes ? 'pass' : 'FAIL'}\n` +
+        `report written to ${outPath}\n`,
+    );
+    if (!run.report.passed) process.exitCode = 1;
+  } finally {
+    await browser.close();
+  }
+}
+
 const [command, ...args] = process.argv.slice(2);
 if (command === 'render' && args.length === 2) {
   render(args[0] ?? '', args[1] ?? '');
 } else if (command === 'scan' && args.length === 1) {
   await scan(args[0] ?? '');
+} else if (command === 'run') {
+  let outPath = 'test-results/corpus-report.json';
+  let golden = false;
+  const themes: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i] ?? '';
+    if (arg === '--golden-spans') golden = true;
+    else if (arg === '--out') {
+      i += 1;
+      outPath = args[i] ?? outPath;
+    } else themes.push(arg);
+  }
+  await runAll(outPath, themes, golden);
 } else if (
   command === 'spans' &&
   (args.length === 0 || (args.length === 1 && args[0] === '--write'))
@@ -119,7 +163,7 @@ if (command === 'render' && args.length === 2) {
   spans(args[0] === '--write');
 } else {
   process.stderr.write(
-    'usage: node src/cli.ts render <theme> <out-dir> | scan <theme> | spans [--write]\n',
+    'usage: node src/cli.ts render <theme> <out-dir> | scan <theme> | run [<theme>...] [--out <file>] | spans [--write]\n',
   );
   process.exitCode = 2;
 }

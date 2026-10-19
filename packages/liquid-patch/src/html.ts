@@ -29,7 +29,7 @@ export interface LocatedElement {
   readonly ancestors: readonly LiquidHtmlNode[];
 }
 
-function isElement(node: LiquidHtmlNode): node is ElementNode {
+export function isElement(node: LiquidHtmlNode): node is ElementNode {
   return (
     node.type === NodeTypes.HtmlElement ||
     node.type === NodeTypes.HtmlVoidElement ||
