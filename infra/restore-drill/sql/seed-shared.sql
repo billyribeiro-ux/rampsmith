@@ -1,10 +1,10 @@
 -- Rows that belong to no tenant (ADR-175): dashboard identity, which the application role
 -- reaches without a tenant, and a system job, which only a worker may write.
 --
---   psql -U rampsmith_api  -f seed-shared.sql          (users, passkeys, sessions)
---   psql -U rampsmith_ctl  -f seed-shared.sql          (the system job; the first block fails
---                                                       for a worker, so the script is run with
---                                                       -v part=identity|system)
+--   psql -U rampsmith_api -v part=identity -f seed-shared.sql    (users, passkeys, sessions)
+--   psql -U rampsmith_ctl -v part=system   -f seed-shared.sql    (the system job)
+--
+-- Without -v part the identity part runs.
 
 \set ON_ERROR_STOP on
 

@@ -237,6 +237,21 @@ assert_contains "gate: one missing input is enough to skip" "needs BACKUP_AGE_RE
 gate_out=$(env -i PATH="$PATH" "${gate_url[@]}" BACKUP_SOURCE=nonsense "$BK/gate.sh" 2>&1)
 assert_rc "gate: an unknown transport is an error" 1 $?
 
+# --- the live restore drill: skip with a notice, never silently ------------------------------------------------------------------------
+live_out=$(env -i PATH="$PATH" "$RD/live.sh" --environment staging --scratch "$work/live-scratch" 2>&1)
+assert_rc "live drill: nothing configured is not an error" 0 $?
+assert_contains "live drill: nothing configured is a warning" "::warning::live restore drill skipped" "$live_out"
+assert_contains "live drill: names section C rows 6 and 8" "LAUNCH.md section C rows 6 and 8" "$live_out"
+assert_contains "live drill: names the R2 variables" "R2_ACCESS_KEY_ID" "$live_out"
+assert_contains "live drill: names the drill key" "BACKUP_DRILL_AGE_KEY" "$live_out"
+live_out=$(env -i PATH="$PATH" R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef R2_ACCESS_KEY_ID=x \
+  R2_SECRET_ACCESS_KEY=y R2_BUCKET_BACKUPS=some-bucket "$RD/live.sh" --environment staging --scratch "$work/live-scratch" 2>&1)
+assert_rc "live drill: only the drill key missing is still a skip" 0 $?
+assert_contains "live drill: names only what is missing" "needs BACKUP_DRILL_AGE_KEY (LAUNCH" "$live_out"
+assert_not_contains "live drill: does not name what is present" "R2_ACCESS_KEY_ID" "$live_out"
+live_out=$(env -i PATH="$PATH" "$RD/live.sh" --environment 'Bad Env' 2>&1)
+assert_rc "live drill: a bad environment name is an error" 1 $?
+
 # --- the happy path --------------------------------------------------------------------------------------------------------------------
 reset_store
 run_backup

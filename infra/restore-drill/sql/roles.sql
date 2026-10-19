@@ -53,10 +53,19 @@ exception
 end
 $$;
 
+do $$
+begin
+  create role rampsmith_engine login nosuperuser nocreatedb nocreaterole noreplication nobypassrls
+    in role rampsmith_worker;
+exception
+  when duplicate_object or unique_violation then null;
+end
+$$;
+
 select format('grant connect, create, temporary on database %I to rampsmith_migrator',
               current_database())
 \gexec
-select format('grant connect on database %I to rampsmith_api, rampsmith_ctl',
+select format('grant connect on database %I to rampsmith_api, rampsmith_ctl, rampsmith_engine',
               current_database())
 \gexec
 alter schema public owner to rampsmith_migrator;

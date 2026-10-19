@@ -169,6 +169,16 @@ jobs:
       - name: Backup tests (names, retention, skip and failure paths, both transports)
         run: |
           infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests
+      - name: Show the skip notices of the backup gate and the live drill (no secrets here)
+        # The same scripts the nightly backup and the weekly live drill run first, with nothing
+        # configured: each must announce its skip, name LAUNCH.md section C rows 6 and 8, and
+        # exit 0. The annotations appear on this run.
+        run: |
+          set -euo pipefail
+          env -i PATH="$PATH" BACKUP_ENVIRONMENT=staging infra/backup/gate.sh | tee "$RUNNER_TEMP/gate.txt"
+          grep -q '^configured=false$' "$RUNNER_TEMP/gate.txt"
+          env -i PATH="$PATH" infra/restore-drill/live.sh --environment staging 2>&1 | tee "$RUNNER_TEMP/live.txt"
+          grep -q 'live restore drill skipped' "$RUNNER_TEMP/live.txt"
       - name: Upload the test log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

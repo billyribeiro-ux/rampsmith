@@ -13,8 +13,13 @@ AWS_BIN="${AWS_BIN:-aws}"
 #   endpoint   https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com (R2_ENDPOINT_URL overrides it,
 #              for the EU jurisdiction or a test double)
 #   region     auto
-#   checksums  `when_required`: R2 does not accept the default CRC64NVME trailer that AWS CLI v2
-#              adds to uploads since its 2025 releases
+#   checksums  `when_required`. botocore (the AWS CLI v2 engine) defaults both settings to
+#              `when_supported`, which adds a checksum to every upload and validates every
+#              download. R2's documentation lists the algorithms it accepts, not that default
+#              streaming behaviour, so the scripts ask for checksums only where an operation
+#              needs one and verify integrity themselves: size from HeadObject and the sha256 of
+#              a re-download (backup.sh). Whether the default would also work is not checked
+#              against a live bucket (ADR-172, Section E).
 s3_init() {
   bk_require R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS
   if [ -z "${R2_ENDPOINT_URL:-}" ]; then
