@@ -122,6 +122,33 @@ first wave:
 | WS-12 AI subsystem (PLAN §13) | `ws/ai` | `packages/ai/` | 211–219 | Built at `20f5f3e`: `@rampsmith/ai` (model routing, versioned prompts, schema-validated outputs, alt text with Sonnet escalation, rewrites as span edits, tie-breaks, allowlisted patch proposals, explanations, retries and circuit breaker, batches, micro-dollar costs with a per-store budget guard, an eval harness on 20 openly licensed images), 359 tests plus 3 live checks that skip until C row 5; CI green on draft PR #3 (run 39092935938); security audit PASS over three rounds, every finding fixed. Integration: ADR README rows 211–217 and the PLAN corrections, a PostgreSQL `BudgetLedger` and `ai_calls` migration, `sharp` resize with metadata stripping in the engine's ai worker |
 | WS-13 Reports and merchant statement generator (PLAN §5 R1, §16) | `ws/reports` | `packages/reports/` | 221–229 | Built at `007acf8` (code `c32a6a2`): `@rampsmith/reports`, no runtime dependencies (merchant accessibility statement as HTML document, store-page fragment and plain text, after the W3C WAI generator and the EU model statement, with a computed status that never claims full conformance; remediation log as CSV with a formula-injection guard and versioned JSON; executive summary with SVG charts, text summaries and data tables; coverage disclosure; tagged PDFs with outlines through an isolated Chromium print), 240 tests (claims-lint CLI over every output, axe zero violations on every HTML output, PDF tags, outline, title and language checked with pdfjs); CI green on draft PR #6 (run 39094658589); security audit PASS over two rounds, every finding fixed. Integration: ADR README rows 221–226 and the PLAN corrections, `docs/ENVIRONMENT.md`'s Chromium row (`chromium.args` includes `--disable-web-security`, under which a page read local files), `fixes` repository fields (`verified_scan`, `reverts`) and `scans.checks_run`/`checks_passed` for the main builder, real fonts in the image that prints reports |
 
+## Third stream wave (founder request, 19 Oct 2026, 13:31 UTC)
+
+The founder asked for an evidence audit of what is built, an execution plan, and Sonnet agents to
+run it, "no more than 4 agents total". Plan and audit: the Claude Doc "Rampsmith execution plan
+(DPE L8++)" (https://claude.ai/code/artifact/7401d02a-61c7-4643-a43e-2cf7123cd67d). The
+coordinating session (`session_01BPVvuawk8zcgpSyW5kKQKh`) runs four agents beside the builder
+above and owns this section; the agents never push to `main` and never edit this file.
+- Second-wave rules apply: each agent works one `ws/` branch, opens a draft PR into
+  `r0-foundations` titled "... (do not merge; stream CI)" so `ci.yml` runs on the pinned
+  toolchains, never merges, and edits no shared file (root manifests, `ci.yml`, PLAN.md,
+  CLAUDE.md, LAUNCH.md, `docs/adr/README.md`, other streams' paths, migrations).
+- **Integration hold:** do not integrate `ws/a11y-rules`, `ws/github-app`, `ws/billing`,
+  `ws/launch-docs`, `ws/liquid-patch` or `ws/corpus` until the W3 and W4 rows below read Done.
+  `ws/patch-r2` then replaces `ws/liquid-patch` and `ws/corpus` for integration.
+- The agents start no subagents (the cap), so the `security-auditor` and `release-verifier`
+  runs at effort max are owed before each of these branches merges.
+- Audit findings for the record: WS-9 is built at `87bd638` with green CI (ci run 39097591808,
+  release run 39097591809) although its row above still reads "Started"; WS-6 (`ws/rsctl`, no
+  commits) and WS-8 (no `ws/ops` branch) were never built, and W1 and W2 take them over.
+
+| Stream | Branch | Owns | ADRs | Status |
+| --- | --- | --- | --- | --- |
+| W1 `rsctl doctor` and `keys` (LAUNCH B5), was WS-6 | `ws/rsctl` | `crates/rsctl/` | 151–159 | Starting |
+| W2 Runbooks, nightly backup, restore drill (LAUNCH B7), was WS-8 | `ws/ops` | New files in `docs/runbooks/` (not `shopify-dev-store.md`), `infra/backup/`, `infra/restore-drill/`, `.github/workflows/backup.yml`, `.github/workflows/restore-drill.yml` | 171–179 | Starting |
+| W3 First-wave branches to CI-green (LAUNCH A2) | `ws/a11y-rules`, `ws/github-app`, `ws/billing`, `ws/launch-docs` | Those branches and their owned paths above | 231–239 | Starting |
+| W4 Patch engine to the R2 bar (LAUNCH A4) | `ws/patch-r2` (from `ws/liquid-patch`, with `ws/corpus` merged) | `packages/liquid-patch/`, `packages/corpus-tools/`; `corpus/` only to correct a golden file, by ADR | 241–249 | Starting |
+
 ## Coordination (founder decision, 17 Oct 2026)
 
 - The founder confirmed the streams above. The session that opened them
