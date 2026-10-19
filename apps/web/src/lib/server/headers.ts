@@ -1,7 +1,8 @@
 /**
- * Security headers on every response (PLAN §18). The script policy itself comes from
- * SvelteKit's `csp` option with per-request nonces; this adds `frame-ancestors`, which must
- * name the shop for embedded routes and forbid framing everywhere else (ADR-023).
+ * Security headers on every response (PLAN §18). The fetch directives come from SvelteKit's
+ * `csp` option (`headers-policy.ts`, ADR-054) with per-request nonces; this adds
+ * `frame-ancestors`, which must name the shop for embedded routes and forbid framing
+ * everywhere else (ADR-023).
  */
 import { frameAncestors } from '../shopify/frame.ts';
 

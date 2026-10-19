@@ -110,3 +110,32 @@ links, `startTelemetry`, and the real OTLP pipeline into a local collector searc
 Removing the processor from `startTelemetry` fails two of them (`expected
 'http://localhost:3000/app?embedded=1&…' to be 'http://localhost:3000/app'` and `id_token:
 expected '\n\u009c…' not to contain 'id_token'`).
+
+## M3 content security policy (ADR-054)
+
+What changed: `apps/web/src/lib/server/headers-policy.ts` holds the directives and
+`vite.config.ts` passes them to SvelteKit. `script-src` is `'self'`,
+`https://cdn.shopify.com/shopifycloud/` and SvelteKit's nonce (before: the whole host);
+`default-src 'self'` and explicit `style-src`, `img-src`, `font-src` and `connect-src` are new;
+`object-src`, `base-uri`, `form-action` and the per-shop `frame-ancestors` are unchanged.
+`style-src` keeps `'unsafe-inline'` for Polaris' shadow-root styles, the one loosening, reasoned
+in the ADR.
+
+Built app, real Chromium (`app.spec.ts`, 10 of 10 in the `embedded` project;
+`dashboard.spec.ts`, 4 of 4 in the `dashboard` project):
+
+- The header of `/`, `/nope` and `/app?shop=...` equals the policy written out in
+  `tests/csp.ts`, with one nonce each; the sign-in page carries the same policy.
+- The embedded page loads (with stand-ins for the two Shopify scripts), starts its session and
+  passes axe, and the dashboard registers, signs out and signs in with a passkey, all with zero
+  `Content Security Policy` console errors.
+- A script from `/shopifycloud/later-chunk.js` runs. Scripts from `/s/files/...`,
+  `/shopifycloud-evil/`, `/static/fonts/` and `evil.example` are refused before the network
+  (`request.failure()` names the policy; the console reports `script-src`; none ran), and so is
+  an inline script without the nonce.
+- With the old `script-src 'self' https://cdn.shopify.com` rebuilt in, both new embedded tests
+  fail (the header differs; the three non-Shopify-script addresses on the CDN host ran).
+
+Not proven here: the real App Bridge and Polaris scripts under this policy (`cdn.shopify.com` is
+unreachable from the sandbox). ADR-054 lists what to read in the browser console on the first
+development-store load, and which directive to widen, narrowly, if a violation shows.

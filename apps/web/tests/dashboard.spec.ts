@@ -1,5 +1,6 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { parsePolicy, pinnedPolicy, watchPolicyViolations } from './csp.ts';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -25,15 +26,22 @@ async function platformAuthenticator(page: Page) {
 }
 
 test('signed-out visitors are sent to an accessible sign-in page', async ({ page }) => {
+  const violations = watchPolicyViolations(page);
   await page.goto('/dashboard');
   await expect(page).toHaveURL(/\/dashboard\/sign-in$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sign in');
   const response = await page.request.get('/dashboard/sign-in');
   expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+  // The dashboard gets the same pinned policy as every page (audit M3, ADR-054).
+  expect(parsePolicy(response.headers()['content-security-policy'])).toEqual(
+    pinnedPolicy(["'none'"]),
+  );
   await axe(page);
+  expect(violations).toEqual([]);
 });
 
 test('register with a passkey, sign out, and sign back in with it', async ({ page, context }) => {
+  const violations = watchPolicyViolations(page);
   await platformAuthenticator(page);
   const email = `ada+${Date.now().toString()}@example.com`;
 
@@ -67,6 +75,8 @@ test('register with a passkey, sign out, and sign back in with it', async ({ pag
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText(`Signed in as Ada Lovelace (${email}).`)).toBeVisible();
+  // Registering, signing out and signing in broke no rule of the content security policy.
+  expect(violations).toEqual([]);
 });
 
 test('an email that already has an account is refused with a message', async ({ page }) => {

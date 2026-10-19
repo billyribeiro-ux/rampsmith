@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import process from 'node:process';
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { parsePolicy, pinnedPolicy, watchPolicyViolations } from './csp.ts';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -25,12 +26,115 @@ async function embedded(page: Page, tokens: string[]) {
 }
 
 test('the home page is accessible and cannot be framed', async ({ page }) => {
+  const violations = watchPolicyViolations(page);
   const response = await page.goto('/');
   expect(response?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
     'Accessibility fixed at the source',
   );
   await axe(page);
+  expect(violations).toEqual([]);
+});
+
+test('the built app sends the pinned content security policy (audit M3)', async ({ page }) => {
+  await page.route('https://cdn.shopify.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }),
+  );
+  for (const [href, framing] of [
+    ['/', ["'none'"]],
+    ['/nope', ["'none'"]],
+    [
+      '/app?shop=demo-store.myshopify.com&host=abc',
+      ['https://admin.shopify.com', 'https://demo-store.myshopify.com'],
+    ],
+  ] as const) {
+    const response = await page.goto(href);
+    const header = response?.headers()['content-security-policy'];
+    expect(parsePolicy(header), href).toEqual(pinnedPolicy(framing));
+    // Each response carries its own nonce, and only SvelteKit's inline script uses it.
+    expect(header?.match(/'nonce-[^']+'/g), href).toHaveLength(1);
+  }
+});
+
+test("scripts run from Shopify's script directory and from nowhere else (audit M3)", async ({
+  page,
+}) => {
+  const violations = watchPolicyViolations(page);
+  // Chromium announces a request and then fails it, with a reason that names the policy, when
+  // the policy refuses it; the route handlers below never see it.
+  const refused = new Map<string, string>();
+  page.on('requestfailed', (request) => {
+    refused.set(request.url(), request.failure()?.errorText ?? '');
+  });
+  await embedded(page, ['good']);
+  // Registered last, so it wins: every script that runs records the address it came from.
+  const records = `(globalThis.__ran ??= []).push(document.currentScript.getAttribute('src'));`;
+  for (const host of ['https://cdn.shopify.com/**', 'https://evil.example/**']) {
+    await page.route(host, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: records }),
+    );
+  }
+  await page.goto('/app?shop=demo-store.myshopify.com');
+  await expect(page.getByRole('status')).toHaveText(
+    'Rampsmith is installed on demo-store.myshopify.com.',
+  );
+  // The two scripts the page loads itself ran, and the page broke no rule.
+  expect(violations).toEqual([]);
+
+  const allowed = 'https://cdn.shopify.com/shopifycloud/later-chunk.js';
+  const blocked = [
+    // Files merchants upload to the same host.
+    'https://cdn.shopify.com/s/files/1/0001/0002/files/upload.js',
+    // A directory whose name starts the same way.
+    'https://cdn.shopify.com/shopifycloud-evil/x.js',
+    // Another directory of Shopify's own.
+    'https://cdn.shopify.com/static/fonts/x.js',
+    'https://evil.example/x.js',
+  ];
+  await page.evaluate(
+    async (urls) => {
+      await Promise.all(
+        urls.map(
+          (src) =>
+            new Promise<void>((resolve) => {
+              const script = document.createElement('script');
+              script.src = src;
+              // `load` for a script that ran, `error` for one the policy refused.
+              for (const event of ['load', 'error']) {
+                script.addEventListener(event, () => {
+                  resolve();
+                });
+              }
+              document.head.append(script);
+            }),
+        ),
+      );
+    },
+    [allowed, ...blocked],
+  );
+  // An inline script without the nonce is refused too.
+  await page.evaluate(() => {
+    const script = document.createElement('script');
+    script.textContent = '(globalThis.__ran ??= []).push("inline");';
+    document.head.append(script);
+  });
+
+  const ran = await page.evaluate(() => (globalThis as unknown as { __ran: string[] }).__ran);
+  expect(ran.toSorted()).toEqual([
+    'https://cdn.shopify.com/shopifycloud/app-bridge.js',
+    allowed,
+    'https://cdn.shopify.com/shopifycloud/polaris-1.1.js',
+  ]);
+  // The browser refused each one and said which rule did it.
+  for (const url of blocked) {
+    expect(refused.get(url), url).toMatch(/csp/i);
+    expect(
+      violations.filter((message) => message.includes(url) && message.includes('script-src')),
+      url,
+    ).toHaveLength(1);
+  }
+  expect([...refused.keys()].toSorted()).toEqual(blocked.toSorted());
+  expect(violations.filter((message) => message.includes('inline script'))).toHaveLength(1);
 });
 
 test('the platform health check answers without touching the api', async ({ request }) => {
@@ -51,6 +155,7 @@ test('the skip link moves focus to the main content', async ({ page }) => {
 test('the embedded app loads App Bridge, may be framed by the shop, and starts a session', async ({
   page,
 }) => {
+  const violations = watchPolicyViolations(page);
   await embedded(page, ['good']);
   const response = await page.goto('/app?shop=demo-store.myshopify.com&host=abc');
   expect(response?.headers()['content-security-policy']).toContain(
@@ -66,6 +171,8 @@ test('the embedded app loads App Bridge, may be framed by the shop, and starts a
     'Rampsmith is installed on demo-store.myshopify.com.',
   );
   await axe(page);
+  // Nothing the embedded page loads or does is refused by the content security policy.
+  expect(violations).toEqual([]);
 });
 
 test('a stale session token is replaced once and the session starts', async ({ page }) => {
