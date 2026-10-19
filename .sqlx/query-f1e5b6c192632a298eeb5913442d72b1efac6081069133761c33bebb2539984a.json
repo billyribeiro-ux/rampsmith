@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from shopify_tokens where tenant_id = $1 and shop_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f1e5b6c192632a298eeb5913442d72b1efac6081069133761c33bebb2539984a"
+}

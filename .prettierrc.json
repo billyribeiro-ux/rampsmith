@@ -3,5 +3,6 @@
   "printWidth": 100,
   "singleQuote": true,
   "trailingComma": "all",
-  "proseWrap": "preserve"
+  "proseWrap": "preserve",
+  "plugins": ["prettier-plugin-svelte"]
 }

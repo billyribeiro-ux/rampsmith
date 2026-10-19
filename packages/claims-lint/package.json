@@ -4,6 +4,9 @@
   "private": true,
   "description": "Fails the build when a banned claim from PLAN \u00a73 appears in user-facing copy.",
   "type": "module",
+  "engines": {
+    "node": ">=26.12.0 <27"
+  },
   "bin": {
     "claims-lint": "./src/main.ts"
   },

@@ -109,3 +109,25 @@ pub async fn list(tx: &mut TenantTx) -> Result<Vec<Site>, DbError> {
     .await?;
     rows.into_iter().map(Site::try_from).collect()
 }
+
+/// Records how ownership of a site was proven, such as `shopify_install`. `None` if the site
+/// is not this tenant's.
+pub async fn mark_verified(
+    tx: &mut TenantTx,
+    id: SiteId,
+    method: &str,
+) -> Result<Option<Site>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let row = sqlx::query_as!(
+        Row,
+        r#"update sites set verified_at = coalesce(verified_at, now()), verification_method = $3
+            where tenant_id = $1 and id = $2
+        returning id, platform, base_url, verified_at, verification_method, primary_locale, created_at"#,
+        tenant,
+        id.as_uuid(),
+        method,
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    row.map(Site::try_from).transpose()
+}

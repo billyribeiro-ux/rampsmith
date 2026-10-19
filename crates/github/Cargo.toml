@@ -15,8 +15,8 @@ name = "github"
 [dependencies]
 # Default features off: they add `untrusted` 0.7, a duplicate under cargo-deny.
 aws-lc-rs = { version = "1.18.2", default-features = false, features = ["aws-lc-sys", "alloc"] } # move to [workspace.dependencies] at integration
-base64 = "0.23.1" # move to [workspace.dependencies] at integration
-hmac = "0.13.0" # move to [workspace.dependencies] at integration
+base64.workspace = true
+hmac.workspace = true
 http = "1.5.0" # move to [workspace.dependencies] at integration
 opentelemetry.workspace = true
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] } # move to [workspace.dependencies] at integration
@@ -29,11 +29,11 @@ thiserror.workspace = true
 time = { workspace = true, features = ["formatting", "parsing"] }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
-url = "2.5.8" # move to [workspace.dependencies] at integration
+url.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
-proptest = "1.12.0" # move to [workspace.dependencies] at integration
+proptest.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 tracing-subscriber.workspace = true
 
