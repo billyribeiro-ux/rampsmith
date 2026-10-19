@@ -78,17 +78,19 @@ than 15 minutes" has no signal behind it. The evidence file carries a runbook fo
 
 ## Decision
 
-1. **The SQL an operator runs lives in `docs/runbooks/sql/` and is executed by a test.** Four files
-   (`jobs-depth.sql`, `jobs-dead.sql`, `jobs-retry-dead.sql`, `master-key-usage.sql`) and
+1. **The SQL an operator runs lives in `docs/runbooks/sql/` and is executed by a test.** Five files
+   (`jobs-depth.sql`, `jobs-dead.sql`, `jobs-retry-dead.sql`, `jobs-token-state.sql`,
+   `master-key-usage.sql`) and
    `infra/restore-drill/tests/runbook-sql.sh`, which migrates a fresh PostgreSQL 18 with the
    repository's migrations, seeds two tenants and jobs in each state, runs every file as the
-   superuser and as `rampsmith_ctl`, and checks output and effect (38 checks; it runs in the
+   superuser and as `rampsmith_ctl`, and checks output and effect (45 checks; it runs in the
    `backup-tests` job on every pull request that touches `docs/runbooks/sql/`). A runbook step that
    nobody ran is a guess.
 2. **Least privilege inside break-glass.** The job files begin with `set role rampsmith_worker`, so
-   even a superuser connection sees only what `ctl` sees. The master-key report is the one file that
-   needs the superuser; it refuses any role that row-level security applies to, because under RLS
-   the tenant function raises an error and a quieter failure could read as "no data under this key".
+   even a superuser connection sees only what `ctl` sees. Two files need the superuser, the
+   master-key report and the token state of one shop; each refuses any role that row-level security
+   applies to, because under RLS the tenant function raises an error and a quieter failure could read
+   as "no data under this key".
 3. **Triage before retry.** The dead-letter runbook is a table from error code to meaning and action,
    with one rule: a dead job is retried only when its cause is understood and fixed. The table:
 
@@ -141,6 +143,12 @@ than 15 minutes" has no signal behind it. The evidence file carries a runbook fo
   an operator at 3 a.m. does not search for a command that does not exist.
 - The first live use of the SQL files is on Railway; the substitute test covers their logic on
   PostgreSQL 18.6, and Section E records the rest (`railway connect postgres --ssh` as the way in).
+- The retry arithmetic matters to the runbook: 8 attempts with delays of `e/2` to `e` where `e` is
+  5 s doubling spend their budget in 5 to 11 minutes. A Shopify or database outage longer than that
+  kills every refresh job it touches, so each outage leaves dead jobs to sweep, and the SLO for token
+  refresh (0 shops lost) leans on this runbook. Integration note for the queue owner: a longer budget
+  for `shopify.token_refresh` (a larger `max_attempts` at enqueue, or a gentler schedule) would turn
+  most outages into delay instead of dead jobs; it is a design change, so it is not made here.
 - The files add an audited operator path that only exists in SQL. If the schema of `jobs` or
   `audit_log` changes, the test fails the pull request that changes it.
 

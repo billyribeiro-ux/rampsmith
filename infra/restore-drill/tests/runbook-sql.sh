@@ -163,5 +163,29 @@ refuse "master-key-usage prints no count to a refused role" $'^k2026'
 run keys-api rampsmith_api master-key-usage.sql
 bad "master-key-usage refuses the api login too"
 
+# --- jobs-token-state.sql ----------------------------------------------------------------------
+shop_a=$(sql "select id from shopify_shops where tenant_id = '$tenant_a'")
+shop_b=$(sql "select id from shopify_shops where tenant_id = '$tenant_b'")
+job_refresh_a=77777777-7777-4777-8777-777777777777
+job_refresh_b=88888888-8888-4888-8888-888888888888
+cl_psql db rampsmith rampsmith_ctl -c "
+insert into jobs (id, queue, payload_schema, payload, tenant_id, state, attempts, finished_at, last_error) values
+  ('$job_refresh_a', 'shopify.token_refresh', 'shopify.token_refresh@1', '{\"shop_id\":\"$shop_a\"}', '$tenant_a', 'dead', 8, now(),
+     '{\"code\":\"shopify_unavailable\",\"message\":\"Shopify answered 503\",\"retryable\":true}'),
+  ('$job_refresh_b', 'shopify.token_refresh', 'shopify.token_refresh@1', '{\"shop_id\":\"$shop_b\"}', '$tenant_b', 'dead', 1, now(),
+     '{\"code\":\"crypto\",\"message\":\"unknown key id\",\"retryable\":false}');"
+run token postgres jobs-token-state.sql -v "job=$job_refresh_a"
+ok "jobs-token-state runs as the superuser"
+expect "jobs-token-state shows the shop, its key and the days the refresh token has left" "^${shop_a}"$'\tinstalled\tk20261019\t.*\t[0-9]+\.[0-9]\tdead\tshopify_unavailable$'
+refuse "jobs-token-state names the shop by id, not by domain" 'myshopify'
+sql "delete from shopify_tokens where shop_id = '$shop_b'" >/dev/null
+run token-gone postgres jobs-token-state.sql -v "job=$job_refresh_b"
+expect "jobs-token-state shows a shop whose tokens are gone with empty token columns" "^${shop_b}"$'\tinstalled\t\t\t\t\tdead\tcrypto$'
+run token-ctl rampsmith_ctl jobs-token-state.sql -v "job=$job_refresh_a"
+bad "jobs-token-state refuses a role that row-level security applies to"
+expect "jobs-token-state says why" 'bypasses row-level security'
+run token-missing postgres jobs-token-state.sql
+bad "jobs-token-state refuses to run without a job id"
+
 printf 'runbook-sql\t%s checks, %s failed\n' "$total" "$failed"
 [ "$failed" -eq 0 ]
