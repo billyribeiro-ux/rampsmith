@@ -201,8 +201,11 @@ jobs:
         run: |
           # The job log host is unreachable from the build sessions; this makes the failure
           # readable through the check-run annotations API.
-          tail -n 80 "$RUNNER_TEMP/e2e.log" | sed -e 's/%/%25/g' -e 's/\r//g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/e2e.tail"
-          echo "::error title=e2e output (last 80 lines)::$(cat "$RUNNER_TEMP/e2e.tail")"
+          # Colour codes and bundle-size lines are dropped so the failure fits in one annotation.
+          sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\r//g' "$RUNNER_TEMP/e2e.log" |
+            grep -vE '\.svelte-kit/output|│ gzip:|^\[test:e2e\] *$' |
+            tail -n 40 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/e2e.tail"
+          echo "::error title=e2e output (last 40 lines)::$(cat "$RUNNER_TEMP/e2e.tail")"
       - name: Keep the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
