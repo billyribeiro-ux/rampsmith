@@ -2,7 +2,7 @@
 //! S3 endpoint (service `s3`, region `auto`) and Amazon SES's v2 API (service `ses`).
 //!
 //! It is written here, not taken from `aws-sdk-s3`, because the doctor needs four requests
-//! and the SDK would add well over a hundred crates (ADR-152). The signer is checked against
+//! and the SDK would add well over a hundred crates (ADR-154). The signer is checked against
 //! AWS's published test vectors (`tests/sigv4.rs`): the `aws-signing-test-suite` and the
 //! worked example in the Amazon S3 documentation.
 //!

@@ -1,8 +1,9 @@
-//! `SigV4` against AWS's published vectors (ADR-152).
+//! `SigV4` against AWS's published vectors (ADR-154).
 //!
-//! - `tests/fixtures/sigv4/*` is copied unmodified from
+//! - `tests/fixtures/sigv4/*` is copied from
 //!   <https://github.com/awslabs/aws-c-auth/tree/main/tests/aws-signing-test-suite/v4>
-//!   (read 2026-10-19). The credentials are AWS's documentation examples.
+//!   (read 2026-10-19); only the `context.json` whitespace differs, from the repository's
+//!   Prettier check. The credentials are AWS's documentation examples.
 //! - The two S3 examples are quoted from "Authenticating Requests: Using the Authorization
 //!   Header (AWS Signature Version 4)" in the Amazon S3 API reference (read 2026-10-19).
 
