@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "id": "production-daily-lock-25d",
+      "enabled": true,
+      "prefix": "production/daily/",
+      "condition": { "type": "Age", "maxAgeSeconds": 2160000 }
+    },
+    {
+      "id": "production-monthly-lock-300d",
+      "enabled": true,
+      "prefix": "production/monthly/",
+      "condition": { "type": "Age", "maxAgeSeconds": 25920000 }
+    },
+    {
+      "id": "staging-daily-lock-25d",
+      "enabled": true,
+      "prefix": "staging/daily/",
+      "condition": { "type": "Age", "maxAgeSeconds": 2160000 }
+    },
+    {
+      "id": "staging-monthly-lock-300d",
+      "enabled": true,
+      "prefix": "staging/monthly/",
+      "condition": { "type": "Age", "maxAgeSeconds": 25920000 }
+    }
+  ]
+}
