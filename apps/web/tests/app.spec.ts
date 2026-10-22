@@ -75,9 +75,7 @@ test("scripts run from Shopify's script directory and from nowhere else (audit M
     );
   }
   await page.goto('/app?shop=demo-store.myshopify.com');
-  await expect(page.getByRole('status')).toHaveText(
-    'Rampsmith is installed on demo-store.myshopify.com.',
-  );
+  await expect(page.getByText('Run your first scan')).toBeVisible();
   // The two scripts the page loads itself ran, and the page broke no rule.
   expect(violations).toEqual([]);
 
@@ -167,9 +165,7 @@ test('the embedded app loads App Bridge, may be framed by the shop, and starts a
   );
   await expect(page.locator('head script[src$="/shopifycloud/app-bridge.js"]')).toHaveCount(1);
   await expect(page.locator('head script[src$="/shopifycloud/polaris-1.1.js"]')).toHaveCount(1);
-  await expect(page.getByRole('status')).toHaveText(
-    'Rampsmith is installed on demo-store.myshopify.com.',
-  );
+  await expect(page.getByText('Run your first scan')).toBeVisible();
   await axe(page);
   // Nothing the embedded page loads or does is refused by the content security policy.
   expect(violations).toEqual([]);
@@ -178,9 +174,7 @@ test('the embedded app loads App Bridge, may be framed by the shop, and starts a
 test('a stale session token is replaced once and the session starts', async ({ page }) => {
   await embedded(page, ['stale', 'good']);
   await page.goto('/app?shop=demo-store.myshopify.com');
-  await expect(page.getByRole('status')).toHaveText(
-    'Rampsmith is installed on demo-store.myshopify.com.',
-  );
+  await expect(page.getByText('Run your first scan')).toBeVisible();
 });
 
 test('a session that cannot start says so accessibly', async ({ page }) => {

@@ -27,6 +27,12 @@ export default defineConfig({
       use: { ...browser, baseURL: 'http://127.0.0.1:3999' },
     },
     {
+      // The App Home against the typed fake api, with the Polaris test shim (ADR-094).
+      name: 'app-home',
+      testMatch: 'app-*.spec.ts',
+      use: { ...browser, baseURL: 'http://127.0.0.1:3985' },
+    },
+    {
       // The dashboard against the real api and database, with Chromium's virtual
       // authenticator. WebAuthn needs a secure context, which localhost is.
       name: 'dashboard',
@@ -68,6 +74,22 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: '3999',
         API_URL: 'http://127.0.0.1:3998',
+        SHOPIFY_API_KEY: 'e2e-client-id',
+      },
+    },
+    {
+      command: 'node tests/app-fake-api.ts',
+      url: 'http://127.0.0.1:3984/healthz',
+      reuseExistingServer: false,
+    },
+    {
+      command: 'node build',
+      url: 'http://127.0.0.1:3985/',
+      reuseExistingServer: false,
+      env: {
+        HOST: '127.0.0.1',
+        PORT: '3985',
+        API_URL: 'http://127.0.0.1:3984',
         SHOPIFY_API_KEY: 'e2e-client-id',
       },
     },

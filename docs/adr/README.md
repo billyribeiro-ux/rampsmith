@@ -158,6 +158,12 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [257](257-restore-as-migrator-and-toc-allow-list.md) | Restore as a non-superuser and refuse archives with out-of-schema entries | Accepted |
 | [258](258-backup-image-on-slim-debian.md) | The backup image is slim Debian with the PGDG client only, and CI scans it | Accepted |
 | [259](259-stray-environments-and-tracked-bytecode.md) | CI fails when the old backup environments exist or Python bytecode is tracked | Accepted |
+| [090](090-alt-text-job.md) | The `ai.alt_text@1` job and `sharp` | Accepted |
+| [091](091-app-home-contract-and-bff.md) | The App Home contract and its backend-for-frontend routes | Accepted |
+| [092](092-app-home-media-route.md) | Product images reach the App Home through the BFF | Accepted |
+| [093](093-alt-text-review-queue.md) | The alt-text review queue: approve, edit, reject, undo | Accepted |
+| [094](094-app-home-test-shim.md) | Testing the App Home without Shopify: a typed fake api and a Polaris shim | Accepted |
+| [095](095-plan-gates-and-settings.md) | Plan gates and settings in the App Home | Accepted |
 
 ## Template
 
