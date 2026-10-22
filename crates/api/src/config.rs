@@ -15,6 +15,9 @@ pub struct Config {
     pub database_url: SecretString,
     /// Address to listen on.
     pub bind: SocketAddr,
+    /// Address of the webhook listener (`WEBHOOK_BIND_ADDR`, ADR-182): a second listener that
+    /// serves only `/webhooks/*`. Without it, no webhook listener starts.
+    pub webhook_bind: Option<SocketAddr>,
     /// Pool size.
     pub db_max_connections: u32,
     /// Reported as `service.version`, normally the image's commit.
@@ -70,6 +73,21 @@ impl Config {
                 name: "BIND_ADDR",
                 reason: e.to_string(),
             })?;
+        let webhook_bind = get("WEBHOOK_BIND_ADDR")
+            .map(|v| v.parse())
+            .transpose()
+            .map_err(|e: std::net::AddrParseError| ConfigError::Invalid {
+                name: "WEBHOOK_BIND_ADDR",
+                reason: e.to_string(),
+            })?;
+        if webhook_bind.is_some_and(|w| w == bind) {
+            return Err(ConfigError::Invalid {
+                name: "WEBHOOK_BIND_ADDR",
+                reason:
+                    "must differ from BIND_ADDR: the webhook host reaches only the webhook listener"
+                        .to_owned(),
+            });
+        }
         let db_max_connections = get("DB_MAX_CONNECTIONS")
             .map_or(Ok(10), |v| v.parse::<u32>())
             .map_err(|e| ConfigError::Invalid {
@@ -119,6 +137,7 @@ impl Config {
             master_keys,
             database_url: SecretString::from(database_url),
             bind,
+            webhook_bind,
             db_max_connections,
             service_version: get("SERVICE_VERSION")
                 .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()),

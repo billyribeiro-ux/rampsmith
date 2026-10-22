@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from fix_findings where tenant_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "27b604cd4f9082dafc55bc4a84e1b5b44fe5a78b1ab61b7b8b7b657ea8663b35"
+}

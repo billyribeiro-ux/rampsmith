@@ -59,7 +59,16 @@ async fn run(config: Config) -> anyhow::Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
-    let refresh = TokenRefresh::new(db.clone(), auth);
+    let refresh = TokenRefresh::new(db.clone(), auth.clone());
+    let handlers = jobs::Jobs::new(
+        db.clone(),
+        auth,
+        shopify_admin::AdminFactory::new(
+            shopify_admin::AdminEndpoint::Shopify,
+            Duration::from_secs(20),
+        )
+        .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
+    );
 
     let (stop, stopped) = watch::channel(false);
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {
@@ -85,13 +94,13 @@ async fn run(config: Config) -> anyhow::Result<()> {
     for name in jobs::QUEUES {
         let mut worker = WorkerConfig::new(name, config.worker_id.clone());
         worker.concurrency = 2;
-        let db = db.clone();
+        let handlers = handlers.clone();
         workers.push(tokio::spawn(queue::run(
             pool.clone(),
             worker,
             move |job| {
-                let db = db.clone();
-                async move { jobs::dispatch(&db, job).await }
+                let handlers = handlers.clone();
+                async move { handlers.dispatch(job).await }
             },
             until_stopped(stopped.clone()),
         )));

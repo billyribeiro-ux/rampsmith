@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select primary_domain, locales, synced_at\n             from shopify_shops where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "primary_domain",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "primary_domain"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "locales",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "locales"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "synced_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "synced_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "b86c22568eccb2618862092efdc5b0c073cc008693cf4d71a3d54cfac4a098a0"
+}

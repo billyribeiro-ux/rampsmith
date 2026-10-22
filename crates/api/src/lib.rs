@@ -10,6 +10,7 @@ mod health;
 mod r1;
 pub mod rate_limit;
 pub mod shopify;
+pub mod webhooks;
 
 use axum::Router;
 use db::Db;

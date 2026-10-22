@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from ai_reservations where tenant_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8adb9b6553a0fd8cc3216d40e3dc15c3a5968c2df5dc9f4c957f0d5ed45f3a5b"
+}

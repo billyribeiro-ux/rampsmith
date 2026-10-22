@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update sites set settings = '{}'::jsonb, storefront_password_ct = null,\n                            storefront_password_key_id = null\n            where tenant_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1514b7ce1b55c40460c374416c9d08bc1a8db0e63b12ef6ad20f66a4ff9e51e3"
+}

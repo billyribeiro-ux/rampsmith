@@ -3,6 +3,7 @@
 use anyhow::Context as _;
 use api::AppState;
 use api::config::Config;
+use api::webhooks::{self, WebhookState};
 use db::{Db, RoleError, RuntimeRole};
 use secrecy::ExposeSecret;
 use tracing::{info, warn};
@@ -38,6 +39,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
             warn!(%error, "could not check the database role at startup; /readyz will");
         }
     }
+    let (send_stop, stop) = tokio::sync::watch::channel(false);
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("bind {}", config.bind))?;
@@ -64,6 +66,30 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     )
     .map_err(|e| anyhow::anyhow!("WebAuthn: {e}"))?;
     info!(address = %config.bind, version = %config.service_version, "api listening");
+    // The webhook host reaches this listener only (ADR-182): its router serves /webhooks/*.
+    let webhook_server = if let Some(address) = config.webhook_bind {
+        {
+            let listener = tokio::net::TcpListener::bind(address)
+                .await
+                .with_context(|| format!("bind {address}"))?;
+            info!(%address, "webhook listener ready");
+            let router = webhooks::router(WebhookState::new(
+                db.clone(),
+                config.shopify_client_secret.clone(),
+            ));
+            let stop = stop.clone();
+            Some(tokio::spawn(async move {
+                axum::serve(listener, router)
+                    .with_graceful_shutdown(async move {
+                        let _ = stop.clone().wait_for(|stop| *stop).await;
+                    })
+                    .await
+            }))
+        }
+    } else {
+        warn!("WEBHOOK_BIND_ADDR is not set; no webhook listener runs");
+        None
+    };
     let state = AppState::new(db)
         .with_shopify(shopify)
         .with_identity(identity);
@@ -71,6 +97,13 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("server")?;
+    let _ = send_stop.send(true);
+    if let Some(server) = webhook_server {
+        server
+            .await
+            .context("webhook task")?
+            .context("webhook server")?;
+    }
     info!("api stopped");
     Ok(())
 }

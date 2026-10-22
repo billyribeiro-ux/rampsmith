@@ -15,7 +15,8 @@
 mod support;
 
 use db::Db;
-use db::repo::{audit, findings, fixes, jobs, occurrences, scans, shopify, sites, tenants};
+use db::repo::webhooks::{self, NewWebhook, Recorded};
+use db::repo::{audit, findings, fixes, jobs, occurrences, redact, scans, shopify, sites, tenants};
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
@@ -221,6 +222,7 @@ async fn application_roles_cannot_bypass_row_level_security(pool: PgPool) {
 // --- Layer 1: repository scoping --------------------------------------------------------
 
 async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
+    assert_webhooks_and_shop_info_isolate(db, a, b).await;
     let mut tx = db.tenant(a.tenant).await.unwrap();
 
     assert_eq!(
@@ -921,4 +923,146 @@ async fn a_sealed_storefront_password_is_both_columns_or_neither(
     .execute(&owner)
     .await
     .unwrap();
+}
+
+fn webhook(shop: Graph, id: &str, label: u8) -> NewWebhook {
+    NewWebhook {
+        shop_id: shop.shop,
+        external_id: id.to_owned(),
+        topic: "app/uninstalled".to_owned(),
+        body: serde_json::json!({"myshopify_domain": "x.myshopify.com", "label": label}),
+        body_sha256: [label; 32],
+    }
+}
+
+/// Webhook events and the shop-info columns the R1 listener and worker read and write (ADR-080):
+/// a tenant never reaches another tenant's rows, and a dedup never matches across tenants.
+async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
+    // Both tenants may receive the very same delivery id and body: dedup is per tenant.
+    let mut ids = Vec::new();
+    for me in [a, b] {
+        let mut tx = db.tenant(me.tenant).await.unwrap();
+        let Recorded::Stored(id) = webhooks::record(&mut tx, &webhook(me, "same-id", 5))
+            .await
+            .unwrap()
+        else {
+            panic!("a delivery another tenant also received was treated as a duplicate");
+        };
+        ids.push(id);
+        tx.commit().await.unwrap();
+    }
+    // A cannot read, mark or duplicate-match B's event.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(webhooks::get(&mut tx, ids[1]).await.unwrap().is_none());
+    assert!(!webhooks::mark_processed(&mut tx, ids[1]).await.unwrap());
+    // Recording an event for B's shop as A is rejected by the composite key or by RLS.
+    let forged = webhooks::record(&mut tx, &webhook(b, "forged", 6)).await;
+    assert!(forged.is_err(), "{forged:?}");
+    tx.rollback().await.unwrap();
+
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    let event = webhooks::get(&mut tx, ids[1]).await.unwrap().unwrap();
+    assert!(
+        event.processed_at.is_none(),
+        "A's attempt changed B's event"
+    );
+    assert!(webhooks::mark_processed(&mut tx, ids[1]).await.unwrap());
+    tx.commit().await.unwrap();
+
+    // Shop info and uninstall.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(!shopify::mark_uninstalled(&mut tx, b.shop).await.unwrap());
+    assert!(
+        !shopify::set_info(&mut tx, b.shop, Some("evil.example"), &["xx".to_owned()])
+            .await
+            .unwrap()
+    );
+    assert!(shopify::get_info(&mut tx, b.shop).await.unwrap().is_none());
+    tx.rollback().await.unwrap();
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    let info = shopify::get_info(&mut tx, b.shop).await.unwrap().unwrap();
+    assert_ne!(info.primary_domain.as_deref(), Some("evil.example"));
+    assert!(
+        shopify::get(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .unwrap()
+            .uninstalled_at
+            .is_none()
+    );
+    tx.rollback().await.unwrap();
+}
+
+/// `shop/redact` and the job cancellation on uninstall act on the caller's tenant only.
+#[sqlx::test]
+async fn redaction_and_job_cancellation_never_touch_another_tenant(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    let workers = worker_pool(opts.clone(), conn.clone()).await;
+    let db = Db::from_pool(workers.clone());
+    let owner = owner_pool(opts, conn).await;
+    let count = |sql: &'static str, tenant: TenantId| {
+        let owner = owner.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(sql)
+                .bind(tenant.as_uuid())
+                .fetch_one(&owner)
+                .await
+                .unwrap()
+        }
+    };
+
+    // Cancelling A's pending work leaves B's.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert_eq!(
+        jobs::cancel_pending(&mut tx, "webhook.process")
+            .await
+            .unwrap(),
+        1
+    );
+    tx.commit().await.unwrap();
+    assert_eq!(
+        count(
+            "select count(*) from jobs where tenant_id = $1 and state = 'ready'",
+            b.tenant
+        )
+        .await,
+        1
+    );
+
+    // Redacting B's shop as A finds nothing and changes nothing.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(redact::shop(&mut tx, b.shop).await.unwrap().is_none());
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        count("select count(*) from scans where tenant_id = $1", b.tenant).await,
+        1
+    );
+
+    // Redacting A's own shop empties A and leaves B whole.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let removed = redact::shop(&mut tx, a.shop).await.unwrap().unwrap();
+    tx.commit().await.unwrap();
+    assert!(removed.scans >= 1 && removed.findings >= 1);
+    for table in [
+        "scans",
+        "findings",
+        "fixes",
+        "scan_inputs",
+        "evidence",
+        "shopify_tokens",
+    ] {
+        let sql: &'static str = Box::leak(
+            format!("select count(*) from {table} where tenant_id = $1").into_boxed_str(),
+        );
+        assert_eq!(count(sql, a.tenant).await, 0, "{table} kept A's rows");
+        assert!(count(sql, b.tenant).await >= 1, "{table} lost B's rows");
+    }
+    // The second run removes nothing.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let again = redact::shop(&mut tx, a.shop).await.unwrap().unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(again, redact::Redacted::default());
 }

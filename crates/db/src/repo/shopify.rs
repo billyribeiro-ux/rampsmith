@@ -322,3 +322,69 @@ pub async fn delete_tokens(tx: &mut TenantTx, shop: ShopId) -> Result<bool, DbEr
     .await?;
     Ok(done.rows_affected() > 0)
 }
+
+/// Marks an installed shop uninstalled and starts the retention clock (`app/uninstalled`,
+/// PLAN §19). Returns whether the shop was installed; an already uninstalled or redacted shop
+/// is left as it is, which makes a repeated webhook harmless.
+pub async fn mark_uninstalled(tx: &mut TenantTx, id: ShopId) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update shopify_shops set status = 'uninstalled', uninstalled_at = now()
+            where tenant_id = $1 and id = $2 and status = 'installed'"#,
+        tenant,
+        id.as_uuid(),
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Records what `shopify.read_store` or `shop/update` learned about the shop.
+pub async fn set_info(
+    tx: &mut TenantTx,
+    id: ShopId,
+    primary_domain: Option<&str>,
+    locales: &[String],
+) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update shopify_shops set primary_domain = $3, locales = $4, synced_at = now()
+            where tenant_id = $1 and id = $2 and status = 'installed'"#,
+        tenant,
+        id.as_uuid(),
+        primary_domain,
+        locales,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// What `shopify.read_store` and `shop/update` last stored about a shop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShopInfo {
+    /// The shop's primary domain host, if the shop has one.
+    pub primary_domain: Option<String>,
+    /// Its locales.
+    pub locales: Vec<String>,
+    /// When they were read.
+    pub synced_at: Option<OffsetDateTime>,
+}
+
+/// The stored shop information of one shop.
+pub async fn get_info(tx: &mut TenantTx, id: ShopId) -> Result<Option<ShopInfo>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let row = sqlx::query!(
+        r#"select primary_domain, locales, synced_at
+             from shopify_shops where tenant_id = $1 and id = $2"#,
+        tenant,
+        id.as_uuid(),
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    Ok(row.map(|r| ShopInfo {
+        primary_domain: r.primary_domain,
+        locales: r.locales,
+        synced_at: r.synced_at,
+    }))
+}

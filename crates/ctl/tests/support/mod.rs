@@ -59,3 +59,5 @@ pub async fn worker_login_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> P
         .await
         .expect("connect as the worker login")
 }
+
+pub mod world;

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update webhook_events set body = null where tenant_id = $1 and body is not null",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d47b15a232311285726bc4d8c8ab4a0457d21b4d12f1bc2c5934841946d4ccfb"
+}

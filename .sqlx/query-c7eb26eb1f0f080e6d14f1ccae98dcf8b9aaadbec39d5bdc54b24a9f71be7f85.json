@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_shops set status = 'uninstalled', uninstalled_at = now()\n            where tenant_id = $1 and id = $2 and status = 'installed'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7eb26eb1f0f080e6d14f1ccae98dcf8b9aaadbec39d5bdc54b24a9f71be7f85"
+}
