@@ -953,11 +953,11 @@ assert_eq "toc: a table of the schema is accepted" "" \
   "$(toc_with '9100; 1259 16500 TABLE public brand_new_table rampsmith_migrator')"
 assert_eq "toc: a policy of the schema is accepted" "" \
   "$(toc_with '9101; 3256 16501 POLICY public findings findings_tenant rampsmith_migrator')"
-restore_out=$(env -i "${STD[@]}" PGHOST="$sock" PGPORT="$port" PGUSER=postgres "$RD/restore.sh" --target rampsmith \
+restore_out=$(env -i "${STD[@]}" AGE="$AGE" PGHOST="$sock" PGPORT="$port" PGUSER=postgres "$RD/restore.sh" --target rampsmith \
   --identity "$work/primary.key" --file "$work/handoff/work/backup.dump.age" --work "$work/restore-super" 2>&1)
 assert_rc "restore: a superuser connection is refused" 1 $?
 assert_contains "restore: ... asking for rampsmith_migrator" "restore as rampsmith_migrator" "$restore_out"
-restore_out=$(env -i "${STD[@]}" PGHOST="$sock" PGPORT="$port" PGUSER=rampsmith_api "$RD/restore.sh" --target rampsmith \
+restore_out=$(env -i "${STD[@]}" AGE="$AGE" PGHOST="$sock" PGPORT="$port" PGUSER=rampsmith_api "$RD/restore.sh" --target rampsmith \
   --identity "$work/primary.key" --file "$work/handoff/work/backup.dump.age" --work "$work/restore-api" 2>&1)
 assert_rc "restore: any other login is refused too" 1 $?
 assert_contains "restore: ... naming the owner role" "restore as rampsmith_migrator, the role that owns the schema" "$restore_out"
