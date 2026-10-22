@@ -46,6 +46,15 @@ he does not need to approve anything. From now on:
 
 ## Active builder
 
+- **The architect chat (`session_01Xo2TExfkKEuqRyHUMqc1YC`) is the builder from 22 Oct 2026,
+  20:20 UTC** (founder instruction: Sonnet agents in parallel, finish the build). The 19 Oct
+  builder entry below is stale (last push 19 Oct 21:35 UTC) and no longer holds the lock.
+  Wave 1, running now, each in its own worktree and branch: `r1-secrets` (audit H1/H2 and
+  M1/M3, backups), `r1-phase0` (R1 contracts, schema, stubs, ADR-035 to 039), `r1-site`
+  (marketing site, pricing, free scanner; ADRs 260–269). Wave 2 starts when Phase 0 merges:
+  lanes A (`r1-fixloop`), B (`r1-scan`) and C (`r1-apphome`) as in the R1 plan below.
+
+
 - **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`), active since
   13:37 UTC. Its scheduled task reads FAILED because the founder paused and resumed it in chat;
   treat this entry, not the task status, as the lock until it is removed. **R0 is done** (merged
