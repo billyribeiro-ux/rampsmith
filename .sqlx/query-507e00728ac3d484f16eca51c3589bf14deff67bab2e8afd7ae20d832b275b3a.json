@@ -1,0 +1,45 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select count(*) filter (where impact = 'minor') as \"minor!\",\n                  count(*) filter (where impact = 'moderate') as \"moderate!\",\n                  count(*) filter (where impact = 'serious') as \"serious!\",\n                  count(*) filter (where impact = 'critical') as \"critical!\"\n             from findings\n            where tenant_id = $1 and site_id = $2 and status = 'open' and not best_practice",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "moderate!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "serious!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "critical!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "507e00728ac3d484f16eca51c3589bf14deff67bab2e8afd7ae20d832b275b3a"
+}

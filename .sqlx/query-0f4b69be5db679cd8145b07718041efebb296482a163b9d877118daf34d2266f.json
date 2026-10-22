@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select resource_gid, field, before_value, after_value\n             from data_fix_snapshots where tenant_id = $1 and fix_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "resource_gid",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_fix_snapshots",
+            "name": "resource_gid"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "field",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_fix_snapshots",
+            "name": "field"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "before_value",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "data_fix_snapshots",
+            "name": "before_value"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "after_value",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "data_fix_snapshots",
+            "name": "after_value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0f4b69be5db679cd8145b07718041efebb296482a163b9d877118daf34d2266f"
+}

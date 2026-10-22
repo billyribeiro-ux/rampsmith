@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select started_at from ai_calls\n            where tenant_id = $1 and task in ('alt_text', 'alt_text_escalated')\n              and outcome in ('ok', 'needs_review')\n            order by started_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "started_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "ai_calls",
+            "name": "started_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "05f36d1e719f7f87cf61db05dd6e9160cac0a269a03c6261ef4d324e47926572"
+}

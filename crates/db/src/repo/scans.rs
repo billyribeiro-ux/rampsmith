@@ -166,3 +166,42 @@ pub async fn mark_started(
     .await?;
     row.map(Scan::try_from).transpose()
 }
+
+/// Ends a scan that cannot continue, with a stable code. Only a scan that has not finished is
+/// changed; `None` when it had, or is not the tenant's.
+pub async fn fail(
+    tx: &mut TenantTx,
+    id: ScanId,
+    error_code: &str,
+) -> Result<Option<Scan>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let row = sqlx::query_as!(
+        Row,
+        r#"update scans set status = 'failed', finished_at = now(), error_code = $3
+            where tenant_id = $1 and id = $2 and status in ('queued', 'running')
+        returning id, site_id, theme_ref, trigger, status, ruleset_version, pages_planned,
+                  pages_done, created_at, started_at, finished_at, error_code"#,
+        tenant,
+        id.as_uuid(),
+        error_code,
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    row.map(Scan::try_from).transpose()
+}
+
+/// Sets how many pages a scan will load, for a verification scan whose pages are known when it
+/// is created. Only a scan that has not finished.
+pub async fn set_planned(tx: &mut TenantTx, id: ScanId, pages: i32) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update scans set pages_planned = $3
+            where tenant_id = $1 and id = $2 and status in ('queued', 'running')"#,
+        tenant,
+        id.as_uuid(),
+        pages,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() == 1)
+}

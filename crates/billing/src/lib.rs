@@ -11,6 +11,7 @@
 //!   `shopify::ShopDomain` of `crates/shopify`; this crate has no copy of it.
 //! - [`partner_api`]: the `activeSubscription` operation, its parser and transport trait.
 //! - [`mod@reconcile`] and [`sweep`]: the plan-state machine and when to ask Shopify (ADR-131).
+//! - [`stored`]: the plain-text row a shop's plan state is stored as (ADR-084).
 
 pub mod entitlements;
 pub mod money;
@@ -18,6 +19,7 @@ pub mod partner_api;
 pub mod plan;
 pub mod reconcile;
 pub mod shopify;
+pub mod stored;
 pub mod sweep;
 pub mod usage;
 

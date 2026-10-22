@@ -1,6 +1,5 @@
-//! The R1 queue stubs `ctl` registers (ADR-038): each answers with a typed permanent failure.
+//! The queues `ctl` serves (ADR-035) and the refusal of any other.
 
-// Integration tests are test code: PLAN §8 denies these lints outside tests only.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -8,41 +7,21 @@
     clippy::indexing_slicing
 )]
 
-use ctl::jobs::{self, NOT_IMPLEMENTED};
-use db::Db;
-use queue::{ClaimedJob, Failure, Lease};
-use sqlx::postgres::PgPoolOptions;
-use time::OffsetDateTime;
-use uuid::Uuid;
+use ctl::jobs;
+use queue::Failure;
+use serde_json::json;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
-fn job(queue: &str) -> ClaimedJob {
-    ClaimedJob {
-        lease: Lease {
-            job_id: Uuid::nil(),
-            worker: "test".to_owned(),
-            attempt: 1,
-        },
-        queue: queue.to_owned(),
-        payload_schema: format!("{queue}@1"),
-        payload: serde_json::json!({}),
-        tenant_id: None,
-        max_attempts: 3,
-        locked_until: OffsetDateTime::now_utc(),
-        traceparent: None,
-    }
-}
+mod support;
 
-/// A handle that never connects: the stubs do not touch the database.
-fn db() -> Db {
-    Db::from_pool(
-        PgPoolOptions::new()
-            .connect_lazy("postgres://nobody@127.0.0.1:1/none")
-            .unwrap(),
-    )
-}
+use support::world::world;
 
-#[tokio::test]
-async fn every_r1_queue_is_registered_and_fails_permanently_until_it_is_built() {
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn ctl_serves_the_four_r1_queues_and_refuses_any_other(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
     assert_eq!(
         jobs::QUEUES,
         [
@@ -52,20 +31,20 @@ async fn every_r1_queue_is_registered_and_fails_permanently_until_it_is_built() 
             "webhook.process"
         ]
     );
-    let db = db();
+    // A payload of the wrong schema is a permanent failure of the handler, not of the registry.
     for queue in jobs::QUEUES {
-        let Err(Failure::Permanent(error)) = jobs::dispatch(&db, job(queue)).await else {
-            panic!("{queue} did not fail permanently");
+        let Err(Failure::Permanent(error)) =
+            w.jobs.dispatch(w.job(queue, "wrong@9", json!({}))).await
+        else {
+            panic!("{queue} accepted a payload of another schema");
         };
-        assert_eq!(error.code, NOT_IMPLEMENTED, "{queue}");
-        assert!(!error.retryable, "{queue}");
-        assert!(error.message.contains(queue), "{queue}: {}", error.message);
+        assert_eq!(error.code, "payload_schema_unknown", "{queue}");
     }
-}
-
-#[tokio::test]
-async fn a_queue_ctl_does_not_serve_is_refused() {
-    let Err(Failure::Permanent(error)) = jobs::dispatch(&db(), job("scan.page")).await else {
+    let Err(Failure::Permanent(error)) = w
+        .jobs
+        .dispatch(w.job("scan.page", "scan.page@1", json!({})))
+        .await
+    else {
         panic!("scan.page was not refused");
     };
     assert_eq!(error.code, "queue_unknown");

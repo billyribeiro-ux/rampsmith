@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select page_url, page_state, target, html_excerpt\n             from finding_occurrences\n            where tenant_id = $1 and finding_id = $2\n            order by captured_at desc, page_url, target limit $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "page_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finding_occurrences",
+            "name": "page_url"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "page_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finding_occurrences",
+            "name": "page_state"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "target",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finding_occurrences",
+            "name": "target"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "html_excerpt",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finding_occurrences",
+            "name": "html_excerpt"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e6c0ca71a573bec5f044c2b76ee6dcc344ec3fc47a5f07606ff9549b0e694c7f"
+}

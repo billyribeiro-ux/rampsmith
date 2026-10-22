@@ -1,0 +1,8 @@
+{
+  "data": {
+    "productUpdate": {
+      "product": null,
+      "userErrors": [{ "field": ["product", "id"], "message": "Product does not exist" }]
+    }
+  }
+}

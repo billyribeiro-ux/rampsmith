@@ -15,7 +15,11 @@
 mod support;
 
 use db::Db;
-use db::repo::{audit, findings, fixes, jobs, occurrences, scans, shopify, sites, tenants};
+use db::repo::webhooks::{self, NewWebhook, Recorded};
+use db::repo::{
+    app_views, audit, data_fixes, findings, fixes, jobs, occurrences, redact, scan_inputs, scans,
+    shop_billing, shopify, sites, tenants,
+};
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
@@ -221,6 +225,7 @@ async fn application_roles_cannot_bypass_row_level_security(pool: PgPool) {
 // --- Layer 1: repository scoping --------------------------------------------------------
 
 async fn assert_repositories_isolate(db: &Db, a: Graph, b: Graph) {
+    assert_webhooks_and_shop_info_isolate(db, a, b).await;
     let mut tx = db.tenant(a.tenant).await.unwrap();
 
     assert_eq!(
@@ -921,4 +926,444 @@ async fn a_sealed_storefront_password_is_both_columns_or_neither(
     .execute(&owner)
     .await
     .unwrap();
+}
+
+fn webhook(shop: Graph, id: &str, label: u8) -> NewWebhook {
+    NewWebhook {
+        shop_id: shop.shop,
+        external_id: id.to_owned(),
+        topic: "app/uninstalled".to_owned(),
+        body: serde_json::json!({"myshopify_domain": "x.myshopify.com", "label": label}),
+        body_sha256: [label; 32],
+    }
+}
+
+/// Webhook events and the shop-info columns the R1 listener and worker read and write (ADR-080):
+/// a tenant never reaches another tenant's rows, and a dedup never matches across tenants.
+async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
+    // Both tenants may receive the very same delivery id and body: dedup is per tenant.
+    let mut ids = Vec::new();
+    for me in [a, b] {
+        let mut tx = db.tenant(me.tenant).await.unwrap();
+        let Recorded::Stored(id) = webhooks::record(&mut tx, &webhook(me, "same-id", 5))
+            .await
+            .unwrap()
+        else {
+            panic!("a delivery another tenant also received was treated as a duplicate");
+        };
+        ids.push(id);
+        tx.commit().await.unwrap();
+    }
+    // A cannot read, mark or duplicate-match B's event.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(webhooks::get(&mut tx, ids[1]).await.unwrap().is_none());
+    assert!(!webhooks::mark_processed(&mut tx, ids[1]).await.unwrap());
+    // Recording an event for B's shop as A is rejected by the composite key or by RLS.
+    let forged = webhooks::record(&mut tx, &webhook(b, "forged", 6)).await;
+    assert!(forged.is_err(), "{forged:?}");
+    tx.rollback().await.unwrap();
+
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    let event = webhooks::get(&mut tx, ids[1]).await.unwrap().unwrap();
+    assert!(
+        event.processed_at.is_none(),
+        "A's attempt changed B's event"
+    );
+    assert!(webhooks::mark_processed(&mut tx, ids[1]).await.unwrap());
+    tx.commit().await.unwrap();
+
+    // Store batches and scan failure.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let batch = serde_json::json!({"items": []});
+    assert!(
+        scan_inputs::put(&mut tx, b.scan, b.site, "pages", 7, &batch)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        scan_inputs::put(&mut tx, a.scan, b.site, "pages", 7, &batch)
+            .await
+            .unwrap()
+            .is_none(),
+        "a scan with another tenant's site"
+    );
+    assert_eq!(
+        scan_inputs::count(&mut tx, b.scan, "products")
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(scans::fail(&mut tx, b.scan, "x").await.unwrap().is_none());
+    assert!(!scans::set_planned(&mut tx, b.scan, 3).await.unwrap());
+    tx.rollback().await.unwrap();
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert_eq!(
+        scan_inputs::count(&mut tx, b.scan, "pages").await.unwrap(),
+        0
+    );
+    let id = scan_inputs::put(&mut tx, b.scan, b.site, "pages", 7, &batch)
+        .await
+        .unwrap()
+        .unwrap();
+    let again = scan_inputs::put(&mut tx, b.scan, b.site, "pages", 7, &batch)
+        .await
+        .unwrap();
+    assert_eq!(again, Some(id), "the same batch keeps its id");
+    tx.rollback().await.unwrap();
+
+    assert_data_fixes_isolate(db, a, b).await;
+    assert_shop_info_isolates(db, a, b).await;
+}
+
+/// The data-fix lifecycle `ctl` drives.
+async fn assert_data_fixes_isolate(db: &Db, a: Graph, b: Graph) {
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(data_fixes::get(&mut tx, b.fix).await.unwrap().is_none());
+    assert!(
+        data_fixes::snapshot(&mut tx, b.fix)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let snapshot = data_fixes::Snapshot {
+        resource_gid: "gid://shopify/MediaImage/1".to_owned(),
+        field: "alt".to_owned(),
+        before_value: serde_json::Value::Null,
+        after_value: serde_json::json!("x"),
+    };
+    assert!(
+        !data_fixes::put_snapshot(&mut tx, b.fix, &snapshot)
+            .await
+            .unwrap()
+    );
+    assert!(!data_fixes::begin_apply(&mut tx, b.fix).await.unwrap());
+    assert!(!data_fixes::finish_apply(&mut tx, b.fix).await.unwrap());
+    assert!(!data_fixes::fail(&mut tx, b.fix, "x").await.unwrap());
+    assert!(!data_fixes::finish_revert(&mut tx, b.fix).await.unwrap());
+    assert_eq!(
+        data_fixes::reopen_findings(&mut tx, b.fix).await.unwrap(),
+        0
+    );
+    assert!(
+        data_fixes::approve_by_ref(&mut tx, b.fix, "1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        data_fixes::latest_ruleset(&mut tx, b.site)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    tx.rollback().await.unwrap();
+}
+
+/// Shop info and uninstall.
+async fn assert_shop_info_isolates(db: &Db, a: Graph, b: Graph) {
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(!shopify::mark_uninstalled(&mut tx, b.shop).await.unwrap());
+    assert!(
+        !shopify::set_info(&mut tx, b.shop, Some("evil.example"), &["xx".to_owned()])
+            .await
+            .unwrap()
+    );
+    assert!(shopify::get_info(&mut tx, b.shop).await.unwrap().is_none());
+    tx.rollback().await.unwrap();
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    let info = shopify::get_info(&mut tx, b.shop).await.unwrap().unwrap();
+    assert_ne!(info.primary_domain.as_deref(), Some("evil.example"));
+    assert!(
+        shopify::get(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .unwrap()
+            .uninstalled_at
+            .is_none()
+    );
+    tx.rollback().await.unwrap();
+}
+
+/// `shop/redact` and the job cancellation on uninstall act on the caller's tenant only.
+#[sqlx::test]
+async fn redaction_and_job_cancellation_never_touch_another_tenant(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    let workers = worker_pool(opts.clone(), conn.clone()).await;
+    let db = Db::from_pool(workers.clone());
+    let owner = owner_pool(opts, conn).await;
+    let count = |sql: &'static str, tenant: TenantId| {
+        let owner = owner.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(sql)
+                .bind(tenant.as_uuid())
+                .fetch_one(&owner)
+                .await
+                .unwrap()
+        }
+    };
+
+    // Cancelling A's pending work leaves B's.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert_eq!(
+        jobs::cancel_pending(&mut tx, "webhook.process")
+            .await
+            .unwrap(),
+        1
+    );
+    tx.commit().await.unwrap();
+    assert_eq!(
+        count(
+            "select count(*) from jobs where tenant_id = $1 and state = 'ready'",
+            b.tenant
+        )
+        .await,
+        1
+    );
+
+    // Redacting B's shop as A finds nothing and changes nothing.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(redact::shop(&mut tx, b.shop).await.unwrap().is_none());
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        count("select count(*) from scans where tenant_id = $1", b.tenant).await,
+        1
+    );
+
+    // Redacting A's own shop empties A and leaves B whole.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let removed = redact::shop(&mut tx, a.shop).await.unwrap().unwrap();
+    tx.commit().await.unwrap();
+    assert!(removed.scans >= 1 && removed.findings >= 1);
+    for table in [
+        "scans",
+        "findings",
+        "fixes",
+        "scan_inputs",
+        "evidence",
+        "shopify_tokens",
+    ] {
+        let sql: &'static str = Box::leak(
+            format!("select count(*) from {table} where tenant_id = $1").into_boxed_str(),
+        );
+        assert_eq!(count(sql, a.tenant).await, 0, "{table} kept A's rows");
+        assert!(count(sql, b.tenant).await >= 1, "{table} lost B's rows");
+    }
+    // The second run removes nothing.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let again = redact::shop(&mut tx, a.shop).await.unwrap().unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(again, redact::Redacted::default());
+}
+
+/// Everything the embedded app's pages read or change (ADR-083), asked as tenant A about
+/// tenant B's site and rows: nothing is found and nothing changes. `b_evidence` is B's evidence
+/// row when the graph has one.
+async fn assert_app_views_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Option<uuid::Uuid>) {
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        app_views::latest_scan(&mut tx, b.site)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        app_views::scan(&mut tx, b.site, b.scan.as_uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !app_views::has_live_scan(&mut tx, b.site, 3600)
+            .await
+            .unwrap()
+    );
+    let (counts, first_fix) = app_views::counts(&mut tx, b.site).await.unwrap();
+    assert_eq!(counts, app_views::Counts::default());
+    assert!(first_fix.is_none());
+    let filter = app_views::FindingFilter {
+        offset: 0,
+        limit: 50,
+        ..Default::default()
+    };
+    assert_empty(&app_views::findings(&mut tx, b.site, &filter).await.unwrap());
+    assert!(
+        app_views::finding(&mut tx, b.site, b.finding.as_uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (occurrences, templates) = app_views::occurrences(&mut tx, b.finding.as_uuid(), 50)
+        .await
+        .unwrap();
+    assert!(occurrences.is_empty() && templates.is_empty());
+    let all = [
+        "proposed", "approved", "applying", "applied", "verified", "failed", "reverted", "rejected",
+    ]
+    .map(str::to_owned);
+    assert_empty(
+        &app_views::fixes(&mut tx, b.site, &all, 0, 50)
+            .await
+            .unwrap(),
+    );
+    assert!(
+        app_views::fix(&mut tx, b.site, b.fix.as_uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_empty(
+        &app_views::fixes_of_finding(&mut tx, b.site, b.finding.as_uuid())
+            .await
+            .unwrap(),
+    );
+    assert_empty(
+        &app_views::findings_of_fixes(&mut tx, &[b.fix.as_uuid()])
+            .await
+            .unwrap(),
+    );
+    assert_empty(
+        &app_views::evidence_of_fixes(&mut tx, &[b.fix.as_uuid()])
+            .await
+            .unwrap(),
+    );
+    assert_empty(
+        &app_views::products(&mut tx, b.site, &["gid://shopify/Product/1".to_owned()])
+            .await
+            .unwrap(),
+    );
+    tx.rollback().await.unwrap();
+    assert_app_writes_isolate(db, a, b, b_evidence).await;
+    assert_app_controls_and_keys(db, a, b).await;
+}
+
+/// The writes and settings half of [`assert_app_views_isolate`].
+async fn assert_app_writes_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Option<uuid::Uuid>) {
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        !app_views::edit_alt(&mut tx, b.site, b.fix.as_uuid(), "Changed")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !app_views::reject(&mut tx, b.site, b.fix.as_uuid())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !app_views::revert_pending(&mut tx, b.fix.as_uuid())
+            .await
+            .unwrap()
+    );
+    if let Some(evidence) = b_evidence {
+        assert!(
+            app_views::evidence(&mut tx, evidence)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert!(
+        app_views::settings(&mut tx, b.site)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !app_views::merge_settings(&mut tx, b.site, &serde_json::json!({"weekly_rescan": true}))
+            .await
+            .unwrap()
+    );
+    assert!(
+        !app_views::set_storefront_password(&mut tx, b.site, Some((b"x", "k1")))
+            .await
+            .unwrap()
+    );
+    assert!(!app_views::lock_site(&mut tx, b.site).await.unwrap());
+    assert_eq!(app_views::images_fixed(&mut tx, b.site).await.unwrap(), 0);
+    assert_empty(&app_views::statements(&mut tx, b.site).await.unwrap());
+    assert!(
+        app_views::site_of_shop(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(shop_billing::get(&mut tx, b.shop).await.unwrap().is_none());
+    assert!(
+        !shopify::set_shop_gid(&mut tx, b.shop, "gid://shopify/Shop/1")
+            .await
+            .unwrap()
+    );
+    assert!(shopify::shop_gid(&mut tx, b.shop).await.unwrap().is_none());
+    tx.rollback().await.unwrap();
+}
+
+/// The tenant's own rows are visible, and writes that name another tenant's site or shop are
+/// refused by the composite keys, not silently accepted.
+async fn assert_app_controls_and_keys(db: &Db, a: Graph, b: Graph) {
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    // The tenant's own site is visible, as a control.
+    assert!(
+        app_views::latest_scan(&mut tx, a.site)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        app_views::finding(&mut tx, a.site, a.finding.as_uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        app_views::fix(&mut tx, a.site, a.fix.as_uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    tx.rollback().await.unwrap();
+
+    // Writes that name another tenant's site or shop are refused by the composite keys, not
+    // silently accepted.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        app_views::save_draft(&mut tx, b.site, &serde_json::json!({}))
+            .await
+            .is_err()
+    );
+    tx.rollback().await.unwrap();
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let state = billing::stored::stored_of(&billing::BillingState::new());
+    assert!(shop_billing::put(&mut tx, b.shop, &state).await.is_err());
+    tx.rollback().await.unwrap();
+}
+
+#[sqlx::test]
+async fn the_embedded_apps_queries_return_nothing_across_the_boundary(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (db, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts, conn).await;
+    let evidence: uuid::Uuid = sqlx::query_scalar("select id from evidence where tenant_id = $1")
+        .bind(b.tenant.as_uuid())
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+    assert_app_views_isolate(&db, a, b, Some(evidence)).await;
+}
+
+/// The superuser bypasses row-level security, so this proves the queries' own filters.
+#[sqlx::test]
+async fn the_embedded_apps_queries_scope_themselves_without_row_level_security(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = Db::from_pool(owner_pool(opts, conn).await);
+    let a = seed(&db, 1).await;
+    let b = seed(&db, 2).await;
+    assert_app_views_isolate(&db, a, b, None).await;
 }

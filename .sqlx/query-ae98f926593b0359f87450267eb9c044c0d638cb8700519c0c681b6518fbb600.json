@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update findings set status = 'open'\n            where tenant_id = $1 and status = 'fixed'\n              and id in (select finding_id from fix_findings\n                          where tenant_id = $1 and fix_id = $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ae98f926593b0359f87450267eb9c044c0d638cb8700519c0c681b6518fbb600"
+}

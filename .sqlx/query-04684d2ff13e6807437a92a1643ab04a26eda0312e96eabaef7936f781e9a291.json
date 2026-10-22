@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into webhook_events (id, tenant_id, shop_id, external_id, topic, body, body_sha256)\n           values ($1, $2, $3, $4, $5, $6, $7)\n           on conflict (tenant_id, external_id) do nothing\n        returning id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "webhook_events",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "04684d2ff13e6807437a92a1643ab04a26eda0312e96eabaef7936f781e9a291"
+}

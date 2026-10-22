@@ -1,0 +1,132 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select f.id, f.site_id, f.kind, f.status, f.approved_by, f.approved_by_ref,\n                  f.approved_at, f.applied_at, f.diff,\n                  (select x.source_location ->> 'owner'\n                     from fix_findings ff\n                     join findings x on x.id = ff.finding_id and x.tenant_id = ff.tenant_id\n                    where ff.tenant_id = f.tenant_id and ff.fix_id = f.id\n                    order by ff.finding_id limit 1) as \"owner\"\n             from fixes f where f.tenant_id = $1 and f.id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "approved_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "approved_by"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "approved_by_ref",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "approved_by_ref"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "approved_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "approved_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "applied_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "applied_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "diff",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "diff"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "owner",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "03d21bc278c6ec2285a924075c9763e1d76ecf297f29adba80e5ad909c996145"
+}

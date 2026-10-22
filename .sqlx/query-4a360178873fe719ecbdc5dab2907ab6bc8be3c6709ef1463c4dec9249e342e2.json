@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update fixes set diff = jsonb_set(diff, '{after}', to_jsonb($4::text)), edited = true\n            where tenant_id = $1 and site_id = $2 and id = $3 and kind = 'data'\n              and status = 'proposed' and diff is not null",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4a360178873fe719ecbdc5dab2907ab6bc8be3c6709ef1463c4dec9249e342e2"
+}

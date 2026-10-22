@@ -1,0 +1,173 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, status, trigger, created_at, started_at, finished_at, pages_planned,\n                  pages_done, checks_run, checks_passed, error_code, ruleset_version, coverage\n             from scans\n            where tenant_id = $1 and site_id = $2 and trigger <> 'verify'\n            order by created_at desc limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "trigger",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "trigger"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "started_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "finished_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "finished_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "pages_planned",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "pages_planned"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "pages_done",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "pages_done"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "checks_run",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "checks_run"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "checks_passed",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "checks_passed"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "error_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "error_code"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "ruleset_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "ruleset_version"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "coverage",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "coverage"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "b13dfa93e6ff14a9628a1f61dc2dfcbadf58bc4420e072796fd5540e711e3ffd"
+}

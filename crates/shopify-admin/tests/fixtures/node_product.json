@@ -1,0 +1,9 @@
+{
+  "data": {
+    "node": {
+      "__typename": "Product",
+      "id": "gid://shopify/Product/1",
+      "descriptionHtml": "<p>Shake it.</p>"
+    }
+  }
+}

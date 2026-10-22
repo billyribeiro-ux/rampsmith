@@ -130,7 +130,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** An evidence crop (PNG or WebP), served from the database (ADR-035). */
+        /** A screenshot taken before or after a fix. */
         get: operations["getEvidence"];
         put?: never;
         post?: never;
@@ -164,7 +164,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One finding, with its evidence and affected templates. */
+        /** One finding with its occurrences, evidence and fixes. */
         get: operations["getFinding"];
         put?: never;
         post?: never;
@@ -181,7 +181,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Fixes by state: the approval queue and the remediation log. */
+        /** Fixes: the review queue, or what was applied. */
         get: operations["listFixes"];
         put?: never;
         post?: never;
@@ -199,7 +199,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edits a proposed fix, such as an alt-text draft. */
+        /** Edits the alt text of a fix that is waiting for review. */
         put: operations["editFix"];
         post?: never;
         delete?: never;
@@ -217,7 +217,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approves a proposed fix and applies it. */
+        /** Approves a fix: Rampsmith then changes the alt text in the shop. */
         post: operations["approveFix"];
         delete?: never;
         options?: never;
@@ -234,7 +234,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rejects a proposed fix. */
+        /** Rejects a fix that is waiting for review; nothing changes in the shop. */
         post: operations["rejectFix"];
         delete?: never;
         options?: never;
@@ -251,7 +251,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reverts an applied fix. */
+        /** Undoes an applied fix: Rampsmith puts the earlier alt text back if nobody changed it since. */
         post: operations["undoFix"];
         delete?: never;
         options?: never;
@@ -337,9 +337,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scan schedule, storefront password state, AI budget and notification email. */
+        /** The shop's settings. */
         get: operations["getSettings"];
-        /** Changes the shop's settings. */
+        /** Changes the shop's settings. Fields left out stay as they are. */
         put: operations["updateSettings"];
         post?: never;
         delete?: never;
@@ -355,9 +355,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The accessibility statement versions. */
+        /** The accessibility statement: the open draft and the saved versions. */
         get: operations["getStatement"];
-        /** Saves a draft of the accessibility statement. */
+        /** Saves the statement as the draft. */
         put: operations["saveStatement"];
         post?: never;
         delete?: never;
@@ -370,6 +370,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AltTextChangeDto: {
+            after: string;
+            before?: string | null;
+            contains_text: boolean;
+            escalated: boolean;
+            /** @description Always `alt`. */
+            field: string;
+            language: string;
+            resource_gid: string;
+            /** @description Always `alt_text`. */
+            type: string;
+        };
         /** @description Completes a ceremony with the browser's answer. */
         CeremonyResponse: {
             /**
@@ -390,6 +402,56 @@ export interface components {
             /** @description WebAuthn options in their JSON form (`publicKey` and, for sign-in, `mediation`). */
             options: Record<string, never>;
         };
+        CoverageDto: {
+            /** @description WCAG success criteria the automated checks tested. */
+            automated: string[];
+            /** @description Criteria tested only in part. */
+            partial: string[];
+            /**
+             * Format: int64
+             * @description Findings waiting for a person's review.
+             */
+            review_queue?: number | null;
+        };
+        DraftsDto: {
+            /**
+             * Format: int32
+             * @description The allowance.
+             */
+            limit: number;
+            /** @description When the window renews; null on Free. */
+            renews_at?: string | null;
+            /**
+             * Format: int64
+             * @description Drafts used in the current window (the shop's lifetime on Free).
+             */
+            used: number;
+        };
+        EditFixBody: {
+            /** @description The new alt text. */
+            alt: string;
+        };
+        EntitlementsDto: {
+            alt_text_drafts: components["schemas"]["DraftsDto"];
+            features: components["schemas"]["FeatureGateDto"][];
+            /** @description `free`, `starter`, `growth` or `pro`. */
+            plan: string;
+            /** @description `monthly`, `weekly` or `daily`. */
+            scan_cadence: string;
+        };
+        EvidenceRefDto: {
+            id: string;
+            /** @description `before` or `after`. */
+            kind: string;
+        };
+        FeatureGateDto: {
+            /** @description The feature's key. */
+            feature: string;
+            /** @description `allowed`, `locked` or `unavailable`. */
+            gate: string;
+            /** @description The lowest plan that unlocks it, when it is locked. */
+            unlocked_by?: string | null;
+        };
         /** @description One invalid field of a request. */
         FieldError: {
             /** @description JSON path of the field, such as `shop` or `items.0.alt`. */
@@ -397,10 +459,119 @@ export interface components {
             /** @description What is wrong, safe to show to the user. */
             message: string;
         };
+        FindingDetailDto: components["schemas"]["FindingSummaryDto"] & {
+            evidence: components["schemas"]["EvidenceRefDto"][];
+            /** @description The rule's plain-language explanation. */
+            explanation: string;
+            fixes: components["schemas"]["FixDto"][];
+            occurrences: components["schemas"]["OccurrenceDto"][];
+            /** @description The page types the finding appears on. */
+            templates: string[];
+        };
+        FindingFixDto: {
+            id: string;
+            status: string;
+        };
+        FindingListDto: {
+            items: components["schemas"]["FindingSummaryDto"][];
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total: number;
+        };
+        FindingSummaryDto: {
+            criteria: string[];
+            fix?: components["schemas"]["FindingFixDto"] | null;
+            id: string;
+            impact: string;
+            /** Format: int32 */
+            occurrence_count: number;
+            on_purchase_path: boolean;
+            origin: string;
+            /** Format: double */
+            priority_score?: number | null;
+            rule_id: string;
+            status: string;
+            /** Format: int32 */
+            templates_affected: number;
+            /** @description One plain-language sentence naming the problem. */
+            title: string;
+        };
+        FixDto: {
+            after_evidence_id?: string | null;
+            applied_at?: string | null;
+            approved_at?: string | null;
+            /** @description Shopify does not give the app the staff member's name. */
+            approver_name?: string | null;
+            before_evidence_id?: string | null;
+            change: components["schemas"]["AltTextChangeDto"];
+            channel: string;
+            /** Format: double */
+            confidence?: number | null;
+            edited: boolean;
+            error_code?: string | null;
+            findings: components["schemas"]["FixFindingDto"][];
+            id: string;
+            /** @description The image on Shopify's CDN. */
+            image_url?: string | null;
+            kind: string;
+            model?: string | null;
+            origin: string;
+            /** @description The product the image belongs to. */
+            product_title: string;
+            proposed_at: string;
+            reverts?: string | null;
+            status: string;
+            verified_at?: string | null;
+            verified_scan?: string | null;
+        };
+        FixFindingDto: {
+            criteria: string[];
+            id: string;
+            impact: string;
+            rule_id: string;
+            title: string;
+        };
+        FixListDto: {
+            items: components["schemas"]["FixDto"][];
+            next_cursor?: string | null;
+        };
         /** @description The process is up. */
         Health: {
             /** @description Always `ok`. */
             status: string;
+        };
+        ImpactCountsDto: {
+            /** Format: int64 */
+            critical: number;
+            /** Format: int64 */
+            minor: number;
+            /** Format: int64 */
+            moderate: number;
+            /** Format: int64 */
+            serious: number;
+        };
+        OccurrenceDto: {
+            /** @description A scrubbed HTML excerpt of at most 512 characters. */
+            html_excerpt: string;
+            page_state: string;
+            page_url: string;
+            /** @description A scrubbed CSS selector. */
+            target: string;
+        };
+        OverviewDto: {
+            entitlements: components["schemas"]["EntitlementsDto"];
+            /** @description When the first fix was applied. */
+            first_fix_at?: string | null;
+            /** Format: int64 */
+            fixes_applied: number;
+            /** Format: int64 */
+            fixes_awaiting_approval: number;
+            latest_scan?: components["schemas"]["ScanSummaryDto"] | null;
+            /** @description When the next scheduled rescan runs, when weekly rescans are on. */
+            next_scan_at?: string | null;
+            /** @description Open findings by impact; best practices are not counted. */
+            open_by_impact: components["schemas"]["ImpactCountsDto"];
+            shop: components["schemas"]["ShopDto"];
         };
         /**
          * @description An RFC 9457 `application/problem+json` body with Rampsmith's extension members.
@@ -457,6 +628,29 @@ export interface components {
             /** @description The account's email address. */
             email: string;
         };
+        ScanSummaryDto: {
+            /** Format: int32 */
+            checks_passed: number;
+            /** Format: int32 */
+            checks_run: number;
+            coverage?: components["schemas"]["CoverageDto"] | null;
+            created_at: string;
+            /** @description A short code such as `store_unreachable`; never store content. */
+            error_code?: string | null;
+            finished_at?: string | null;
+            id: string;
+            /** Format: int32 */
+            pages_done: number;
+            /** Format: int32 */
+            pages_planned: number;
+            /** @description The axe-core version the scan ran with. */
+            ruleset_version: string;
+            started_at?: string | null;
+            /** @description `queued`, `running`, `succeeded`, `partial`, `failed` or `cancelled`. */
+            status: string;
+            /** @description `manual`, `scheduled`, `webhook`, `verify` or `free`. */
+            trigger: string;
+        };
         /** @description A new session. The token is shown once; store it in an `HttpOnly` cookie. */
         SessionCreated: {
             /**
@@ -473,6 +667,73 @@ export interface components {
         SessionInfo: {
             /** @description Who is signed in. */
             user: components["schemas"]["UserInfo"];
+        };
+        SettingsDto: {
+            /**
+             * Format: int64
+             * @description The plan's ceiling for the budget.
+             */
+            ai_budget_max_micro_usd: number;
+            /** Format: int64 */
+            ai_budget_micro_usd: number;
+            /**
+             * Format: int64
+             * @description 40 to 300; 150 unless changed.
+             */
+            alt_text_max_characters: number;
+            entitlements: components["schemas"]["EntitlementsDto"];
+            notification_email?: string | null;
+            storefront_password_set: boolean;
+            weekly_rescan: boolean;
+        };
+        /** @description Fields left out stay as they are; `storefront_password: null` clears the saved password. */
+        SettingsUpdateBody: {
+            /** Format: int64 */
+            ai_budget_micro_usd?: number | null;
+            /** Format: int64 */
+            alt_text_max_characters?: number | null;
+            notification_email?: string | null;
+            storefront_password?: string | null;
+            weekly_rescan?: boolean | null;
+        };
+        ShopDto: {
+            domain: string;
+            name?: string | null;
+        };
+        StartedScanDto: {
+            scan: components["schemas"]["ScanSummaryDto"];
+        };
+        StatementContact: {
+            email: string;
+            form_url: string;
+            phone: string;
+            postal_address: string;
+            response_time: string;
+        };
+        StatementContent: {
+            compatibility: string;
+            contact: components["schemas"]["StatementContact"];
+            limitations: components["schemas"]["StatementLimitation"][];
+            measures: string[];
+            organization: string;
+        };
+        StatementLimitation: {
+            alternative: string;
+            description: string;
+            reason: string;
+        };
+        StatementStateDto: {
+            draft?: components["schemas"]["StatementContent"] | null;
+            versions: components["schemas"]["StatementVersionDto"][];
+        };
+        StatementVersionDto: {
+            created_at: string;
+            id: string;
+            published_at?: string | null;
+            /** @description `draft` or `published`. */
+            status: string;
+            /** Format: int32 */
+            version: number;
         };
         /** @description A dashboard user, as the web app shows them. */
         UserInfo: {
@@ -734,15 +995,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The evidence's identifier */
                 evidence_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The evidence bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such evidence */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -756,13 +1035,46 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description A WCAG success criterion such as `1.1.1`. */
+                criterion: string | null;
+                /** @description The `next_cursor` of the previous page. */
+                cursor: string | null;
+                /** @description Only findings that have (true) or lack (false) a fix. */
+                has_fix: boolean | null;
+                /** @description `minor`, `moderate`, `serious` or `critical`. */
+                impact: string | null;
+                /** @description Items per page (default 25, at most 100). */
+                limit: number | null;
+                /** @description `render` or `data`. */
+                origin: string | null;
+                /** @description `open`, `fixed`, `needs_review`, `accepted_risk` or `false_positive`. */
+                status: string | null;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description A page of findings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingListDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A filter or the cursor is invalid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -777,15 +1089,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The finding's identifier */
                 finding_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The finding */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingDetailDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such finding */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -799,13 +1129,41 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor: string | null;
+                /** @description Items per page (default 25, at most 100). */
+                limit: number | null;
+                /**
+                 * @description `queue` (default): waiting, approved, applying or failed. `applied`: applied or verified.
+                 *     `all`.
+                 */
+                state: string | null;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description A page of fixes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixListDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A filter or the cursor is invalid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -820,15 +1178,55 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The fix's identifier */
                 fix_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditFixBody"];
+            };
+        };
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The edited fix */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such fix */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The fix is no longer waiting for review */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The alt text is empty or too long */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -843,15 +1241,51 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The fix's identifier */
                 fix_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The approved fix; it is applied shortly */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan does not cover another image fix */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such fix */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The fix was already decided */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -866,15 +1300,42 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The fix's identifier */
                 fix_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The rejected fix */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such fix */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The fix was already decided */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -889,15 +1350,42 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The fix's identifier */
                 fix_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The undo is queued; the fix reads reverted when done */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such fix */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The fix is not applied, or an undo is already running */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -916,8 +1404,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The overview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -936,8 +1433,26 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The scan is queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartedScanDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A scan is already running */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -952,15 +1467,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The identifier in the path */
+                /** @description The scan's identifier */
                 scan_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The scan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanSummaryDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such scan */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1026,8 +1559,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1044,9 +1586,49 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdateBody"];
+            };
+        };
         responses: {
-            /** @description Not available yet */
+            /** @description The settings after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan does not include weekly rescans */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A value is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Saving a password is not configured */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1066,8 +1648,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The statement */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementStateDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1084,10 +1675,32 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatementContent"];
+            };
+        };
         responses: {
-            /** @description Not available yet */
-            503: {
+            /** @description The statement after saving */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementStateDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,0 +1,24 @@
+{
+  "data": {
+    "articles": {
+      "pageInfo": { "hasNextPage": false, "endCursor": null },
+      "nodes": [
+        {
+          "id": "gid://shopify/Article/8",
+          "title": "News",
+          "handle": "news",
+          "body": "<p>Hello</p>",
+          "summary": null,
+          "isPublished": true,
+          "blog": { "handle": "journal" },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0001/news.jpg",
+            "altText": "A newspaper",
+            "width": 600,
+            "height": 400
+          }
+        }
+      ]
+    }
+  }
+}

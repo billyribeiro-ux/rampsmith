@@ -1,0 +1,17 @@
+{
+  "data": {
+    "pages": {
+      "pageInfo": { "hasNextPage": false, "endCursor": null },
+      "nodes": [
+        {
+          "id": "gid://shopify/Page/7",
+          "title": "About",
+          "handle": "about",
+          "body": "<h2>About us</h2>",
+          "isPublished": true,
+          "updatedAt": "2026-10-02T10:00:00Z"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select e ->> 'id' as \"gid!\", e ->> 'title' as title, coalesce(e -> 'media', '[]'::jsonb) as \"media!\"\n             from scan_inputs i, jsonb_array_elements(i.payload -> 'items') e\n            where i.tenant_id = $1 and i.site_id = $2 and i.kind = 'products'\n              and i.scan_id = (select scan_id from scan_inputs\n                                where tenant_id = $1 and site_id = $2 and kind = 'products'\n                                order by created_at desc limit 1)\n              and e ->> 'id' = any ($3)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "gid!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "media!",
+        "type_info": "Jsonb",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "9cd90813d0163b7cb597816759d6858d2c9661cdd72bc0849b0b7c55e34596f8"
+}

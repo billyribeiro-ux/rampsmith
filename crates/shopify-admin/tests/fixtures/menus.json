@@ -1,0 +1,31 @@
+{
+  "data": {
+    "menus": {
+      "pageInfo": { "hasNextPage": false, "endCursor": null },
+      "nodes": [
+        {
+          "id": "gid://shopify/Menu/9",
+          "handle": "main-menu",
+          "title": "Main menu",
+          "items": [
+            {
+              "id": "gid://shopify/MenuItem/91",
+              "title": "Shop",
+              "url": "https://supertoys.example/collections/all",
+              "type": "COLLECTIONS",
+              "items": [
+                {
+                  "id": "gid://shopify/MenuItem/92",
+                  "title": "Winter",
+                  "url": "https://supertoys.example/collections/winter",
+                  "type": "COLLECTION",
+                  "items": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

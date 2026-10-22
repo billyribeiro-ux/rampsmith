@@ -1,18 +1,20 @@
-//! The R1 queues `ctl` serves besides `shopify.token_refresh` (ADR-035, ADR-038).
+//! The R1 queues `ctl` serves besides `shopify.token_refresh` (ADR-035, ADR-036, ADR-080 to
+//! ADR-083).
 //!
-//! Every handler is a stub for now: it answers with a typed permanent failure,
-//! [`not_implemented`], so a job that reaches it is parked as dead with a reason instead of
-//! being retried or silently dropped. Nothing enqueues these jobs before the fix-loop lane (A)
-//! does, so no job is parked in practice. Lane A replaces one stub at a time by editing that
-//! queue's own module; this registry does not change.
+//! Every handler that talks to Shopify gets its token from [`ShopifyAuth`] (refreshed when
+//! due) and its client from the shared [`AdminFactory`], so one process paces every call for a
+//! shop through one cost bucket.
 
 use contracts::{
     JobError, ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, WebhookProcess,
 };
 use db::Db;
 use queue::{ClaimedJob, Failure};
+use shopify_admin::AdminFactory;
+use shopify_auth::{RefreshError, ShopifyAuth};
 
 pub mod apply_data_fix;
+pub(crate) mod data_fix;
 pub mod read_store;
 pub mod revert_data_fix;
 pub mod webhook;
@@ -25,31 +27,133 @@ pub const QUEUES: [&str; 4] = [
     WebhookProcess::QUEUE,
 ];
 
-/// The `code` of the failure a stub returns.
-pub const NOT_IMPLEMENTED: &str = "not_implemented";
-
-/// The typed outcome of a stub: a permanent failure that names the queue.
-#[must_use]
-pub fn not_implemented(job: &ClaimedJob) -> Failure {
-    Failure::Permanent(JobError {
-        code: NOT_IMPLEMENTED.to_owned(),
-        message: format!("{} is not implemented yet", job.queue),
-        retryable: false,
-    })
+/// What the R1 handlers share: the database, the token lifecycle and the Admin API client
+/// factory.
+#[derive(Debug, Clone)]
+pub struct Jobs {
+    db: Db,
+    auth: ShopifyAuth,
+    admin: AdminFactory,
 }
 
-/// Hands `job` to its queue's handler. The queue is the one the worker claimed from, so a
-/// queue outside [`QUEUES`] is a wiring mistake and fails permanently.
-pub async fn dispatch(db: &Db, job: ClaimedJob) -> Result<(), Failure> {
-    match job.queue.as_str() {
-        ShopifyReadStore::QUEUE => read_store::handle(db, job).await,
-        ShopifyApplyDataFix::QUEUE => apply_data_fix::handle(db, job).await,
-        ShopifyRevertDataFix::QUEUE => revert_data_fix::handle(db, job).await,
-        WebhookProcess::QUEUE => webhook::handle(db, job).await,
-        other => Err(Failure::Permanent(JobError {
-            code: "queue_unknown".to_owned(),
-            message: format!("ctl does not serve {other}"),
-            retryable: false,
-        })),
+impl Jobs {
+    /// Handlers over `db` (connected as `rampsmith_worker`).
+    #[must_use]
+    pub const fn new(db: Db, auth: ShopifyAuth, admin: AdminFactory) -> Self {
+        Self { db, auth, admin }
+    }
+
+    /// Hands `job` to its queue's handler. The queue is the one the worker claimed from, so a
+    /// queue outside [`QUEUES`] is a wiring mistake and fails permanently.
+    pub async fn dispatch(&self, job: ClaimedJob) -> Result<(), Failure> {
+        match job.queue.as_str() {
+            ShopifyReadStore::QUEUE => read_store::handle(self, job).await,
+            ShopifyApplyDataFix::QUEUE => apply_data_fix::handle(self, job).await,
+            ShopifyRevertDataFix::QUEUE => revert_data_fix::handle(self, job).await,
+            WebhookProcess::QUEUE => webhook::handle(self, job).await,
+            other => Err(Failure::Permanent(JobError {
+                code: "queue_unknown".to_owned(),
+                message: format!("ctl does not serve {other}"),
+                retryable: false,
+            })),
+        }
+    }
+}
+
+/// A failure with a stable code. Messages never carry tokens, response bodies or personal data.
+pub(crate) fn failure(retryable: bool, code: &str, message: impl Into<String>) -> Failure {
+    let error = JobError {
+        code: code.to_owned(),
+        message: message.into(),
+        retryable,
+    };
+    if retryable {
+        Failure::Retryable(error)
+    } else {
+        Failure::Permanent(error)
+    }
+}
+
+/// A database failure: worth another attempt.
+pub(crate) fn database(error: &db::DbError) -> Failure {
+    failure(true, "database", error.to_string())
+}
+
+/// An Admin API failure, classified by whether a retry can help.
+pub(crate) fn admin(error: &shopify_admin::AdminError) -> Failure {
+    failure(error.is_retryable(), error.code(), error.to_string())
+}
+
+/// A token lifecycle failure.
+pub(crate) fn token(error: &RefreshError) -> Failure {
+    match error {
+        RefreshError::Retryable(e) => failure(true, "shopify_unavailable", e.to_string()),
+        RefreshError::Rejected(e) => failure(false, "shopify_rejected", e.to_string()),
+        RefreshError::Database(e) => failure(true, "database", e.to_string()),
+        RefreshError::Crypto(e) => failure(false, "crypto", e.to_string()),
+    }
+}
+
+/// The job's tenant, which every R1 job needs.
+pub(crate) fn tenant_of(job: &ClaimedJob) -> Result<domain::TenantId, Failure> {
+    job.tenant_id
+        .map(domain::TenantId::from_uuid)
+        .ok_or_else(|| {
+            failure(
+                false,
+                "tenant_missing",
+                format!("{} needs a tenant", job.queue),
+            )
+        })
+}
+
+/// Parses the job's payload against the schema its handler expects.
+pub(crate) fn payload<T: serde::de::DeserializeOwned>(
+    job: &ClaimedJob,
+    schema: &'static str,
+) -> Result<T, Failure> {
+    if job.payload_schema != schema {
+        return Err(failure(
+            false,
+            "payload_schema_unknown",
+            format!("expected {schema}"),
+        ));
+    }
+    serde_json::from_value(job.payload.clone())
+        .map_err(|e| failure(false, "payload_invalid", e.to_string()))
+}
+
+impl Jobs {
+    /// An Admin API client for `shop`, with a token refreshed if due. `None` when the shop is
+    /// not installed or its grant was revoked.
+    pub(crate) async fn client(
+        &self,
+        tenant: domain::TenantId,
+        shop: domain::ShopId,
+    ) -> Result<Option<shopify_admin::AdminClient>, Failure> {
+        let mut tx = self.db.tenant(tenant).await.map_err(|e| database(&e))?;
+        let row = db::repo::shopify::get(&mut tx, shop)
+            .await
+            .map_err(|e| database(&e))?;
+        tx.rollback().await.map_err(|e| database(&e))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let domain = shopify::ShopDomain::parse(&row.shop_domain).map_err(|_| {
+            failure(
+                false,
+                "shop_domain_invalid",
+                "the stored shop domain is invalid",
+            )
+        })?;
+        let Some(token) = self
+            .auth
+            .access_token(tenant, shop)
+            .await
+            .map_err(|e| token(&e))?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(self.admin.client(&domain, token)))
     }
 }

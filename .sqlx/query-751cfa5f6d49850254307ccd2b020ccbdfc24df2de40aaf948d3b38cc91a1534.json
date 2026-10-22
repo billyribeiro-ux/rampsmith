@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_shops set shop_gid = $3\n            where tenant_id = $1 and id = $2 and status = 'installed'\n              and $3 ~ '^gid://shopify/Shop/[0-9]{1,18}$'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "751cfa5f6d49850254307ccd2b020ccbdfc24df2de40aaf948d3b38cc91a1534"
+}

@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into scan_inputs (id, tenant_id, scan_id, site_id, kind, seq, payload)\n           values ($1, $2, $3, $4, $5, $6, $7)\n           on conflict (scan_id, kind, seq) do update set payload = excluded.payload\n        returning id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "scan_inputs",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int4",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f68dc91243a31860fe38b4aff9cd3755553e48d280e1dca5fc29e21bfcbf2a8f"
+}

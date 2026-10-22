@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select count(*) as \"n!\" from fixes\n            where tenant_id = $1 and site_id = $2 and kind = 'data'\n              and status in ('approved', 'applying', 'applied', 'verified')",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c802f0c846673009abf4b663a98cdc2f671c6a3d76bef016692e538f55ce8fa3"
+}

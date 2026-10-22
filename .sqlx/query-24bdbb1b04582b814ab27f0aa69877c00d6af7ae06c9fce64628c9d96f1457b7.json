@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from data_fix_snapshots where tenant_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "24bdbb1b04582b814ab27f0aa69877c00d6af7ae06c9fce64628c9d96f1457b7"
+}

@@ -1,0 +1,35 @@
+{
+  "data": {
+    "shop": {
+      "id": "gid://shopify/Shop/548380009",
+      "name": "Super Toys",
+      "myshopifyDomain": "super-toys.myshopify.com",
+      "primaryDomain": { "host": "supertoys.example", "url": "https://supertoys.example" }
+    },
+    "shopLocales": [
+      { "locale": "en", "primary": true, "published": true },
+      { "locale": "fr", "primary": false, "published": false }
+    ],
+    "themes": {
+      "nodes": [
+        {
+          "id": "gid://shopify/OnlineStoreTheme/1",
+          "name": "Dawn",
+          "role": "MAIN",
+          "updatedAt": "2026-10-01T12:00:00Z"
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 6,
+      "actualQueryCost": 4,
+      "throttleStatus": {
+        "maximumAvailable": 1000.0,
+        "currentlyAvailable": 996,
+        "restoreRate": 50.0
+      }
+    }
+  }
+}

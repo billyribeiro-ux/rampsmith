@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update fixes set status = 'failed', error_code = $3\n            where tenant_id = $1 and id = $2 and status in ('approved', 'applying')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2ecc831c5450cbd3fa4940f71d294c5cc88664556eb966ddc61caa2e67db03ac"
+}

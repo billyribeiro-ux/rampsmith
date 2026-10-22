@@ -16,14 +16,17 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+billing = { package = "rampsmith-billing", path = "../billing" }
 contracts.workspace = true
 crypto.workspace = true
 db.workspace = true
 domain.workspace = true
 queue.workspace = true
 secrecy.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 shopify.workspace = true
+shopify-admin.workspace = true
 shopify-auth.workspace = true
 sqlx.workspace = true
 telemetry.workspace = true
@@ -31,11 +34,11 @@ thiserror.workspace = true
 time.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 jsonwebtoken.workspace = true
 url.workspace = true
-uuid.workspace = true
 wiremock.workspace = true
 
 [lints]

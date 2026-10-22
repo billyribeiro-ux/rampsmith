@@ -289,6 +289,7 @@ pub struct Entitlements {
     render_sampling: RenderSampling,
     alt_text_drafts: DraftAllowance,
     image_fixes: ImageFixAllowance,
+    ai_budget_micro_usd: u64,
     features: FeatureSet,
 }
 
@@ -321,6 +322,12 @@ impl Entitlements {
     #[must_use]
     pub const fn image_fixes(&self) -> ImageFixAllowance {
         self.image_fixes
+    }
+
+    /// The most the merchant may set as the monthly AI budget, in micro-dollars (ADR-214).
+    #[must_use]
+    pub const fn ai_budget_micro_usd(&self) -> u64 {
+        self.ai_budget_micro_usd
     }
 
     /// The plan-gated features included.
@@ -359,6 +366,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             render_sampling: FREE_SAMPLING,
             alt_text_drafts: DraftAllowance::Lifetime(25),
             image_fixes: ImageFixAllowance::FirstImages(25),
+            ai_budget_micro_usd: 500_000,
             features: free_features,
         },
         Plan::Starter => Entitlements {
@@ -370,6 +378,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             },
             alt_text_drafts: DraftAllowance::Monthly(2_000),
             image_fixes: ImageFixAllowance::Unlimited,
+            ai_budget_micro_usd: 5_000_000,
             features: starter_features,
         },
         Plan::Growth => Entitlements {
@@ -381,6 +390,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             },
             alt_text_drafts: DraftAllowance::Monthly(10_000),
             image_fixes: ImageFixAllowance::Unlimited,
+            ai_budget_micro_usd: 20_000_000,
             features: growth_features,
         },
         Plan::Pro => Entitlements {
@@ -392,6 +402,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             },
             alt_text_drafts: DraftAllowance::Monthly(50_000),
             image_fixes: ImageFixAllowance::Unlimited,
+            ai_budget_micro_usd: 60_000_000,
             features: pro_features,
         },
     }

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update statements set content = $3\n            where tenant_id = $1 and site_id = $2 and status = 'draft'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0735d8f7aa4b084ef190f7871267e671b5952c883e314ceb68e2f0a3d0d88a40"
+}

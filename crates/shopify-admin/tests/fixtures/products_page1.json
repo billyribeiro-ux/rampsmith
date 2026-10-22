@@ -1,0 +1,69 @@
+{
+  "data": {
+    "products": {
+      "pageInfo": {
+        "hasNextPage": true,
+        "endCursor": "eyJsYXN0X2lkIjoxfQ=="
+      },
+      "nodes": [
+        {
+          "id": "gid://shopify/Product/1",
+          "title": "Snow Globe",
+          "handle": "snow-globe",
+          "status": "ACTIVE",
+          "descriptionHtml": "<p>Shake it.</p>",
+          "onlineStoreUrl": "https://supertoys.example/products/snow-globe",
+          "media": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "__typename": "MediaImage",
+                "id": "gid://shopify/MediaImage/11",
+                "alt": null,
+                "status": "READY",
+                "image": {
+                  "url": "https://cdn.shopify.com/s/files/1/0001/globe.jpg",
+                  "width": 800,
+                  "height": 600
+                }
+              },
+              {
+                "__typename": "Video",
+                "id": "gid://shopify/Video/12",
+                "alt": "A demo"
+              }
+            ]
+          },
+          "templateSuffix": "landing"
+        },
+        {
+          "id": "gid://shopify/Product/2",
+          "title": "Kite",
+          "handle": "kite",
+          "status": "DRAFT",
+          "descriptionHtml": "",
+          "onlineStoreUrl": null,
+          "media": {
+            "pageInfo": {
+              "hasNextPage": true
+            },
+            "nodes": []
+          }
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 120,
+      "actualQueryCost": 30,
+      "throttleStatus": {
+        "maximumAvailable": 2000.0,
+        "currentlyAvailable": 1970,
+        "restoreRate": 100.0
+      }
+    }
+  }
+}

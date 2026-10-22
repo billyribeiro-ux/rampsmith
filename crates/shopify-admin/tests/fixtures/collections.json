@@ -1,0 +1,28 @@
+{
+  "data": {
+    "collections": {
+      "pageInfo": { "hasNextPage": false, "endCursor": null },
+      "nodes": [
+        {
+          "id": "gid://shopify/Collection/5",
+          "title": "Winter",
+          "handle": "winter",
+          "descriptionHtml": "<p>Cold things</p>",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0001/winter.jpg",
+            "altText": null,
+            "width": 1200,
+            "height": 400
+          }
+        },
+        {
+          "id": "gid://shopify/Collection/6",
+          "title": "Plain",
+          "handle": "plain",
+          "descriptionHtml": "",
+          "image": null
+        }
+      ]
+    }
+  }
+}

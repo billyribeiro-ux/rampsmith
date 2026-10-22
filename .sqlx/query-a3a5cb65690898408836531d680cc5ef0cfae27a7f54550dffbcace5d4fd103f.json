@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select shop_gid from shopify_shops where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shop_gid",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shopify_shops",
+            "name": "shop_gid"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "a3a5cb65690898408836531d680cc5ef0cfae27a7f54550dffbcace5d4fd103f"
+}

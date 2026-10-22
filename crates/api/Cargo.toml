@@ -21,20 +21,28 @@ path = "src/bin/gen_openapi.rs"
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+base64.workspace = true
+billing = { package = "rampsmith-billing", path = "../billing" }
+contracts.workspace = true
 crypto.workspace = true
 db.workspace = true
+domain.workspace = true
+hmac.workspace = true
 http-kit.workspace = true
 identity.workspace = true
+queue.workspace = true
+reqwest.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 shopify.workspace = true
 shopify-auth.workspace = true
 sqlx.workspace = true
 telemetry.workspace = true
 thiserror.workspace = true
 time = { workspace = true, features = ["serde", "formatting", "parsing"] }
-tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tracing.workspace = true
 url.workspace = true
 utoipa.workspace = true
@@ -42,7 +50,8 @@ utoipa-axum.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-base64.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
+time = { workspace = true, features = ["macros"] }
 http-body-util.workspace = true
 jsonwebtoken.workspace = true
 tower.workspace = true

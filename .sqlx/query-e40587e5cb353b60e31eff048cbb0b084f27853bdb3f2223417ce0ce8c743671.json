@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select exists (\n             select 1 from webhook_events\n              where tenant_id = $1 and topic = $2 and body_sha256 = $3\n                and received_at > now() - make_interval(hours => $4)\n           ) as \"replay!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "replay!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "e40587e5cb353b60e31eff048cbb0b084f27853bdb3f2223417ce0ce8c743671"
+}
