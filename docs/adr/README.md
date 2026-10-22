@@ -149,6 +149,12 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [072](072-ranking-and-fix-kind.md) | Dedupe, ranking and fix kind | Accepted |
 | [073](073-verify-scan.md) | Verification scan semantics | Accepted |
 | [250](250-backup-limits-are-positive-integers-and-drill-permissions.md) | Backup limits are positive integers; the restore drill starts with no token permissions | Accepted |
+| [090](090-alt-text-job.md) | The `ai.alt_text@1` job and `sharp` | Accepted |
+| [091](091-app-home-contract-and-bff.md) | The App Home contract and its backend-for-frontend routes | Accepted |
+| [092](092-app-home-media-route.md) | Product images reach the App Home through the BFF | Accepted |
+| [093](093-alt-text-review-queue.md) | The alt-text review queue: approve, edit, reject, undo | Accepted |
+| [094](094-app-home-test-shim.md) | Testing the App Home without Shopify: a typed fake api and a Polaris shim | Accepted |
+| [095](095-plan-gates-and-settings.md) | Plan gates and settings in the App Home | Accepted |
 
 ## Template
 

@@ -105,16 +105,3 @@ export function requireTenant(job: JobInput): string {
   if (job.tenantId === null) throw permanent('tenant_missing', 'this job needs a tenant');
   return job.tenantId;
 }
-
-/**
- * The handler of a queue R1 has not built yet: it validates the payload and the tenant, then
- * fails permanently with `not_implemented`, so a job enqueued early is visible, never lost.
- */
-export function notBuilt(queue: string, schema: PayloadSchema): JobHandler {
-  return (job) =>
-    Promise.resolve().then(() => {
-      parsePayload(job, schema);
-      requireTenant(job);
-      throw permanent('not_implemented', `${queue} is not built yet`);
-    });
-}

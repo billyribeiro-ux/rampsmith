@@ -1,7 +1,7 @@
 import { JobFailure } from '@rampsmith/queue';
 import { describe, expect, it } from 'vitest';
 import { parsePayload, requireTenant, type JobInput } from '../src/jobs/payload.ts';
-import { ENGINE_QUEUES, stubHandlers } from '../src/queues.ts';
+import { ENGINE_QUEUES } from '../src/queues.ts';
 
 const SCAN = '0192a3b4-c5d6-7e8f-9012-3456789abcde';
 const SITE = '0192a3b4-c5d6-7e8f-9012-3456789abcdf';
@@ -98,21 +98,5 @@ describe('the engine queue registry (ADR-035)', () => {
       'scan.plan',
       'verify.scan',
     ]);
-  });
-
-  it('fails a valid job on an unbuilt queue permanently as not_implemented', async () => {
-    const run = stubHandlers()['ai.alt_text'];
-    const valid = {
-      ...job('ai.alt_text@1', {
-        site_id: SITE,
-        finding_id: SCAN,
-        input_id: SITE,
-        resource_gid: 'gid://shopify/MediaImage/1',
-      }),
-      queue: 'ai.alt_text',
-    };
-    await expect(run(valid)).rejects.toMatchObject({
-      failure: { kind: 'permanent', error: { code: 'not_implemented' } },
-    });
   });
 });
