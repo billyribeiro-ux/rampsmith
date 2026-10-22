@@ -1,5 +1,4 @@
-//! The R1 queue stubs `ctl` registers (ADR-038): each answers with a typed permanent failure
-//! until it is built; unknown queues are refused.
+//! The queues `ctl` serves (ADR-035) and the refusal of any other.
 
 #![allow(
     clippy::unwrap_used,
@@ -8,7 +7,7 @@
     clippy::indexing_slicing
 )]
 
-use ctl::jobs::{self, NOT_IMPLEMENTED};
+use ctl::jobs;
 use queue::Failure;
 use serde_json::json;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -18,7 +17,7 @@ mod support;
 use support::world::world;
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn every_unbuilt_queue_fails_permanently_and_an_unknown_queue_is_refused(
+async fn ctl_serves_the_four_r1_queues_and_refuses_any_other(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
@@ -32,20 +31,14 @@ async fn every_unbuilt_queue_fails_permanently_and_an_unknown_queue_is_refused(
             "webhook.process"
         ]
     );
-    for queue in [
-        "shopify.read_store",
-        "shopify.apply_data_fix",
-        "shopify.revert_data_fix",
-    ] {
-        let Err(Failure::Permanent(error)) = w
-            .jobs
-            .dispatch(w.job(queue, &format!("{queue}@1"), json!({})))
-            .await
+    // A payload of the wrong schema is a permanent failure of the handler, not of the registry.
+    for queue in jobs::QUEUES {
+        let Err(Failure::Permanent(error)) =
+            w.jobs.dispatch(w.job(queue, "wrong@9", json!({}))).await
         else {
-            panic!("{queue} did not fail permanently");
+            panic!("{queue} accepted a payload of another schema");
         };
-        assert_eq!(error.code, NOT_IMPLEMENTED, "{queue}");
-        assert!(error.message.contains(queue), "{queue}: {}", error.message);
+        assert_eq!(error.code, "payload_schema_unknown", "{queue}");
     }
     let Err(Failure::Permanent(error)) = w
         .jobs

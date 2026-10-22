@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update fixes set status = 'approved', approved_by_ref = $3, approved_at = now()\n            where tenant_id = $1 and id = $2 and kind = 'data' and status = 'proposed'\n        returning approved_at as \"approved_at!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "approved_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "approved_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "960e01b67085962eb43f7d100fa05a6cfb23f793778ce8d465c6acf63d65fab6"
+}

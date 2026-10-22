@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update fixes set status = 'applied', applied_at = now(), error_code = null\n            where tenant_id = $1 and id = $2 and status in ('approved', 'applying')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e3d69ba64e7a10f7a93f82265ed2ea4bed4946a20140d1b30aafdf4d4a47b06d"
+}

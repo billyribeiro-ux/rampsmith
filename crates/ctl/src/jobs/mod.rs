@@ -3,8 +3,7 @@
 //!
 //! Every handler that talks to Shopify gets its token from [`ShopifyAuth`] (refreshed when
 //! due) and its client from the shared [`AdminFactory`], so one process paces every call for a
-//! shop through one cost bucket. A queue whose handler is not built yet still answers with the
-//! typed permanent failure [`not_implemented`]; none is left in R1.
+//! shop through one cost bucket.
 
 use contracts::{
     JobError, ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, WebhookProcess,
@@ -15,6 +14,7 @@ use shopify_admin::AdminFactory;
 use shopify_auth::{RefreshError, ShopifyAuth};
 
 pub mod apply_data_fix;
+pub(crate) mod data_fix;
 pub mod read_store;
 pub mod revert_data_fix;
 pub mod webhook;
@@ -26,9 +26,6 @@ pub const QUEUES: [&str; 4] = [
     ShopifyRevertDataFix::QUEUE,
     WebhookProcess::QUEUE,
 ];
-
-/// The `code` of the failure a stub returns.
-pub const NOT_IMPLEMENTED: &str = "not_implemented";
 
 /// What the R1 handlers share: the database, the token lifecycle and the Admin API client
 /// factory.
@@ -61,16 +58,6 @@ impl Jobs {
             })),
         }
     }
-}
-
-/// The typed outcome of a stub: a permanent failure that names the queue.
-#[must_use]
-pub fn not_implemented(job: &ClaimedJob) -> Failure {
-    Failure::Permanent(JobError {
-        code: NOT_IMPLEMENTED.to_owned(),
-        message: format!("{} is not implemented yet", job.queue),
-        retryable: false,
-    })
 }
 
 /// A failure with a stable code. Messages never carry tokens, response bodies or personal data.

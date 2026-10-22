@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select ruleset_version from scans\n            where tenant_id = $1 and site_id = $2 order by created_at desc limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ruleset_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "ruleset_version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3ea42dc9137c68041ee75a276e7e2333d45986eb5c6844b6a88c01776ec8a4b4"
+}

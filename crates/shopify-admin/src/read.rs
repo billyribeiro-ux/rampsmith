@@ -34,7 +34,7 @@ const PRODUCTS: Query = Query {
   products(first: $first, after: $after, sortKey: ID) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id title handle status descriptionHtml onlineStoreUrl
+      id title handle status descriptionHtml onlineStoreUrl templateSuffix
       media(first: $media) {
         pageInfo { hasNextPage }
         nodes {
@@ -47,13 +47,37 @@ const PRODUCTS: Query = Query {
 }",
 };
 
+const OWNER: Query = Query {
+    name: "RampsmithOwner",
+    cost_hint: 30.0,
+    text: r"query RampsmithOwner($id: ID!, $media: Int!) {
+  node(id: $id) {
+    __typename id
+    ... on Product {
+      title handle status descriptionHtml onlineStoreUrl templateSuffix
+      media(first: $media) {
+        pageInfo { hasNextPage }
+        nodes {
+          __typename id alt
+          ... on MediaImage { status image { url width height } }
+        }
+      }
+    }
+    ... on Collection {
+      title handle descriptionHtml templateSuffix image { url altText width height }
+    }
+    ... on Page { title handle body isPublished templateSuffix }
+  }
+}",
+};
+
 const COLLECTIONS: Query = Query {
     name: "RampsmithCollections",
     cost_hint: 60.0,
     text: r"query RampsmithCollections($first: Int!, $after: String) {
   collections(first: $first, after: $after, sortKey: ID) {
     pageInfo { hasNextPage endCursor }
-    nodes { id title handle descriptionHtml image { url altText width height } }
+    nodes { id title handle descriptionHtml templateSuffix image { url altText width height } }
   }
 }",
 };
@@ -64,7 +88,7 @@ const PAGES: Query = Query {
     text: r"query RampsmithPages($first: Int!, $after: String) {
   pages(first: $first, after: $after, sortKey: ID) {
     pageInfo { hasNextPage endCursor }
-    nodes { id title handle body isPublished updatedAt }
+    nodes { id title handle body isPublished templateSuffix updatedAt }
   }
 }",
 };
@@ -75,7 +99,7 @@ const ARTICLES: Query = Query {
     text: r"query RampsmithArticles($first: Int!, $after: String) {
   articles(first: $first, after: $after, sortKey: ID) {
     pageInfo { hasNextPage endCursor }
-    nodes { id title handle body summary isPublished blog { handle } image { url altText width height } }
+    nodes { id title handle body summary isPublished templateSuffix blog { handle } image { url altText width height } }
   }
 }",
 };
@@ -245,6 +269,8 @@ pub struct Product {
     pub description_html: String,
     /// The storefront URL, when the product is published to the online store.
     pub online_store_url: Option<String>,
+    /// The theme template suffix, when the resource uses an alternate template.
+    pub template_suffix: Option<String>,
     /// Its media, first page.
     pub media: Vec<MediaItem>,
     /// Whether the product has more media than were read.
@@ -276,6 +302,8 @@ struct ProductWire {
     description_html: String,
     #[serde(default)]
     online_store_url: Option<String>,
+    #[serde(default)]
+    template_suffix: Option<String>,
     media: MediaWire,
 }
 
@@ -315,6 +343,7 @@ impl From<ProductWire> for Product {
             status: p.status,
             description_html: p.description_html,
             online_store_url: p.online_store_url,
+            template_suffix: p.template_suffix,
             media_truncated: p.media.page_info.has_next_page,
             media: p
                 .media
@@ -345,6 +374,8 @@ pub struct Collection {
     pub description_html: String,
     /// Its image, with the alt text it carries.
     pub image: Option<ImageRef>,
+    /// The theme template suffix, when the resource uses an alternate template.
+    pub template_suffix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -356,6 +387,8 @@ struct CollectionWire {
     description_html: String,
     #[serde(default)]
     image: Option<ImageRef>,
+    #[serde(default)]
+    template_suffix: Option<String>,
 }
 
 /// A page of the online store.
@@ -371,6 +404,8 @@ pub struct ShopPage {
     pub body: String,
     /// Whether it is visible.
     pub is_published: bool,
+    /// The theme template suffix, when the resource uses an alternate template.
+    pub template_suffix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -381,6 +416,8 @@ struct PageWire {
     handle: String,
     body: String,
     is_published: bool,
+    #[serde(default)]
+    template_suffix: Option<String>,
 }
 
 /// A blog article.
@@ -402,6 +439,8 @@ pub struct Article {
     pub is_published: bool,
     /// Its image.
     pub image: Option<ImageRef>,
+    /// The theme template suffix, when the resource uses an alternate template.
+    pub template_suffix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -417,6 +456,8 @@ struct ArticleWire {
     blog: BlogWire,
     #[serde(default)]
     image: Option<ImageRef>,
+    #[serde(default)]
+    template_suffix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -435,6 +476,7 @@ impl From<ArticleWire> for Article {
             summary: a.summary,
             is_published: a.is_published,
             image: a.image,
+            template_suffix: a.template_suffix,
         }
     }
 }
@@ -533,6 +575,63 @@ struct MenusData {
     menus: Connection<MenuWire>,
 }
 
+/// A resource that holds the field a data fix changes, as read again after the write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Owner {
+    /// A product, with its media.
+    Product(Product),
+    /// A collection.
+    Collection(Collection),
+    /// A page.
+    Page(ShopPage),
+}
+
+impl Owner {
+    /// The handle, which names the storefront URL.
+    #[must_use]
+    pub fn handle(&self) -> &str {
+        match self {
+            Self::Product(p) => &p.handle,
+            Self::Collection(c) => &c.handle,
+            Self::Page(p) => &p.handle,
+        }
+    }
+
+    /// The storefront path: `/products/<handle>` and so on.
+    #[must_use]
+    pub fn path(&self) -> String {
+        let (dir, handle) = match self {
+            Self::Product(p) => ("products", &p.handle),
+            Self::Collection(c) => ("collections", &c.handle),
+            Self::Page(p) => ("pages", &p.handle),
+        };
+        format!("/{dir}/{handle}")
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OwnerData {
+    node: Option<OwnerWire>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OwnerWire {
+    #[serde(rename = "__typename")]
+    typename: String,
+    id: String,
+    title: Option<String>,
+    handle: Option<String>,
+    status: Option<String>,
+    description_html: Option<String>,
+    online_store_url: Option<String>,
+    template_suffix: Option<String>,
+    media: Option<MediaWire>,
+    image: Option<ImageRef>,
+    body: Option<String>,
+    is_published: Option<bool>,
+}
+
 fn variables(first: u32, after: Option<&str>) -> serde_json::Value {
     json!({ "first": first, "after": after })
 }
@@ -570,6 +669,53 @@ impl AdminClient {
         }))
     }
 
+    /// The product, collection or page `gid`, read again. [`AdminError::ResourceMissing`] when it
+    /// is gone or is another kind of object.
+    pub async fn owner(&self, gid: &str) -> Result<Owner, AdminError> {
+        let data: OwnerData = self
+            .run(&OWNER, &json!({ "id": gid, "media": MEDIA_PER_PRODUCT }))
+            .await?;
+        let node = data.node.ok_or(AdminError::ResourceMissing)?;
+        if node.id != gid {
+            return Err(AdminError::ResourceMissing);
+        }
+        let (Some(title), Some(handle)) = (node.title, node.handle) else {
+            return Err(AdminError::ResourceMissing);
+        };
+        match node.typename.as_str() {
+            "Product" => {
+                let media = node.media.ok_or(AdminError::Decode)?;
+                Ok(Owner::Product(Product::from(ProductWire {
+                    id: node.id,
+                    title,
+                    handle,
+                    status: node.status.ok_or(AdminError::Decode)?,
+                    description_html: node.description_html.unwrap_or_default(),
+                    online_store_url: node.online_store_url,
+                    template_suffix: node.template_suffix,
+                    media,
+                })))
+            }
+            "Collection" => Ok(Owner::Collection(Collection {
+                gid: node.id,
+                title,
+                handle,
+                description_html: node.description_html.unwrap_or_default(),
+                image: node.image,
+                template_suffix: node.template_suffix,
+            })),
+            "Page" => Ok(Owner::Page(ShopPage {
+                gid: node.id,
+                title,
+                handle,
+                body: node.body.unwrap_or_default(),
+                is_published: node.is_published.unwrap_or(false),
+                template_suffix: node.template_suffix,
+            })),
+            _ => Err(AdminError::ResourceMissing),
+        }
+    }
+
     /// One page of collections.
     pub async fn collections(&self, after: Option<&str>) -> Result<Page<Collection>, AdminError> {
         let data: CollectionsData = self
@@ -587,6 +733,7 @@ impl AdminClient {
                     handle: c.handle,
                     description_html: c.description_html,
                     image: c.image,
+                    template_suffix: c.template_suffix,
                 })
                 .collect(),
         }))
@@ -607,6 +754,7 @@ impl AdminClient {
                     handle: p.handle,
                     body: p.body,
                     is_published: p.is_published,
+                    template_suffix: p.template_suffix,
                 })
                 .collect(),
         }))

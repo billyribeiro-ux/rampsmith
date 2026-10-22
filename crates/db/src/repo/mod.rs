@@ -4,12 +4,14 @@
 //! [`identity`], whose rows belong to people rather than tenants (ADR-024).
 
 pub mod audit;
+pub mod data_fixes;
 pub mod findings;
 pub mod fixes;
 pub mod identity;
 pub mod jobs;
 pub mod occurrences;
 pub mod redact;
+pub mod scan_inputs;
 pub mod scans;
 pub mod shopify;
 pub mod sites;

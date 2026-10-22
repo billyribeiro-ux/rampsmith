@@ -16,7 +16,10 @@ mod support;
 
 use db::Db;
 use db::repo::webhooks::{self, NewWebhook, Recorded};
-use db::repo::{audit, findings, fixes, jobs, occurrences, redact, scans, shopify, sites, tenants};
+use db::repo::{
+    audit, data_fixes, findings, fixes, jobs, occurrences, redact, scan_inputs, scans, shopify,
+    sites, tenants,
+};
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
@@ -968,6 +971,87 @@ async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
     );
     assert!(webhooks::mark_processed(&mut tx, ids[1]).await.unwrap());
     tx.commit().await.unwrap();
+
+    // Store batches and scan failure.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let batch = serde_json::json!({"items": []});
+    assert!(
+        scan_inputs::put(&mut tx, b.scan, b.site, "pages", 7, &batch)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        scan_inputs::put(&mut tx, a.scan, b.site, "pages", 7, &batch)
+            .await
+            .unwrap()
+            .is_none(),
+        "a scan with another tenant's site"
+    );
+    assert_eq!(
+        scan_inputs::count(&mut tx, b.scan, "products")
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(scans::fail(&mut tx, b.scan, "x").await.unwrap().is_none());
+    tx.rollback().await.unwrap();
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert_eq!(
+        scan_inputs::count(&mut tx, b.scan, "pages").await.unwrap(),
+        0
+    );
+    let id = scan_inputs::put(&mut tx, b.scan, b.site, "pages", 7, &batch)
+        .await
+        .unwrap()
+        .unwrap();
+    let again = scan_inputs::put(&mut tx, b.scan, b.site, "pages", 7, &batch)
+        .await
+        .unwrap();
+    assert_eq!(again, Some(id), "the same batch keeps its id");
+    tx.rollback().await.unwrap();
+
+    // The data-fix lifecycle `ctl` drives.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(data_fixes::get(&mut tx, b.fix).await.unwrap().is_none());
+    assert!(
+        data_fixes::snapshot(&mut tx, b.fix)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let snapshot = data_fixes::Snapshot {
+        resource_gid: "gid://shopify/MediaImage/1".to_owned(),
+        field: "alt".to_owned(),
+        before_value: serde_json::Value::Null,
+        after_value: serde_json::json!("x"),
+    };
+    assert!(
+        !data_fixes::put_snapshot(&mut tx, b.fix, &snapshot)
+            .await
+            .unwrap()
+    );
+    assert!(!data_fixes::begin_apply(&mut tx, b.fix).await.unwrap());
+    assert!(!data_fixes::finish_apply(&mut tx, b.fix).await.unwrap());
+    assert!(!data_fixes::fail(&mut tx, b.fix, "x").await.unwrap());
+    assert!(!data_fixes::finish_revert(&mut tx, b.fix).await.unwrap());
+    assert_eq!(
+        data_fixes::reopen_findings(&mut tx, b.fix).await.unwrap(),
+        0
+    );
+    assert!(
+        data_fixes::approve_by_ref(&mut tx, b.fix, "1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        data_fixes::latest_ruleset(&mut tx, b.site)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    tx.rollback().await.unwrap();
 
     // Shop info and uninstall.
     let mut tx = db.tenant(a.tenant).await.unwrap();

@@ -1,0 +1,24 @@
+{
+  "data": {
+    "node": {
+      "__typename": "Page",
+      "id": "gid://shopify/Page/7",
+      "title": "About",
+      "handle": "about",
+      "body": "<p>Hi</p>",
+      "isPublished": true,
+      "templateSuffix": null
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 120,
+      "actualQueryCost": 30,
+      "throttleStatus": {
+        "maximumAvailable": 2000.0,
+        "currentlyAvailable": 1970,
+        "restoreRate": 100.0
+      }
+    }
+  }
+}

@@ -130,6 +130,31 @@ impl World {
             .await;
     }
 
+    /// The shop's site.
+    pub async fn site(&self) -> uuid::Uuid {
+        sqlx::query_scalar("select site_id from shopify_shops where id = $1")
+            .bind(self.session.shop_id.as_uuid())
+            .fetch_one(&self.owner)
+            .await
+            .unwrap()
+    }
+
+    /// A queued scan of the shop's site.
+    pub async fn scan(&self) -> uuid::Uuid {
+        let id = uuid::Uuid::now_v7();
+        sqlx::query(
+            "insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version)
+             values ($1, $2, $3, 'manual', 'queued', 'v')",
+        )
+        .bind(id)
+        .bind(self.session.tenant.as_uuid())
+        .bind(self.site().await)
+        .execute(&self.owner)
+        .await
+        .unwrap();
+        id
+    }
+
     pub async fn count(&self, sql: &str) -> i64 {
         sqlx::query_scalar(sqlx::AssertSqlSafe(sql.to_owned()))
             .fetch_one(&self.owner)

@@ -9,7 +9,7 @@ use secrecy::SecretString;
 use serde_json::json;
 use shopify::ShopDomain;
 use shopify_admin::{
-    AdminClient, AdminEndpoint, AdminError, AdminFactory, Field, Target, same_value,
+    AdminClient, AdminEndpoint, AdminError, AdminFactory, Field, Owner, Target, same_value,
 };
 use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -92,7 +92,7 @@ async fn products_come_with_media_and_a_cursor_to_continue() {
     assert_eq!(first.items[1].online_store_url, None);
 
     let second = client.products(first.next.as_deref()).await.unwrap();
-    assert!(second.items.is_empty());
+    assert_eq!(second.items, []);
     assert_eq!(second.next, None);
 }
 
@@ -436,4 +436,43 @@ fn nothing_prints_the_token() {
     );
     assert!(!format!("{client:?}").contains(TOKEN));
     assert!(!format!("{factory:?}").contains(TOKEN));
+}
+
+#[tokio::test]
+async fn an_owner_is_read_again_by_its_gid_and_names_its_storefront_path() {
+    let server = MockServer::start().await;
+    answer(&server, "RampsmithOwner", fixture("owner_product")).await;
+    let owner = client(&server)
+        .owner("gid://shopify/Product/1")
+        .await
+        .unwrap();
+    let Owner::Product(product) = &owner else {
+        panic!("expected a product, got {owner:?}");
+    };
+    assert_eq!(product.media.len(), 2);
+    assert_eq!(owner.path(), "/products/snow-globe");
+
+    // The answer must be the object that was asked for.
+    let wrong = client(&server).owner("gid://shopify/Product/2").await;
+    assert!(
+        matches!(wrong, Err(AdminError::ResourceMissing)),
+        "{wrong:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_page_owner_and_a_deleted_owner() {
+    let server = MockServer::start().await;
+    answer(&server, "RampsmithOwner", fixture("owner_page")).await;
+    let owner = client(&server).owner("gid://shopify/Page/7").await.unwrap();
+    assert_eq!(owner.path(), "/pages/about");
+    assert!(matches!(owner, Owner::Page(ref p) if p.is_published && p.body == "<p>Hi</p>"));
+
+    let gone = MockServer::start().await;
+    answer(&gone, "RampsmithOwner", fixture("owner_missing")).await;
+    let missing = client(&gone).owner("gid://shopify/Page/7").await;
+    assert!(
+        matches!(missing, Err(AdminError::ResourceMissing)),
+        "{missing:?}"
+    );
 }

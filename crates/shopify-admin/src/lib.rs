@@ -28,7 +28,7 @@ pub use client::{AdminClient, AdminEndpoint, AdminFactory};
 pub use error::{AdminError, UserError};
 pub use read::{
     Article, Collection, Domain, ImageRef, Locale, MEDIA_PER_PRODUCT, MediaItem, Menu, MenuItem,
-    PAGE_SIZE, Page, Product, ShopInfo, ShopPage, Theme,
+    Owner, PAGE_SIZE, Page, Product, ShopInfo, ShopPage, Theme,
 };
 pub use throttle::{MAX_QUERY_COST, QueryCost, Throttle, ThrottleStatus, Throttles};
 pub use write::{Field, LiveValue, ResourceKind, Target, TargetError, same_value};
