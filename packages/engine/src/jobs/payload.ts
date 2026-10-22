@@ -16,7 +16,15 @@ import { JobFailure, type ClaimedJob } from '@rampsmith/queue';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 
 /** The part of a claimed job the handlers read. */
-export type JobInput = Pick<ClaimedJob, 'payloadSchema' | 'payload' | 'tenantId'>;
+export type JobInput = Pick<ClaimedJob, 'payloadSchema' | 'payload' | 'tenantId'> &
+  Partial<Pick<ClaimedJob, 'lease' | 'maxAttempts'>>;
+
+/** Whether a failure of this attempt is the job's last: no retry will follow. */
+export function isLastAttempt(job: JobInput): boolean {
+  return (
+    job.lease !== undefined && job.maxAttempts !== undefined && job.lease.attempt >= job.maxAttempts
+  );
+}
 
 /** What `runWorker` calls; it must reject rather than throw. */
 export type JobHandler = (job: JobInput) => Promise<void>;
@@ -96,17 +104,4 @@ export function parsePayload<S extends PayloadSchema>(job: JobInput, expected: S
 export function requireTenant(job: JobInput): string {
   if (job.tenantId === null) throw permanent('tenant_missing', 'this job needs a tenant');
   return job.tenantId;
-}
-
-/**
- * The handler of a queue R1 has not built yet: it validates the payload and the tenant, then
- * fails permanently with `not_implemented`, so a job enqueued early is visible, never lost.
- */
-export function notBuilt(queue: string, schema: PayloadSchema): JobHandler {
-  return (job) =>
-    Promise.resolve().then(() => {
-      parsePayload(job, schema);
-      requireTenant(job);
-      throw permanent('not_implemented', `${queue} is not built yet`);
-    });
 }

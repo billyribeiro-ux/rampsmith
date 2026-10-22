@@ -49,10 +49,14 @@ he does not need to approve anything. From now on:
 - **The architect chat (`session_01Xo2TExfkKEuqRyHUMqc1YC`) is the builder from 22 Oct 2026,
   20:20 UTC** (founder instruction: Sonnet agents in parallel, finish the build). The 19 Oct
   builder entry below is stale (last push 19 Oct 21:35 UTC) and no longer holds the lock.
-  Wave 1, running now, each in its own worktree and branch: `r1-secrets` (audit H1/H2 and
-  M1/M3, backups), `r1-phase0` (R1 contracts, schema, stubs, ADR-035 to 039), `r1-site`
-  (marketing site, pricing, free scanner; ADRs 260–269). Wave 2 starts when Phase 0 merges:
-  lanes A (`r1-fixloop`), B (`r1-scan`) and C (`r1-apphome`) as in the R1 plan below.
+  Done: PR #21 (`24adf58`, audit H1/H2, M1, M3, L6, L7, L10 fixed; backups now a Railway cron
+  service; LAUNCH.md C row 16; M2 still open; re-audit running) and PR #22 Phase 0 (`5be4417`,
+  contracts for 10 jobs, 8 new tenant tables in the isolation suite, ctl/api/engine stubs,
+  ADR-035 to 039). Running now, each in its own worktree and branch: `r1-site` (marketing site,
+  pricing, free scanner; ADRs 260–269), lane A `r1-fixloop` (Admin client, data fixes with undo,
+  webhook listener and compliance webhooks, api operations; ADRs 080–089), lane B `r1-scan`
+  (8 page types, 4 states, ranking, verify; ADRs 070–079), lane C `r1-apphome` (App Home, alt
+  text with approve/edit/undo, remediation log, statement; ADRs 090–099).
 
 
 - **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`), active since

@@ -1,14 +1,36 @@
 /**
- * Loads one page in a fresh Chromium context and runs axe-core on it (PLAN §11, render audit
- * steps 2–4). All traffic goes through egress when a proxy is given.
+ * Loads one page in a fresh Chromium context, checks it in each requested state, and returns what
+ * it found (PLAN §11, render audit steps 2 to 7; ADR-070). All traffic goes through egress when
+ * a proxy is given.
+ *
+ * Per state: axe-core restricted to the WCAG tag set (whole page in the default state, the
+ * changed region in the others) and an evidence crop per failing element. On a page flagged
+ * `deep`, the custom browser checks of `@rampsmith/a11y-rules` run after the default state's
+ * axe pass. A bot challenge is reported and never solved (ADR-027).
  */
 import { AxeBuilder } from '@axe-core/playwright';
+import {
+  RULES,
+  checkFocusNotObscured,
+  checkKeyboard,
+  checkMediaAutoplay,
+  checkReflow,
+  checkTextSpacing,
+  openState,
+  scanContextOptions,
+  type CheckResult,
+  type PageFinding,
+  type StateOutcome,
+} from '@rampsmith/a11y-rules';
 import axe from 'axe-core';
-import type { Browser, Page } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 import { assertLoopbackProxied, contextProxy } from './browser.ts';
 import { detectChallenge, type Challenge } from './challenge.ts';
+import { cropOf } from './evidence.ts';
 import { scrubExcerpt } from './scrub.ts';
+import { isPasswordPage, unlockStorefront } from './storefront.ts';
 import { criteriaFromTags } from './wcag.ts';
+import { VIEWPORT_SIZES, type PageState, type Viewport } from './pipeline/vocab.ts';
 
 /** Only WCAG A and AA rules count as failures (PLAN §11 step 4). */
 export const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] as const;
@@ -16,6 +38,9 @@ export const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'
 export const AXE_VERSION = axe.version;
 
 export type Impact = 'minor' | 'moderate' | 'serious' | 'critical';
+
+/** Why a page was not checked at all. */
+type BlockedReason = Challenge | 'storefront_password';
 
 /** One element that failed (or could not be decided by) one rule. */
 export interface Occurrence {
@@ -27,17 +52,40 @@ export interface Occurrence {
   readonly html: string;
   /** The `shopify-section-*` wrapper's id, when the element sits in one. */
   readonly section: string | undefined;
+  /** A PNG of the area around the element (at most 64 KiB), when one could be taken. */
+  readonly crop?: Buffer;
+}
+
+/** How a state ended; the values of `scan_pages.state_outcome`. */
+type StateResult = 'opened' | 'not_found' | 'blocked' | 'timed_out' | 'error';
+
+export interface StateScan {
+  readonly state: PageState;
+  readonly result: StateResult;
+  /** Why the state was not reached or was stopped: a short code, never page content. */
+  readonly reason: string | undefined;
+  readonly violations: readonly Occurrence[];
+  /** Undecided results go to review, never counted as failures. */
+  readonly incomplete: readonly Occurrence[];
+  /** Best-practice results of the custom rules, stored apart (PLAN §11 step 4). */
+  readonly bestPractice: readonly Occurrence[];
+  /** Rules that ran in this state, axe-core's and the custom checks'. */
+  readonly rulesRun: readonly string[];
+  readonly checksRun: number;
+  readonly checksPassed: number;
+  readonly durationMs: number;
 }
 
 export interface PageScan {
   readonly url: string;
   readonly finalUrl: string;
   readonly status: number;
-  /** Set when a bot challenge answered instead of the store: nothing was checked. */
-  readonly blocked: Challenge | undefined;
-  readonly violations: readonly Occurrence[];
-  /** Axe could not decide these; they go to review, never counted as failures. */
-  readonly incomplete: readonly Occurrence[];
+  /** Set when nothing was checked: a bot challenge or a closed storefront answered. */
+  readonly blocked: BlockedReason | undefined;
+  /** The default state first when requested, then the interactive states in order. */
+  readonly states: readonly StateScan[];
+  /** Crops of the `cropSelectors` that were found, keyed by selector. */
+  readonly crops: Readonly<Record<string, Buffer>>;
   readonly durationMs: number;
 }
 
@@ -45,16 +93,32 @@ export interface ScanOptions {
   readonly url: string;
   /** egress, with the scan token as the proxy password (ADR-025). */
   readonly proxy?: { readonly server: string; readonly token: string };
-  readonly viewport?: { readonly width: number; readonly height: number };
+  readonly viewport?: Viewport;
   readonly locale?: string;
   readonly userAgent: string;
   /** Navigation and settle budget. Default 15 seconds. */
   readonly timeoutMs?: number;
   /** How long the DOM must stay unchanged. Default 500 ms. */
   readonly quietMs?: number;
+  /** States to check, in order. Default `['default']`. */
+  readonly states?: readonly PageState[];
+  /** Run the custom browser checks on the default state. */
+  readonly deep?: boolean;
+  /** The storefront password for this scan; used once, never stored or logged. */
+  readonly storefrontPassword?: string;
+  /** Evidence crops per state. Default 8. */
+  readonly maxCrops?: number;
+  /** CSS selectors to crop in the default state, for the after-picture of a fix. */
+  readonly cropSelectors?: readonly string[];
 }
 
 const IMPACTS = new Set<string>(['minor', 'moderate', 'serious', 'critical']);
+const IMPACT_ORDER: Readonly<Record<Impact, number>> = {
+  critical: 3,
+  serious: 2,
+  moderate: 1,
+  minor: 0,
+};
 
 /** Waits until the DOM has been quiet for `quietMs`, at most `capMs`. */
 export async function settle(page: Page, quietMs: number, capMs: number): Promise<void> {
@@ -128,47 +192,409 @@ async function occurrences(page: Page, rules: readonly AxeRule[]): Promise<Occur
   });
 }
 
+/** The outer HTML and section of the elements custom checks name, by their target paths. */
+async function describeTargets(
+  page: Page,
+  targets: readonly (readonly string[])[],
+): Promise<{ html: string; section: string | undefined }[]> {
+  return page.evaluate(
+    (list) =>
+      list.map((path) => {
+        try {
+          let node: Element | Document | ShadowRoot = document;
+          for (const selector of path) {
+            const root: ParentNode = node instanceof Element ? (node.shadowRoot ?? node) : node;
+            const next: Element | null = root.querySelector(selector);
+            if (next === null) return { html: '', section: undefined };
+            node = next;
+          }
+          if (!(node instanceof Element)) return { html: '', section: undefined };
+          return {
+            html: node.outerHTML.slice(0, 4096),
+            section: node.closest('[id^="shopify-section-"]')?.id,
+          };
+        } catch {
+          return { html: '', section: undefined };
+        }
+      }),
+    targets.map((t) => [...t]),
+  );
+}
+
+async function fromCustom(
+  page: Page,
+  findings: readonly PageFinding[],
+): Promise<{ violations: Occurrence[]; incomplete: Occurrence[]; bestPractice: Occurrence[] }> {
+  const described = await describeTargets(
+    page,
+    findings.map((f) => f.target),
+  );
+  const out = {
+    violations: [] as Occurrence[],
+    incomplete: [] as Occurrence[],
+    bestPractice: [] as Occurrence[],
+  };
+  findings.forEach((finding, i) => {
+    const where = described[i];
+    const occurrence: Occurrence = {
+      ruleId: finding.ruleId,
+      impact: finding.impact,
+      criteria: finding.criteria,
+      help: RULES[finding.ruleId].summary,
+      target: finding.target.join(' >>> '),
+      html: scrubExcerpt(where?.html ?? ''),
+      section: where?.section,
+    };
+    if (finding.bestPractice) out.bestPractice.push(occurrence);
+    else if (finding.outcome === 'violation') out.violations.push(occurrence);
+    else out.incomplete.push(occurrence);
+  });
+  return out;
+}
+
+/**
+ * axe-core's autoplay rule plays the media for about ten seconds to measure it; the custom
+ * `media-autoplay` check of a11y-rules covers the same criterion without the wait.
+ */
+const SKIPPED_RULES = ['no-autoplay-audio'] as const;
+
+/** What one axe-core run returned, reduced to what the scanner keeps. */
+interface AxeRun {
+  readonly violations: readonly AxeRule[];
+  readonly incomplete: readonly AxeRule[];
+  readonly passes: readonly string[];
+}
+
+/** Whole-page analysis, with `@axe-core/playwright` (iframes included). */
+async function analyzePage(page: Page): Promise<AxeRun> {
+  const results = await new AxeBuilder({ page })
+    .withTags([...WCAG_TAGS])
+    .disableRules([...SKIPPED_RULES])
+    .analyze();
+  return {
+    violations: results.violations,
+    incomplete: results.incomplete,
+    passes: results.passes.map((r) => r.id),
+  };
+}
+
+/**
+ * Analysis of the region a state changed. `@axe-core/playwright` finishes each run in a blank
+ * page it opens in the same context, and the checkout guard that the state scripts keep on that
+ * context closes every page it did not open itself (a11y-rules ADR-116), so this runs axe-core
+ * in the page: the source goes into every frame and `axe.run` scopes to the region.
+ */
+async function analyzeRegion(page: Page, region: readonly string[]): Promise<AxeRun> {
+  await Promise.all(
+    page.frames().map((frame) => frame.evaluate(axe.source).catch(() => undefined)),
+  );
+  const context =
+    region.length === 1
+      ? { include: [region[0] ?? 'html'] }
+      : { include: [{ fromShadowDom: [...region] }] };
+  return page.evaluate(
+    async ([scope, tags, skipped]) => {
+      const runner = (globalThis as unknown as { axe: typeof axe }).axe;
+      const result = await runner.run(scope as axe.ElementContext, {
+        runOnly: { type: 'tag', values: [...tags] },
+        rules: Object.fromEntries(skipped.map((id) => [id, { enabled: false }])),
+        resultTypes: ['violations', 'incomplete', 'passes'],
+      });
+      const trim = (rules: axe.Result[]) =>
+        rules.map((r) => ({
+          id: r.id,
+          impact: r.impact ?? null,
+          tags: r.tags,
+          help: r.help,
+          nodes: r.nodes.map((n) => ({
+            target: n.target,
+            html: n.html,
+            impact: n.impact ?? null,
+          })),
+        }));
+      return {
+        violations: trim(result.violations),
+        incomplete: trim(result.incomplete),
+        passes: result.passes.map((r) => r.id),
+      };
+    },
+    [context, WCAG_TAGS, SKIPPED_RULES] as const,
+  );
+}
+
+/** Attaches evidence crops to the worst failures, the first occurrence of each rule first. */
+async function withCrops(
+  page: Page,
+  violations: readonly Occurrence[],
+  max: number,
+): Promise<Occurrence[]> {
+  const order = violations
+    .map((o, i) => ({ o, i }))
+    .filter(({ o }) => !o.target.includes(' >>> '))
+    .sort((a, b) => IMPACT_ORDER[b.o.impact] - IMPACT_ORDER[a.o.impact] || a.i - b.i);
+  const seen = new Set<string>();
+  const crops = new Map<number, Buffer>();
+  for (const { o, i } of order) {
+    if (crops.size >= max) break;
+    const key = `${o.ruleId}\u0000${o.section ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const crop = await cropOf(page, o.target);
+    if (crop !== undefined) crops.set(i, crop);
+  }
+  return violations.map((o, i) => {
+    const crop = crops.get(i);
+    return crop === undefined ? o : { ...o, crop };
+  });
+}
+
+const CUSTOM_CHECKS: readonly ((page: Page) => Promise<CheckResult>)[] = [
+  (page) => checkMediaAutoplay(page),
+  (page) => checkKeyboard(page),
+  (page) => checkFocusNotObscured(page),
+  (page) => checkTextSpacing(page),
+  (page) => checkReflow(page),
+];
+
+function firstLine(text: string): string {
+  return (text.split('\n', 1)[0] ?? '').slice(0, 120);
+}
+
+function stateResult(outcome: StateOutcome): { result: StateResult; reason: string | undefined } {
+  switch (outcome.status) {
+    case 'opened':
+      return { result: 'opened', reason: undefined };
+    case 'not_found':
+      return { result: 'not_found', reason: outcome.reason };
+    case 'blocked':
+      return { result: 'blocked', reason: outcome.guard };
+    case 'timed_out':
+      return { result: 'timed_out', reason: undefined };
+    case 'error':
+      return { result: 'error', reason: firstLine(outcome.error).replaceAll(/\s+/g, ' ') };
+  }
+}
+
+interface Loaded {
+  readonly status: number;
+  readonly blocked: BlockedReason | undefined;
+}
+
+async function load(
+  page: Page,
+  options: ScanOptions,
+  timeout: number,
+  quietMs: number,
+): Promise<Loaded> {
+  let response = await page.goto(options.url, { waitUntil: 'load', timeout });
+  if (isPasswordPage(page.url()) && !isPasswordPage(options.url)) {
+    if (options.storefrontPassword === undefined || options.storefrontPassword === '') {
+      return { status: response?.status() ?? 0, blocked: 'storefront_password' };
+    }
+    if (!(await unlockStorefront(page, options.storefrontPassword, timeout))) {
+      return { status: response?.status() ?? 0, blocked: 'storefront_password' };
+    }
+    response = await page.goto(options.url, { waitUntil: 'load', timeout });
+    if (isPasswordPage(page.url())) {
+      return { status: response?.status() ?? 0, blocked: 'storefront_password' };
+    }
+  }
+  await settle(page, quietMs, timeout);
+  const status = response?.status() ?? 0;
+  const blocked = detectChallenge({
+    status,
+    title: await page.title(),
+    html: await page.content(),
+    url: page.url(),
+    headers: response?.headers() ?? {},
+  });
+  return { status, blocked };
+}
+
+async function checkState(
+  page: Page,
+  region: readonly string[] | undefined,
+  maxCrops: number,
+): Promise<{
+  violations: Occurrence[];
+  incomplete: Occurrence[];
+  rulesRun: string[];
+  checksRun: number;
+  checksPassed: number;
+}> {
+  const results =
+    region === undefined || region.length === 0
+      ? await analyzePage(page)
+      : await analyzeRegion(page, region);
+  const violations = await withCrops(page, await occurrences(page, results.violations), maxCrops);
+  return {
+    violations,
+    incomplete: await occurrences(page, results.incomplete),
+    rulesRun: [
+      ...results.violations.map((r) => r.id),
+      ...results.incomplete.map((r) => r.id),
+      ...results.passes,
+    ],
+    checksRun: results.violations.length + results.incomplete.length + results.passes.length,
+    checksPassed: results.passes.length,
+  };
+}
+
+/** The custom checks, folded into one state's result. */
+async function deepChecks(page: Page): Promise<{
+  violations: Occurrence[];
+  incomplete: Occurrence[];
+  bestPractice: Occurrence[];
+  rulesRun: string[];
+  checksRun: number;
+  checksPassed: number;
+}> {
+  const findings: PageFinding[] = [];
+  let checksRun = 0;
+  let checksPassed = 0;
+  const rulesRun: string[] = [];
+  for (const run of CUSTOM_CHECKS) {
+    const result = await run(page).catch(() => undefined);
+    if (result === undefined || result.status === 'error') continue;
+    // A check that hit its cap looked at only part of the page: it can fail but not pass.
+    findings.push(...result.findings);
+    checksRun += 1;
+    rulesRun.push(`rs-check-${result.check}`);
+    if (result.status === 'complete' && result.findings.length === 0) checksPassed += 1;
+  }
+  return { ...(await fromCustom(page, findings)), rulesRun, checksRun, checksPassed };
+}
+
 /** Scans one page. Throws on navigation failure, which the caller retries. */
 export async function scanPage(browser: Browser, options: ScanOptions): Promise<PageScan> {
   // Through egress, loopback is only reachable if Chromium proxies it (audit L2).
   if (options.proxy !== undefined) assertLoopbackProxied();
   const started = performance.now();
   const timeout = options.timeoutMs ?? 15_000;
-  const context = await browser.newContext({
-    viewport: options.viewport ?? { width: 1280, height: 800 },
-    locale: options.locale ?? 'en',
-    timezoneId: 'UTC',
-    userAgent: options.userAgent,
-    serviceWorkers: 'block',
-    acceptDownloads: false,
-    ...(options.proxy === undefined
-      ? {}
-      : { proxy: contextProxy(options.proxy.server, options.proxy.token) }),
-  });
-  try {
-    const page = await context.newPage();
-    const response = await page.goto(options.url, { waitUntil: 'load', timeout });
-    await settle(page, options.quietMs ?? 500, timeout);
-    const status = response?.status() ?? 0;
-    const blocked = detectChallenge({
-      status,
-      title: await page.title(),
-      html: await page.content(),
-      url: page.url(),
-      headers: response?.headers() ?? {},
+  const quietMs = options.quietMs ?? 500;
+  const maxCrops = options.maxCrops ?? 8;
+  // The default state goes first: the interactive states leave the checkout guard on the context.
+  const requested: PageState[] = [...new Set<PageState>(options.states ?? ['default'])].sort(
+    (a, b) => Number(b === 'default') - Number(a === 'default'),
+  );
+  const open = (): Promise<BrowserContext> =>
+    browser.newContext({
+      viewport: VIEWPORT_SIZES[options.viewport ?? 'desktop'],
+      locale: options.locale ?? 'en',
+      timezoneId: 'UTC',
+      userAgent: options.userAgent,
+      // Service Workers are blocked: the checkout guard of the state scripts relies on it.
+      ...scanContextOptions(),
+      acceptDownloads: false,
+      ...(options.proxy === undefined
+        ? {}
+        : { proxy: contextProxy(options.proxy.server, options.proxy.token) }),
     });
-    const base = { url: options.url, finalUrl: page.url(), status, blocked };
-    if (blocked !== undefined) {
-      return { ...base, violations: [], incomplete: [], durationMs: performance.now() - started };
+  let context = await open();
+  try {
+    let page = await context.newPage();
+    const loaded = await load(page, options, timeout, quietMs);
+    const base = { url: options.url, finalUrl: page.url(), status: loaded.status };
+    if (loaded.blocked !== undefined) {
+      return {
+        ...base,
+        blocked: loaded.blocked,
+        states: [],
+        crops: {},
+        durationMs: performance.now() - started,
+      };
     }
-    const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
+    const states: StateScan[] = [];
+    const crops: Record<string, Buffer> = {};
+    for (const selector of options.cropSelectors ?? []) {
+      const crop = await cropOf(page, selector);
+      if (crop !== undefined) crops[selector] = crop;
+    }
+    for (const state of requested) {
+      const stateStarted = performance.now();
+      if (state === 'default') {
+        const axeResult = await checkState(page, undefined, maxCrops);
+        const deep =
+          options.deep === true
+            ? await deepChecks(page)
+            : {
+                violations: [],
+                incomplete: [],
+                bestPractice: [],
+                rulesRun: [],
+                checksRun: 0,
+                checksPassed: 0,
+              };
+        states.push({
+          state,
+          result: 'opened',
+          reason: undefined,
+          violations: [...axeResult.violations, ...deep.violations],
+          incomplete: [...axeResult.incomplete, ...deep.incomplete],
+          bestPractice: deep.bestPractice,
+          rulesRun: [...new Set([...axeResult.rulesRun, ...deep.rulesRun])],
+          checksRun: axeResult.checksRun + deep.checksRun,
+          checksPassed: axeResult.checksPassed + deep.checksPassed,
+          durationMs: performance.now() - stateStarted,
+        });
+        continue;
+      }
+      // Each interactive state gets a context of its own: the one before leaves its checkout
+      // guard, an open drawer or an item in the cart behind.
+      if (states.length > 0) {
+        await context.close().catch(() => undefined);
+        context = await open();
+        page = await context.newPage();
+        const reloaded = await load(page, options, timeout, quietMs).catch(() => undefined);
+        if (reloaded === undefined || reloaded.blocked !== undefined) {
+          states.push(emptyState(state, 'error', 'reload_failed', stateStarted));
+          continue;
+        }
+      }
+      const outcome = await openState(page, state);
+      const { result, reason } = stateResult(outcome);
+      if (outcome.status !== 'opened') {
+        states.push(emptyState(state, result, reason, stateStarted));
+        continue;
+      }
+      const checked = await checkState(page, outcome.region, maxCrops);
+      states.push({
+        state,
+        result,
+        reason,
+        ...checked,
+        bestPractice: [],
+        durationMs: performance.now() - stateStarted,
+      });
+    }
     return {
       ...base,
-      violations: await occurrences(page, results.violations),
-      incomplete: await occurrences(page, results.incomplete),
+      blocked: undefined,
+      states,
+      crops,
       durationMs: performance.now() - started,
     };
   } finally {
     await context.close();
   }
+}
+
+function emptyState(
+  state: PageState,
+  result: StateResult,
+  reason: string | undefined,
+  started: number,
+): StateScan {
+  return {
+    state,
+    result,
+    reason,
+    violations: [],
+    incomplete: [],
+    bestPractice: [],
+    rulesRun: [],
+    checksRun: 0,
+    checksPassed: 0,
+    durationMs: performance.now() - started,
+  };
 }
