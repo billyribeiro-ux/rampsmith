@@ -23,7 +23,7 @@ try {
     url: `data:text/html,${encodeURIComponent(PAGE)}`,
     userAgent: userAgent('self-check'),
   });
-  const rules = [...new Set(scan.violations.map((v) => v.ruleId))];
+  const rules = [...new Set((scan.states[0]?.violations ?? []).map((v) => v.ruleId))];
   process.stdout.write(
     `${JSON.stringify({ node: process.version, chromium: browser.version(), rules })}\n`,
   );

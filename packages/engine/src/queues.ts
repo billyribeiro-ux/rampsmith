@@ -21,18 +21,19 @@ export const ENGINE_QUEUES = [
 ] as const;
 export type EngineQueue = (typeof ENGINE_QUEUES)[number];
 
-/** The handlers that need neither the browser nor egress yet. */
-export function stubHandlers(): Record<Exclude<EngineQueue, 'scan.page'>, JobHandler> {
-  return {
-    'scan.plan': scanPlanHandler(),
-    'scan.finalize': scanFinalizeHandler(),
-    'audit.data': auditDataHandler(),
-    'ai.alt_text': altTextHandler(),
-    'verify.scan': verifyScanHandler(),
-  };
+/** The handlers of queues no R1 lane has built yet. */
+export function stubHandlers(): Record<'ai.alt_text', JobHandler> {
+  return { 'ai.alt_text': altTextHandler() };
 }
 
 /** Each engine queue's handler. */
 export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
-  return { ...stubHandlers(), 'scan.page': scanPageHandler(deps) };
+  return {
+    ...stubHandlers(),
+    'scan.plan': scanPlanHandler(deps),
+    'scan.page': scanPageHandler(deps),
+    'scan.finalize': scanFinalizeHandler(deps),
+    'audit.data': auditDataHandler(deps),
+    'verify.scan': verifyScanHandler(deps),
+  };
 }

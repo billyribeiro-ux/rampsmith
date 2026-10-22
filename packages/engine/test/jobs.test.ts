@@ -101,11 +101,15 @@ describe('the engine queue registry (ADR-035)', () => {
   });
 
   it('fails a valid job on an unbuilt queue permanently as not_implemented', async () => {
-    const handlers = stubHandlers();
-    const run = handlers['scan.finalize'];
+    const run = stubHandlers()['ai.alt_text'];
     const valid = {
-      ...job('scan.finalize@1', { scan_id: SCAN, site_id: SITE }),
-      queue: 'scan.finalize',
+      ...job('ai.alt_text@1', {
+        site_id: SITE,
+        finding_id: SCAN,
+        input_id: SITE,
+        resource_gid: 'gid://shopify/MediaImage/1',
+      }),
+      queue: 'ai.alt_text',
     };
     await expect(run(valid)).rejects.toMatchObject({
       failure: { kind: 'permanent', error: { code: 'not_implemented' } },

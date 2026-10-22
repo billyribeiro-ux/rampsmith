@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
-import type { Occurrence, PageScan } from '../src/scan-page.ts';
+import type { Occurrence } from '../src/scan-page.ts';
 import { recordPage, withTenant } from '../src/store.ts';
 import { freshDatabase, seed, type TestDatabase } from './db.ts';
+import { pageScan as page } from './scans.ts';
 
 let db: TestDatabase;
 let worker: postgres.Sql;
@@ -25,18 +26,6 @@ const imageAlt = (target: string): Occurrence => ({
   section: 'shopify-section-template--1234__main',
 });
 
-function page(url: string, violations: Occurrence[]): PageScan {
-  return {
-    url,
-    finalUrl: url,
-    status: 200,
-    blocked: undefined,
-    violations,
-    incomplete: [],
-    durationMs: 1234.5,
-  };
-}
-
 describe('recordPage', () => {
   it('merges one template failure across pages into one finding with every occurrence', async () => {
     const f = await seed(db.owner, 'https://demo.myshopify.com', { pages: 2 });
@@ -48,7 +37,7 @@ describe('recordPage', () => {
         imageAlt('div:nth-child(5) > img'),
       ]),
     );
-    expect(first).toEqual({ recorded: true, findings: 1, occurrences: 2 });
+    expect(first).toMatchObject({ recorded: true, findings: 1, occurrences: 2 });
     const second = await recordPage(
       worker,
       f,
@@ -63,7 +52,8 @@ describe('recordPage', () => {
     expect(findings).toEqual([{ rule_id: 'image-alt', occurrence_count: 3, criteria: ['1.1.1'] }]);
     const [scan] = await db.owner<{ pages_done: number; status: string; finished: boolean }[]>`
       select pages_done, status, finished_at is not null as finished from scans where id = ${f.scanId}`;
-    expect(scan).toEqual({ pages_done: 2, status: 'succeeded', finished: true });
+    // The last page only completes the scan; `scan.finalize` ends it (ADR-070).
+    expect(scan).toEqual({ pages_done: 2, status: 'running', finished: false });
     const [row] = await db.owner<{ count: number }[]>`
       select count(*)::int as count from finding_occurrences where scan_id = ${f.scanId}`;
     expect(row?.count).toBe(3);
@@ -77,6 +67,7 @@ describe('recordPage', () => {
       recorded: false,
       findings: 0,
       occurrences: 0,
+      progress: undefined,
     });
     const [row] = await db.owner<{ pages_done: number; occurrence_count: number }[]>`
       select s.pages_done, f.occurrence_count from scans s join findings f on f.last_seen_scan = s.id
@@ -90,8 +81,9 @@ describe('recordPage', () => {
       ...page('https://walled.myshopify.com/', []),
       status: 403,
       blocked: 'cloudflare' as const,
+      states: [],
     };
-    expect(await recordPage(worker, f, blocked)).toEqual({
+    expect(await recordPage(worker, f, blocked)).toMatchObject({
       recorded: true,
       findings: 0,
       occurrences: 0,
