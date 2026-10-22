@@ -1,0 +1,170 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select f.id, f.rule_id, f.criteria, f.impact, f.status, f.origin, f.occurrence_count,\n                  f.templates_affected, f.on_purchase_path,\n                  f.priority_score::float8 as priority_score,\n                  nf.id as \"fix_id?\", nf.status as \"fix_status?\",\n                  count(*) over () as \"total!\"\n             from findings f\n             left join lateral (\n                  select x.id, x.status\n                    from fix_findings ff\n                    join fixes x on x.id = ff.fix_id and x.tenant_id = ff.tenant_id\n                   where ff.tenant_id = f.tenant_id and ff.finding_id = f.id\n                   order by x.created_at desc limit 1) nf on true\n            where f.tenant_id = $1 and f.site_id = $2\n              and ($3::text is null or f.impact = $3)\n              and ($4::text is null or f.status = $4)\n              and ($5::text is null or f.origin = $5)\n              and ($6::text is null or $6 = any (f.criteria))\n              and ($7::bool is null or ($7 = (nf.id is not null)))\n            order by f.priority_score desc nulls last, f.id\n            offset $8 limit $9",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "rule_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "criteria",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "criteria"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "impact",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "impact"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "origin",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "origin"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "occurrence_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "occurrence_count"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "templates_affected",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "templates_affected"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "on_purchase_path",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "on_purchase_path"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "priority_score",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "fix_id?",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "fix_status?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fixes",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "e62b9d37960eba7db273e819f85dfa9bcd0cde1263d29211b08a5e8051b85b12"
+}

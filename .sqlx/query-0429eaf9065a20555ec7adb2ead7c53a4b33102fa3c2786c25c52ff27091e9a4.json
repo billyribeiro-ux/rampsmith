@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into statements (id, tenant_id, site_id, version, status, content)\n               select gen_random_uuid(), $1, $2,\n                      coalesce((select max(version) from statements\n                                 where tenant_id = $1 and site_id = $2), 0) + 1,\n                      'draft', $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0429eaf9065a20555ec7adb2ead7c53a4b33102fa3c2786c25c52ff27091e9a4"
+}

@@ -2083,6 +2083,7 @@ dependencies = [
  "hmac",
  "http-body-util",
  "jsonwebtoken",
+ "rampsmith-billing",
  "rampsmith-contracts",
  "rampsmith-crypto",
  "rampsmith-db",
@@ -2093,6 +2094,7 @@ dependencies = [
  "rampsmith-shopify",
  "rampsmith-shopify-auth",
  "rampsmith-telemetry",
+ "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -2153,6 +2155,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "jsonwebtoken",
+ "rampsmith-billing",
  "rampsmith-contracts",
  "rampsmith-crypto",
  "rampsmith-db",
@@ -2179,6 +2182,7 @@ dependencies = [
 name = "rampsmith-db"
 version = "0.0.0"
 dependencies = [
+ "rampsmith-billing",
  "rampsmith-domain",
  "rampsmith-queue",
  "serde",

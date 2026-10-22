@@ -118,6 +118,16 @@ async fn the_store_is_read_into_scan_inputs_and_the_audit_and_plan_are_queued(
     let shop = &inputs(&w, scan, "shop").await[0];
     assert_eq!(shop["primary_domain"], "supertoys.example");
     assert_eq!(shop["primary_locale"], "en");
+    assert_eq!(
+        shop["sampling"],
+        json!({"mode": "home_plus", "pages": 5}),
+        "no confirmed plan reads as Free"
+    );
+    let gid: Option<String> = sqlx::query_scalar("select shop_gid from shopify_shops")
+        .fetch_one(&w.owner)
+        .await
+        .unwrap();
+    assert_eq!(gid.as_deref(), Some("gid://shopify/Shop/548380009"));
     assert_eq!(shop["read"]["products"]["batches"], 2);
     assert_eq!(shop["read"]["products"]["truncated"], false);
     assert!(
@@ -248,4 +258,47 @@ async fn status(w: &World, scan: Uuid) -> String {
         .fetch_one(&w.owner)
         .await
         .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_shop_input_carries_the_confirmed_plans_sampling(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    mount_store(&w).await;
+    let (tenant, shop) = (w.session.tenant.as_uuid(), w.session.shop_id.as_uuid());
+    let scan = w.scan().await;
+    for (plan, expected) in [
+        (
+            "starter",
+            json!({"mode": "per_template", "samples": 3, "every_variant": false}),
+        ),
+        (
+            "growth",
+            json!({"mode": "per_template", "samples": 10, "every_variant": false}),
+        ),
+        (
+            "pro",
+            json!({"mode": "per_template", "samples": 25, "every_variant": true}),
+        ),
+    ] {
+        sqlx::query(
+            "insert into shop_billing (shop_id, tenant_id, standing, plan, plan_interval)
+             values ($1, $2, 'paid', $3, 'monthly')
+             on conflict (shop_id) do update set plan = excluded.plan",
+        )
+        .bind(shop)
+        .bind(tenant)
+        .bind(plan)
+        .execute(&w.owner)
+        .await
+        .unwrap();
+        read(&w, scan).await.unwrap();
+        assert_eq!(
+            inputs(&w, scan, "shop").await[0]["sampling"],
+            expected,
+            "{plan}"
+        );
+    }
 }

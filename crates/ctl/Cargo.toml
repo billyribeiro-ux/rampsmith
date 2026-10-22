@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+billing = { package = "rampsmith-billing", path = "../billing" }
 contracts.workspace = true
 crypto.workspace = true
 db.workspace = true

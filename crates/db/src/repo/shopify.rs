@@ -388,3 +388,33 @@ pub async fn get_info(tx: &mut TenantTx, id: ShopId) -> Result<Option<ShopInfo>,
         synced_at: r.synced_at,
     }))
 }
+
+/// Records Shopify's own id for the shop, as the Admin API reported it. `false` when the shop
+/// is not an installed shop of the tenant, or the id is not a shop GID.
+pub async fn set_shop_gid(tx: &mut TenantTx, id: ShopId, gid: &str) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update shopify_shops set shop_gid = $3
+            where tenant_id = $1 and id = $2 and status = 'installed'
+              and $3 ~ '^gid://shopify/Shop/[0-9]{1,18}$'"#,
+        tenant,
+        id.as_uuid(),
+        gid,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Shopify's id for the shop, once `shopify.read_store` has recorded it.
+pub async fn shop_gid(tx: &mut TenantTx, id: ShopId) -> Result<Option<String>, DbError> {
+    let tenant = tx.tenant_uuid();
+    Ok(sqlx::query_scalar!(
+        r#"select shop_gid from shopify_shops where tenant_id = $1 and id = $2"#,
+        tenant,
+        id.as_uuid(),
+    )
+    .fetch_optional(tx.conn())
+    .await?
+    .flatten())
+}

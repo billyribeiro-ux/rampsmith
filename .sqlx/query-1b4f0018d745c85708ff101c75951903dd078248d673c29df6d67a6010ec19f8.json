@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select exists (select 1 from jobs\n                           where tenant_id = $1 and queue = 'shopify.revert_data_fix'\n                             and state in ('ready', 'running')\n                             and payload ->> 'fix_id' = $2::text) as \"pending!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pending!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1b4f0018d745c85708ff101c75951903dd078248d673c29df6d67a6010ec19f8"
+}

@@ -7,8 +7,10 @@
 pub mod auth;
 pub mod config;
 mod health;
+pub mod plan;
 mod r1;
 pub mod rate_limit;
+mod rules;
 pub mod shopify;
 pub mod webhooks;
 
@@ -26,6 +28,8 @@ pub struct AppState {
     expected_schema: i64,
     shopify: Option<shopify_auth::ShopifyAuth>,
     identity: Option<identity::Identity>,
+    keys: Option<crypto::KeyRing>,
+    partner: Option<plan::PartnerPlans>,
     start_limiter: rate_limit::StartLimiter,
 }
 
@@ -38,6 +42,8 @@ impl AppState {
             expected_schema: db::expected_schema_version(),
             shopify: None,
             identity: None,
+            keys: None,
+            partner: None,
             start_limiter: rate_limit::StartLimiter::default(),
         }
     }
@@ -53,6 +59,22 @@ impl AppState {
     #[must_use]
     pub fn with_shopify(mut self, auth: shopify_auth::ShopifyAuth) -> Self {
         self.shopify = Some(auth);
+        self
+    }
+
+    /// Gives the routes the master keys, to seal what merchants save (the storefront password).
+    /// Without them, saving such a value answers 503.
+    #[must_use]
+    pub fn with_keys(mut self, keys: crypto::KeyRing) -> Self {
+        self.keys = Some(keys);
+        self
+    }
+
+    /// Confirms plans with the Partner API (audit M3, ADR-084). Without it the routes serve the
+    /// stored plan, which is Free until one is stored.
+    #[must_use]
+    pub fn with_partner(mut self, partner: plan::PartnerPlans) -> Self {
+        self.partner = Some(partner);
         self
     }
 

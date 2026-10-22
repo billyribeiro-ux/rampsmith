@@ -28,10 +28,25 @@ pub struct Config {
     pub shopify_client_secret: SecretString,
     /// Master keys for envelope encryption (`RAMPSMITH_MASTER_KEYS`, ADR-021).
     pub master_keys: KeyRing,
+    /// Partner API access for plan confirmation (`SHOPIFY_PARTNER_ORG_ID`,
+    /// `SHOPIFY_PARTNER_API_TOKEN`, `SHOPIFY_APP_GID`; LAUNCH.md section C). All three or none:
+    /// without them the app serves each shop's stored plan, Free until one is stored.
+    pub partner: Option<PartnerConfig>,
     /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).
     pub webauthn_rp_id: String,
     /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
     pub webauthn_rp_origin: String,
+}
+
+/// The Partner API settings for plan confirmation.
+#[derive(Debug)]
+pub struct PartnerConfig {
+    /// The organization that owns the app.
+    pub organization: billing::PartnerOrganizationId,
+    /// The API client's access token. Secret: never logged.
+    pub token: SecretString,
+    /// The app's GID.
+    pub app: billing::AppGid,
 }
 
 /// A configuration value is missing or malformed.
@@ -129,7 +144,9 @@ impl Config {
                     reason: reason.to_owned(),
                 }
             })?;
+        let partner = partner_config(&get)?;
         Ok(Self {
+            partner,
             webauthn_rp_id: rp_id,
             webauthn_rp_origin,
             shopify_client_id: shopify_client_id.trim().to_owned(),
@@ -143,6 +160,34 @@ impl Config {
                 .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()),
         })
     }
+}
+
+/// The Partner API settings: all three variables or none.
+fn partner_config(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<PartnerConfig>, ConfigError> {
+    let org = get("SHOPIFY_PARTNER_ORG_ID");
+    let token = get("SHOPIFY_PARTNER_API_TOKEN");
+    let app = get("SHOPIFY_APP_GID");
+    if org.is_none() && token.is_none() && app.is_none() {
+        return Ok(None);
+    }
+    let org = org.ok_or(ConfigError::Missing("SHOPIFY_PARTNER_ORG_ID"))?;
+    let token = token.ok_or(ConfigError::Missing("SHOPIFY_PARTNER_API_TOKEN"))?;
+    let app = app.ok_or(ConfigError::Missing("SHOPIFY_APP_GID"))?;
+    Ok(Some(PartnerConfig {
+        organization: billing::PartnerOrganizationId::parse(org.trim()).map_err(|e| {
+            ConfigError::Invalid {
+                name: "SHOPIFY_PARTNER_ORG_ID",
+                reason: e.to_string(),
+            }
+        })?,
+        token: SecretString::from(token),
+        app: billing::AppGid::parse(app.trim()).map_err(|e| ConfigError::Invalid {
+            name: "SHOPIFY_APP_GID",
+            reason: e.to_string(),
+        })?,
+    }))
 }
 
 /// A dotted name of lowercase letters, digits and hyphens, as WebAuthn relying-party ids and
@@ -469,5 +514,74 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    const PARTNER: [(&str, &str); 3] = [
+        ("SHOPIFY_PARTNER_ORG_ID", "424242"),
+        ("SHOPIFY_PARTNER_API_TOKEN", "prtnr_secret_value"),
+        ("SHOPIFY_APP_GID", "gid://shopify/App/1234"),
+    ];
+
+    #[test]
+    fn partner_access_is_all_three_variables_or_none() {
+        let base = [("DATABASE_URL", "postgres://x@localhost/db")];
+        assert!(config(&base).unwrap().partner.is_none());
+        let all: Vec<(&str, &str)> = base.iter().chain(PARTNER.iter()).copied().collect();
+        let configured = config(&all).unwrap();
+        let partner = configured.partner.unwrap();
+        assert_eq!(partner.organization.to_string(), "424242");
+        assert_eq!(partner.app.to_string(), "gid://shopify/App/1234");
+        assert_eq!(partner.token.expose_secret(), "prtnr_secret_value");
+        for (skip, (missing, _)) in PARTNER.iter().enumerate() {
+            let some: Vec<(&str, &str)> = base
+                .iter()
+                .copied()
+                .chain(
+                    PARTNER
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .filter(|(i, _)| *i != skip)
+                        .map(|(_, p)| p),
+                )
+                .collect();
+            assert!(
+                matches!(config(&some).unwrap_err(), ConfigError::Missing(name) if name == *missing),
+                "without {missing}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_malformed_partner_value_is_named_but_never_repeated() {
+        let error = config(&[
+            ("DATABASE_URL", "postgres://x@localhost/db"),
+            ("SHOPIFY_PARTNER_ORG_ID", "not-a-number"),
+            ("SHOPIFY_PARTNER_API_TOKEN", "prtnr_secret_value"),
+            ("SHOPIFY_APP_GID", "gid://shopify/App/1234"),
+        ])
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ConfigError::Invalid {
+                name: "SHOPIFY_PARTNER_ORG_ID",
+                ..
+            }
+        ));
+        assert!(!error.to_string().contains("prtnr_secret_value"));
+        let debug = format!(
+            "{:?}",
+            config(&[
+                ("DATABASE_URL", "postgres://x@localhost/db"),
+                PARTNER[0],
+                PARTNER[1],
+                PARTNER[2]
+            ])
+            .unwrap()
+        );
+        assert!(
+            !debug.contains("prtnr_secret_value"),
+            "the token must not appear in Debug"
+        );
     }
 }

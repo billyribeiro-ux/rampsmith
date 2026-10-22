@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select exists (select 1 from scans\n                           where tenant_id = $1 and site_id = $2 and trigger <> 'verify'\n                             and status in ('queued', 'running')\n                             and created_at > now() - $3::bigint * interval '1 second') as \"live!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "live!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f760120d11c16cca12e9728f200d6e00be273e742840351f403db972e3a0891f"
+}

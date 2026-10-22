@@ -11,6 +11,7 @@ repository.workspace = true
 name = "db"
 
 [dependencies]
+billing = { package = "rampsmith-billing", path = "../billing" }
 domain.workspace = true
 queue.workspace = true
 serde.workspace = true

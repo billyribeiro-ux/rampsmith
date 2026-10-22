@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update sites set settings = jsonb_strip_nulls(settings || $3)\n            where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9a00b1b4dba9ec9c4586b24f0f2bb87712e256ae6d58b9cd52d6b277a4afb4a5"
+}

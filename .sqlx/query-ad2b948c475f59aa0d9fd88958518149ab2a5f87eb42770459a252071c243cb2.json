@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select settings, (storefront_password_ct is not null) as \"password_set!\"\n             from sites where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "settings",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "settings"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "password_set!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "ad2b948c475f59aa0d9fd88958518149ab2a5f87eb42770459a252071c243cb2"
+}

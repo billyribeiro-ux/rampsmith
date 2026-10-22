@@ -285,13 +285,13 @@
         "tags": [
           "app"
         ],
-        "summary": "An evidence crop (PNG or WebP), served from the database (ADR-035).",
+        "summary": "A screenshot taken before or after a fix.",
         "operationId": "getEvidence",
         "parameters": [
           {
             "name": "evidence_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The evidence's identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -299,8 +299,24 @@
           }
         ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The evidence bytes",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such evidence",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -324,9 +340,116 @@
         ],
         "summary": "Open findings, ranked by priority score.",
         "operationId": "listFindings",
+        "parameters": [
+          {
+            "name": "impact",
+            "in": "path",
+            "description": "`minor`, `moderate`, `serious` or `critical`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "path",
+            "description": "`open`, `fixed`, `needs_review`, `accepted_risk` or `false_positive`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "origin",
+            "in": "path",
+            "description": "`render` or `data`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "criterion",
+            "in": "path",
+            "description": "A WCAG success criterion such as `1.1.1`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "has_fix",
+            "in": "path",
+            "description": "Only findings that have (true) or lack (false) a fix.",
+            "required": true,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "path",
+            "description": "The `next_cursor` of the previous page.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "path",
+            "description": "Items per page (default 25, at most 100).",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "A page of findings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingListDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A filter or the cursor is invalid",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -348,13 +471,13 @@
         "tags": [
           "app"
         ],
-        "summary": "One finding, with its evidence and affected templates.",
+        "summary": "One finding with its occurrences, evidence and fixes.",
         "operationId": "getFinding",
         "parameters": [
           {
             "name": "finding_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The finding's identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -362,8 +485,28 @@
           }
         ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The finding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDetailDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such finding",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -385,11 +528,70 @@
         "tags": [
           "app"
         ],
-        "summary": "Fixes by state: the approval queue and the remediation log.",
+        "summary": "Fixes: the review queue, or what was applied.",
         "operationId": "listFixes",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "path",
+            "description": "`queue` (default): waiting, approved, applying or failed. `applied`: applied or verified.\n`all`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "path",
+            "description": "The `next_cursor` of the previous page.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "path",
+            "description": "Items per page (default 25, at most 100).",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "A page of fixes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixListDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A filter or the cursor is invalid",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -411,22 +613,72 @@
         "tags": [
           "app"
         ],
-        "summary": "Edits a proposed fix, such as an alt-text draft.",
+        "summary": "Edits the alt text of a fix that is waiting for review.",
         "operationId": "editFix",
         "parameters": [
           {
             "name": "fix_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The fix's identifier",
             "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditFixBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The edited fix",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such fix",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The fix is no longer waiting for review",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The alt text is empty or too long",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -448,13 +700,13 @@
         "tags": [
           "app"
         ],
-        "summary": "Approves a proposed fix and applies it.",
+        "summary": "Approves a fix: Rampsmith then changes the alt text in the shop.",
         "operationId": "approveFix",
         "parameters": [
           {
             "name": "fix_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The fix's identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -462,8 +714,48 @@
           }
         ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The approved fix; it is applied shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The plan does not cover another image fix",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such fix",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The fix was already decided",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -485,13 +777,13 @@
         "tags": [
           "app"
         ],
-        "summary": "Rejects a proposed fix.",
+        "summary": "Rejects a fix that is waiting for review; nothing changes in the shop.",
         "operationId": "rejectFix",
         "parameters": [
           {
             "name": "fix_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The fix's identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -499,8 +791,38 @@
           }
         ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The rejected fix",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such fix",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The fix was already decided",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -522,13 +844,13 @@
         "tags": [
           "app"
         ],
-        "summary": "Reverts an applied fix.",
+        "summary": "Undoes an applied fix: Rampsmith puts the earlier alt text back if nobody changed it since.",
         "operationId": "undoFix",
         "parameters": [
           {
             "name": "fix_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The fix's identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -536,8 +858,38 @@
           }
         ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "202": {
+            "description": "The undo is queued; the fix reads reverted when done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such fix",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The fix is not applied, or an undo is already running",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -562,8 +914,18 @@
         "summary": "The pass rate, open findings by impact, fixes awaiting approval, and the last and next scan.",
         "operationId": "getOverview",
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The overview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -588,8 +950,28 @@
         "summary": "Starts a scan of the shop.",
         "operationId": "startScan",
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "202": {
+            "description": "The scan is queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedScanDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A scan is already running",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -617,7 +999,7 @@
           {
             "name": "scan_id",
             "in": "path",
-            "description": "The identifier in the path",
+            "description": "The scan's identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -625,8 +1007,28 @@
           }
         ],
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The scan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSummaryDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such scan",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -704,11 +1106,21 @@
         "tags": [
           "app"
         ],
-        "summary": "Scan schedule, storefront password state, AI budget and notification email.",
+        "summary": "The shop's settings.",
         "operationId": "getSettings",
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -728,11 +1140,61 @@
         "tags": [
           "app"
         ],
-        "summary": "Changes the shop's settings.",
+        "summary": "Changes the shop's settings. Fields left out stay as they are.",
         "operationId": "updateSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "description": "The settings after the change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The plan does not include weekly rescans",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A value is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "Not available yet",
+            "description": "Saving a password is not configured",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -754,11 +1216,21 @@
         "tags": [
           "app"
         ],
-        "summary": "The accessibility statement versions.",
+        "summary": "The accessibility statement: the open draft and the saved versions.",
         "operationId": "getStatement",
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The statement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementStateDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -778,11 +1250,41 @@
         "tags": [
           "app"
         ],
-        "summary": "Saves a draft of the accessibility statement.",
+        "summary": "Saves the statement as the draft.",
         "operationId": "saveStatement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatementContent"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "503": {
-            "description": "Not available yet",
+          "200": {
+            "description": "The statement after saving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementStateDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -802,6 +1304,49 @@
   },
   "components": {
     "schemas": {
+      "AltTextChangeDto": {
+        "type": "object",
+        "required": [
+          "type",
+          "resource_gid",
+          "field",
+          "after",
+          "language",
+          "contains_text",
+          "escalated"
+        ],
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contains_text": {
+            "type": "boolean"
+          },
+          "escalated": {
+            "type": "boolean"
+          },
+          "field": {
+            "type": "string",
+            "description": "Always `alt`."
+          },
+          "language": {
+            "type": "string"
+          },
+          "resource_gid": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Always `alt_text`."
+          }
+        }
+      },
       "CeremonyResponse": {
         "type": "object",
         "description": "Completes a ceremony with the browser's answer.",
@@ -841,6 +1386,146 @@
           }
         }
       },
+      "CoverageDto": {
+        "type": "object",
+        "required": [
+          "automated",
+          "partial"
+        ],
+        "properties": {
+          "automated": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "WCAG success criteria the automated checks tested."
+          },
+          "partial": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Criteria tested only in part."
+          },
+          "review_queue": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Findings waiting for a person's review."
+          }
+        }
+      },
+      "DraftsDto": {
+        "type": "object",
+        "required": [
+          "limit",
+          "used"
+        ],
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The allowance.",
+            "minimum": 0
+          },
+          "renews_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the window renews; null on Free."
+          },
+          "used": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Drafts used in the current window (the shop's lifetime on Free).",
+            "minimum": 0
+          }
+        }
+      },
+      "EditFixBody": {
+        "type": "object",
+        "required": [
+          "alt"
+        ],
+        "properties": {
+          "alt": {
+            "type": "string",
+            "description": "The new alt text."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EntitlementsDto": {
+        "type": "object",
+        "required": [
+          "plan",
+          "scan_cadence",
+          "alt_text_drafts",
+          "features"
+        ],
+        "properties": {
+          "alt_text_drafts": {
+            "$ref": "#/components/schemas/DraftsDto"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeatureGateDto"
+            }
+          },
+          "plan": {
+            "type": "string",
+            "description": "`free`, `starter`, `growth` or `pro`."
+          },
+          "scan_cadence": {
+            "type": "string",
+            "description": "`monthly`, `weekly` or `daily`."
+          }
+        }
+      },
+      "EvidenceRefDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`before` or `after`."
+          }
+        }
+      },
+      "FeatureGateDto": {
+        "type": "object",
+        "required": [
+          "feature",
+          "gate"
+        ],
+        "properties": {
+          "feature": {
+            "type": "string",
+            "description": "The feature's key."
+          },
+          "gate": {
+            "type": "string",
+            "description": "`allowed`, `locked` or `unavailable`."
+          },
+          "unlocked_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The lowest plan that unlocks it, when it is locked."
+          }
+        }
+      },
       "FieldError": {
         "type": "object",
         "description": "One invalid field of a request.",
@@ -859,6 +1544,341 @@
           }
         }
       },
+      "FindingDetailDto": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FindingSummaryDto"
+          },
+          {
+            "type": "object",
+            "required": [
+              "explanation",
+              "occurrences",
+              "templates",
+              "evidence",
+              "fixes"
+            ],
+            "properties": {
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EvidenceRefDto"
+                }
+              },
+              "explanation": {
+                "type": "string",
+                "description": "The rule's plain-language explanation."
+              },
+              "fixes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FixDto"
+                }
+              },
+              "occurrences": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OccurrenceDto"
+                }
+              },
+              "templates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The page types the finding appears on."
+              }
+            }
+          }
+        ]
+      },
+      "FindingFixDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "FindingListDto": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindingSummaryDto"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FindingSummaryDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule_id",
+          "title",
+          "criteria",
+          "impact",
+          "status",
+          "origin",
+          "occurrence_count",
+          "templates_affected",
+          "on_purchase_path"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fix": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FindingFixDto",
+                "description": "The newest fix for this finding, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "occurrence_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "on_purchase_path": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "priority_score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "templates_affected": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "description": "One plain-language sentence naming the problem."
+          }
+        }
+      },
+      "FixDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "origin",
+          "kind",
+          "channel",
+          "change",
+          "product_title",
+          "findings",
+          "edited",
+          "proposed_at"
+        ],
+        "properties": {
+          "after_evidence_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "applied_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approver_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Shopify does not give the app the staff member's name."
+          },
+          "before_evidence_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "change": {
+            "$ref": "#/components/schemas/AltTextChangeDto"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "edited": {
+            "type": "boolean"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FixFindingDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The image on Shopify's CDN."
+          },
+          "kind": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "product_title": {
+            "type": "string",
+            "description": "The product the image belongs to."
+          },
+          "proposed_at": {
+            "type": "string"
+          },
+          "reverts": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified_scan": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "FixFindingDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule_id",
+          "title",
+          "criteria",
+          "impact"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "FixListDto": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FixDto"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Health": {
         "type": "object",
         "description": "The process is up.",
@@ -869,6 +1889,112 @@
           "status": {
             "type": "string",
             "description": "Always `ok`."
+          }
+        }
+      },
+      "ImpactCountsDto": {
+        "type": "object",
+        "required": [
+          "minor",
+          "moderate",
+          "serious",
+          "critical"
+        ],
+        "properties": {
+          "critical": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "moderate": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "serious": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "OccurrenceDto": {
+        "type": "object",
+        "required": [
+          "page_url",
+          "page_state",
+          "target",
+          "html_excerpt"
+        ],
+        "properties": {
+          "html_excerpt": {
+            "type": "string",
+            "description": "A scrubbed HTML excerpt of at most 512 characters."
+          },
+          "page_state": {
+            "type": "string"
+          },
+          "page_url": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "A scrubbed CSS selector."
+          }
+        }
+      },
+      "OverviewDto": {
+        "type": "object",
+        "required": [
+          "shop",
+          "entitlements",
+          "open_by_impact",
+          "fixes_awaiting_approval",
+          "fixes_applied"
+        ],
+        "properties": {
+          "entitlements": {
+            "$ref": "#/components/schemas/EntitlementsDto"
+          },
+          "first_fix_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the first fix was applied."
+          },
+          "fixes_applied": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fixes_awaiting_approval": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_scan": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScanSummaryDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_scan_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the next scheduled rescan runs, when weekly rescans are on."
+          },
+          "open_by_impact": {
+            "$ref": "#/components/schemas/ImpactCountsDto",
+            "description": "Open findings by impact; best practices are not counted."
+          },
+          "shop": {
+            "$ref": "#/components/schemas/ShopDto"
           }
         }
       },
@@ -991,6 +2117,86 @@
         },
         "additionalProperties": false
       },
+      "ScanSummaryDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "trigger",
+          "created_at",
+          "pages_planned",
+          "pages_done",
+          "checks_run",
+          "checks_passed",
+          "ruleset_version"
+        ],
+        "properties": {
+          "checks_passed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "checks_run": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "coverage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CoverageDto",
+                "description": "The coverage disclosure; null until the scan is finalised."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A short code such as `store_unreachable`; never store content."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "pages_done": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pages_planned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ruleset_version": {
+            "type": "string",
+            "description": "The axe-core version the scan ran with."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "`queued`, `running`, `succeeded`, `partial`, `failed` or `cancelled`."
+          },
+          "trigger": {
+            "type": "string",
+            "description": "`manual`, `scheduled`, `webhook`, `verify` or `free`."
+          }
+        }
+      },
       "SessionCreated": {
         "type": "object",
         "description": "A new session. The token is shown once; store it in an `HttpOnly` cookie.",
@@ -1025,6 +2231,253 @@
           "user": {
             "$ref": "#/components/schemas/UserInfo",
             "description": "Who is signed in."
+          }
+        }
+      },
+      "SettingsDto": {
+        "type": "object",
+        "required": [
+          "weekly_rescan",
+          "alt_text_max_characters",
+          "ai_budget_micro_usd",
+          "ai_budget_max_micro_usd",
+          "storefront_password_set",
+          "entitlements"
+        ],
+        "properties": {
+          "ai_budget_max_micro_usd": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The plan's ceiling for the budget."
+          },
+          "ai_budget_micro_usd": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "alt_text_max_characters": {
+            "type": "integer",
+            "format": "int64",
+            "description": "40 to 300; 150 unless changed."
+          },
+          "entitlements": {
+            "$ref": "#/components/schemas/EntitlementsDto"
+          },
+          "notification_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storefront_password_set": {
+            "type": "boolean"
+          },
+          "weekly_rescan": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SettingsUpdateBody": {
+        "type": "object",
+        "description": "Fields left out stay as they are; `storefront_password: null` clears the saved password.",
+        "properties": {
+          "ai_budget_micro_usd": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "alt_text_max_characters": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "notification_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storefront_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weekly_rescan": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShopDto": {
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "StartedScanDto": {
+        "type": "object",
+        "required": [
+          "scan"
+        ],
+        "properties": {
+          "scan": {
+            "$ref": "#/components/schemas/ScanSummaryDto"
+          }
+        }
+      },
+      "StatementContact": {
+        "type": "object",
+        "required": [
+          "email",
+          "phone",
+          "postal_address",
+          "form_url",
+          "response_time"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "form_url": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "postal_address": {
+            "type": "string"
+          },
+          "response_time": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StatementContent": {
+        "type": "object",
+        "required": [
+          "organization",
+          "contact",
+          "measures",
+          "limitations",
+          "compatibility"
+        ],
+        "properties": {
+          "compatibility": {
+            "type": "string"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/StatementContact"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatementLimitation"
+            }
+          },
+          "measures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "organization": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StatementLimitation": {
+        "type": "object",
+        "required": [
+          "description",
+          "reason",
+          "alternative"
+        ],
+        "properties": {
+          "alternative": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StatementStateDto": {
+        "type": "object",
+        "required": [
+          "versions"
+        ],
+        "properties": {
+          "draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatementContent",
+                "description": "The open draft, if there is one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatementVersionDto"
+            }
+          }
+        }
+      },
+      "StatementVersionDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "`draft` or `published`."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

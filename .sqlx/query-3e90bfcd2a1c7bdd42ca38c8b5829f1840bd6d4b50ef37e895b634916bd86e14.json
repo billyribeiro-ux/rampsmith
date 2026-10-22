@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update data_fix_snapshots set after_value = to_jsonb($3::text)\n            where tenant_id = $1 and fix_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3e90bfcd2a1c7bdd42ca38c8b5829f1840bd6d4b50ef37e895b634916bd86e14"
+}

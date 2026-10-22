@@ -8,8 +8,10 @@
 
 use std::future::Future;
 
+use billing::entitlements::RenderSampling;
+use billing::stored::{entitlements_of, state_of};
 use contracts::{AuditData, ScanPlan, ShopifyReadStore};
-use db::repo::{jobs as job_repo, scan_inputs, scans, shopify as shops};
+use db::repo::{jobs as job_repo, scan_inputs, scans, shop_billing, shopify as shops};
 use domain::{ScanId, ShopId, SiteId, TenantId};
 use queue::{ClaimedJob, Failure, NewJob};
 use serde_json::{Value, json};
@@ -204,13 +206,20 @@ async fn persist(
             menus.batches.iter().map(|b| menus_payload(b)),
         )
         .await?;
+    // The engine samples pages by the plan: Free's when no plan is confirmed (ADR-084).
+    let granted = entitlements_of(&state_of(
+        shop_billing::get(&mut tx, shop)
+            .await
+            .map_err(|e| database(&e))?
+            .as_ref(),
+    ));
     scan_inputs::put(
         &mut tx,
         scan,
         site,
         "shop",
         0,
-        &shop_payload(info, &summary),
+        &shop_payload(info, &summary, granted.render_sampling()),
     )
     .await
     .map_err(|e| database(&e))?
@@ -224,6 +233,10 @@ async fn persist(
     )
     .await
     .map_err(|e| database(&e))?;
+    // Shopify's own id for the shop, which the Partner API names it by (ADR-084).
+    shops::set_shop_gid(&mut tx, shop, &info.gid)
+        .await
+        .map_err(|e| database(&e))?;
     job_repo::enqueue(
         &mut tx,
         NewJob::new(
@@ -320,7 +333,17 @@ impl Stored {
 }
 
 /// The shop input: what the planner needs to choose pages.
-fn shop_payload(info: &ShopInfo, read: &Value) -> Value {
+fn sampling_payload(sampling: RenderSampling) -> Value {
+    match sampling {
+        RenderSampling::HomePagePlus { pages } => json!({"mode": "home_plus", "pages": pages}),
+        RenderSampling::PerTemplate {
+            samples,
+            every_variant,
+        } => json!({"mode": "per_template", "samples": samples, "every_variant": every_variant}),
+    }
+}
+
+fn shop_payload(info: &ShopInfo, read: &Value, sampling: RenderSampling) -> Value {
     let primary = info
         .locales
         .iter()
@@ -338,6 +361,7 @@ fn shop_payload(info: &ShopInfo, read: &Value) -> Value {
         "live_theme": info.live_theme.as_ref().map(|t| json!({
             "gid": t.gid, "name": t.name, "updated_at": t.updated_at,
         })),
+        "sampling": sampling_payload(sampling),
         "read": read,
     })
 }

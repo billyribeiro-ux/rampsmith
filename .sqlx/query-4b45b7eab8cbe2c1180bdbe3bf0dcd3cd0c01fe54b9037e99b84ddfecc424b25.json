@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update sites set storefront_password_ct = $3, storefront_password_key_id = $4\n            where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4b45b7eab8cbe2c1180bdbe3bf0dcd3cd0c01fe54b9037e99b84ddfecc424b25"
+}

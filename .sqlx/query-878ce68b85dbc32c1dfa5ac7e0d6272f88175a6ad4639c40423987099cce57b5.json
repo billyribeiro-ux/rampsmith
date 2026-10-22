@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select ff.fix_id, g.id, g.rule_id, g.criteria, g.impact\n             from fix_findings ff\n             join findings g on g.id = ff.finding_id and g.tenant_id = ff.tenant_id\n            where ff.tenant_id = $1 and ff.fix_id = any ($2)\n            order by ff.fix_id, g.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fix_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "fix_findings",
+            "name": "fix_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "rule_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "criteria",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "criteria"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "impact",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "findings",
+            "name": "impact"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "878ce68b85dbc32c1dfa5ac7e0d6272f88175a6ad4639c40423987099cce57b5"
+}

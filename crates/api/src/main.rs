@@ -90,9 +90,20 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         warn!("WEBHOOK_BIND_ADDR is not set; no webhook listener runs");
         None
     };
-    let state = AppState::new(db)
+    let mut state = AppState::new(db)
+        .with_keys(config.master_keys.clone())
         .with_shopify(shopify)
         .with_identity(identity);
+    if let Some(partner) = config.partner {
+        state = state.with_partner(api::plan::PartnerPlans::new(
+            billing::partner_api::PartnerCredentials {
+                organization: partner.organization,
+                access_token: partner.token,
+            },
+            partner.app,
+            None,
+        ));
+    }
     axum::serve(listener, api::app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await

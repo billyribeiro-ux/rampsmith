@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select distinct page_type as \"page_type!\"\n             from finding_occurrences\n            where tenant_id = $1 and finding_id = $2 and page_type is not null\n            order by 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "page_type!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finding_occurrences",
+            "name": "page_type"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "18750ee5981996a8a31e3bea745cb1461b795f48640efbe7e85c92ded6783bb2"
+}
