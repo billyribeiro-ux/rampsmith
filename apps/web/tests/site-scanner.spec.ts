@@ -20,7 +20,14 @@ async function siteverifyCalls(page: Page): Promise<SiteverifyCall[]> {
   return (await (await page.request.get(`${TURNSTILE_FAKE}/calls`)).json()) as SiteverifyCall[];
 }
 
-async function scan(page: Page, address: string): Promise<void> {
+/**
+ * Fills the form and submits it. With scripts on it first waits for the bot check to render,
+ * which happens once the page has hydrated: clicking sooner would post the form natively.
+ */
+async function scan(page: Page, address: string, withScripts = true): Promise<void> {
+  if (withScripts) {
+    await expect(page.locator('input[name="cf-turnstile-response"]')).toHaveCount(1);
+  }
   await page.getByLabel('Website address').fill(address);
   await page.getByRole('button', { name: 'Scan this site' }).click();
 }
@@ -135,7 +142,7 @@ test.describe('the scanner, with Turnstile stood in and no engine connected', ()
     await page.goto('/scan');
     // The note sits in <noscript>, so it is in the page's HTML for a browser without scripts.
     expect(await page.content()).toContain('The bot check needs JavaScript');
-    await scan(page, 'example.com');
+    await scan(page, 'example.com', false);
     await expect(page.getByRole('alert')).toContainText('The bot check did not pass');
     await expect(page.getByLabel('Website address')).toHaveValue('example.com');
     await context.close();
@@ -143,6 +150,7 @@ test.describe('the scanner, with Turnstile stood in and no engine connected', ()
 
   test('the whole flow works from the keyboard', async ({ page }) => {
     await page.goto('/scan');
+    await expect(page.locator('input[name="cf-turnstile-response"]')).toHaveCount(1);
     await page.getByLabel('Website address').focus();
     await page.keyboard.type('example.com');
     await page.keyboard.press('Tab');
@@ -172,10 +180,24 @@ test.describe('the scanner, with a fixed sample result', () => {
     expect(
       await page.locator('.groups li').first().locator('.examples li').count(),
     ).toBeLessThanOrEqual(3);
-    for (const scheme of SCHEMES) {
-      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
-      await axe(page);
-    }
+    await axe(page);
+  });
+
+  test('the cached result page has no violations in dark mode either', async ({ browser }) => {
+    // A new context starts in dark mode, so no colour is caught mid-change; the result comes
+    // from the cache, so it costs no scan.
+    const context = await browser.newContext({
+      baseURL: SITE_FIXTURE,
+      colorScheme: 'dark',
+      extraHTTPHeaders: PROXY_HEADERS,
+    });
+    const page = await context.newPage();
+    await page.goto('/scan');
+    await scan(page, 'example.com');
+    await expect(page.getByRole('heading', { name: 'Results for example.com' })).toBeVisible();
+    await expect(page.getByText('result from the last 24 hours')).toBeVisible();
+    await axe(page);
+    await context.close();
   });
 
   test('serves a result that is no cache hit with private, no-store headers', async ({ page }) => {
