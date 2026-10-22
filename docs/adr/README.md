@@ -125,6 +125,10 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [247](247-corpus-runner.md) | The integrated corpus runner and its gates | Accepted |
 | [248](248-fix-planner.md) | The fix planner: from a rule and a mapped span to a recipe | Accepted |
 | [249](249-r2-measurement.md) | R2 measurement: the engine against the corpus, before and after | Accepted |
+| [260](260-free-scanner-engine-seam.md) | The free scanner codes to an engine seam that is not connected yet | Accepted |
+| [261](261-turnstile-integration.md) | Cloudflare Turnstile protects the free scanner; the script and frame are allowed on that page only | Accepted |
+| [262](262-free-scanner-limits.md) | The free scanner's caps and cache live in the web process | Accepted |
+| [263](263-marketing-site-structure.md) | How the marketing site is built | Accepted |
 
 ## Template
 
