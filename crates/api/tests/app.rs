@@ -1063,6 +1063,56 @@ async fn free_covers_the_first_twenty_five_images_and_no_more(
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
+async fn two_approvals_at_once_cannot_pass_the_last_image_of_the_allowance(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let scan = h.scan("succeeded", "manual", 5, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            Some(90.0),
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    for n in 0..24 {
+        h.fix(finding, "applied", &format!("Done {n}"), false).await;
+    }
+    let first = h.fix(finding, "proposed", "One", true).await;
+    let second = h.fix(finding, "proposed", "Two", true).await;
+    let (first_uri, second_uri) = (
+        format!("/v1/shopify/fixes/{first}/approve"),
+        format!("/v1/shopify/fixes/{second}/approve"),
+    );
+    let (a, b) = tokio::join!(
+        h.call("POST", &first_uri, None),
+        h.call("POST", &second_uri, None),
+    );
+    let mut statuses = [a.status, b.status];
+    statuses.sort();
+    assert_eq!(
+        statuses,
+        [StatusCode::OK, StatusCode::FORBIDDEN],
+        "{} {}",
+        a.body,
+        b.body
+    );
+    assert_eq!(
+        h.count(
+            "select count(*) from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'"
+        )
+        .await,
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
 async fn rejecting_decides_a_waiting_fix_once(opts: PgPoolOptions, conn: PgConnectOptions) {
     let h = plain(opts, conn).await;
     let scan = h.scan("succeeded", "manual", 5, None).await;

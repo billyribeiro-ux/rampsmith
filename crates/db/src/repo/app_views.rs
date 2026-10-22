@@ -702,6 +702,20 @@ pub async fn alt_text_drafts(tx: &mut TenantTx) -> Result<Vec<OffsetDateTime>, D
     .await?)
 }
 
+/// Takes the site's row lock until the transaction ends, so two approvals of one shop count the
+/// plan's image allowance one after the other rather than both seeing room for the last image.
+pub async fn lock_site(tx: &mut TenantTx, site: SiteId) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    Ok(sqlx::query_scalar!(
+        r#"select id from sites where tenant_id = $1 and id = $2 for update"#,
+        tenant,
+        site.as_uuid(),
+    )
+    .fetch_optional(tx.conn())
+    .await?
+    .is_some())
+}
+
 /// Data fixes applied or verified, to count against a plan's image allowance.
 pub async fn images_fixed(tx: &mut TenantTx, site: SiteId) -> Result<i64, DbError> {
     let tenant = tx.tenant_uuid();

@@ -1292,6 +1292,7 @@ async fn assert_app_writes_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Opti
             .await
             .unwrap()
     );
+    assert!(!app_views::lock_site(&mut tx, b.site).await.unwrap());
     assert_eq!(app_views::images_fixed(&mut tx, b.site).await.unwrap(), 0);
     assert!(
         app_views::statements(&mut tx, b.site)

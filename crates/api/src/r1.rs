@@ -1085,6 +1085,8 @@ pub(crate) async fn approve_fix(
         return Err(ApiError::new(ProblemCode::Conflict).detail("The fix was already decided."));
     }
     let view = plan_view(&mut tx, session.shop_id, OffsetDateTime::now_utc()).await?;
+    // One approval at a time per shop, so the allowance cannot be passed by a race.
+    app_views::lock_site(&mut tx, site).await?;
     let already = app_views::images_fixed(&mut tx, site).await?;
     let gate = image_fix_gate(
         view.entitlements.plan(),
