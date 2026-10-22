@@ -148,7 +148,7 @@ mod tests {
         let mut known: Vec<&str> = rs_ids().filter_map(|id| id.strip_prefix("rs-")).collect();
         known.sort_unstable();
         assert_eq!(declared, known);
-        assert!(!declared.is_empty());
+        assert_eq!(declared.len(), 19, "the catalog has 19 custom rules");
     }
 
     #[test]
