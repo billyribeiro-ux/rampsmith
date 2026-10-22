@@ -418,6 +418,16 @@ assert_contains "retention: says it refused" "refusing to delete" "$result"
 assert_eq "retention: the new backup is stored anyway" "1" "$(files | grep -c 'daily/2026-12-01/.*meta.json' || true)"
 assert_eq "retention: nothing was deleted" "31" "$(files | grep -c 'daily/.*meta.json' || true)"
 
+for bad in 0 abc -1 '5;rm' 05; do
+  reset_store
+  run_backup "BACKUP_PRUNE_MAX=$bad"
+  assert_rc "BACKUP_PRUNE_MAX='$bad' is refused" 1 "$rc"
+  assert_contains "BACKUP_PRUNE_MAX='$bad' says why" "must be a positive integer" "$result"
+  assert_eq "BACKUP_PRUNE_MAX='$bad' stores nothing" "" "$(files)"
+done
+run_backup BACKUP_KEEP_DAILY=0
+assert_rc "BACKUP_KEEP_DAILY=0 is refused" 1 "$rc"
+
 # --- failures leave no archive without its metadata ---------------------------------------------------------------------------------------
 expect_failure() { # name expected-message
   assert_rc "$1: exit 1" 1 "$rc"

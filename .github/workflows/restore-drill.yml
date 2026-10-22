@@ -42,7 +42,7 @@ on:
     - cron: '41 5 * * 1'
   workflow_dispatch:
 
-permissions: read-all
+permissions: {}
 
 concurrency:
   group: restore-drill-${{ github.event.pull_request.number || github.ref }}

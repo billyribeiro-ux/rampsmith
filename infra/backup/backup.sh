@@ -39,6 +39,9 @@ AGE_BIN="${AGE_BIN:-age}"
 BACKUP_KEEP_DAILY="${BACKUP_KEEP_DAILY:-30}"
 BACKUP_KEEP_MONTHLY="${BACKUP_KEEP_MONTHLY:-12}"
 BACKUP_PRUNE_MAX="${BACKUP_PRUNE_MAX:-10}"
+for _bk_name in BACKUP_KEEP_DAILY BACKUP_KEEP_MONTHLY BACKUP_PRUNE_MAX; do
+  [[ "${!_bk_name}" =~ ^[1-9][0-9]*$ ]] || bk_die "${_bk_name} must be a positive integer (^[1-9][0-9]*\$), got a different value"
+done
 
 pg_tool() {
   if [ -n "${PGBIN:-}" ]; then printf '%s/%s' "$PGBIN" "$1"; else printf '%s' "$1"; fi
