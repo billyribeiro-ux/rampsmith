@@ -35,7 +35,7 @@ Local gate on Node 26.12.0 (CI is authoritative):
     (default, empty, error), image issue (default, error), page issue, fix review (default, free,
     fresh, error), remediation log (default, fresh, error), statement (default, fresh, error),
     settings (default, free, starter, error), plus the fix editor with and without a validation
-    error, the settings form with errors, and the statement preview before and after saving.
+    error, the settings form with errors, and the statement page before and after saving, with the generated statement document checked as a page of its own (axe cannot enter the sandboxed preview frame).
   - `app-keyboard.spec.ts`: 8 tests. Approve, edit (Escape, Save), refused empty and over-long edits,
     undo, reject, focus to the empty message when the last card leaves, Tab order through the
     queue, and the settings form, all by key press; each asserts where focus lands and what the

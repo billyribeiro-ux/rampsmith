@@ -14,8 +14,10 @@ const SHIM = stripTypeScriptTypes(
 );
 
 /** Axe at WCAG 2.2 A and AA over the whole page, shadow roots included: zero violations. */
-export async function axe(page: Page): Promise<void> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+export async function axe(page: Page, exclude: string[] = []): Promise<void> {
+  const builder = new AxeBuilder({ page }).withTags(WCAG);
+  for (const selector of exclude) builder.exclude(selector);
+  const results = await builder.analyze();
   expect(
     results.violations.map(
       (v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join('; ')})`,

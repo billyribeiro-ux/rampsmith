@@ -99,14 +99,26 @@ test('the settings form with validation errors has no violations', async ({ page
 });
 
 test('the statement preview and a saved statement have no violations', async ({ page }) => {
-  test.setTimeout(120_000);
   await open(page, 'default', '/app/statement', 'Accessibility statement');
   await page.getByRole('textbox', { name: 'Business name' }).fill('Demo Store Ltd');
   await page.getByRole('textbox', { name: /^Email/ }).fill('access@demo-store.example');
   await page.getByRole('button', { name: 'Add a known barrier' }).click();
   await expect(page.getByRole('group', { name: 'Known barrier 1' })).toBeVisible();
-  await axe(page);
+
+  // The preview is a sandboxed frame without scripts, which axe cannot enter. The frame
+  // itself (its title) is checked with the page; the statement document it shows is loaded
+  // as a page of its own and checked too.
+  const frame = page.locator('iframe[title="Preview of your accessibility statement"]');
+  await expect(frame).toBeVisible({ timeout: 10_000 });
+  await axe(page, ['iframe']);
+  const document = await frame.getAttribute('srcdoc');
+  expect(document).toContain('<html lang="en">');
+  const statement = await page.context().newPage();
+  await statement.setContent(document ?? '');
+  await axe(statement);
+  await statement.close();
+
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Statement saved.').first()).toBeVisible();
-  await axe(page);
+  await axe(page, ['iframe']);
 });
