@@ -37,7 +37,9 @@ RUN --mount=type=bind,from=age-release,source=/age.tar.gz,target=/tmp/age.tar.gz
 # Fail the build, not the first nightly run, if a tool does not start.
 RUN age --version && aws --version && pg_dump --version && psql --version
 COPY --chmod=0755 infra/backup/backup.sh infra/backup/entrypoint.sh /opt/rampsmith/backup/
-COPY --chmod=0644 infra/backup/lib/common.sh infra/backup/lib/s3.sh /opt/rampsmith/backup/lib/
+# 0755, not 0644: BuildKit applies --chmod to the directories it creates, and a directory without the
+# execute bit cannot be entered. Neither mode is writable by the user that runs them.
+COPY --chmod=0755 infra/backup/lib/common.sh infra/backup/lib/s3.sh /opt/rampsmith/backup/lib/
 
 # The PostgreSQL image starts a server and keeps a data volume; this one only runs the entrypoint.
 ENV PGBIN=/usr/lib/postgresql/18/bin \
