@@ -17,7 +17,7 @@ pub struct UnknownPlanHandle(pub String);
 pub enum Plan {
     /// $0. Monthly render scans of the home page and 5 pages.
     Free,
-    /// $79 a month. Weekly render scans and the patched theme package.
+    /// $79 a month. Weekly render scans and the six core recipes as pull requests (ADR-141).
     Starter,
     /// $199 a month. Daily render scans, GitHub pull requests and every recipe.
     Growth,

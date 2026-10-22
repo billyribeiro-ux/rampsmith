@@ -99,8 +99,21 @@ struct World {
 }
 
 async fn world(opts: PgPoolOptions, conn: PgConnectOptions) -> World {
+    world_sized(opts, conn, 10).await
+}
+
+/// A world whose application pool has `connections` connections and a short acquire timeout,
+/// so a pool that runs dry shows up as an error instead of a slow test.
+async fn world_sized(opts: PgPoolOptions, conn: PgConnectOptions, connections: u32) -> World {
     let owner = opts.clone().connect_with(conn.clone()).await.unwrap();
-    let db = Db::from_pool(app_pool(opts, conn).await);
+    let db = Db::from_pool(
+        app_pool(
+            opts.max_connections(connections)
+                .acquire_timeout(StdDuration::from_secs(3)),
+            conn,
+        )
+        .await,
+    );
     let shopify = MockServer::start().await;
     let keys = KeyRing::parse(KEYS).unwrap();
     let auth = ShopifyAuth::new(
@@ -556,4 +569,190 @@ fn keepalive_jobs_deduplicate_per_iso_week() {
     assert_eq!(a.queue, "shopify.token_refresh");
     assert_eq!(a.payload_schema, "shopify.token_refresh@1");
     assert_eq!(a.payload, json!({"shop_id": shop.as_uuid().to_string()}));
+}
+
+// --- Cold opens under contention (audit M5, ADR-041) -------------------------------------------
+
+const OTHER_SHOP: &str = "other-store.myshopify.com";
+
+/// Answers the exchange for exactly this ID token after `delay`.
+async fn exchange_for(w: &World, token: &str, n: u32, delay: StdDuration, times: u64) {
+    Mock::given(method("POST"))
+        .and(Field("subject_token", token.to_owned()))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(token_body(n))
+                .set_delay(delay),
+        )
+        .expect(times)
+        .mount(&w.shopify)
+        .await;
+}
+
+/// Twenty cold opens across two shops on a three-connection pool. Before the fix every
+/// waiter held a connection on the lock and the holder needed a second one, so the pool ran
+/// dry and nobody finished.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_burst_of_cold_opens_on_a_small_pool_completes(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world_sized(opts, conn, 3).await;
+    let tokens = [id_token(SHOP, now()), id_token(OTHER_SHOP, now())];
+    // The same ID token is valid for a minute, so every request of a shop carries it.
+    exchange_for(&w, &tokens[0], 1, StdDuration::from_millis(200), 1).await;
+    exchange_for(&w, &tokens[1], 2, StdDuration::from_millis(200), 1).await;
+
+    let mut tasks = tokio::task::JoinSet::new();
+    for n in 0..20 {
+        let auth = w.auth.clone();
+        let token = tokens[n % 2].clone();
+        tasks.spawn(async move { auth.authenticate_at(&token, now()).await });
+    }
+    let mut sessions = Vec::new();
+    while let Some(done) = tasks.join_next().await {
+        sessions.push(done.unwrap().unwrap());
+    }
+    assert_eq!(sessions.len(), 20);
+    assert_eq!(
+        sessions.iter().filter(|s| s.installed).count(),
+        2,
+        "one install per shop, however many opens raced"
+    );
+    let tenants: i64 = sqlx::query_scalar("select count(*) from tenants")
+        .fetch_one(&w.owner)
+        .await
+        .unwrap();
+    assert_eq!(tenants, 2);
+    let tokens_stored: i64 = sqlx::query_scalar("select count(*) from shopify_tokens")
+        .fetch_one(&w.owner)
+        .await
+        .unwrap();
+    assert_eq!(tokens_stored, 2);
+}
+
+/// A slow exchange for one shop costs another tenant nothing: its already-installed shop
+/// authenticates at once, and the pool still answers.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_slow_cold_open_does_not_slow_other_tenants(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let w = world_sized(opts, conn, 3).await;
+    let installed = id_token(SHOP, now());
+    exchange_for(&w, &installed, 1, StdDuration::ZERO, 1).await;
+    w.auth.authenticate_at(&installed, now()).await.unwrap();
+
+    let cold = id_token(OTHER_SHOP, now());
+    exchange_for(&w, &cold, 2, StdDuration::from_millis(1500), 1).await;
+    let slow = {
+        let auth = w.auth.clone();
+        let cold = cold.clone();
+        tokio::spawn(async move { auth.authenticate_at(&cold, now()).await })
+    };
+    tokio::time::sleep(StdDuration::from_millis(300)).await; // the cold open is mid-exchange
+
+    let started = std::time::Instant::now();
+    let later = now() + Duration::minutes(5);
+    let again = w
+        .auth
+        .authenticate_at(&id_token(SHOP, later), later)
+        .await
+        .unwrap();
+    w.db.ping().await.unwrap();
+    assert!(!again.installed);
+    assert!(
+        started.elapsed() < StdDuration::from_millis(800),
+        "the installed shop waited {:?} for someone else's exchange",
+        started.elapsed()
+    );
+    assert!(slow.await.unwrap().unwrap().installed);
+}
+
+/// Another process holds the shop's lock and is stuck: the wait is bounded by the database,
+/// the request answers with an error, and its connection goes back to the pool.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_lock_held_by_another_process_ends_the_wait_with_an_error(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world_sized(opts, conn, 3).await;
+    let impatient = ShopifyAuth::new(
+        w.db.clone()
+            .with_lock_timeout(StdDuration::from_millis(300)),
+        w.keys.clone(),
+        SessionTokenVerifier::new(CLIENT_ID, &SecretString::from(SECRET)),
+        TokenClient::new(
+            CLIENT_ID,
+            SecretString::from("client-secret"),
+            TokenEndpoint::Base(w.shopify.uri()),
+            StdDuration::from_secs(2),
+        )
+        .unwrap(),
+    );
+    // A second handle on the same database has its own in-process queue, like another process.
+    let elsewhere = Db::from_pool(w.owner.clone());
+    let held = elsewhere.shop_lock(SHOP).await.unwrap();
+
+    let token = id_token(SHOP, now());
+    let error = impatient.authenticate_at(&token, now()).await.unwrap_err();
+    assert!(
+        matches!(error, AuthError::Database(db::DbError::LockTimeout)),
+        "{error:?}"
+    );
+    w.db.ping().await.unwrap();
+
+    held.release().await.unwrap();
+    exchange_for(&w, &token, 1, StdDuration::ZERO, 1).await;
+    assert!(
+        impatient
+            .authenticate_at(&token, now())
+            .await
+            .unwrap()
+            .installed
+    );
+}
+
+// --- Compare-and-swap on exchange (audit L5, ADR-044) -------------------------------------------
+
+/// Every in-band writer holds the shop's lock, so a row that changes while an exchange is in
+/// flight was written out of band (an operator, a restore). The exchange then stores nothing:
+/// it fails with a conflict, and the row and the audit log are as they were.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_exchange_does_not_overwrite_a_row_changed_while_it_was_in_flight(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let first = id_token(SHOP, now());
+    exchange_for(&w, &first, 1, StdDuration::ZERO, 1).await;
+    let installed = w.auth.authenticate_at(&first, now()).await.unwrap();
+
+    // Two hours on, the access token has expired and the next session exchanges again.
+    let later = now() + Duration::hours(2);
+    let second = id_token(SHOP, later);
+    exchange_for(&w, &second, 2, StdDuration::from_millis(700), 1).await;
+    let slow = {
+        let auth = w.auth.clone();
+        let second = second.clone();
+        tokio::spawn(async move { auth.authenticate_at(&second, later).await })
+    };
+    tokio::time::sleep(StdDuration::from_millis(300)).await; // the exchange is in flight
+    sqlx::query("update shopify_tokens set access_ct = '\\xdeadbeef', version = version + 1")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+
+    let error = slow.await.unwrap().unwrap_err();
+    assert!(
+        matches!(error, AuthError::Database(db::DbError::Conflict(_))),
+        "{error:?}"
+    );
+    let row = stored(&w, &installed).await;
+    assert_eq!(row.version, 1, "only the out-of-band write");
+    assert_eq!(row.tokens.access_ct, [0xde, 0xad, 0xbe, 0xef]);
+    let exchanged: i64 = sqlx::query_scalar(
+        "select count(*) from audit_log where action = 'shopify.token_exchanged'",
+    )
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
+    assert_eq!(exchanged, 0, "the lost exchange left no audit entry");
 }

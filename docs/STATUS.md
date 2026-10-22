@@ -24,15 +24,36 @@ he does not need to approve anything. From now on:
   39311633005. Two integration fixes: Node pins in four packages and `deploy.yml` (`37cf3f7`),
   and the Railway config and image smoke test using R0's `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`
   (`894bd04`). The `ws/` branches are frozen; new work branches from `main`. ADR index rows,
-  ADR-141's decision and PLAN §20 are on `main`. Owed, by the architect chat, on `main`: the
-  `security-auditor` on W1, W2, WS-3 and WS-4, fixed forward.
-- **Lanes S2 and S3 (PRs #15, #16): the architect chat takes them over now** (no push for two
-  hours while red; the builder's disk is full). Builder: do not push to `r1-hardening` or
-  `r1-hardening-ts`; if you hold unpushed fixes for them, push them to a new branch and say so
-  here. After they merge, the builder's next work is the R1 lanes proposed below, from `main`.
+  ADR-141's decision and PLAN §20 are on `main`. Stream PRs #2 to #14 are closed as integrated.
+- **Security audits of the integrated code** (`docs/evidence/integration-security-audits-2026-10-19.md`):
+  GitHub App and billing **PASS** (3 medium, 9 low; L5 fixed by PR #20). `rsctl` and backup ops
+  **FAIL**: H1 (backup secrets fall back to repository secrets) and H2 (`railway-ssh` holds a
+  workspace token) must be fixed **before the founder adds any input**; nothing is exposed while
+  no secret exists. The fixes are the next builder's first task, ahead of the R1 lanes.
+- **Lanes S2 and S3 are merged:** PR #16 (`9e40466`) and PR #15 (`ef63273`, CI green at
+  `21119f5`: ci 39320823505, release 39320823507, restore-drill 39320823496). Fixes on the way:
+  Clippy 1.99 (assertions without a message; an extractor that awaits nothing), the web
+  telemetry test's `SHOPIFY_API_KEY`, and the egress log-hygiene test's subscriber. CI now posts
+  Clippy, nextest, Vitest and e2e failures as check-run annotations, because the job log host is
+  unreachable from build sessions. Also merged: PR #19 (sqlx-cli and the migrations in the api
+  image) and PR #20 (billing follows ADR-141). **No pull request is open.**
+- **Known red on `main`:** `release.yml`'s strict image smoke test fails until the api serves a
+  webhook listener on `WEBHOOK_BIND_ADDR` (ADR-182) and the engine's sandbox decision is made
+  (ADR-028). Both are R1 work; nothing deploys before them (Node LTS pin, founder inputs).
+- **Next builder, in order:** the audit's H1 and H2 (backup secrets and transport), then the
+  R1 lanes below, all from `main`.
 - **App Store 1.1.3 and 5.1.1:** decided under the founder's delegation; see "Waiting on founder".
 
 ## Active builder
+
+- **The architect chat (`session_01Xo2TExfkKEuqRyHUMqc1YC`) is the builder from 22 Oct 2026,
+  20:20 UTC** (founder instruction: Sonnet agents in parallel, finish the build). The 19 Oct
+  builder entry below is stale (last push 19 Oct 21:35 UTC) and no longer holds the lock.
+  Wave 1, running now, each in its own worktree and branch: `r1-secrets` (audit H1/H2 and
+  M1/M3, backups), `r1-phase0` (R1 contracts, schema, stubs, ADR-035 to 039), `r1-site`
+  (marketing site, pricing, free scanner; ADRs 260–269). Wave 2 starts when Phase 0 merges:
+  lanes A (`r1-fixloop`), B (`r1-scan`) and C (`r1-apphome`) as in the R1 plan below.
+
 
 - **`Rampsmith builder 2026-10-19 13:34 UTC`** (`session_01UaQXh6JJs9xh8YpL4Ak6U2`), active since
   13:37 UTC. Its scheduled task reads FAILED because the founder paused and resumed it in chat;

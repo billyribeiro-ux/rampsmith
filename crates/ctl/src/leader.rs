@@ -1,25 +1,29 @@
-//! Leadership (PLAN §10): exactly one `ctl` instance runs the lease reaper and partition
-//! maintenance, the one holding a session-level advisory lock on a dedicated connection.
+//! Leadership (PLAN §10): exactly one `ctl` instance runs the lease reaper, partition
+//! maintenance and the sweep of expired sign-in state, the one holding a session-level
+//! advisory lock on a dedicated connection.
 //! Losing the connection loses leadership; another instance takes over on its next try.
 
 use std::time::Duration;
 
-use sqlx::PgPool;
+use db::{Db, DbError};
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::Postgres;
-use tokio::time::{Instant, MissedTickBehavior, interval, sleep};
+use sqlx::{Connection, PgPool};
+use tokio::time::{Instant, MissedTickBehavior, interval, sleep, timeout};
 use tracing::{info, warn};
 
 /// The advisory lock key, fixed forever. Other advisory locks use `hashtextextended` keys.
 pub const LEADER_KEY: i64 = 0x7261_6d70_6c65_6164; // ASCII "ramplead"
 
-/// How often the leader reaps expired leases and maintains partitions.
+/// How often the leader reaps expired leases, maintains partitions and sweeps sign-in state.
 #[derive(Debug, Clone, Copy)]
 pub struct Cadence {
     /// Between reaper runs.
     pub reap_every: Duration,
     /// Between partition checks.
     pub partitions_every: Duration,
+    /// Between sweeps of expired passkey ceremonies and sessions (audit M6, ADR-042).
+    pub sweep_every: Duration,
     /// Between attempts to become leader.
     pub retry_every: Duration,
 }
@@ -29,6 +33,7 @@ impl Default for Cadence {
         Self {
             reap_every: Duration::from_secs(10),
             partitions_every: Duration::from_hours(1),
+            sweep_every: Duration::from_mins(10),
             retry_every: Duration::from_secs(15),
         }
     }
@@ -41,6 +46,32 @@ pub async fn try_acquire(pool: &PgPool) -> Result<Option<PoolConnection<Postgres
         .fetch_one(&mut *conn)
         .await?;
     if won { Ok(Some(conn)) } else { Ok(None) }
+}
+
+/// How long closing an abandoned leader connection may take before it is simply dropped.
+const ABANDON_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Checks that the leader's connection still answers. `Some(connection)` means it does and
+/// leadership continues. After a failed check the connection may still be open, still be
+/// holding the advisory lock, and be about to go back into the pool: this instance would then
+/// be a leader nobody can see, and no other instance could take over (audit L12). So the
+/// connection is detached from the pool and closed, which ends its session and frees the lock
+/// at once, and `None` tells the caller to stop leading.
+pub async fn keep_or_drop(mut conn: PoolConnection<Postgres>) -> Option<PoolConnection<Postgres>> {
+    match sqlx::query!("select 1 as alive")
+        .fetch_one(&mut *conn)
+        .await
+    {
+        Ok(_) => Some(conn),
+        Err(error) => {
+            warn!(%error, "lost the leader connection");
+            // Never back to the pool. A broken connection may refuse to close cleanly, or an
+            // unresponsive server may never answer the goodbye: dropping the connection
+            // closes the socket either way.
+            let _ = timeout(ABANDON_TIMEOUT, conn.detach().close()).await;
+            None
+        }
+    }
 }
 
 /// One round of the leader's duties.
@@ -60,9 +91,22 @@ pub async fn duties(pool: &PgPool, partitions: bool) -> Result<u64, sqlx::Error>
     Ok(reaped)
 }
 
+/// Deletes expired passkey ceremonies and sessions; returns how many rows went (audit M6,
+/// ADR-042). The worker role may do this and nothing else with identity data.
+pub async fn sweep_identity(db: &Db) -> Result<u64, DbError> {
+    let mut tx = db.identity().await?;
+    let swept = db::repo::identity::sweep(&mut tx).await?;
+    tx.commit().await?;
+    if swept > 0 {
+        info!(swept, "removed expired sign-in state");
+    }
+    Ok(swept)
+}
+
 /// Competes for leadership and, while leader, performs its duties, until `shutdown`.
 pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = ()>) {
     tokio::pin!(shutdown);
+    let db = Db::from_pool(pool.clone());
     loop {
         let held = tokio::select! {
             () = &mut shutdown => return,
@@ -74,6 +118,7 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                 let mut tick = interval(cadence.reap_every);
                 tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
                 let mut partitions_due = Instant::now();
+                let mut sweep_due = Instant::now();
                 loop {
                     tokio::select! {
                         () = &mut shutdown => {
@@ -84,14 +129,12 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                         }
                         _ = tick.tick() => {}
                     }
-                    // A dead leader connection means the lock is gone: stop leading.
-                    if let Err(error) = sqlx::query!("select 1 as alive")
-                        .fetch_one(&mut *conn)
-                        .await
-                    {
-                        warn!(%error, "lost the leader connection");
+                    // A leader connection that stops answering is abandoned, not pooled, so
+                    // the lock goes with it (audit L12, ADR-047).
+                    let Some(alive) = keep_or_drop(conn).await else {
                         break;
-                    }
+                    };
+                    conn = alive;
                     let partitions = Instant::now() >= partitions_due;
                     match duties(&pool, partitions).await {
                         Ok(_) if partitions => {
@@ -99,6 +142,12 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                         }
                         Ok(_) => {}
                         Err(error) => warn!(%error, "leader duties failed; retrying next tick"),
+                    }
+                    if Instant::now() >= sweep_due {
+                        match sweep_identity(&db).await {
+                            Ok(_) => sweep_due = Instant::now() + cadence.sweep_every,
+                            Err(error) => warn!(%error, "sign-in sweep failed; retrying next tick"),
+                        }
                     }
                 }
             }

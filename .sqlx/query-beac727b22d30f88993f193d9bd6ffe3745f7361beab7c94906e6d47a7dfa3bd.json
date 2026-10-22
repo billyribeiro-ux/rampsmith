@@ -1,0 +1,114 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select\n                 cu.rolname::text as \"role!\",\n                 cu.rolsuper as \"is_super!\",\n                 cu.rolbypassrls as \"has_bypass!\",\n                 su.oid <> cu.oid as \"switched!\",\n                 su.rolsuper as \"session_super!\",\n                 su.rolbypassrls as \"session_bypass!\",\n                 (select count(*) from pg_class c\n                    join pg_namespace n on n.oid = c.relnamespace\n                   where c.relowner = cu.oid\n                     and n.nspname !~ '^pg_' and n.nspname <> 'information_schema') as \"owned!\",\n                 pg_has_role(current_user, 'pg_database_owner', 'member') as \"owns_database!\",\n                 has_schema_privilege(current_user, 'public', 'create') as \"can_create!\",\n                 case when exists (select 1 from pg_roles where rolname = $1::text)\n                      then pg_has_role(current_user, $1::text::name, 'usage')\n                      else false end as \"member!\",\n                 case when $2::text is not null\n                       and exists (select 1 from pg_roles where rolname = $2::text)\n                      then pg_has_role(current_user, $2::text::name, 'member')\n                      else false end as \"forbidden!\"\n               from pg_roles cu, pg_roles su\n              where cu.rolname = current_user and su.rolname = session_user",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "is_super!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "pg_roles",
+            "name": "rolsuper"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "has_bypass!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "pg_roles",
+            "name": "rolbypassrls"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "switched!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "session_super!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "pg_roles",
+            "name": "rolsuper"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "session_bypass!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "pg_roles",
+            "name": "rolbypassrls"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "owned!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "owns_database!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "can_create!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "member!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "forbidden!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      true,
+      true,
+      null,
+      true,
+      true,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "beac727b22d30f88993f193d9bd6ffe3745f7361beab7c94906e6d47a7dfa3bd"
+}

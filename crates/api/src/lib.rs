@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod config;
 mod health;
+pub mod rate_limit;
 pub mod shopify;
 
 use axum::Router;
@@ -23,6 +24,7 @@ pub struct AppState {
     expected_schema: i64,
     shopify: Option<shopify_auth::ShopifyAuth>,
     identity: Option<identity::Identity>,
+    start_limiter: rate_limit::StartLimiter,
 }
 
 impl AppState {
@@ -34,6 +36,7 @@ impl AppState {
             expected_schema: db::expected_schema_version(),
             shopify: None,
             identity: None,
+            start_limiter: rate_limit::StartLimiter::default(),
         }
     }
 
@@ -49,6 +52,19 @@ impl AppState {
     pub fn with_shopify(mut self, auth: shopify_auth::ShopifyAuth) -> Self {
         self.shopify = Some(auth);
         self
+    }
+
+    /// Replaces the limits on the unauthenticated passkey `start` endpoints (audit M6,
+    /// ADR-042), for tests and for deployments that need other figures.
+    #[must_use]
+    pub fn with_start_limits(mut self, limits: rate_limit::StartLimits) -> Self {
+        self.start_limiter = rate_limit::StartLimiter::new(limits);
+        self
+    }
+
+    /// The limiter the `start` endpoints share.
+    pub(crate) const fn start_limiter(&self) -> &rate_limit::StartLimiter {
+        &self.start_limiter
     }
 
     /// Overrides the schema version readiness waits for.
