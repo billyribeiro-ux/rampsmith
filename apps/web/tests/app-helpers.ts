@@ -4,7 +4,7 @@ import { AxeBuilder } from '@axe-core/playwright';
 import { expect, type Locator, type Page } from '@playwright/test';
 import type { ScenarioName } from './app-fake-api.ts';
 
-const FAKE_API = 'http://127.0.0.1:3994';
+const FAKE_API = 'http://127.0.0.1:3984';
 export const SHOP = 'shop=demo-store.myshopify.com&host=abc&embedded=1';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];

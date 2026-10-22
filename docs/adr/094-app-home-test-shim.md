@@ -12,11 +12,11 @@ the Rust api's `/v1/shopify/` handlers are not merged yet.
 
 ## Decision
 
-1. **`tests/app-fake-api.ts`** is a stateful, typed fake of the api on port 3994. It serves the
+1. **`tests/app-fake-api.ts`** is a stateful, typed fake of the api on port 3984. It serves the
    contract of ADR-091 and moves state the way the real handlers will: approving a fix applies it
    after two reads, undo reverts it, a scan finishes after three reads, settings and statements
    validate and persist. Scenarios (`default`, `free`, `starter`, `fresh`, `empty`, `error`) are
-   chosen with `POST /__scenario`. The built app runs against it on port 3995 (Playwright project
+   chosen with `POST /__scenario`. The built app runs against it on port 3985 (Playwright project
    `app-home`).
 2. **`tests/polaris-shim.ts`** implements the `<s-*>` elements the App Home uses, as Polaris does:
    open shadow roots, standard controls inside, properties mirroring attributes, `change`

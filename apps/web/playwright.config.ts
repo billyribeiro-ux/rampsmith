@@ -30,7 +30,7 @@ export default defineConfig({
       // The App Home against the typed fake api, with the Polaris test shim (ADR-094).
       name: 'app-home',
       testMatch: 'app-*.spec.ts',
-      use: { ...browser, baseURL: 'http://127.0.0.1:3995' },
+      use: { ...browser, baseURL: 'http://127.0.0.1:3985' },
     },
     {
       // The dashboard against the real api and database, with Chromium's virtual
@@ -79,17 +79,17 @@ export default defineConfig({
     },
     {
       command: 'node tests/app-fake-api.ts',
-      url: 'http://127.0.0.1:3994/healthz',
+      url: 'http://127.0.0.1:3984/healthz',
       reuseExistingServer: false,
     },
     {
       command: 'node build',
-      url: 'http://127.0.0.1:3995/',
+      url: 'http://127.0.0.1:3985/',
       reuseExistingServer: false,
       env: {
         HOST: '127.0.0.1',
-        PORT: '3995',
-        API_URL: 'http://127.0.0.1:3994',
+        PORT: '3985',
+        API_URL: 'http://127.0.0.1:3984',
         SHOPIFY_API_KEY: 'e2e-client-id',
       },
     },

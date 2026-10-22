@@ -27,7 +27,7 @@ import type {
   StatementState,
 } from '../src/lib/app/types.ts';
 
-const port = Number(process.env['FAKE_API_PORT'] ?? '3994');
+const port = Number(process.env['FAKE_API_PORT'] ?? '3984');
 
 export type ScenarioName = 'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error';
 
