@@ -47,10 +47,16 @@ export async function runCapped(
   const started = performance.now();
   const deadline = started + timeoutMs;
   let cancelled = false;
+  // Set once the work is told the cap has passed. The deadline can pass a little before the cap's
+  // timer fires, so work that stops because it saw the deadline still counts as timed out.
+  const told = { expired: false };
   const findings: PageFinding[] = [];
   const stats: Record<string, number> = {};
   const ctx: CheckContext = {
-    expired: () => cancelled || performance.now() > deadline,
+    expired: () => {
+      if (cancelled || performance.now() > deadline) told.expired = true;
+      return told.expired;
+    },
     report: (ruleId, outcome, target, data) => {
       findings.push({
         ...findingBase(ruleId, outcome),
@@ -87,7 +93,9 @@ export async function runCapped(
   }
   const elapsedMs = Math.round(performance.now() - started);
   const base = { check, findings: [...findings], elapsedMs, stats: { ...stats } };
-  if (first === 'timeout') return { ...base, status: 'timed_out' };
+  if (first === 'timeout' || (first === 'done' && told.expired)) {
+    return { ...base, status: 'timed_out' };
+  }
   if (first === 'failed') return { ...base, status: 'error', error: firstLine(failure) };
   return { ...base, status: 'complete' };
 }
