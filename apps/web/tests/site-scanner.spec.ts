@@ -173,7 +173,7 @@ test.describe('the scanner, with a fixed sample result', () => {
       await page.locator('.groups li').first().locator('.examples li').count(),
     ).toBeLessThanOrEqual(3);
     for (const scheme of SCHEMES) {
-      await page.emulateMedia({ colorScheme: scheme });
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
       await axe(page);
     }
   });

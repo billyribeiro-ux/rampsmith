@@ -38,6 +38,11 @@ export const SCHEMES = ['light', 'dark'] as const;
 export async function axe(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   expect(
-    results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length.toString()})`),
+    results.violations.flatMap((v) =>
+      v.nodes.map(
+        (node) =>
+          `${v.id}: ${node.target.join(' ')} ${node.any.map((check) => check.message).join('; ')}`,
+      ),
+    ),
   ).toEqual([]);
 }
