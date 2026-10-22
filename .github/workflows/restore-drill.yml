@@ -195,7 +195,12 @@ jobs:
         run: docker pull --quiet "$RD_IMAGE"
       - name: Backup tests (names, retention, signatures, skip and failure paths, the R2 tokens, the drill's hand-off, the runbooks)
         run: |
-          infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests
+          set -o pipefail
+          rc=0
+          infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests 2>&1 | tee "$RUNNER_TEMP/backup-tests.log" || rc=$?
+          # Name each failed check as an annotation, so a failure can be read without the log.
+          grep -E '^FAIL' "$RUNNER_TEMP/backup-tests.log" | cut -c1-300 | head -30 | while IFS= read -r line; do echo "::error title=backup test::${line}"; done
+          exit "$rc"
       - name: Runbook SQL (the statements the runbooks tell an operator to run, on a migrated database)
         run: |
           infra/restore-drill/in-container.sh bash infra/restore-drill/tests/runbook-sql.sh --out /scratch/backup-tests/runbook-sql

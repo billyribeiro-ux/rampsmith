@@ -336,6 +336,23 @@ jobs:
           output-file: ${{ matrix.image }}.cdx.json
           artifact-name: ${{ matrix.image }}.cdx.json
           syft-version: v1.54.1
+      - name: Fixable high or critical findings, as annotations (report only; the next step is the gate)
+        id: findings
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: rampsmith-${{ matrix.image }}:ci
+          fail-build: false
+          severity-cutoff: high
+          only-fixed: true
+          output-format: json
+          grype-version: v0.120.1
+      - name: Name each finding (CI logs are not readable from every client; annotations are)
+        if: always()
+        env:
+          REPORT: ${{ steps.findings.outputs.json }}
+        run: |
+          [ -s "$REPORT" ] || exit 0
+          jq -r '.matches[]? | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical") | select((.vulnerability.fix.versions // []) | length > 0) | "::warning title=\(.vulnerability.severity) \(.vulnerability.id)::\(.artifact.name) \(.artifact.version) (\(.artifact.type)) fixed in \(.vulnerability.fix.versions | join(", "))"' "$REPORT" | sort -u | head -40
       - name: Vulnerabilities (fail on fixable high or critical)
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
