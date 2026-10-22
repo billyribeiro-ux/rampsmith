@@ -313,7 +313,10 @@ async fn a_fix_nobody_approved_is_refused_before_shopify_is_asked(
         (false, "fix_not_approved".to_owned())
     );
     assert_eq!(state(&w, proposed.fix).await.0, "proposed");
-    assert!(operations(&w).await.is_empty());
+    assert!(
+        operations(&w).await.is_empty(),
+        "nothing may reach Shopify for an unapproved fix"
+    );
     // A fix id that is not this tenant's.
     assert_eq!(
         code(apply(&w, Uuid::now_v7()).await),

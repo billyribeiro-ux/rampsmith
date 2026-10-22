@@ -1189,12 +1189,7 @@ async fn assert_app_views_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Optio
         limit: 50,
         ..Default::default()
     };
-    assert!(
-        app_views::findings(&mut tx, b.site, &filter)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert_empty(&app_views::findings(&mut tx, b.site, &filter).await.unwrap());
     assert!(
         app_views::finding(&mut tx, b.site, b.finding.as_uuid())
             .await
@@ -1209,11 +1204,10 @@ async fn assert_app_views_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Optio
         "proposed", "approved", "applying", "applied", "verified", "failed", "reverted", "rejected",
     ]
     .map(str::to_owned);
-    assert!(
-        app_views::fixes(&mut tx, b.site, &all, 0, 50)
+    assert_empty(
+        &app_views::fixes(&mut tx, b.site, &all, 0, 50)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
     assert!(
         app_views::fix(&mut tx, b.site, b.fix.as_uuid())
@@ -1221,29 +1215,25 @@ async fn assert_app_views_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Optio
             .unwrap()
             .is_none()
     );
-    assert!(
-        app_views::fixes_of_finding(&mut tx, b.site, b.finding.as_uuid())
+    assert_empty(
+        &app_views::fixes_of_finding(&mut tx, b.site, b.finding.as_uuid())
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
-    assert!(
-        app_views::findings_of_fixes(&mut tx, &[b.fix.as_uuid()])
+    assert_empty(
+        &app_views::findings_of_fixes(&mut tx, &[b.fix.as_uuid()])
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
-    assert!(
-        app_views::evidence_of_fixes(&mut tx, &[b.fix.as_uuid()])
+    assert_empty(
+        &app_views::evidence_of_fixes(&mut tx, &[b.fix.as_uuid()])
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
-    assert!(
-        app_views::products(&mut tx, b.site, &["gid://shopify/Product/1".to_owned()])
+    assert_empty(
+        &app_views::products(&mut tx, b.site, &["gid://shopify/Product/1".to_owned()])
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
     );
     tx.rollback().await.unwrap();
     assert_app_writes_isolate(db, a, b, b_evidence).await;
@@ -1294,12 +1284,7 @@ async fn assert_app_writes_isolate(db: &Db, a: Graph, b: Graph, b_evidence: Opti
     );
     assert!(!app_views::lock_site(&mut tx, b.site).await.unwrap());
     assert_eq!(app_views::images_fixed(&mut tx, b.site).await.unwrap(), 0);
-    assert!(
-        app_views::statements(&mut tx, b.site)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert_empty(&app_views::statements(&mut tx, b.site).await.unwrap());
     assert!(
         app_views::site_of_shop(&mut tx, b.shop)
             .await
