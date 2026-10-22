@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * The engine process (PLAN §6): telemetry first, then the database role check, then Chromium
- * and the `scan.page` worker until SIGTERM, letting the page in flight finish.
+ * and one worker per engine queue (`queues.ts`) until SIGTERM, letting the jobs in flight
+ * finish.
  */
 import { hostname } from 'node:os';
 import process from 'node:process';
@@ -11,7 +12,7 @@ import postgres from 'postgres';
 import { launchBrowser } from './browser.ts';
 import { assertWorkerRole } from './role-guard.ts';
 import { userAgent } from './user-agent.ts';
-import { scanPageHandler } from './worker.ts';
+import { ENGINE_QUEUES, engineHandlers } from './queues.ts';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -21,7 +22,9 @@ function required(name: string): string {
 
 const version = process.env['SERVICE_VERSION'] ?? '0.0.0';
 const telemetry = startTelemetry({ serviceName: 'engine', serviceVersion: version });
-const sql = postgres(required('DATABASE_URL'), { max: 5, onnotice: () => undefined });
+// One connection per queue's claim or heartbeat at a time, plus room for a job's transaction;
+// LISTEN uses its own connection.
+const sql = postgres(required('DATABASE_URL'), { max: 10, onnotice: () => undefined });
 
 /** Runs until SIGTERM. Returns early, with exit code 1, if the database login is unsafe. */
 async function run(): Promise<void> {
@@ -45,23 +48,30 @@ async function run(): Promise<void> {
     });
   }
 
+  const handlers = engineHandlers({
+    sql,
+    browser,
+    egress: {
+      proxyUrl: required('EGRESS_PROXY_URL'),
+      tokenSecret: required('EGRESS_TOKEN_SECRET'),
+    },
+    userAgent: userAgent(version, process.env['BOT_INFO_URL']),
+  });
+  const workerId = process.env['WORKER_ID'] ?? `engine-${hostname()}-${process.pid.toString()}`;
+
   try {
-    await runWorker({
-      sql,
-      queue: 'scan.page',
-      workerId: process.env['WORKER_ID'] ?? `engine-${hostname()}-${process.pid.toString()}`,
-      concurrency: 1,
-      signal: stop.signal,
-      handler: scanPageHandler({
-        sql,
-        browser,
-        egress: {
-          proxyUrl: required('EGRESS_PROXY_URL'),
-          tokenSecret: required('EGRESS_TOKEN_SECRET'),
-        },
-        userAgent: userAgent(version, process.env['BOT_INFO_URL']),
-      }),
-    });
+    await Promise.all(
+      ENGINE_QUEUES.map((queue) =>
+        runWorker({
+          sql,
+          queue,
+          workerId,
+          concurrency: 1,
+          signal: stop.signal,
+          handler: handlers[queue],
+        }),
+      ),
+    );
   } finally {
     await browser.close();
   }

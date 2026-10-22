@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod config;
 mod health;
+mod r1;
 pub mod rate_limit;
 pub mod shopify;
 
@@ -87,7 +88,8 @@ impl AppState {
     tags(
         (name = "operations", description = "Liveness and readiness for the platform"),
         (name = "shopify", description = "The embedded Shopify app's session"),
-        (name = "auth", description = "Standalone dashboard sign-in with passkeys")
+        (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
+        (name = "app", description = "The embedded app's scans, findings, fixes, evidence, settings and statement")
     )
 )]
 struct ApiDoc;
@@ -126,6 +128,19 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(auth::start_sign_in))
         .routes(routes!(auth::finish_sign_in))
         .routes(routes!(auth::get_session, auth::delete_session))
+        .routes(routes!(r1::get_overview))
+        .routes(routes!(r1::start_scan))
+        .routes(routes!(r1::get_scan))
+        .routes(routes!(r1::list_findings))
+        .routes(routes!(r1::get_finding))
+        .routes(routes!(r1::list_fixes))
+        .routes(routes!(r1::edit_fix))
+        .routes(routes!(r1::approve_fix))
+        .routes(routes!(r1::reject_fix))
+        .routes(routes!(r1::undo_fix))
+        .routes(routes!(r1::get_evidence))
+        .routes(routes!(r1::get_settings, r1::update_settings))
+        .routes(routes!(r1::get_statement, r1::save_statement))
 }
 
 /// The OpenAPI document, generated from the handlers.

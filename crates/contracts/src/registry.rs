@@ -3,6 +3,10 @@
 use schemars::{Schema, schema_for};
 
 use crate::job::{JobError, ScanPage, ShopifyTokenRefresh};
+use crate::pipeline::{
+    AiAltText, AuditData, ScanFinalize, ScanPageV2, ScanPlan, ShopifyApplyDataFix,
+    ShopifyReadStore, ShopifyRevertDataFix, VerifyScan, WebhookProcess,
+};
 use crate::problem::Problem;
 
 /// A JSON Schema and the file stem it is written under.
@@ -19,6 +23,14 @@ pub struct NamedSchema {
 pub fn schemas() -> Vec<NamedSchema> {
     vec![
         NamedSchema {
+            name: "ai-alt-text",
+            schema: schema_for!(AiAltText),
+        },
+        NamedSchema {
+            name: "audit-data",
+            schema: schema_for!(AuditData),
+        },
+        NamedSchema {
             name: "job-error",
             schema: schema_for!(JobError),
         },
@@ -27,12 +39,44 @@ pub fn schemas() -> Vec<NamedSchema> {
             schema: schema_for!(Problem),
         },
         NamedSchema {
+            name: "scan-finalize",
+            schema: schema_for!(ScanFinalize),
+        },
+        NamedSchema {
             name: "scan-page",
             schema: schema_for!(ScanPage),
         },
         NamedSchema {
+            name: "scan-page-v2",
+            schema: schema_for!(ScanPageV2),
+        },
+        NamedSchema {
+            name: "scan-plan",
+            schema: schema_for!(ScanPlan),
+        },
+        NamedSchema {
+            name: "shopify-apply-data-fix",
+            schema: schema_for!(ShopifyApplyDataFix),
+        },
+        NamedSchema {
+            name: "shopify-read-store",
+            schema: schema_for!(ShopifyReadStore),
+        },
+        NamedSchema {
+            name: "shopify-revert-data-fix",
+            schema: schema_for!(ShopifyRevertDataFix),
+        },
+        NamedSchema {
             name: "shopify-token-refresh",
             schema: schema_for!(ShopifyTokenRefresh),
+        },
+        NamedSchema {
+            name: "verify-scan",
+            schema: schema_for!(VerifyScan),
+        },
+        NamedSchema {
+            name: "webhook-process",
+            schema: schema_for!(WebhookProcess),
         },
     ]
 }
@@ -50,7 +94,8 @@ mod tests {
         assert_eq!(names, sorted);
         for name in names {
             assert!(
-                name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
                 "{name}"
             );
         }

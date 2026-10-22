@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScanFinalize",
+  "description": "Payload of `scan.finalize` jobs, schema `scan.finalize@1`. Runs in the engine once every\nplanned page and data input is done: ranks findings (PLAN §11 score), closes findings not\nseen again, records `checks_run` and `checks_passed`, and writes the coverage disclosure.",
+  "type": "object",
+  "properties": {
+    "scan_id": {
+      "description": "The `scans.id` to finish.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "description": "The `sites.id` scanned.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "site_id"
+  ]
+}

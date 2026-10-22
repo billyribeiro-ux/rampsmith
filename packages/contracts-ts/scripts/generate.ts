@@ -56,6 +56,9 @@ for (const name of names) {
   const source = await compile(schema, name, {
     bannerComment: BANNER,
     strictIndexSignatures: true,
+    // Bounds on arrays stay in the schema, where Ajv enforces them; as types they would become
+    // a union of every tuple length.
+    ignoreMinAndMaxItems: true,
     style: { singleQuote: true, printWidth: 100, trailingComma: 'all' },
   });
   writeFileSync(join(outDir, `${name}.ts`), source);

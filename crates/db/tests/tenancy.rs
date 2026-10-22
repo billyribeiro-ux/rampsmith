@@ -47,6 +47,98 @@ async fn seed_jobs(db: &Db, owner: &PgPool, tenants: [Graph; 2]) {
     queue::enqueue(&mut conn, &system).await.unwrap();
 }
 
+/// One row of every table the R1 pipeline added (ADR-037), written as the application role
+/// scoped to the tenant, so the visibility checks below are not satisfied by empty tables.
+async fn seed_r1(pool: &PgPool, graph: Graph) {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(graph.tenant.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let evidence = uuid::Uuid::now_v7();
+    sqlx::query(
+        "insert into scan_inputs (id, tenant_id, scan_id, site_id, kind, seq, payload)
+         values (gen_random_uuid(), $1, $2, $3, 'products', 0, '{}')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.scan.as_uuid())
+    .bind(graph.site.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into evidence (id, tenant_id, scan_id, finding_id, content_type, bytes)
+         values ($1, $2, $3, $4, 'image/png', '\\x89504e47')",
+    )
+    .bind(evidence)
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.scan.as_uuid())
+    .bind(graph.finding.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("update fixes set before_evidence_id = $1 where id = $2")
+        .bind(evidence)
+        .bind(graph.fix.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into data_fix_snapshots (fix_id, tenant_id, resource_gid, field, before_value, after_value)
+         values ($1, $2, 'gid://shopify/MediaImage/1', 'alt', '\"\"', '\"A red shoe\"')",
+    )
+    .bind(graph.fix.as_uuid())
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into statements (id, tenant_id, site_id, version, status, content)
+         values (gen_random_uuid(), $1, $2, 1, 'draft', '{}')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.site.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into ai_calls (id, tenant_id, task, model, mode, prompt_version, input_tokens,
+                               output_tokens, cost_micro_usd, cost_is_estimate, outcome, attempts,
+                               duration_ms, started_at)
+         values (gen_random_uuid(), $1, 'alt_text', 'claude-haiku-5-5', 'sync', 'v1', 10, 5, 100,
+                 false, 'ok', 1, 20, now())",
+    )
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("insert into ai_budgets (tenant_id, period) values ($1, '2026-11')")
+        .bind(graph.tenant.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into ai_reservations (id, tenant_id, period, amount_micro_usd, state)
+         values (gen_random_uuid(), $1, '2026-11', 100, 'reserved')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into webhook_events (id, tenant_id, shop_id, external_id, topic, body, body_sha256)
+         values (gen_random_uuid(), $1, $2, $3, 'app/uninstalled', '{}', decode(repeat('ab', 32), 'hex'))",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.shop.as_uuid())
+    .bind(format!("event-{}", graph.tenant))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+}
+
 async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool, Graph, Graph) {
     let owner = owner_pool(opts.clone(), conn.clone()).await;
     let pool = app_pool(opts, conn).await;
@@ -54,6 +146,8 @@ async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool
     let a = seed(&db, 1).await;
     let b = seed(&db, 2).await;
     seed_jobs(&db, &owner, [a, b]).await;
+    seed_r1(&pool, a).await;
+    seed_r1(&pool, b).await;
     (db, pool, a, b)
 }
 
@@ -307,7 +401,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 12] = [
+const TENANT_TABLES: [&str; 20] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -320,6 +414,27 @@ const TENANT_TABLES: [&str; 12] = [
     "audit_log",
     "scan_pages",
     "jobs",
+    // The R1 pipeline (ADR-037).
+    "scan_inputs",
+    "evidence",
+    "data_fix_snapshots",
+    "statements",
+    "ai_calls",
+    "ai_budgets",
+    "ai_reservations",
+    "webhook_events",
+];
+
+/// The tables ADR-037 added, which `seed_r1` fills with one row per tenant.
+const R1_TABLES: [&str; 8] = [
+    "scan_inputs",
+    "evidence",
+    "data_fix_snapshots",
+    "statements",
+    "ai_calls",
+    "ai_budgets",
+    "ai_reservations",
+    "webhook_events",
 ];
 
 #[sqlx::test]
@@ -586,4 +701,224 @@ async fn creating_a_tenant_uses_the_transactions_own_id(
         .await
         .unwrap();
     assert_eq!(created.id, tx.tenant_id());
+}
+
+// --- The R1 pipeline's tables (ADR-037) ----------------------------------------------------
+
+/// The generic check proves nothing foreign leaks, which an empty table would also satisfy.
+/// This one proves each new table holds exactly its own tenant's row for each tenant.
+#[sqlx::test]
+async fn each_tenant_sees_exactly_its_own_row_of_every_r1_table(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, pool, a, b) = two_tenants(opts, conn).await;
+    for me in [a, b] {
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query("select set_config('app.tenant_id', $1, true)")
+            .bind(me.tenant.to_string())
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        for table in R1_TABLES {
+            let seen: i64 =
+                sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
+                    .fetch_one(&mut *tx)
+                    .await
+                    .unwrap();
+            assert_eq!(seen, 1, "{table}: tenant {} saw {seen} rows", me.tenant);
+        }
+        tx.rollback().await.unwrap();
+    }
+}
+
+#[sqlx::test]
+async fn r1_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, pool, a, b) = two_tenants(opts, conn).await;
+    let for_b = |sql: String| sqlx::AssertSqlSafe(sql);
+    let inserts = [
+        format!(
+            "insert into scan_inputs (id, tenant_id, scan_id, site_id, kind, seq, payload)
+             values (gen_random_uuid(), '{}', '{}', '{}', 'shop', 0, '{{}}')",
+            b.tenant.as_uuid(),
+            b.scan.as_uuid(),
+            b.site.as_uuid()
+        ),
+        format!(
+            "insert into statements (id, tenant_id, site_id, version, status, content)
+             values (gen_random_uuid(), '{}', '{}', 2, 'draft', '{{}}')",
+            b.tenant.as_uuid(),
+            b.site.as_uuid()
+        ),
+        format!(
+            "insert into ai_budgets (tenant_id, period) values ('{}', '2026-12')",
+            b.tenant.as_uuid()
+        ),
+    ];
+    for sql in inserts {
+        let err = as_tenant(&pool, a.tenant, for_b(sql.clone()))
+            .await
+            .expect_err("tenant A wrote a row for tenant B");
+        assert!(
+            err.to_string().contains("row-level security"),
+            "{sql}: {err}"
+        );
+    }
+    // Updates and deletes of the other tenant's rows touch nothing.
+    for table in ["scan_inputs", "evidence", "statements", "webhook_events"] {
+        let deleted = as_tenant(
+            &pool,
+            a.tenant,
+            for_b(format!(
+                "delete from {table} where tenant_id = '{}'",
+                b.tenant.as_uuid()
+            )),
+        )
+        .await
+        .unwrap();
+        assert_eq!(deleted, 0, "{table}");
+    }
+}
+
+/// Call metadata only grows, like the audit log (ADR-037).
+#[sqlx::test]
+async fn ai_calls_are_insert_and_read_only(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let (_, pool, a, _) = two_tenants(opts, conn).await;
+    for statement in ["update ai_calls set attempts = 2", "delete from ai_calls"] {
+        let err = as_tenant(&pool, a.tenant, statement)
+            .await
+            .expect_err("ai_calls was changed");
+        assert!(err.to_string().contains("permission denied"), "{err}");
+    }
+}
+
+#[sqlx::test]
+async fn composite_foreign_keys_reject_cross_tenant_references_in_r1_tables(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = Db::from_pool(app_pool(opts.clone(), conn.clone()).await);
+    let a = seed(&db, 1).await;
+    let b = seed(&db, 2).await;
+    let owner = owner_pool(opts, conn).await;
+
+    // Each statement is tenant A's row pointing at tenant B's parent.
+    let cases = [
+        (
+            "scan_inputs",
+            "insert into scan_inputs (id, tenant_id, scan_id, site_id, kind, seq, payload)
+             values (gen_random_uuid(), $1, $2, (select id from sites where tenant_id = $1), 'shop', 0, '{}')",
+            b.scan.as_uuid(),
+        ),
+        (
+            "scan_inputs site",
+            "insert into scan_inputs (id, tenant_id, scan_id, site_id, kind, seq, payload)
+             values (gen_random_uuid(), $1, (select id from scans where tenant_id = $1), $2, 'shop', 0, '{}')",
+            b.site.as_uuid(),
+        ),
+        (
+            "evidence",
+            "insert into evidence (id, tenant_id, scan_id, content_type, bytes)
+             values (gen_random_uuid(), $1, $2, 'image/png', '\\x89504e47')",
+            b.scan.as_uuid(),
+        ),
+        (
+            "evidence finding",
+            "insert into evidence (id, tenant_id, scan_id, finding_id, content_type, bytes)
+             values (gen_random_uuid(), $1, (select id from scans where tenant_id = $1), $2, 'image/png', '\\x89504e47')",
+            b.finding.as_uuid(),
+        ),
+        (
+            "data_fix_snapshots",
+            "insert into data_fix_snapshots (fix_id, tenant_id, resource_gid, field, before_value, after_value)
+             values ($2, $1, 'gid://shopify/MediaImage/1', 'alt', '\"\"', '\"x\"')",
+            b.fix.as_uuid(),
+        ),
+        (
+            "statements",
+            "insert into statements (id, tenant_id, site_id, version, status, content)
+             values (gen_random_uuid(), $1, $2, 1, 'draft', '{}')",
+            b.site.as_uuid(),
+        ),
+        (
+            "webhook_events",
+            "insert into webhook_events (id, tenant_id, shop_id, external_id, topic, body, body_sha256)
+             values (gen_random_uuid(), $1, $2, 'cross-tenant', 'app/uninstalled', '{}', decode(repeat('ab', 32), 'hex'))",
+            b.shop.as_uuid(),
+        ),
+    ];
+    for (name, sql, foreign_id) in cases {
+        let result = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(a.tenant.as_uuid())
+            .bind(foreign_id)
+            .execute(&owner)
+            .await;
+        let err = result.expect_err(name);
+        assert!(err.to_string().contains("foreign key"), "{name}: {err}");
+    }
+}
+
+/// `scan_inputs_sweep` deletes store data older than 30 days for every tenant. Workers run it;
+/// the application role may not, and the age is not a parameter (ADR-037).
+#[sqlx::test]
+async fn the_scan_inputs_sweep_removes_only_old_rows_and_only_workers_run_it(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, pool, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    sqlx::query(
+        "update scan_inputs set created_at = now() - interval '31 days' where tenant_id = $1",
+    )
+    .bind(a.tenant.as_uuid())
+    .execute(&owner)
+    .await
+    .unwrap();
+
+    let err = sqlx::query("select scan_inputs_sweep()")
+        .execute(&pool)
+        .await
+        .expect_err("the application role ran the sweep");
+    assert!(err.to_string().contains("permission denied"), "{err}");
+
+    let workers = worker_pool(opts, conn).await;
+    let swept: i64 = sqlx::query_scalar("select scan_inputs_sweep()")
+        .fetch_one(&workers)
+        .await
+        .unwrap();
+    assert_eq!(swept, 1);
+    let left: Vec<uuid::Uuid> = sqlx::query_scalar("select tenant_id from scan_inputs")
+        .fetch_all(&owner)
+        .await
+        .unwrap();
+    assert_eq!(left, vec![b.tenant.as_uuid()]);
+}
+
+#[sqlx::test]
+async fn a_sealed_storefront_password_is_both_columns_or_neither(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = Db::from_pool(app_pool(opts.clone(), conn.clone()).await);
+    let a = seed(&db, 1).await;
+    let owner = owner_pool(opts, conn).await;
+    let err = sqlx::query("update sites set storefront_password_ct = '\\x01' where id = $1")
+        .bind(a.site.as_uuid())
+        .execute(&owner)
+        .await
+        .expect_err("a password without its key id was accepted");
+    assert!(
+        err.to_string().contains("storefront_password_sealed"),
+        "{err}"
+    );
+    sqlx::query(
+        "update sites set storefront_password_ct = '\\x01', storefront_password_key_id = 'k1' where id = $1",
+    )
+    .bind(a.site.as_uuid())
+    .execute(&owner)
+    .await
+    .unwrap();
 }

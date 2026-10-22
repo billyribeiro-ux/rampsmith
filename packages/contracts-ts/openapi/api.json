@@ -280,6 +280,369 @@
         }
       }
     },
+    "/v1/shopify/evidence/{evidence_id}": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "An evidence crop (PNG or WebP), served from the database (ADR-035).",
+        "operationId": "getEvidence",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/findings": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Open findings, ranked by priority score.",
+        "operationId": "listFindings",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/findings/{finding_id}": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "One finding, with its evidence and affected templates.",
+        "operationId": "getFinding",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/fixes": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Fixes by state: the approval queue and the remediation log.",
+        "operationId": "listFixes",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/fixes/{fix_id}": {
+      "put": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Edits a proposed fix, such as an alt-text draft.",
+        "operationId": "editFix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/fixes/{fix_id}/approve": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Approves a proposed fix and applies it.",
+        "operationId": "approveFix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/fixes/{fix_id}/reject": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Rejects a proposed fix.",
+        "operationId": "rejectFix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/fixes/{fix_id}/undo": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Reverts an applied fix.",
+        "operationId": "undoFix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/overview": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The pass rate, open findings by impact, fixes awaiting approval, and the last and next scan.",
+        "operationId": "getOverview",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/scans": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Starts a scan of the shop.",
+        "operationId": "startScan",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/scans/{scan_id}": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "One scan, with its progress and coverage.",
+        "operationId": "getScan",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "description": "The identifier in the path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
     "/v1/shopify/session": {
       "post": {
         "tags": [
@@ -320,6 +683,106 @@
           },
           "503": {
             "description": "Shopify authentication is not configured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/settings": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Scan schedule, storefront password state, AI budget and notification email.",
+        "operationId": "getSettings",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Changes the shop's settings.",
+        "operationId": "updateSettings",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/statement": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The accessibility statement versions.",
+        "operationId": "getStatement",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Saves a draft of the accessibility statement.",
+        "operationId": "saveStatement",
+        "responses": {
+          "503": {
+            "description": "Not available yet",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -617,6 +1080,10 @@
     {
       "name": "auth",
       "description": "Standalone dashboard sign-in with passkeys"
+    },
+    {
+      "name": "app",
+      "description": "The embedded app's scans, findings, fixes, evidence, settings and statement"
     }
   ]
 }
