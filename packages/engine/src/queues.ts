@@ -22,17 +22,23 @@ export const ENGINE_QUEUES = [
 export type EngineQueue = (typeof ENGINE_QUEUES)[number];
 
 /** The handlers that need neither the browser nor egress yet. */
-export function stubHandlers(): Record<Exclude<EngineQueue, 'scan.page'>, JobHandler> {
+export function stubHandlers(): Record<
+  Exclude<EngineQueue, 'scan.page' | 'ai.alt_text'>,
+  JobHandler
+> {
   return {
     'scan.plan': scanPlanHandler(),
     'scan.finalize': scanFinalizeHandler(),
     'audit.data': auditDataHandler(),
-    'ai.alt_text': altTextHandler(),
     'verify.scan': verifyScanHandler(),
   };
 }
 
 /** Each engine queue's handler. */
 export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
-  return { ...stubHandlers(), 'scan.page': scanPageHandler(deps) };
+  return {
+    ...stubHandlers(),
+    'scan.page': scanPageHandler(deps),
+    'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
+  };
 }
