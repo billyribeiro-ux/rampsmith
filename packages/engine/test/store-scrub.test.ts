@@ -2,9 +2,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
 import { fingerprint } from '../src/fingerprint.ts';
-import type { Occurrence, PageScan } from '../src/scan-page.ts';
+import type { Occurrence } from '../src/scan-page.ts';
 import { recordPage } from '../src/store.ts';
 import { freshDatabase, seed, type TestDatabase } from './db.ts';
+import { pageScan as page } from './scans.ts';
 
 let db: TestDatabase;
 let worker: postgres.Sql;
@@ -40,18 +41,6 @@ function occurrence(target: string): Occurrence {
     target,
     html: '<img src="a.png" alt="" data-owner="shopper@example.com">',
     section: SECTION,
-  };
-}
-
-function page(url: string, violations: Occurrence[], finalUrl: string = url): PageScan {
-  return {
-    url,
-    finalUrl,
-    status: 200,
-    blocked: undefined,
-    violations,
-    incomplete: [],
-    durationMs: 10,
   };
 }
 

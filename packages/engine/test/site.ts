@@ -1,6 +1,50 @@
 /** A local storefront for browser tests: pages with known failures, a clean page, a challenge. */
-import { createServer, type Server } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
+
+const A11Y_FIXTURES = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  'a11y-rules',
+  'test-browser',
+  'fixtures',
+);
+const STOREFRONT = readFileSync(join(import.meta.dirname, 'fixtures', 'storefront.html'), 'utf8');
+
+/** The storefront password of the `/locked` pages. A test value, not a secret. */
+export const LOCKED_PASSWORD = 'open-sesame';
+
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+const PASSWORD_PAGE = LAYOUT_PASSWORD();
+
+function LAYOUT_PASSWORD(): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Opening soon</title></head>
+<body><main><h1>Opening soon</h1>
+<form action="/password" method="post" accept-charset="UTF-8">
+<input type="hidden" name="form_type" value="storefront_password">
+<label for="Password">Enter store password</label>
+<input type="password" name="password" id="Password">
+<button type="submit">Enter</button></form>
+<a href="/a">a</a><a href="/b">b</a><a href="/c">c</a><a href="/d">d</a><a href="/e">e</a>
+</main></body></html>`;
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+  });
+}
 
 const LAYOUT = (title: string, body: string) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title></head>
@@ -89,6 +133,61 @@ export async function startSite(): Promise<Site> {
   const requests: string[] = [];
   const server: Server = createServer((req, res) => {
     requests.push(req.url ?? '');
+    const url = new URL(req.url ?? '/', 'http://site.test');
+    const html = (status: number, body: string, headers: Record<string, string> = {}) =>
+      res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', ...headers }).end(body);
+    if (url.pathname === '/storefront') {
+      html(200, STOREFRONT);
+      return;
+    }
+    if (url.pathname.startsWith('/fixtures/')) {
+      try {
+        html(
+          200,
+          readFileSync(join(A11Y_FIXTURES, url.pathname.slice('/fixtures/'.length)), 'utf8'),
+        );
+      } catch {
+        html(404, 'not found');
+      }
+      return;
+    }
+    if (url.pathname === '/media/pixel.png') {
+      res.writeHead(200, { 'content-type': 'image/png' }).end(PIXEL);
+      return;
+    }
+    if (url.pathname === '/cart/add.js') {
+      res.writeHead(200, { 'content-type': 'application/json' }).end('{"items":[]}');
+      return;
+    }
+    // A password-protected store: every /locked page redirects to /password until the cookie.
+    if (url.pathname === '/password') {
+      if (req.method === 'POST') {
+        void readBody(req).then((body) => {
+          const ok = new URLSearchParams(body).get('password') === LOCKED_PASSWORD;
+          if (ok) {
+            res
+              .writeHead(302, {
+                location: '/locked/',
+                'set-cookie': 'storefront_digest=ok; Path=/',
+              })
+              .end();
+          } else {
+            html(200, PASSWORD_PAGE);
+          }
+        });
+        return;
+      }
+      html(200, PASSWORD_PAGE);
+      return;
+    }
+    if (url.pathname.startsWith('/locked')) {
+      if (!(req.headers.cookie ?? '').includes('storefront_digest=ok')) {
+        res.writeHead(302, { location: '/password' }).end();
+        return;
+      }
+      html(200, LAYOUT('Unlocked store', '<img src="/scarf.png">'));
+      return;
+    }
     if ((req.url ?? '').startsWith('/webrtc?')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(WEBRTC_PROBE);
       return;

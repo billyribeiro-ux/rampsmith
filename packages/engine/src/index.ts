@@ -8,6 +8,7 @@ export {
   type Occurrence,
   type PageScan,
   type ScanOptions,
+  type StateScan,
 } from './scan-page.ts';
 export { parseRobots, robotsAllows, type Robots, type RobotsResponse } from './robots.ts';
 export { recordPage, type PageContext, type RecordOutcome } from './store.ts';

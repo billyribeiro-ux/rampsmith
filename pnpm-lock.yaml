@@ -403,6 +403,9 @@ importers:
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
+      '@rampsmith/a11y-rules':
+        specifier: workspace:*
+        version: link:../a11y-rules
       '@rampsmith/contracts-ts':
         specifier: workspace:*
         version: link:../contracts-ts
@@ -425,6 +428,9 @@ importers:
         specifier: 3.4.9
         version: 3.4.9
     devDependencies:
+      '@rampsmith/corpus-tools':
+        specifier: workspace:*
+        version: link:../corpus-tools
       '@rampsmith/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
