@@ -1,0 +1,21 @@
+[package]
+name = "rampsmith-shopify-admin"
+version = "0.0.0"
+description = "The Shopify Admin GraphQL client: typed operations, cost-aware throttling, userErrors as typed errors."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "shopify_admin"
+
+[dependencies]
+graphql_client.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

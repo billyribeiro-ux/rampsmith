@@ -7,7 +7,7 @@ use anyhow::Context as _;
 use contracts::ShopifyTokenRefresh;
 use ctl::config::Config;
 use ctl::token_refresh::TokenRefresh;
-use ctl::{leader, startup};
+use ctl::{jobs, leader, startup};
 use db::Db;
 use queue::WorkerConfig;
 use secrecy::ExposeSecret;
@@ -59,7 +59,7 @@ async fn run(config: Config) -> anyhow::Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
-    let refresh = TokenRefresh::new(db, auth);
+    let refresh = TokenRefresh::new(db.clone(), auth);
 
     let (stop, stopped) = watch::channel(false);
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {
@@ -73,22 +73,38 @@ async fn run(config: Config) -> anyhow::Result<()> {
     ));
     let mut worker = WorkerConfig::new(ShopifyTokenRefresh::QUEUE, config.worker_id.clone());
     worker.concurrency = 4;
-    let workers = tokio::spawn(queue::run(
-        pool,
+    let mut workers = vec![tokio::spawn(queue::run(
+        pool.clone(),
         worker,
         move |job| {
             let refresh = refresh.clone();
             async move { refresh.handle(job).await }
         },
-        until_stopped(stopped),
-    ));
+        until_stopped(stopped.clone()),
+    ))];
+    for name in jobs::QUEUES {
+        let mut worker = WorkerConfig::new(name, config.worker_id.clone());
+        worker.concurrency = 2;
+        let db = db.clone();
+        workers.push(tokio::spawn(queue::run(
+            pool.clone(),
+            worker,
+            move |job| {
+                let db = db.clone();
+                async move { jobs::dispatch(&db, job).await }
+            },
+            until_stopped(stopped.clone()),
+        )));
+    }
     info!(worker = %config.worker_id, version = %config.service_version, "ctl started");
 
     shutdown_signal().await;
     info!("ctl stopping; waiting for jobs in flight");
     let _ = stop.send(true);
     leader.await.context("leader task")?;
-    workers.await.context("worker task")?.context("worker")?;
+    for worker in workers {
+        worker.await.context("worker task")?.context("worker")?;
+    }
     info!("ctl stopped");
     Ok(())
 }
