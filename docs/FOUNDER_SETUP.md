@@ -2,9 +2,9 @@
 
 The accounts, credentials and decisions only you can create for Rampsmith, in order, with where each value goes; checked against vendor docs on 17 Oct 2026, and marked "not verified" where the docs did not confirm a detail.
 
-This is LAUNCH.md section D's founder checklist. It covers every input in LAUNCH.md section C (rows 1 to 15), names the exact variables, says where each value goes and gives the `rsctl doctor` command that proves it. The vendor facts behind it are listed in `docs/evidence/ws-5-launch-docs.md`.
+This is LAUNCH.md section D's founder checklist. It covers every input in LAUNCH.md section C (rows 1 to 16), names the exact variables, says where each value goes and gives the `rsctl doctor` command that proves it. The vendor facts behind it are listed in `docs/evidence/ws-5-launch-docs.md`.
 
-The build does not wait for any of this (your decision, 17 Oct 2026). Builders keep the "Waiting on founder" list in `docs/STATUS.md` in this order. You give builders names and ids, never secrets: a secret goes only into GitHub Actions secrets and Railway variables.
+The build does not wait for any of this (your decision, 17 Oct 2026). Builders keep the "Waiting on founder" list in `docs/STATUS.md` in this order. You give builders names and ids, never secrets: a secret goes only into Railway variables, and, for the few values a workflow needs, into the secrets of a GitHub environment limited to `main` (section 0). There are no repository secrets.
 
 Rules for every step:
 
@@ -41,7 +41,7 @@ This is a decision, not an input, and R2 depends on it. Shopify's App Store requ
 
 `rsctl doctor` is the operator CLI that checks your inputs against the live services (LAUNCH.md B5). It is built on branch `ws/rsctl` (draft pull request #8) and reaches `main` when the integrator merges it. Each step below ends with the check that proves its input.
 
-- It reads only the documented variables of LAUNCH.md section C rows 1 to 12, prints one line per check (PASS, FAIL with a reason, or SKIP naming the missing C row), and prints no secret. It makes the smallest documented read for each input and creates nothing, except one throwaway object in each R2 bucket that it deletes.
+- It reads only the documented variables of LAUNCH.md section C rows 1 to 12 and 16, prints one line per check (PASS, FAIL with a reason, or SKIP naming the missing C row), and prints no secret. It makes the smallest documented read for each input and creates nothing, except one throwaway object in an R2 bucket that it deletes. It also tries what each of the three R2 tokens must be refused (the engine's token on the backups bucket, the drill's token writing) and passes only when R2 says no.
 - Flags: `--row N` runs one row; `--environment staging` or `production` (also for the staging-only row 15 check); `--json`; `--strict` (a missing required input fails the run); `--timeout`. Exit 0 means nothing failed, 1 means an input failed, 2 means it could not run.
 - **What it cannot check**, because the vendor documents no way to without using the input: the App Automation Token (`shopify app deploy` in CI is its test), the dev-store storefront passwords, the GitHub App webhook secret, Stripe's publishable key and webhook secret, the Turnstile site key, the R2 evidence bucket's 90-day lifecycle rule, and that mail reaches an inbox. Those report SKIP "not verifiable" when set.
 - **What it does not do**: it sends no email (the test email delivered to you stays a manual step in LAUNCH.md section E), checks no DNS or TLS for your hosts, runs the Partner API `app(id)` query rather than the billing query, and checks only that a dev store's password page answers, not the password.
@@ -51,24 +51,27 @@ This is a decision, not an input, and R2 depends on it. Shopify's App Store requ
 
 ### 0. One-time: where values go
 
-- **GH**: a GitHub Actions repository secret on `billyribeiro-ux/rampsmith`.
-  - In the web UI: Settings > Secrets and variables > Actions > Secrets tab > New repository secret > Name, Secret > Add secret.
-  - With the CLI: `gh secret set NAME` prompts for the value. For a file such as a PEM key: `gh secret set NAME < file`.
-- **GH env**: a secret on a GitHub environment, set with `gh secret set NAME --env production`.
-  - First create the environments: Settings > Environments > New environment > `staging`, then `production` > Configure environment.
-  - On `production`, add yourself under Required reviewers, set Deployment branches to `main`, then Save protection rules (PLAN §24).
-  - In a personal-account repo, only you, the owner, can do this.
+Founder secrets live in two places only: Railway variables (what the running services read), and, for the few values a workflow needs, secrets of a GitHub environment that only `main` can deploy to. There are no repository or organization secrets at all. A repository secret can be read by every workflow on every branch and by every pull request opened from this repository, so it is only as safe as the least-reviewed workflow. The `secrets-scope` job in `.github/workflows/ci.yml` fails the build when any founder secret name below exists at repository or organization level (ADR-092). Do not set a secret there "temporarily".
+
 - **RW**: a Railway shared variable, in both `staging` and `production` unless the section says otherwise.
   - Path: Project Settings > Shared Variables > choose the environment > name and value > Add.
   - Changes are staged: review and deploy them.
   - To hide a secret: open its ⋯ menu > Seal. Sealing is permanent.
   - Multi-line values: press Cmd/Ctrl+Enter or use the Raw Editor.
-- **Both**: GH and RW.
+- **GH env**: a secret of a GitHub environment, only for a value that a workflow needs. There are three environments and each deploys from `main` only:
+  - `staging` and `production`: `RAILWAY_TOKEN` and `SHOPIFY_APP_AUTOMATION_TOKEN`, for the deploy workflow. On `production`, add yourself under Required reviewers (PLAN §24).
+  - `backup-drill`: the three secrets of the weekly restore drill (section 16). It has no required reviewer, because the drill runs on a schedule and a reviewer would hold every run.
+  - Create each one: Settings > Environments > New environment > name > Configure environment. Under Deployment branches and tags choose Selected branches and tags, add the branch rule `main` (not a tag, not a pattern), then Save protection rules.
+  - Set a secret on it: `gh secret set NAME --env <environment>` prompts for the value. For a file such as a PEM key: `gh secret set NAME --env <environment> < file`.
+  - The workflows read each environment's settings before a job can touch its secrets, and stop unless deployments are limited to `main`.
+  - In a personal-account repo, only you, the owner, can do this.
+- **Repository variable**: not a secret: Settings > Secrets and variables > Actions > Variables tab > New repository variable. Only `BACKUP_DRILL_READY` (section 16).
+- **Vault**: your offline encrypted vault, and your machine when you run `rsctl doctor`. For a value that no workflow and no service reads.
 - Never put a value in the repo or a chat. Values marked *public* may be shown to builders.
-- Railway services read these through shared variables that the deploy configuration (`infra/railway`) wires to the right service, so you set each value once per environment and do not choose which service gets it.
+- Railway services read the RW values through shared variables that the deploy configuration (`infra/railway`) wires to the right service, so you set each value once per environment and do not choose which service gets it. The `backup` service is wired to its own five values and nothing else.
 - When you finish, run `rsctl doctor` yourself, on your machine or on Railway, where the inputs are (LAUNCH.md B; see "About `rsctl doctor`"). It checks each input against its live service and prints PASS or FAIL per input, never a value. Then reply in the Rampsmith chat with that output. Live checks in LAUNCH.md section E that need a secret builders cannot read also run on your machine: for the Shopify dev-store check, `docs/runbooks/shopify-dev-store.md` section 3 has the one command.
 
-Docs: [GitHub: use secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets?tool=webui) · [secrets reference](https://docs.github.com/en/actions/reference/security/secrets) · [manage environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) · [gh secret set](https://cli.github.com/manual/gh_secret_set) · [Railway: secrets](https://docs.railway.com/guides/managing-secrets-on-railway.md) · [variables](https://docs.railway.com/variables.md)
+Docs: [GitHub: use secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets?tool=webui) · [secrets reference](https://docs.github.com/en/actions/reference/security/secrets) · [manage environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) · [gh secret set](https://cli.github.com/manual/gh_secret_set) · [gh variable set](https://cli.github.com/manual/gh_variable_set) · [Railway: secrets](https://docs.railway.com/guides/managing-secrets-on-railway.md) · [variables](https://docs.railway.com/variables.md)
 
 ### 1. Trademark and entity (input 13, part 1)
 
@@ -108,7 +111,7 @@ The domain must not contain "Shopify" (or a misspelling or abbreviation of it) o
    - With Cloudflare's proxy on, set SSL/TLS to Full. Railway says "Full (Strict)" will not work as intended.
 5. The host names for the app, the marketing site and the webhook host (PLAN §22) are chosen with the builder of the deploy configuration.
 
-Values: none required. Optional: `CLOUDFLARE_API_TOKEN` (a token with DNS edit on the zone) → Both, only if you want builders to add the DNS records instead of you (LAUNCH.md row 10).
+Values: none required. Optional: `CLOUDFLARE_API_TOKEN` (a token with DNS edit on the zone) → Vault, only if you want to run `rsctl doctor --row 10` or to give builders the DNS records instead of adding them yourself (LAUNCH.md row 10). No workflow and no service reads it, so it is stored in neither GitHub nor Railway; if a workflow ever needs it, it becomes a secret of the `production` environment.
 
 Check: `rsctl doctor --row 10`, only when you gave a token. It lists up to three zones and reads the first zone's DNS records, creating nothing. LAUNCH.md names no domain variable, so it cannot pick the Rampsmith zone itself: read the zone names it prints. Nothing else checks the domain; DNS and TLS for each host are checked by the staging deploy (LAUNCH.md section E).
 
@@ -180,10 +183,10 @@ Pick one Region and use it for everything below. Rampsmith runs in a US Region a
    - This is the only time the secret is shown.
 
 Values:
-- `SES_REGION`, for example `us-east-1` → Both
-- `SES_ACCESS_KEY_ID` → Both
-- `SES_SECRET_ACCESS_KEY` → Both
-- `EMAIL_FROM`, an address on the verified domain (ask builders if they want a display name) → Both
+- `SES_REGION`, for example `us-east-1` → RW
+- `SES_ACCESS_KEY_ID` → RW
+- `SES_SECRET_ACCESS_KEY` → RW
+- `EMAIL_FROM`, an address on the verified domain (ask builders if they want a display name) → RW
 
 Check: `rsctl doctor --row 7`. It reads the account (out of the sandbox, sending enabled) and the identity (verified for sending) and sends no mail. The test email delivered to you stays a manual step in LAUNCH.md section E.
 
@@ -209,8 +212,8 @@ Wait until builders commit `shopify.app.toml`. Shopify says App Store apps shoul
 7. Choose distribution: app Home > Distribution card > Select distribution method > public (Shopify App Store) > confirm. This can't be undone. Do it on this production app only.
 
 Values:
-- `SHOPIFY_API_KEY` = Client ID (*public*) → Both. Railway `production` only; staging needs its own app (see the last section).
-- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. Not a GitHub repository secret: no workflow uses it, and any workflow pushed to a branch of this repository can read repository secrets. If a workflow ever needs it, it goes in as a GH env secret on a protected environment (ADR-031).
+- `SHOPIFY_API_KEY` = Client ID (*public*) → RW. Railway `production` only; staging needs its own app (see the last section).
+- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. No workflow uses it. If one ever does, it goes in as a secret of a GitHub environment limited to `main` (ADR-031, ADR-092).
 
 These are the names in LAUNCH.md section C, row 1, and the ones `rsctl doctor` reads. The code on `r0-foundations` reads the same two values as `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` (`crates/api`, `crates/ctl`, `apps/web`, `.env.example`; finding 2 of ADR-156 on `ws/rsctl`), and the Railway configuration on `ws/deploy` (ADR-182) maps the first pair to the second. You set only the names above.
 
@@ -234,10 +237,10 @@ You can do steps 1 and 2 before the app exists.
    - Set a reminder before it expires. To rotate: Rotate > Generate token > update the secret > Revoke the old token.
 
 Values:
-- `SHOPIFY_PARTNER_ORG_ID` → Both
-- `SHOPIFY_PARTNER_API_TOKEN` → Both
-- `SHOPIFY_APP_AUTOMATION_TOKEN` → GH env `production` only (PLAN §24 deploys Shopify config after production approval). The CLI reads this variable automatically.
-- `SHOPIFY_APP_GID`, the app's `gid://shopify/App/<id>`, its Partner API app id (ADR-131) → Both. Builders can read it from the installed app; ask them for the value. Shopify's Partner API reference shows the id as `gid://partners/App/<id>`; the doctor tries the configured form and then the other, and the first live run says which Shopify accepts.
+- `SHOPIFY_PARTNER_ORG_ID` → RW
+- `SHOPIFY_PARTNER_API_TOKEN` → RW
+- `SHOPIFY_APP_AUTOMATION_TOKEN` → GH env `production` for the production app's token, and GH env `staging` for the staging app's own token (section "Also on your list"); nowhere else (PLAN §24 deploys Shopify config after production approval). The CLI reads this variable automatically.
+- `SHOPIFY_APP_GID`, the app's `gid://shopify/App/<id>`, its Partner API app id (ADR-131) → RW. Builders can read it from the installed app; ask them for the value. Shopify's Partner API reference shows the id as `gid://partners/App/<id>`; the doctor tries the configured form and then the other, and the first live run says which Shopify accepts.
 
 Check: `rsctl doctor --row 2`. It asks the Partner API for the app (`app(id)`) and compares its `apiKey` with `SHOPIFY_API_KEY`, so the client and the app belong together. It cannot check the App Automation Token: the release workflow's `shopify app deploy --config production --allow-updates` is that token's test ([Shopify CI/CD](https://shopify.dev/docs/apps/tools/cli/ci-cd)).
 
@@ -284,9 +287,10 @@ You create: store A, store B (its theme connected to GitHub), and a test GitHub 
 7. When builders say the app is deployed, install it on both stores: Dev Dashboard > your app > Installs card > Install app > pick the store > Install.
 
 Values:
-- `SHOPIFY_DEV_STORE_DOMAIN`, as `<name>.myshopify.com` → GH
-- `SHOPIFY_DEV_STORE_PASSWORD` → GH
-- `SHOPIFY_DEV_STORE_B_DOMAIN` and `SHOPIFY_DEV_STORE_B_PASSWORD`, for store B → GH
+- `SHOPIFY_DEV_STORE_DOMAIN`, as `<name>.myshopify.com` → RW, in the `staging` environment only
+- `SHOPIFY_DEV_STORE_PASSWORD` → RW, in the `staging` environment only
+- `SHOPIFY_DEV_STORE_B_DOMAIN` and `SHOPIFY_DEV_STORE_B_PASSWORD`, for store B → RW, in the `staging` environment only
+- No workflow reads these: the dev-store end-to-end suite runs where you run it (LAUNCH.md section E), so CI gets no store credentials.
 
 Check: `rsctl doctor --row 3`. It asks each store's `/password` page and passes when the store exists with a storefront password page. It does not test the password (that would be a login attempt on the store); the dev-store end-to-end suite uses it. Then the suite itself runs (install, scan, fix, verify, undo on every fix channel; LAUNCH.md section E).
 
@@ -309,7 +313,8 @@ Values:
   - the staging token: `gh secret set RAILWAY_TOKEN --env staging`
   - the production token: `gh secret set RAILWAY_TOKEN --env production`
 - LAUNCH.md lists one `RAILWAY_TOKEN`; because Railway project tokens are per environment, it is one name with two values (ADR-142).
-- Optional `RAILWAY_API_TOKEN` (a workspace token) → GH, only if you want CI to create services and domains (see "Also on your list").
+- Optional `RAILWAY_API_TOKEN` (a workspace token) → Vault. No workflow and no service reads it: you use it from your machine (`rsctl doctor --row 8`, the dashboard-only steps in "Also on your list"). If a workflow ever creates services or domains with it, it becomes a secret of the `production` environment.
+- The `backup` cron service (section 16) is created by the deploy configuration like the other services and holds no Railway token of its own.
 - Then enter the runtime variables from the other sections in each environment, sealed in production.
 
 Check: `rsctl doctor --row 8 --environment staging`, and the same with `production`, each run with that environment's token. It reads the token's project and environment and compares the environment name. A workspace token, if you gave one, is read through the project the project token names. The staging deploy and the synthetic install-scan-fix journey (LAUNCH.md section E) follow once the deploy workflow exists.
@@ -325,7 +330,7 @@ Docs: [plans](https://docs.railway.com/pricing/plans.md) · [railway init](https
 
 Values:
 - `RAMPSMITH_MASTER_KEYS` → RW, sealed, with a different key ring per environment. Its format is `id:base64key[,id:base64key…]`, newest first, and a rotation adds the new key at the front (ADR-021).
-- GH only if builders ask, and then use a separate CI key, never production's.
+- Never in GitHub: no workflow uses it.
 - Sealed values are not copied into PR environments, so builders need a non-sealed test value there.
 
 Check: `rsctl doctor --row 12`. It parses the ring and checks that every key seals and opens a test value. It needs no network.
@@ -340,8 +345,8 @@ Docs: [Railway: sealed variables](https://docs.railway.com/guides/managing-secre
 4. Environment Variables > Copy. Use the values exactly as generated.
 
 Values:
-- `OTEL_EXPORTER_OTLP_ENDPOINT` → Both
-- `OTEL_EXPORTER_OTLP_HEADERS`, which contains the token → Both
+- `OTEL_EXPORTER_OTLP_ENDPOINT` → RW
+- `OTEL_EXPORTER_OTLP_HEADERS`, which contains the token → RW
 - The tile also generates `OTEL_EXPORTER_OTLP_PROTOCOL`. LAUNCH.md row 9 lists it; the doctor requires `http/protobuf` when it is set.
 - `OTEL_EXPORTER_OTLP_ENDPOINT` is the base URL: the SDKs add `/v1/traces`, `/v1/metrics` and `/v1/logs` themselves. Services export only when the endpoint is set (ADR-019).
 - The `ws/deploy` branch changes where these values go: its services send telemetry to a collector inside Railway and only the collector holds the Grafana credential (ADR-182, ADR-184). When it merges, the integrator updates this step to match.
@@ -352,7 +357,7 @@ Docs: [send data via OTLP](https://grafana.com/docs/grafana-cloud/send-data/otlp
 
 ### 10. Cloudflare R2 and Turnstile (input 6)
 
-You create: an R2 subscription, two buckets, one S3 token scoped to them, and one Turnstile widget.
+You create: an R2 subscription, two buckets, **three** S3 tokens, and one Turnstile widget.
 
 1. Storage & databases > R2 > Overview. Complete the checkout to add the R2 subscription. Tokens can't be created before this.
 2. Create bucket, twice:
@@ -364,10 +369,17 @@ You create: an R2 subscription, two buckets, one S3 token scoped to them, and on
    - Evidence bucket > Settings > Object Lifecycle Rules > Add rule.
    - Delete objects after 90 days (PLAN §19, §22), on the prefix builders give you. Evidence attached to a fix is kept (PLAN §19), so a rule on the whole bucket would delete records that must stay. Then Save changes.
    - Not verified: the form's field names.
-4. Token:
-   - R2 Overview > API Tokens > Manage > Create Account API token.
-   - Choose Object Read & Write > Apply to specific buckets only > tick both buckets > Create API Token.
-   - Copy the Access Key ID and Secret Access Key. The secret is never shown again. The S3 endpoint is also shown here.
+4. Tokens. R2 Overview > API Tokens > Manage > Create Account API token, **three times**. Each covers one job and one bucket, so a leak of one reaches no more than that job ([R2 token permissions](https://developers.cloudflare.com/r2/api/tokens/#permissions)):
+
+   | Token name | Permission | Apply to | Used by |
+   | --- | --- | --- | --- |
+   | `rampsmith-engine` | Object Read & Write | the evidence bucket only | the engine, which handles untrusted scan content |
+   | `rampsmith-backup` | Object Read & Write | the backups bucket only | the `backup` service (section 16) |
+   | `rampsmith-drill` | Object Read only | the backups bucket only | the weekly restore drill and an operator restoring (section 16) |
+
+   - For each: choose the permission, then Apply to specific buckets only and tick the one bucket, then Create API Token.
+   - Copy each Access Key ID and Secret Access Key. The secret is never shown again. The S3 endpoint is also shown here.
+   - One token for both buckets would let the engine overwrite or delete every backup. `rsctl doctor` checks this: the engine's token must be refused on the backups bucket, and the drill's token must be refused a write.
 5. Account ID: Account home > Cmd/Ctrl+K > "Copy account ID".
 6. Turnstile widget:
    - Turnstile > Add widget > Widget name.
@@ -376,16 +388,16 @@ You create: an R2 subscription, two buckets, one S3 token scoped to them, and on
    - Then Create, and copy the sitekey and secret key.
 
 Values:
-- `R2_ACCOUNT_ID` → Both
-- `R2_ACCESS_KEY_ID` → Both
-- `R2_SECRET_ACCESS_KEY` → Both
-- `R2_BUCKET_EVIDENCE` and `R2_BUCKET_BACKUPS`, the bucket names (*public*) → Both
-- `TURNSTILE_SITE_KEY` (*public*) → Both
-- `TURNSTILE_SECRET_KEY` → Both
+- `R2_ACCOUNT_ID` → RW. Also an environment variable of `backup-drill` (section 16); it is an identifier, not a secret.
+- `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the `rampsmith-engine` token → RW
+- `R2_BUCKET_EVIDENCE` and `R2_BUCKET_BACKUPS`, the bucket names (*public*) → RW. `R2_BUCKET_BACKUPS` is also an environment variable of `backup-drill`.
+- The `rampsmith-backup` and `rampsmith-drill` tokens are row 16: `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY` → RW, and `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY` → GH env `backup-drill` only (section 16).
+- `TURNSTILE_SITE_KEY` (*public*) → RW
+- `TURNSTILE_SECRET_KEY` → RW
 
-Check: `rsctl doctor --row 6`. For each bucket it writes one object, reads it back and deletes it. For Turnstile it sends a made-up token and expects the answer `invalid-input-response`, which proves the secret was accepted; it fails a Cloudflare testing secret when run with `--environment production`. It cannot check the evidence bucket's lifecycle rule or the public site key.
+Check: `rsctl doctor --row 6`. With the engine's token it writes one object to the evidence bucket, reads it back and deletes it, and then tries the backups bucket, where R2 must answer `AccessDenied` (HTTP 403) for a write and a read. For Turnstile it sends a made-up token and expects the answer `invalid-input-response`, which proves the secret was accepted; it fails a Cloudflare testing secret when run with `--environment production`. It cannot check the evidence bucket's lifecycle rule or the public site key. The other two tokens are checked by `rsctl doctor --row 16` (section 16).
 
-Docs: [R2 get started](https://developers.cloudflare.com/r2/get-started/index.md) · [R2 via S3](https://developers.cloudflare.com/r2/get-started/s3/) · [R2 tokens](https://developers.cloudflare.com/r2/api/tokens/) · [data location](https://developers.cloudflare.com/r2/reference/data-location) · [lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles) · [R2 pricing](https://developers.cloudflare.com/r2/pricing) · [account ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/) · [Turnstile get started](https://developers.cloudflare.com/turnstile/get-started/) · [Turnstile widget](https://developers.cloudflare.com/turnstile/get-started/widget-management/dashboard/)
+Docs: [R2 get started](https://developers.cloudflare.com/r2/get-started/index.md) · [R2 via S3](https://developers.cloudflare.com/r2/get-started/s3/) · [R2 tokens](https://developers.cloudflare.com/r2/api/tokens/) · [R2 error codes](https://developers.cloudflare.com/r2/api/error-codes/) · [data location](https://developers.cloudflare.com/r2/reference/data-location) · [lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles) · [R2 pricing](https://developers.cloudflare.com/r2/pricing) · [account ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/) · [Turnstile get started](https://developers.cloudflare.com/turnstile/get-started/) · [Turnstile widget](https://developers.cloudflare.com/turnstile/get-started/widget-management/dashboard/)
 
 ### 11. Anthropic API key (input 5)
 
@@ -405,7 +417,7 @@ You create: credits, spend limits, a `rampsmith` workspace, a service account, a
    - Copy the `sk-ant-api…` value. Not verified: whether it is shown only once.
 
 Values:
-- `ANTHROPIC_API_KEY` → Both. One key in GH and another in Railway lets you revoke either one alone. Optionally give CI its own workspace with its own limit.
+- `ANTHROPIC_API_KEY` → RW. No workflow uses it. If the evaluation harness ever runs in CI, it gets its own key in its own workspace with its own limit, as a secret of a GitHub environment limited to `main`.
 
 When a limit you set is reached, the API answers HTTP 400; the engine stops AI work instead of retrying (ADR-142). Setting the limits is your spending decision; PLAN §13 puts alt text at about $0.10 per 1,000 images.
 
@@ -429,10 +441,10 @@ Wait until the domain works, since it gives the webhook URL, and until builders 
 If you prefer to register it by hand: your organization's Settings > Developer settings > GitHub Apps > New GitHub App, copying each value from `infra/github-app-manifest.json` (the name is at most 34 characters; the permissions are PLAN §15's; Workflows is not requested; set a webhook secret). Then Private keys > Generate a private key; a PEM downloads ([registering a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)).
 
 Values:
-- `GITHUB_APP_ID` → Both
-- `GITHUB_APP_CLIENT_ID` → Both (ADR-122). The manifest conversion returns it as `client_id`.
-- `GITHUB_APP_PRIVATE_KEY`, the whole PEM → Both. Use `gh secret set GITHUB_APP_PRIVATE_KEY < app.pem`, and in Railway use the Raw Editor or Cmd/Ctrl+Enter for the line breaks.
-- `GITHUB_APP_WEBHOOK_SECRET` → Both
+- `GITHUB_APP_ID` → RW
+- `GITHUB_APP_CLIENT_ID` → RW (ADR-122). The manifest conversion returns it as `client_id`.
+- `GITHUB_APP_PRIVATE_KEY`, the whole PEM → RW. In Railway use the Raw Editor or Cmd/Ctrl+Enter for the line breaks. (GitHub refuses secret names that start with `GITHUB_`, so these could not be GitHub secrets in any case.)
+- `GITHUB_APP_WEBHOOK_SECRET` → RW
 
 To make a new key later: Settings > Developer settings > GitHub Apps > Edit > Private keys > Generate a private key. Keys do not expire and up to 25 can exist, which allows a rotation with an overlap.
 
@@ -455,9 +467,9 @@ Shopify merchants pay through Shopify App Pricing, so the App Store launch does 
 5. Live mode later requires business verification. You can't change the business country after you activate live mode.
 
 Values:
-- `STRIPE_SECRET_KEY` → Both
-- `STRIPE_PUBLISHABLE_KEY` (*public*) → Both
-- `STRIPE_WEBHOOK_SECRET` → Both. Sandbox and live endpoints have different secrets.
+- `STRIPE_SECRET_KEY` → RW
+- `STRIPE_PUBLISHABLE_KEY` (*public*) → RW
+- `STRIPE_WEBHOOK_SECRET` → RW. Sandbox and live endpoints have different secrets.
 
 Check: `rsctl doctor --row 11`. It retrieves the account with the secret key and checks the documented shapes of the three values and that the publishable key and secret key are in the same mode. The publishable key and the signing secret have no read call, so only their shapes are checked. Then the test subscription lifecycle runs.
 
@@ -491,11 +503,50 @@ No outside wait and nothing needed first: do it early, and before R0 merges to `
 2. **Keep the scheduled STATUS.md commits reaching `main`.** The scheduled sessions commit `docs/STATUS.md` straight to `main`. A pull-request rule blocks that unless the account those sessions push with is on the ruleset's **bypass list** with **Always allow** ("For pull requests only" would still block a direct push). The list accepts repository admins, maintain or write roles, teams and GitHub Apps. Add the role that account holds (for your own account on your own repository, "Repository admin") with **Always allow**. Anyone pushing with that account then bypasses every rule above, so keep it protected by a hardware key. After saving, the next scheduled STATUS.md commit should appear on `main`.
 3. **Renovate:** install the Mend Renovate app from `https://github.com/apps/renovate` on this repository only ("selected repositories") ([installing and onboarding](https://docs.renovatebot.com/getting-started/installing-onboarding/)). `renovate.json` is committed, so once R0 merges, Renovate treats the repository as onboarded and opens its grouped pull requests on its Monday schedule.
 4. **Push protection** for secrets: Settings > Advanced Security > enable Secret Protection, then Push protection ([push protection](https://docs.github.com/en/code-security/secret-scanning/enabling-secret-scanning-features/enabling-push-protection-for-your-repository)).
-5. **Environments** `staging` and `production`: see section 0. Leave "Prevent self-review" off while you are the only reviewer, or you cannot approve your own deploys.
+5. **Environments** `staging` and `production` (with you as required reviewer on `production`) and `backup-drill` (no reviewer): see section 0 and section 16. All three deploy from `main` only. Leave "Prevent self-review" off while you are the only reviewer, or you cannot approve your own deploys.
+6. **No repository secrets.** Settings > Secrets and variables > Actions > Secrets tab must show nothing under Repository secrets for the founder secret names in this guide (and nothing at organization level). The `secrets-scope` job of `ci.yml` checks the names and fails the build if one exists.
 
 Values: none.
 
 Check: the settings are the check. A test pull request shows the three required checks; Renovate opens its first pull request; a scheduled STATUS.md commit lands on `main`.
+
+### 16. Nightly backup and weekly restore drill (input 16)
+
+No cost beyond the R2 storage of section 10. Do this after section 10 and once the deploy workflow has created the Railway services. Until the `backup` service has its variables, it logs a warning that names this section and exits 0, so it never looks like a crash; until `BACKUP_DRILL_READY` is `true`, the weekly drill shows a warning and skips.
+
+You create: a database login, age keys, the Railway variables of the `backup` service, the GitHub environment `backup-drill`, and one repository variable.
+
+1. The database login, once per Railway environment. In a Railway shell on the PostgreSQL service, as the database owner, with a new password from `openssl rand -base64 24`:
+   `BACKUP_DB_PASSWORD='<the password>' psql -X -v ON_ERROR_STOP=1 -d <database> -f infra/backup/backup-role.sql`
+   It creates `rampsmith_backup`: read-only, `BYPASSRLS` (without it `pg_dump` fails loudly), owns nothing. Builders can send you the file.
+2. Age keys, on your machine ([age](https://github.com/FiloSottile/age)). The backup is encrypted to public keys, so the service holds no key that can open it.
+   - Staging: `age-keygen -o staging-drill.key` (note the `age1...` public key it prints) and `age-keygen -o staging-offline.key`. Staging data is test data, so the first key may sit in GitHub as the drill's key.
+   - Production: `age-keygen -o production-primary.key` and `age-keygen -o production-offline.key`. Production's private keys never go to GitHub or Railway: the primary in your vault, the offline key on paper or a hardware token in a different place. A production backup is restored by you (`docs/runbooks/restore-from-logical-backup.md`), which is also the quarterly drill.
+   - All keys classic (`age-keygen`) or all post-quantum (`age-keygen -pq`); age refuses a mix in one list (ADR-173).
+3. Railway variables, in each environment (RW):
+   - `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`, the `rampsmith-backup` token of section 10 → RW, sealed in production
+   - `BACKUP_DB_PASSWORD`, the password from step 1 → RW, sealed in production
+   - `BACKUP_AGE_RECIPIENTS`, the two public keys of that environment, one per line (*public*) → RW
+   - `R2_ACCOUNT_ID` and `R2_BUCKET_BACKUPS` from section 10 are already there.
+   Then deploy. At 02:17 UTC the service dumps the database over Railway's private network, encrypts it, uploads it and prunes by the retention rules. The deploy workflow only warns if Railway does not report the cron service's first deployment as successful (ADR-090).
+4. The GitHub environment `backup-drill` (section 0): deployments from `main` only, no required reviewer. Then:
+   - secrets: `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY`, the `rampsmith-drill` token of section 10 (Object Read only); `BACKUP_DRILL_AGE_KEY`, the line that starts with `AGE-SECRET-KEY-1` from `staging-drill.key` (not the comment lines). For example `gh secret set BACKUP_DRILL_AGE_KEY --env backup-drill` and paste the line.
+   - environment variables (not secrets): `gh variable set R2_ACCOUNT_ID --env backup-drill --body <id>` and `gh variable set R2_BUCKET_BACKUPS --env backup-drill --body <bucket>`.
+5. The repository variable, once step 4 is complete: `gh variable set BACKUP_DRILL_READY --body true`. On the next Monday run, or `gh workflow run restore-drill.yml`, the job `live restore (staging)` restores the newest staging backup in a throwaway PostgreSQL 18. Before it starts, `drill-scope` fails if any backup or drill secret exists at repository level, and `drill-protection` fails unless `backup-drill` deploys from `main` only.
+
+Values:
+- `BACKUP_R2_ACCESS_KEY_ID` → RW
+- `BACKUP_R2_SECRET_ACCESS_KEY` → RW
+- `BACKUP_DB_PASSWORD` → RW
+- `BACKUP_AGE_RECIPIENTS` (*public*) → RW
+- `DRILL_R2_ACCESS_KEY_ID` → GH env `backup-drill` only
+- `DRILL_R2_SECRET_ACCESS_KEY` → GH env `backup-drill` only
+- `BACKUP_DRILL_AGE_KEY` → GH env `backup-drill` only, the staging key
+- `BACKUP_DRILL_READY` (*public*) → a repository variable, not a secret
+
+Check: `rsctl doctor --row 16 --environment staging`, with the staging values exported on your machine. It writes, reads back and deletes an object with the backup token, reads with the drill token and expects a write to be refused, and checks the shape of the password, the recipients and the drill key. Then `rsctl doctor --row 6` for the engine's token. It cannot try the database password (the database is on Railway's private network) or that the drill key opens what the recipients encrypt: the first nightly run and the first green `live restore (staging)` job are those checks (LAUNCH.md section E).
+
+Docs: [Railway cron jobs](https://docs.railway.com/reference/cron-jobs) (source: `railwayapp/docs`, `content/docs/cron-jobs.md`; the URL is not verified) · [age](https://github.com/FiloSottile/age) · [GitHub: deployment environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) · [gh variable set](https://cli.github.com/manual/gh_variable_set)
 
 ## Gotchas
 
@@ -519,6 +570,7 @@ Check: the settings are the check. A test pull request shows the three required 
   - The DKIM CNAMEs can't be proxied.
 - **SES permissions:** the sending user also needs `ses:GetAccount` and `ses:GetEmailIdentity`, or `rsctl doctor --row 7` fails with a 403.
 - **R2 tokens:**
+  - Make three (engine, backup, drill), each scoped to its own bucket and permission; one token for everything would let the engine delete backups.
   - The secret is shown only once.
   - Object Read & Write can't change bucket settings, so set lifecycle rules yourself. Through the API, lifecycle rules need a "Workers R2 Storage Write" token.
   - A jurisdiction can't be changed after the bucket exists.
@@ -531,6 +583,7 @@ Check: the settings are the check. A test pull request shows the three required 
   - Finish the manifest flow within one hour.
   - Private keys never expire and can't be recovered. Each app can have up to 25.
   - GitHub warns that a key in an environment variable is weaker than one in a key vault.
+- **GitHub secret names:** GitHub refuses names that start with `GITHUB_`. A secret of an environment is visible only to a job that names the environment, and a job that `needs` a failed check never starts, so its secrets are never handed out.
 - **GitHub, public repo:** Secrets aren't passed to workflows triggered from forks. With "Prevent self-review" on, you can't approve runs you started yourself.
 - **Railway:**
   - A project token only deploys, redeploys and reads logs, in one environment.
@@ -547,8 +600,8 @@ Check: the settings are the check. A test pull request shows the three required 
    - Builders choose the variable names and the staging app's distribution.
 2. **Railway setup that a project token can't do.**
    - That covers creating the services (web, api, ctl, engine, egress), PostgreSQL with point-in-time recovery (database > Backups > Enable PITR), and custom domains (service > Settings > Public Networking > + Custom Domain).
-   - Either you do these from the builders' list, or you give CI a workspace or account token as `RAILWAY_API_TOKEN`.
-   - PR preview environments (PLAN §22) need the same token, or Railway's PR Environments switch (Project Settings > Environments) with the project connected to GitHub.
+   - You do these from the builders' list. A workflow that does them with a workspace or account token (`RAILWAY_API_TOKEN`, then a secret of the `production` environment) does not exist yet.
+   - PR preview environments (PLAN §22) need a workspace token too, or Railway's PR Environments switch (Project Settings > Environments) with the project connected to GitHub.
 3. **DNS records.** Unless you give builders a Cloudflare API token, only you can add them:
    - for Railway domains, a CNAME and a TXT for each;
    - for SES, 3 CNAMEs, 1 MX and 2 TXT;
@@ -558,9 +611,9 @@ Check: the settings are the check. A test pull request shows the three required 
    - Add and verify a destination address, then add a routing rule.
    - SES here only sends.
 5. **App Store form items.** You enter the App Pricing plans and the emergency contact's phone number, and you prepare the privacy policy URL, support contact, icon, test credentials, demo store and screencast. Payout and tax details are needed to get paid.
-6. **GitHub settings only the owner can change:** the `staging` and `production` environments with you as reviewer (section 0), protection for `main`, Renovate and push protection. The steps are in section 15.
+6. **GitHub settings only the owner can change:** the `staging` and `production` environments with you as reviewer and the `backup-drill` environment (all deploying from `main` only; section 0), protection for `main`, Renovate and push protection. The steps are in section 15.
 7. **A test GitHub organization and theme repository** (PLAN §22), with both GitHub apps installed on that repository only.
-8. **The staging copies' variables** use the same names as production, set in the `staging` environments (LAUNCH.md section C, row 15).
+8. **The staging copies' variables** use the same names as production, set in the Railway `staging` environment, and the staging app's `SHOPIFY_APP_AUTOMATION_TOKEN` in the GitHub `staging` environment (LAUNCH.md section C, row 15).
 9. **Optional:** separate staging R2 buckets and token, and a separate staging Anthropic key.
 10. **A GitHub App registration helper.** GitHub's flow needs a form POST and a code exchange within the hour, so ask builders to provide one.
 11. **Security:**
@@ -579,3 +632,4 @@ Docs for this section: [Railway PR environments](https://docs.railway.com/guides
 3. Whether the `images` CI jobs should also be required checks once they are stable.
 4. Whether a Shopify plan handle can be edited after the plan is created (Shopify's pages do not say), and the exact wording of the dashboard buttons marked "not verified".
 5. The exact form of `OTEL_EXPORTER_OTLP_HEADERS` the exporters accept: use the value Grafana's Configure flow generates, and `rsctl doctor --row 9` tells you if it is refused.
+6. How Railway reports a cron service's deployment (SUCCESS, or a state of its own), and the Railway CLI command that runs the `backup` service once on demand: the deploy workflow only warns about the first, and LAUNCH.md section E records both once you have seen them.

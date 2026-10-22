@@ -16,6 +16,7 @@ mod support;
 
 mod all_green;
 mod anthropic;
+mod backup;
 mod cloudflare_dns;
 mod dev_store;
 mod github_app;

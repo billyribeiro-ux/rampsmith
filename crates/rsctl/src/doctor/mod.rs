@@ -1,5 +1,6 @@
 //! `rsctl doctor`: one probe per founder input in LAUNCH.md section C, rows 1 to 12, plus the
-//! row 15 staging check (ADR-151, ADR-152).
+//! row 15 staging check and the row 16 backup and restore-drill inputs (ADR-151, ADR-152,
+//! ADR-093).
 //!
 //! Every probe:
 //! - reads only the variables it declares in [`CheckDef::reads`] (the test suite records reads);
@@ -22,6 +23,7 @@ use crate::secret::Redactor;
 use crate::vars::{EnvSource, Var, Vars};
 
 mod anthropic;
+mod backup;
 mod cloudflare_dns;
 mod common;
 mod dev_store;
@@ -126,13 +128,15 @@ pub const CHECKS: &[CheckDef] = &[
         reads: r2::READS_EVIDENCE,
         run: r2::run_evidence,
     },
+    // The engine's token covers the evidence bucket only. It is never asked to reach the backups
+    // bucket (so `--strict` does not ask for that); this check fails if it can (ADR-093).
     CheckDef {
-        id: "r2.backups",
+        id: "r2.engine-not-backups",
         row: 6,
         required: true,
         staging_only: false,
-        reads: r2::READS_BACKUPS,
-        run: r2::run_backups,
+        reads: r2::READS_ENGINE_REFUSED,
+        run: r2::run_engine_refused,
     },
     CheckDef {
         id: "turnstile.siteverify",
@@ -205,6 +209,30 @@ pub const CHECKS: &[CheckDef] = &[
         staging_only: true,
         reads: staging::READS,
         run: staging::run,
+    },
+    CheckDef {
+        id: "r2.backup-token",
+        row: 16,
+        required: true,
+        staging_only: false,
+        reads: r2::READS_BACKUP_TOKEN,
+        run: r2::run_backup_token,
+    },
+    CheckDef {
+        id: "r2.drill-token",
+        row: 16,
+        required: true,
+        staging_only: false,
+        reads: r2::READS_DRILL_TOKEN,
+        run: r2::run_drill_token,
+    },
+    CheckDef {
+        id: "backup.inputs",
+        row: 16,
+        required: true,
+        staging_only: false,
+        reads: backup::READS,
+        run: backup::run,
     },
 ];
 

@@ -7,7 +7,7 @@ use wiremock::MockServer;
 
 use crate::support::{Rig, master_ring, test_key};
 use crate::{
-    anthropic, cloudflare_dns, dev_store, github_app, otlp, partner_api, r2, railway, ses,
+    anthropic, backup, cloudflare_dns, dev_store, github_app, otlp, partner_api, r2, railway, ses,
     shopify_app, stripe, turnstile,
 };
 
@@ -52,6 +52,7 @@ pub async fn healthy_world() -> (MockServer, Vec<(String, String)>) {
             .into_iter()
             .map(|(k, v)| (k.to_owned(), v)),
     );
+    env.extend(backup::vars().into_iter().map(|(k, v)| (k.to_owned(), v)));
     env.push(("RAMPSMITH_MASTER_KEYS".to_owned(), master_ring()));
     (server, env)
 }
@@ -75,7 +76,7 @@ async fn every_probe_passes_against_healthy_vendors() {
     // Only the automation token is neither passed nor failed: Shopify documents no check for it.
     // (Row 15 runs only for `--environment staging`.)
     assert_eq!(passes.skip, 1, "{text}");
-    assert_eq!(passes.pass, 16, "{text}");
+    assert_eq!(passes.pass, 19, "{text}");
     assert!(
         text.contains("SKIP  C2   shopify.automation-token"),
         "{text}"
@@ -105,7 +106,7 @@ async fn the_json_report_has_a_status_per_check() {
     assert_eq!(json["ok"], true);
     assert_eq!(json["environment"], "production");
     let checks = json["checks"].as_array().unwrap();
-    assert_eq!(checks.len(), 17);
+    assert_eq!(checks.len(), 20);
     assert!(
         checks
             .iter()
@@ -175,14 +176,14 @@ async fn the_command_layer_prints_the_report_and_exits_0_against_healthy_vendors
         assert_eq!(err, "");
         if json {
             let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-            assert_eq!(parsed["summary"]["pass"], 16);
+            assert_eq!(parsed["summary"]["pass"], 19);
         } else {
             assert_eq!(
                 out.lines().filter(|l| l.starts_with("PASS")).count(),
-                16,
+                19,
                 "{out}"
             );
-            assert!(out.contains("16 passed, 0 failed, 1 skipped"), "{out}");
+            assert!(out.contains("19 passed, 0 failed, 1 skipped"), "{out}");
         }
     }
 }

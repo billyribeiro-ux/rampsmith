@@ -4,7 +4,7 @@
 # commands (read from railway.py), same port and health check, a real PostgreSQL 18.6 with the
 # logins from bootstrap.sql, and throwaway credentials.
 #
-# Usage: image_smoke.sh <web|api|ctl|engine|egress> <image>
+# Usage: image_smoke.sh <web|api|ctl|engine|egress|backup> <image>
 # Env:   PGHOST, PGPORT, PGUSER, PGPASSWORD for a disposable superuser connection (api, ctl,
 #        engine); sqlx on PATH; STRICT=1 on main, where an integration gap fails instead of
 #        warning (a gap is something the image's owner still has to add, listed in
@@ -14,6 +14,11 @@ set -euo pipefail
 service=${1:?service}
 image=${2:?image}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+# The backup is a cron service with no port, health check or start command in railway.py: its
+# own smoke test starts it as the cron schedule does (ADR-090).
+if [ "$service" = backup ]; then
+  exec bash "$root/infra/backup/tests/image_smoke.sh" "$image"
+fi
 strict=${STRICT:-0}
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/smoke-XXXXXX")
 chmod 700 "$work"

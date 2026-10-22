@@ -33,20 +33,42 @@ bk_require() {
   fi
 }
 
-# --- configuration the nightly job needs ---------------------------------------------------------
+# --- configuration the backup service and the restore tools need ----------------------------------
 # The exit code of "this environment is not set up yet", which is neither success nor failure:
-# the workflow turns it into a skip notice naming the LAUNCH.md section C rows (never silent).
+# the entrypoint turns it into exit 0 after the script has logged a warning that names every
+# missing variable and the LAUNCH.md row that provides it (never silent, never red).
 # shellcheck disable=SC2034  # read by the scripts that source this file
 BK_EXIT_NOT_CONFIGURED=3
 
-# The names that LAUNCH.md section C row 6 (R2) must provide, and what the job itself needs.
-BK_R2_VARIABLES=(R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS)
+# The LAUNCH.md section C row that provides the backup and drill inputs (ADR-091).
+# shellcheck disable=SC2034  # read by the scripts that source this file
+BK_LAUNCH_ROW="LAUNCH.md section C row 16"
 
-# bk_missing_r2: prints the names of the R2 variables that are unset or empty, one per line.
+# R2 credentials come in two sets that no other code uses (ADR-091), named by a prefix:
+#   BACKUP_R2  the backup service: Object Read & Write on the backups bucket only
+#   DRILL_R2   the restore drill and an operator restoring: Object Read only on the same bucket
+# The engine's token (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) reaches only the evidence bucket and
+# is never read here. The account id and the bucket name are identifiers, not secrets.
+bk_valid_r2_prefix() {
+  [[ ${1:-} == BACKUP_R2 || ${1:-} == DRILL_R2 ]]
+}
+
+# bk_is_unset NAME: succeeds when the variable is empty, or is still an unresolved Railway
+# reference (`${{shared.X}}`, which is what a service sees when nobody has set X).
+bk_is_unset() {
+  local value=${!1:-}
+  [[ -z $value || $value == *\$\{\{* ]]
+}
+
+# bk_missing_r2 PREFIX: prints the names of the variables that are unset, one per line.
 bk_missing_r2() {
-  local name
-  for name in "${BK_R2_VARIABLES[@]}"; do
-    if [ -z "${!name:-}" ]; then
+  local prefix=${1:-} name
+  bk_valid_r2_prefix "$prefix" || {
+    bk_error "bk_missing_r2 needs BACKUP_R2 or DRILL_R2, not '${prefix}'"
+    return 2
+  }
+  for name in R2_ACCOUNT_ID "${prefix}_ACCESS_KEY_ID" "${prefix}_SECRET_ACCESS_KEY" R2_BUCKET_BACKUPS; do
+    if bk_is_unset "$name"; then
       printf '%s\n' "$name"
     fi
   done

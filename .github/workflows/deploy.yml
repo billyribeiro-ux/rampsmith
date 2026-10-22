@@ -41,6 +41,9 @@ on:
       egress-image:
         type: string
         required: true
+      backup-image:
+        type: string
+        required: true
     secrets:
       # Secrets of the target GitHub environment, passed by name; they must exist only there,
       # never as repository secrets (ADR-185).
@@ -82,6 +85,10 @@ on:
         description: ghcr.io/billyribeiro-ux/rampsmith-egress@sha256:...
         type: string
         required: true
+      backup-image:
+        description: ghcr.io/billyribeiro-ux/rampsmith-backup@sha256:...
+        type: string
+        required: true
 
 permissions: read-all
 
@@ -99,6 +106,7 @@ env:
   API_IMAGE: ${{ inputs.api-image }}
   ENGINE_IMAGE: ${{ inputs.engine-image }}
   EGRESS_IMAGE: ${{ inputs.egress-image }}
+  BACKUP_IMAGE: ${{ inputs.backup-image }}
   REPOSITORY: ${{ github.repository }}
 
 jobs:
@@ -145,7 +153,7 @@ jobs:
           fail() { echo "::error title=deploy inputs::$*"; exit 1; }
           [[ "$TARGET" == staging || "$TARGET" == production ]] || fail "unknown environment"
           [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]] || fail "release must be a full commit SHA"
-          for pair in "web:$WEB_IMAGE" "api:$API_IMAGE" "engine:$ENGINE_IMAGE" "egress:$EGRESS_IMAGE"; do
+          for pair in "web:$WEB_IMAGE" "api:$API_IMAGE" "engine:$ENGINE_IMAGE" "egress:$EGRESS_IMAGE" "backup:$BACKUP_IMAGE"; do
             service=${pair%%:*}
             ref=${pair#*:}
             [[ "$ref" =~ ^ghcr\.io/billyribeiro-ux/rampsmith-${service}@sha256:[0-9a-f]{64}$ ]] ||
@@ -182,7 +190,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh --version | head -1
-          for ref in "$WEB_IMAGE" "$API_IMAGE" "$ENGINE_IMAGE" "$EGRESS_IMAGE"; do
+          for ref in "$WEB_IMAGE" "$API_IMAGE" "$ENGINE_IMAGE" "$EGRESS_IMAGE" "$BACKUP_IMAGE"; do
             gh attestation verify "oci://$ref" \
               --repo "$REPOSITORY" \
               --signer-workflow "$REPOSITORY/.github/workflows/release.yml" \
@@ -192,7 +200,7 @@ jobs:
               --deny-self-hosted-runners >/dev/null
             echo "verified $ref"
           done
-          echo "| Image provenance | 4 images signed by release.yml on main at $RELEASE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image provenance | 5 images signed by release.yml on main at $RELEASE |" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
@@ -345,8 +353,8 @@ jobs:
           } > .railway/release
           railway --version
           jq -n --arg web "$WEB_IMAGE" --arg api "$API_IMAGE" --arg engine "$ENGINE_IMAGE" \
-            --arg egress "$EGRESS_IMAGE" \
-            '{web: $web, api: $api, ctl: $api, engine: $engine, egress: $egress}' > new.json
+            --arg egress "$EGRESS_IMAGE" --arg backup "$BACKUP_IMAGE" \
+            '{web: $web, api: $api, ctl: $api, engine: $engine, egress: $egress, backup: $backup}' > new.json
           # --environment must match the project token's environment, so a token stored in
           # the wrong GitHub environment fails here instead of deploying to the wrong place.
           # No --confirm-destructive: a plan that removes anything stops for a human. The plan
@@ -392,10 +400,16 @@ jobs:
           wait_for egress "$EGRESS_IMAGE" "$started"
           wait_for engine "$ENGINE_IMAGE" "$started"
           wait_for web "$WEB_IMAGE" "$started"
+          # The backup is a cron service (ADR-090): it runs at 02:17 UTC and exits, so Railway may
+          # never report a SUCCESS deployment of its image until the first run. A miss here is
+          # therefore a visible warning, not a stop; the first nightly run is checked by the
+          # founder (LAUNCH.md section E, "Nightly backup service").
+          wait_for backup "$BACKUP_IMAGE" "$started" 300 ||
+            echo "::warning title=backup service::Railway did not report the backup image as a successful deployment within 5 minutes. It runs on its cron schedule (ADR-090); check its first run (LAUNCH.md section E)."
           collector=$(python3 -c 'import importlib.util as u, sys; s = u.spec_from_file_location("r", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.COLLECTOR_IMAGE)' "$file")
           wait_for collector "$collector" "$started"
           rm -f ./*.plan ./*.json
-          echo "| Railway deploy | api, then ctl, egress, engine, web and collector run this release |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Railway deploy | api, then ctl, egress, engine, web and collector run this release; the backup cron service holds its image |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Public exposure is exactly the listed domains (ADR-182)
         if: steps.inputs.outputs.railway == 'true'
