@@ -208,6 +208,9 @@ importers:
       '@rampsmith/contracts-ts':
         specifier: workspace:*
         version: link:../../packages/contracts-ts
+      '@rampsmith/reports':
+        specifier: workspace:*
+        version: link:../../packages/reports
       '@rampsmith/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
