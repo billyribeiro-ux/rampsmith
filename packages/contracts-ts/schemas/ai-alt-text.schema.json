@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiAltText",
+  "description": "Payload of `ai.alt_text` jobs, schema `ai.alt_text@1`. Runs in the engine: fetches the image\nthrough egress, drafts alt text with `packages/ai` within the store's budget, and proposes a\ndata fix for the merchant to approve. Nothing is written to Shopify here.",
+  "type": "object",
+  "properties": {
+    "finding_id": {
+      "description": "The `findings.id` of the missing or poor alt text.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "input_id": {
+      "description": "The `scan_inputs.id` holding the image's context (product title, existing alt text).",
+      "type": "string",
+      "format": "uuid"
+    },
+    "resource_gid": {
+      "description": "The Shopify GID of the media image, such as `gid://shopify/MediaImage/1`.",
+      "type": "string",
+      "maxLength": 200
+    },
+    "site_id": {
+      "description": "The `sites.id` the image belongs to.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "site_id",
+    "finding_id",
+    "input_id",
+    "resource_gid"
+  ]
+}

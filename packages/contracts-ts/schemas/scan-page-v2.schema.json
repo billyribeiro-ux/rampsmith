@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScanPageV2",
+  "description": "Payload of `scan.page` jobs, schema `scan.page@2`. Runs in the engine: loads `url` at the\nviewport, checks it in each state in order, and records the findings. Replaces `scan.page@1`,\nwhich carries only the URL and is removed once the engine reads `@2` (ADR-036).",
+  "type": "object",
+  "properties": {
+    "page_type": {
+      "description": "Which of the eight page types this is.",
+      "oneOf": [
+        {
+          "description": "The home page.",
+          "type": "string",
+          "const": "home"
+        },
+        {
+          "description": "A collection page.",
+          "type": "string",
+          "const": "collection"
+        },
+        {
+          "description": "A product page.",
+          "type": "string",
+          "const": "product"
+        },
+        {
+          "description": "The cart page.",
+          "type": "string",
+          "const": "cart"
+        },
+        {
+          "description": "Search results.",
+          "type": "string",
+          "const": "search"
+        },
+        {
+          "description": "The customer account login page.",
+          "type": "string",
+          "const": "login"
+        },
+        {
+          "description": "A standard page.",
+          "type": "string",
+          "const": "page"
+        },
+        {
+          "description": "A blog article.",
+          "type": "string",
+          "const": "article"
+        }
+      ]
+    },
+    "scan_id": {
+      "description": "The `scans.id` this page belongs to.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "seq": {
+      "description": "The page's position in the scan plan, from 0; it keys the job's idempotency.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "site_id": {
+      "description": "The `sites.id` the page is on; it must be verified.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "states": {
+      "description": "The states to check, in order; `default` comes first when present.",
+      "type": "array",
+      "items": {
+        "description": "The interactive state a page is checked in. Spelled as `crates/domain`'s `PageState` and\n`packages/a11y-rules`' `PAGE_STATES`; the `spellings` test below pins them.",
+        "oneOf": [
+          {
+            "description": "As loaded.",
+            "type": "string",
+            "const": "default"
+          },
+          {
+            "description": "Main navigation opened by keyboard.",
+            "type": "string",
+            "const": "nav_open"
+          },
+          {
+            "description": "Cart drawer open after add-to-cart.",
+            "type": "string",
+            "const": "cart_drawer"
+          },
+          {
+            "description": "A variant picker changed.",
+            "type": "string",
+            "const": "variant_changed"
+          },
+          {
+            "description": "The first modal or popup found.",
+            "type": "string",
+            "const": "modal"
+          }
+        ]
+      },
+      "maxItems": 5,
+      "minItems": 1
+    },
+    "url": {
+      "description": "The page to load: an `https://` URL on the site's primary or `myshopify.com` host.",
+      "type": "string",
+      "format": "uri"
+    },
+    "viewport": {
+      "description": "The viewport to load it at.",
+      "oneOf": [
+        {
+          "description": "1280×800.",
+          "type": "string",
+          "const": "desktop"
+        },
+        {
+          "description": "390×844.",
+          "type": "string",
+          "const": "mobile"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "site_id",
+    "url",
+    "page_type",
+    "viewport",
+    "states",
+    "seq"
+  ]
+}

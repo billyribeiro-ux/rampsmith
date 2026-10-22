@@ -2,8 +2,11 @@
 # Lists the backups of one environment in the R2 backups bucket, newest first (ADR-176). The
 # restore runbook uses it to pick the object to restore; it reads the bucket and nothing else.
 #
-#   R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET_BACKUPS=... \
+#   R2_ACCOUNT_ID=... R2_BUCKET_BACKUPS=... DRILL_R2_ACCESS_KEY_ID=... DRILL_R2_SECRET_ACCESS_KEY=... \
 #     list-backups.sh --environment production [--kind daily|monthly]
+#
+# The credentials are the read-only token on the backups bucket (LAUNCH.md section C row 16): it
+# lists and reads the backups and cannot write or delete one.
 #
 # One line per archive, tab separated: kind, object key, status. The status is `complete` when the
 # metadata object next to the archive exists (it is written last, so an archive without it is an
@@ -34,11 +37,11 @@ case $kind in
   *) bk_die "--kind must be daily, monthly or omitted" ;;
 esac
 
-missing=$(bk_missing_r2 | tr '\n' ' ')
+missing=$(bk_missing_r2 DRILL_R2 | tr '\n' ' ')
 if [ -n "$missing" ]; then
-  bk_die "needs ${missing}(LAUNCH.md section C row 6): the R2 token scoped to the backups bucket"
+  bk_die "needs ${missing}(${BK_LAUNCH_ROW}): the read-only R2 token scoped to the backups bucket"
 fi
-s3_init
+s3_init DRILL_R2
 
 found=0
 for each in daily monthly; do

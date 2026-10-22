@@ -415,6 +415,9 @@ importers:
       '@rampsmith/telemetry':
         specifier: workspace:*
         version: link:../telemetry
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       axe-core:
         specifier: 4.14.0
         version: 4.14.0

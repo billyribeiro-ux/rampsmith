@@ -5,10 +5,27 @@
 #   lint          ShellCheck and actionlint, pinned releases
 #   drill         migrate, seed two tenants, back up, restore, verify, time it; then the negative
 #                 cases that must make it fail; then the restore path for a real backup
-#   backup-tests  the backup scripts end to end against a throwaway database, and the SQL files
-#                 the runbooks tell an operator to run (docs/runbooks/sql, ADR-178)
-#   live          weekly and on demand: restore the newest real staging backup. It skips with a
-#                 warning that names LAUNCH.md section C rows 6 and 8 until they are done.
+#   backup-tests  the backup scripts end to end against a throwaway database, the SQL files the
+#                 runbooks tell an operator to run (docs/runbooks/sql, ADR-178), and the checks of
+#                 the live drill's environment
+#   live          weekly and on demand, on main only: restore the newest real staging backup
+#
+# The nightly backup itself is not here. It is the Railway cron service `backup` (ADR-090), and
+# GitHub holds no credential that can write a backup.
+#
+# The live drill is the only job that reads a backup credential, and only the drill's own
+# (ADR-091, ADR-092): a read-only R2 token and the offline age key, as secrets of the GitHub
+# environment `backup-drill` and of nothing else. It is a chain of jobs, so that no step that can
+# read those secrets starts before the environment has been checked:
+#   drill-scope       no environment, no permissions: fails if any backup or drill secret exists
+#                     as a repository or organization secret, where every job of every workflow
+#                     (and a pull request's) could read it
+#   drill-protection  no environment, no secrets: fails unless `backup-drill` exists and deploys
+#                     from main only (infra/restore-drill/check_environment.py)
+#   live              `environment: backup-drill`; needs both jobs above
+#   live-skipped      when the repository variable BACKUP_DRILL_READY is not `true`: a warning
+#                     that names LAUNCH.md section C row 16. The job `live` is skipped, and a
+#                     skipped job reaches no secret.
 #
 # Every container is the pinned PostgreSQL image, run without a network.
 name: restore-drill
@@ -21,12 +38,11 @@ on:
       - docs/runbooks/sql/**
       - crates/db/migrations/**
       - .github/workflows/restore-drill.yml
-      - .github/workflows/backup.yml
   schedule:
     - cron: '41 5 * * 1'
   workflow_dispatch:
 
-permissions: read-all
+permissions: {}
 
 concurrency:
   group: restore-drill-${{ github.event.pull_request.number || github.ref }}
@@ -76,7 +92,7 @@ jobs:
       - name: actionlint (runs ShellCheck on the workflow scripts too)
         run: |
           actionlint -version
-          actionlint .github/workflows/backup.yml .github/workflows/restore-drill.yml
+          actionlint .github/workflows/restore-drill.yml
 
   drill:
     name: drill
@@ -168,22 +184,25 @@ jobs:
           echo "RD_SCRATCH=$RUNNER_TEMP/scratch" >>"$GITHUB_ENV"
       - name: Pull the pinned PostgreSQL image
         run: docker pull --quiet "$RD_IMAGE"
-      - name: Backup tests (names, retention, skip and failure paths, both transports)
+      - name: Backup tests (names, retention, skip and failure paths, the three R2 tokens, the drill's hand-off)
         run: |
           infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests
       - name: Runbook SQL (the statements the runbooks tell an operator to run, on a migrated database)
         run: |
           infra/restore-drill/in-container.sh bash infra/restore-drill/tests/runbook-sql.sh --out /scratch/backup-tests/runbook-sql
-      - name: Show the skip notices of the backup gate and the live drill (no secrets here)
-        # The same scripts the nightly backup and the weekly live drill run first, with nothing
-        # configured: each must announce its skip, name LAUNCH.md section C rows 6 and 8, and
-        # exit 0. The annotations appear on this run.
+      - name: Drill environment check (unit tests, recorded GitHub settings)
+        run: python3 -B -m unittest discover -s infra/restore-drill/tests -p 'test_*.py' -v
+      - name: Show the skip notices of the backup service and the live drill (no secrets here)
+        # The scripts the Railway service and the weekly live drill run first, with nothing
+        # configured: each must announce its skip, name LAUNCH.md section C row 16, and exit 0.
+        # The annotations appear on this run.
         run: |
           set -euo pipefail
-          env -i PATH="$PATH" BACKUP_ENVIRONMENT=staging infra/backup/gate.sh | tee "$RUNNER_TEMP/gate.txt"
-          grep -q '^configured=false$' "$RUNNER_TEMP/gate.txt"
+          env -i PATH="$PATH" BACKUP_ENVIRONMENT=staging infra/backup/entrypoint.sh 2>&1 | tee "$RUNNER_TEMP/backup.txt"
+          grep -q 'LAUNCH.md section C row 16' "$RUNNER_TEMP/backup.txt"
           env -i PATH="$PATH" infra/restore-drill/live.sh --environment staging 2>&1 | tee "$RUNNER_TEMP/live.txt"
           grep -q 'live restore drill skipped' "$RUNNER_TEMP/live.txt"
+          grep -q 'LAUNCH.md section C row 16' "$RUNNER_TEMP/live.txt"
       - name: Upload the test log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -193,12 +212,101 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  drill-scope:
+    name: drill secrets scope
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: No repository or organization copy of a backup or drill secret
+        env:
+          BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          BACKUP_DB_PASSWORD: ${{ secrets.BACKUP_DB_PASSWORD }}
+          DRILL_R2_ACCESS_KEY_ID: ${{ secrets.DRILL_R2_ACCESS_KEY_ID }}
+          DRILL_R2_SECRET_ACCESS_KEY: ${{ secrets.DRILL_R2_SECRET_ACCESS_KEY }}
+          BACKUP_DRILL_AGE_KEY: ${{ secrets.BACKUP_DRILL_AGE_KEY }}
+          # Names the earlier design used (a GitHub-hosted backup, the engine's R2 token, an SSH
+          # key and a Railway token for the backup): none of them belongs here any more.
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          BACKUP_RAILWAY_SSH_PRIVATE_KEY: ${{ secrets.BACKUP_RAILWAY_SSH_PRIVATE_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          # This job has no environment, so these resolve only to repository or organization
+          # secrets. The backup credentials live in Railway, the drill's in the `backup-drill`
+          # environment, and a repository copy would reach every workflow and every job (ADR-092).
+          # Only presence is checked, never printed.
+          found=()
+          [ -z "$BACKUP_R2_ACCESS_KEY_ID" ] || found+=("BACKUP_R2_ACCESS_KEY_ID")
+          [ -z "$BACKUP_R2_SECRET_ACCESS_KEY" ] || found+=("BACKUP_R2_SECRET_ACCESS_KEY")
+          [ -z "$BACKUP_DB_PASSWORD" ] || found+=("BACKUP_DB_PASSWORD")
+          [ -z "$DRILL_R2_ACCESS_KEY_ID" ] || found+=("DRILL_R2_ACCESS_KEY_ID")
+          [ -z "$DRILL_R2_SECRET_ACCESS_KEY" ] || found+=("DRILL_R2_SECRET_ACCESS_KEY")
+          [ -z "$BACKUP_DRILL_AGE_KEY" ] || found+=("BACKUP_DRILL_AGE_KEY")
+          [ -z "$R2_ACCESS_KEY_ID" ] || found+=("R2_ACCESS_KEY_ID")
+          [ -z "$R2_SECRET_ACCESS_KEY" ] || found+=("R2_SECRET_ACCESS_KEY")
+          [ -z "$BACKUP_RAILWAY_SSH_PRIVATE_KEY" ] || found+=("BACKUP_RAILWAY_SSH_PRIVATE_KEY")
+          [ -z "$RAILWAY_API_TOKEN" ] || found+=("RAILWAY_API_TOKEN")
+          if [ "${#found[@]}" -gt 0 ]; then
+            echo "::error title=Backup secrets::Refusing to run the live restore drill: ${found[*]} exists as a repository or organization secret. Delete it there. The backup credentials are Railway variables of the backup service; the drill's are secrets of the backup-drill environment only (LAUNCH.md section C row 16)."
+            exit 1
+          fi
+          echo "No repository or organization copy of a backup or drill secret."
+
+  drill-protection:
+    name: drill environment protection
+    needs: drill-scope
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.BACKUP_DRILL_READY == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # GET .../environments/{name} and .../deployment-branch-policies need "Actions: read"
+    # (GitHub REST documentation; ADR-092). This job has no environment and holds no secret.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The backup-drill environment deploys from main only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/environments/backup-drill" > "$RUNNER_TEMP/environment.json"
+          gh api "repos/$REPOSITORY/environments/backup-drill/deployment-branch-policies" \
+            > "$RUNNER_TEMP/policies.json"
+          python3 infra/restore-drill/check_environment.py \
+            "$RUNNER_TEMP/environment.json" "$RUNNER_TEMP/policies.json"
+
+  live-skipped:
+    name: live restore skipped
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.BACKUP_DRILL_READY != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Announce the skip
+        run: |
+          echo "::warning title=live restore drill skipped::The repository variable BACKUP_DRILL_READY is not 'true', so the weekly restore of the newest real staging backup did not run, and no backup was verified. It needs LAUNCH.md section C row 16 (the backup-drill environment with the drill's read-only R2 token and the offline age key); the check is the row 'Live restore drill' in LAUNCH.md section E."
+          {
+            echo "### Live restore drill: skipped"
+            echo
+            echo "BACKUP_DRILL_READY is not true. Needs LAUNCH.md section C row 16; tracked in section E."
+          } >>"$GITHUB_STEP_SUMMARY"
+
   live:
     name: live restore (staging)
-    if: github.event_name != 'pull_request'
+    needs: [drill-scope, drill-protection]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.BACKUP_DRILL_READY == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    environment: backup-staging
+    # The only job that can read a backup credential. `backup-drill` is limited to main and has
+    # no required reviewer (the drill is scheduled); `needs` above is what proves both.
+    environment: backup-drill
     permissions:
       contents: read
     steps:
@@ -217,12 +325,12 @@ jobs:
           echo "RD_TOOLS=$RUNNER_TEMP/tools" >>"$GITHUB_ENV"
       - name: Pull the pinned PostgreSQL image
         run: docker pull --quiet "$RD_IMAGE"
-      - name: Restore the newest staging backup (skips with a notice until rows 6 and 8 are done)
+      - name: Restore the newest staging backup (read-only token; the key reaches the container by name)
         env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_BACKUPS: ${{ vars.R2_BUCKET_BACKUPS }}
+          DRILL_R2_ACCESS_KEY_ID: ${{ secrets.DRILL_R2_ACCESS_KEY_ID }}
+          DRILL_R2_SECRET_ACCESS_KEY: ${{ secrets.DRILL_R2_SECRET_ACCESS_KEY }}
           BACKUP_DRILL_AGE_KEY: ${{ secrets.BACKUP_DRILL_AGE_KEY }}
         run: infra/restore-drill/live.sh --environment staging --scratch "$RUNNER_TEMP/live"
       - name: Upload the live drill report

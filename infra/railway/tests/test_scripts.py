@@ -297,7 +297,7 @@ def images(fill: str) -> dict[str, str | None]:
     return {
         name: f"ghcr.io/billyribeiro-ux/rampsmith-{'api' if name == 'ctl' else name}@sha256:"
         + fill * 32
-        for name in ("web", "api", "ctl", "engine", "egress")
+        for name in ("web", "api", "ctl", "engine", "egress", "backup")
     }
 
 

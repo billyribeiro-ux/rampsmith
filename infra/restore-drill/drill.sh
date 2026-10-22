@@ -126,7 +126,8 @@ backup_env() {
   export PGBIN AGE_BIN="$AGE"
   export AWS_BIN="$BACKUP_DIR/tests/fake-aws.sh" FAKE_S3_ROOT="$s3_root"
   export R2_ACCOUNT_ID=00000000000000000000000000000000 R2_ENDPOINT_URL=http://r2.invalid
-  export R2_ACCESS_KEY_ID=drill R2_SECRET_ACCESS_KEY=drill
+  export BACKUP_R2_ACCESS_KEY_ID=drill-backup BACKUP_R2_SECRET_ACCESS_KEY=drill-backup
+  export DRILL_R2_ACCESS_KEY_ID=drill-read DRILL_R2_SECRET_ACCESS_KEY=drill-read
   export R2_BUCKET_BACKUPS="$bucket"
 }
 
@@ -145,7 +146,7 @@ backup_source() {
     cl_psql src "$db" postgres -c "alter role rampsmith_backup nobypassrls"
     rd_log "fault: the backup role lost BYPASSRLS"
   fi
-  BACKUP_ENVIRONMENT=drill BACKUP_SOURCE=url BACKUP_DB_HOST="${CL_DIR[src]}/sock" \
+  BACKUP_ENVIRONMENT=drill BACKUP_DB_HOST="${CL_DIR[src]}/sock" \
     BACKUP_DB_PORT="${CL_PORT[src]}" BACKUP_DB_USER=rampsmith_backup BACKUP_DB_NAME="$db" \
     BACKUP_DB_PASSWORD=drill-fixture BACKUP_AGE_RECIPIENTS="$recipient" \
     BACKUP_NOW="${DRILL_BACKUP_NOW:-20261019T010203Z}" \

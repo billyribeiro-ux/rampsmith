@@ -519,11 +519,11 @@ fn the_binary_doctor_with_no_inputs_skips_every_row_and_exits_0_or_1_under_stric
     let text = String::from_utf8(output.stdout).unwrap();
     assert_eq!(
         text.lines().filter(|l| l.starts_with("SKIP")).count(),
-        17,
+        20,
         "{text}"
     );
-    assert!(text.contains("0 passed, 0 failed, 17 skipped"), "{text}");
-    for row in 1..=12 {
+    assert!(text.contains("0 passed, 0 failed, 20 skipped"), "{text}");
+    for row in (1..=12).chain([16]) {
         assert!(
             text.contains(&format!("(C row {row})")),
             "no line names row {row}:\n{text}"
@@ -535,7 +535,7 @@ fn the_binary_doctor_with_no_inputs_skips_every_row_and_exits_0_or_1_under_stric
 
     let json = binary().args(["doctor", "--json"]).output().unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
-    assert_eq!(parsed["summary"]["skip"], 17);
+    assert_eq!(parsed["summary"]["skip"], 20);
     assert_eq!(parsed["ok"], true);
 }
 

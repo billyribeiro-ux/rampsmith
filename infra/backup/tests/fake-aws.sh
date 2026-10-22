@@ -10,6 +10,11 @@
 #   FAKE_AWS_LOG   file that receives one line per call (optional)
 #   FAKE_AWS_FAULT  one of: put-fail, put-truncate, put-corrupt, get-corrupt, list-fail,
 #                   head-fail, rm-fail; limited to keys matching FAKE_AWS_FAULT_KEY (a glob)
+#   FAKE_AWS_WRITE_KEY      when set, the access key id of a token that covers the bucket with
+#                           Object Read & Write; any other key id is refused (403 AccessDenied), as
+#                           R2 refuses a token scoped to other buckets (ADR-091)
+#   FAKE_AWS_READ_KEY       the access key id of an Object Read only token on the same bucket: it
+#                           may get, head and list, and is refused every write and delete
 set -euo pipefail
 
 root=${FAKE_S3_ROOT:?FAKE_S3_ROOT is not set}
@@ -31,6 +36,17 @@ fi
 [ "${AWS_REQUEST_CHECKSUM_CALCULATION:-}" = "when_required" ] || fail "AWS_REQUEST_CHECKSUM_CALCULATION must be when_required for R2"
 [ "${AWS_RESPONSE_CHECKSUM_VALIDATION:-}" = "when_required" ] || fail "AWS_RESPONSE_CHECKSUM_VALIDATION must be when_required for R2"
 [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || fail "no credentials"
+
+# Token scopes, as R2 documents them: a token that does not cover the bucket, and a read-only
+# token that tries to write, both get 403 AccessDenied (error code 10003).
+if [ -n "${FAKE_AWS_WRITE_KEY:-}" ] && [ "$AWS_ACCESS_KEY_ID" != "$FAKE_AWS_WRITE_KEY" ] &&
+  [ "$AWS_ACCESS_KEY_ID" != "${FAKE_AWS_READ_KEY:-}" ]; then
+  fail "AccessDenied (403): this token does not cover the bucket"
+fi
+may_write() {
+  [ -z "${FAKE_AWS_READ_KEY:-}" ] || [ "$AWS_ACCESS_KEY_ID" != "$FAKE_AWS_READ_KEY" ] ||
+    fail "AccessDenied (403): this token is read only"
+}
 
 fault=${FAKE_AWS_FAULT:-}
 fault_key=${FAKE_AWS_FAULT_KEY:-*}
@@ -76,6 +92,7 @@ case "$cmd $sub" in
       *)
         key=${dst#s3://*/}
         log "put $key"
+        may_write
         faulty put-fail "$key" && fail "AccessDenied: $key"
         file=$(path_of "$dst")
         mkdir -p "$(dirname "$file")"
@@ -92,6 +109,7 @@ case "$cmd $sub" in
   "s3 rm")
     key=${1#s3://*/}
     log "delete $key"
+    may_write
     faulty rm-fail "$key" && fail "AccessDenied: delete $key"
     rm -f "$(path_of "$1")"
     ;;

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShopifyRevertDataFix",
+  "description": "Payload of `shopify.revert_data_fix` jobs, schema `shopify.revert_data_fix@1`. Runs in\n`ctl`: restores the snapshot of an applied data fix, only if the current value still equals\nwhat the fix wrote (one-click undo, PLAN §5).",
+  "type": "object",
+  "properties": {
+    "fix_id": {
+      "description": "The applied `fixes.id`.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "shop_id": {
+      "description": "The `shopify_shops.id` whose token `ctl` uses.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "fix_id",
+    "shop_id"
+  ]
+}

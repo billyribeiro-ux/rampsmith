@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
-# The nightly logical backup (ADR-171 to ADR-174): pg_dump -Fc, encrypted with age to public
-# recipients, uploaded to the R2 backups bucket under a dated key, verified, then pruned.
+# The nightly logical backup (ADR-171 to ADR-174, ADR-090): pg_dump -Fc, encrypted with age to
+# public recipients, uploaded to the R2 backups bucket under a dated key, verified, then pruned.
 #
 #   backup.sh
+#
+# It runs as the entrypoint of the `backup` Railway service, a cron service inside the project
+# that reaches the database over the private network (infra/backup/entrypoint.sh, ADR-090). No
+# GitHub workflow runs it and no GitHub secret reaches it.
 #
 # The archive is never written unencrypted: pg_dump's output goes through a pipe, a copy of the
 # stream feeds `pg_restore --list` (which proves the stream is a PostgreSQL archive), and age
 # writes the only file. The private key is not here and never was: only `age1...` recipients
 # are accepted.
 #
-# Configuration (environment; secrets come from GitHub environment secrets, never the repo):
-#   BACKUP_ENVIRONMENT      production | staging: the key prefix and the GitHub environment
-#   BACKUP_SOURCE           url (default) or railway-ssh: how pg_dump reaches the database
+# Configuration (environment; Railway variables of the backup service, infra/railway/railway.py):
+#   BACKUP_ENVIRONMENT      production | staging: the key prefix
 #   BACKUP_DB_HOST/PORT/USER/NAME/PASSWORD
-#                           the database login (a least-privilege role: infra/backup/backup-role.sql);
-#                           with railway-ssh these are resolved inside the database container
+#                           the database login (a least-privilege role: infra/backup/backup-role.sql)
 #   BACKUP_AGE_RECIPIENTS   public age recipients, one per line
-#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_BACKUPS   (LAUNCH.md C row 6)
-#   RAILWAY_API_TOKEN, BACKUP_RAILWAY_PROJECT_ID, BACKUP_RAILWAY_ENVIRONMENT,
-#   BACKUP_RAILWAY_SERVICE, BACKUP_RAILWAY_SSH_KEY_FILE                          (C row 8; railway-ssh only)
+#   R2_ACCOUNT_ID, R2_BUCKET_BACKUPS, BACKUP_R2_ACCESS_KEY_ID, BACKUP_R2_SECRET_ACCESS_KEY
+#                           the backups bucket and the token scoped to it (LAUNCH.md C row 16). The
+#                           engine's R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are never read.
 # Optional: BACKUP_KEEP_DAILY (30), BACKUP_KEEP_MONTHLY (12), BACKUP_PRUNE_MAX (10), PGBIN (a
-# directory holding the PostgreSQL 18 client programs), AWS_BIN, RAILWAY_BIN, AGE_BIN, BACKUP_NOW.
+# directory holding the PostgreSQL 18 client programs), AWS_BIN, AGE_BIN, BACKUP_NOW.
 #
-# Exit codes: 0 stored and verified; 1 failed; 3 the environment is not configured yet.
+# Exit codes: 0 stored and verified; 1 failed; 3 the service is not configured yet (the entrypoint
+# turns 3 into exit 0 after this script has warned, naming what is missing).
 set -euo pipefail
 umask 077
 
@@ -33,28 +36,32 @@ source "$BK_DIR/lib/common.sh"
 source "$BK_DIR/lib/s3.sh"
 
 AGE_BIN="${AGE_BIN:-age}"
-RAILWAY_BIN="${RAILWAY_BIN:-railway}"
-BACKUP_SOURCE="${BACKUP_SOURCE:-url}"
 BACKUP_KEEP_DAILY="${BACKUP_KEEP_DAILY:-30}"
 BACKUP_KEEP_MONTHLY="${BACKUP_KEEP_MONTHLY:-12}"
 BACKUP_PRUNE_MAX="${BACKUP_PRUNE_MAX:-10}"
+for _bk_name in BACKUP_KEEP_DAILY BACKUP_KEEP_MONTHLY BACKUP_PRUNE_MAX; do
+  [[ "${!_bk_name}" =~ ^[1-9][0-9]*$ ]] || bk_die "${_bk_name} must be a positive integer (^[1-9][0-9]*\$), got a different value"
+done
 
 pg_tool() {
   if [ -n "${PGBIN:-}" ]; then printf '%s/%s' "$PGBIN" "$1"; else printf '%s' "$1"; fi
 }
 
 # --- configuration -------------------------------------------------------------------------------
-missing=$(bk_missing_r2 | tr '\n' ' ')
-if [ -z "${BACKUP_AGE_RECIPIENTS:-}" ]; then
-  missing="${missing}BACKUP_AGE_RECIPIENTS "
-fi
+# The founder's inputs. A variable that is empty or still an unresolved Railway reference counts
+# as unset. Everything else (host, name, login, environment) is wired by railway.py.
+missing=$(bk_missing_r2 BACKUP_R2 | tr '\n' ' ')
+for name in BACKUP_AGE_RECIPIENTS BACKUP_DB_PASSWORD; do
+  if bk_is_unset "$name"; then
+    missing="${missing}${name} "
+  fi
+done
 if [ -n "$missing" ]; then
-  bk_warning "backup not configured: needs ${missing}(LAUNCH.md section C rows 6 and 8); nothing was backed up"
+  bk_warning "backup of ${BACKUP_ENVIRONMENT:-unknown} not configured: needs ${missing}(${BK_LAUNCH_ROW}); nothing was backed up"
   exit "$BK_EXIT_NOT_CONFIGURED"
 fi
 bk_require BACKUP_ENVIRONMENT BACKUP_DB_HOST BACKUP_DB_NAME BACKUP_DB_USER
 BACKUP_DB_PORT="${BACKUP_DB_PORT:-5432}"
-BACKUP_DB_PASSWORD="${BACKUP_DB_PASSWORD:-}"
 bk_valid_environment "$BACKUP_ENVIRONMENT" || bk_die "BACKUP_ENVIRONMENT is not a valid environment name"
 for name in BACKUP_DB_USER BACKUP_DB_NAME; do
   [[ ${!name} =~ ^[A-Za-z0-9_.-]+$ ]] || bk_die "${name} holds characters outside A-Za-z0-9_.-"
@@ -64,52 +71,25 @@ done
 [[ $BACKUP_DB_HOST =~ ^(/[A-Za-z0-9_./-]+|[A-Za-z0-9_.:-]+)$ ]] ||
   bk_die "BACKUP_DB_HOST is neither a host name nor a socket directory"
 [[ $BACKUP_DB_PORT =~ ^[0-9]{1,5}$ ]] || bk_die "BACKUP_DB_PORT is not a port number"
-case $BACKUP_SOURCE in
-  url) ;;
-  railway-ssh)
-    bk_require RAILWAY_API_TOKEN BACKUP_RAILWAY_PROJECT_ID BACKUP_RAILWAY_ENVIRONMENT BACKUP_RAILWAY_SERVICE
-    ;;
-  *) bk_die "BACKUP_SOURCE must be url or railway-ssh" ;;
-esac
 
 work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 bk_write_recipients "$BACKUP_AGE_RECIPIENTS" "$work/recipients.txt"
-s3_init
+s3_init BACKUP_R2
 
 # --- reaching the database ----------------------------------------------------------------------
 # db_run TOOL ARGS...: runs a PostgreSQL client program against the database, writing to stdout.
-# With url the program runs here (libpq environment, nothing on a command line). With
-# railway-ssh it runs inside the database container: the password travels on stdin, so no
-# process list on either side shows it.
+# The login travels in the libpq environment, so nothing secret is on a command line.
 db_run() {
   local tool=$1
   shift
-  case $BACKUP_SOURCE in
-    url)
-      PGHOST=$BACKUP_DB_HOST PGPORT=$BACKUP_DB_PORT PGUSER=$BACKUP_DB_USER \
-        PGDATABASE=$BACKUP_DB_NAME PGPASSWORD=$BACKUP_DB_PASSWORD \
-        "$(pg_tool "$tool")" "$@"
-      ;;
-    railway-ssh)
-      local key_args=()
-      if [ -n "${BACKUP_RAILWAY_SSH_KEY_FILE:-}" ]; then
-        key_args=(-i "$BACKUP_RAILWAY_SSH_KEY_FILE")
-      fi
-      # The script is a constant; its arguments are validated values and the tool's own flags.
-      printf '%s\n' "$BACKUP_DB_PASSWORD" |
-        "$RAILWAY_BIN" ssh -p "$BACKUP_RAILWAY_PROJECT_ID" -e "$BACKUP_RAILWAY_ENVIRONMENT" \
-          -s "$BACKUP_RAILWAY_SERVICE" "${key_args[@]}" -- \
-          sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec "$@"' sh "$tool" \
-          -h "$BACKUP_DB_HOST" -p "$BACKUP_DB_PORT" -U "$BACKUP_DB_USER" -d "$BACKUP_DB_NAME" "$@"
-      ;;
-  esac
+  PGHOST=$BACKUP_DB_HOST PGPORT=$BACKUP_DB_PORT PGUSER=$BACKUP_DB_USER \
+    PGDATABASE=$BACKUP_DB_NAME PGPASSWORD=$BACKUP_DB_PASSWORD \
+    "$(pg_tool "$tool")" "$@"
 }
 
-# The tool's own connection flags are only needed with railway-ssh (libpq reads PG* with url);
-# giving them under url as well would be harmless, but pg_dump and psql take the same ones.
 dump_stream() {
   db_run pg_dump -Fc --no-password --lock-wait-timeout=300s
 }
@@ -123,7 +103,7 @@ stamp=$(bk_utc_stamp)
 bk_valid_stamp "$stamp" || bk_die "BACKUP_NOW is not YYYYMMDDTHHMMSSZ"
 base=$(bk_object_base "$BACKUP_ENVIRONMENT" daily "$stamp")
 archive="$work/archive.age"
-bk_log "backup ${BACKUP_ENVIRONMENT} ${stamp} via ${BACKUP_SOURCE}"
+bk_log "backup ${BACKUP_ENVIRONMENT} ${stamp}"
 
 schema_version=$(query "select coalesce(max(version)::text, 'none') from public._sqlx_migrations where success") ||
   bk_die "could not read the migration version: the login cannot reach the database or lacks SELECT (see infra/backup/backup-role.sql)"
@@ -176,8 +156,9 @@ bk_log "dumped: ${size} bytes encrypted, ${tables} tables, ${policies} policies,
 # --- 2. upload and verify ----------------------------------------------------------------------------
 write_meta() {
   local kind=$1 key=$2 file=$3 run=""
-  if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
-    run="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  # Railway sets the deployment id of the cron run; anything else in it is ignored.
+  if [[ ${RAILWAY_DEPLOYMENT_ID:-} =~ ^[A-Za-z0-9-]{1,64}$ ]]; then
+    run="railway-deployment:${RAILWAY_DEPLOYMENT_ID}"
   fi
   cat >"$file" <<EOF
 {
@@ -191,7 +172,7 @@ write_meta() {
   "encryption": {"tool": "age", "version": "${age_version}", "recipients_fingerprint": "${fingerprint}"},
   "database": {"server_version": "${server_version}", "schema_version": "${schema_version}", "tables": ${tables}, "policies": ${policies}},
   "pg_dump": "${dump_version}",
-  "source": "${BACKUP_SOURCE}",
+  "source": "railway-cron",
   "run": "${run}"
 }
 EOF
@@ -250,7 +231,4 @@ prune_kind daily "$BACKUP_KEEP_DAILY"
 prune_kind monthly "$BACKUP_KEEP_MONTHLY"
 
 bk_notice "backup ${BACKUP_ENVIRONMENT} ${stamp} stored and verified: ${size} bytes, ${tables} tables, schema ${schema_version}"
-bk_summary "### Backup ${BACKUP_ENVIRONMENT} ${stamp}"
-bk_summary ""
-bk_summary "- archive: \`${base}.dump.age\`, ${size} bytes, sha256 \`${sha}\`"
-bk_summary "- source: ${BACKUP_SOURCE}; ${tables} tables, ${policies} policies, migration ${schema_version}; recipients ${fingerprint}"
+bk_log "archive ${base}.dump.age, sha256 ${sha}; ${tables} tables, ${policies} policies, migration ${schema_version}; recipients ${fingerprint}"

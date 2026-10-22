@@ -94,7 +94,7 @@ fetch() {
   local meta_key meta_sha meta_size actual_sha actual_size
   if [ -n "$object" ]; then
     [[ $object =~ \.dump\.age$ ]] || rd_die "--object must be a key ending in .dump.age"
-    s3_init
+    s3_init DRILL_R2
     meta_key="${object%.dump.age}.meta.json"
     s3_get "$meta_key" "$work/meta.json" ||
       rd_die "no metadata object ${meta_key}: the upload never finished, pick another backup"

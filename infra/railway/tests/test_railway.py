@@ -36,6 +36,7 @@ IMAGES = {
     "RAMPSMITH_IMAGE_API": f"ghcr.io/billyribeiro-ux/rampsmith-api@{DIGEST}",
     "RAMPSMITH_IMAGE_ENGINE": f"ghcr.io/billyribeiro-ux/rampsmith-engine@{DIGEST}",
     "RAMPSMITH_IMAGE_EGRESS": f"ghcr.io/billyribeiro-ux/rampsmith-egress@{DIGEST}",
+    "RAMPSMITH_IMAGE_BACKUP": f"ghcr.io/billyribeiro-ux/rampsmith-backup@{DIGEST}",
 }
 HOSTS = {
     "RAMPSMITH_APP_HOST": "app.rampsmith.example",
@@ -62,6 +63,7 @@ LAUNCH_C_RUNTIME = {
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
     "R2_BUCKET_EVIDENCE",
+    "R2_BUCKET_BACKUPS",
     "TURNSTILE_SITE_KEY",
     "TURNSTILE_SECRET_KEY",
     "SES_REGION",
@@ -83,6 +85,11 @@ PROPOSED = {
     "RAMPSMITH_DB_PASSWORD_API",
     "RAMPSMITH_DB_PASSWORD_CTL",
     "RAMPSMITH_DB_PASSWORD_ENGINE",
+    # The backup service's own inputs (LAUNCH.md section C row 16, ADR-091).
+    "BACKUP_R2_ACCESS_KEY_ID",
+    "BACKUP_R2_SECRET_ACCESS_KEY",
+    "BACKUP_DB_PASSWORD",
+    "BACKUP_AGE_RECIPIENTS",
 }
 
 # Which services may hold each secret (least privilege). Anything not listed here may not be
@@ -106,6 +113,11 @@ SECRET_USERS = {
     "RAMPSMITH_DB_PASSWORD_API": {"api"},
     "RAMPSMITH_DB_PASSWORD_CTL": {"ctl"},
     "RAMPSMITH_DB_PASSWORD_ENGINE": {"engine"},
+    # The backup token and the backup login are read by the backup service and nothing else
+    # (ADR-091): no other service, and no workflow (the drill has its own read-only token).
+    "BACKUP_R2_ACCESS_KEY_ID": {"backup"},
+    "BACKUP_R2_SECRET_ACCESS_KEY": {"backup"},
+    "BACKUP_DB_PASSWORD": {"backup"},
 }
 SECRET_NAME = re.compile(r"SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY|DATABASE_URL")
 SHARED_REF = re.compile(r"\$\{\{shared\.([A-Z0-9_]+)\}\}")
@@ -121,6 +133,8 @@ CLI_RESOURCE_FIELDS = {
 }  # fmt: skip
 
 SERVICES = {"web", "api", "ctl", "engine", "egress", "collector"}
+# Cron services: no port, health check or telemetry; staging and production only (ADR-090).
+CRON_SERVICES = {"backup"}
 
 
 def load_module() -> Any:
@@ -186,13 +200,17 @@ class Shape(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertIsNone(payload["partial"], "one file owns the whole environment")
         resources = {r["name"]: r for r in payload["project"]["resources"]}
-        self.assertEqual(set(resources), SERVICES | {"postgres"})
+        self.assertEqual(set(resources), SERVICES | CRON_SERVICES | {"postgres"})
         self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
 
     def test_every_environment_defines_the_same_services(self) -> None:
-        for environment in ENVIRONMENTS:
+        for environment in ("staging", "production"):
             with self.subTest(environment=environment):
-                self.assertEqual(set(evaluate(environment)), SERVICES | {"postgres"})
+                self.assertEqual(
+                    set(evaluate(environment)), SERVICES | CRON_SERVICES | {"postgres"}
+                )
+        # A pull request's environment holds throwaway data: no backup service, no credentials.
+        self.assertEqual(set(evaluate("preview")), SERVICES | {"postgres"})
 
     def test_unknown_environments_are_refused(self) -> None:
         for environment in (None, "", "dev", "pr-12", "Production"):
@@ -297,7 +315,7 @@ class Exposure(unittest.TestCase):
         self.assertEqual(literal(api, "WEBHOOK_BIND_ADDR"), "[::]:8081")
         self.assertEqual(literal(api, "PORT"), "8080")
         self.assertNotEqual(module.API_WEBHOOK_PORT, module.PORTS["api"])
-        self.assertEqual(set(module.SERVICES), SERVICES | {"postgres"})
+        self.assertEqual(set(module.SERVICES), SERVICES | CRON_SERVICES | {"postgres"})
 
     def test_passkeys_bind_to_the_app_host(self) -> None:
         api = full()["api"]
@@ -422,7 +440,8 @@ class Images(unittest.TestCase):
     def test_images_are_pinned_by_digest(self) -> None:
         resources = evaluate("staging", **IMAGES)
         for name, variable in (("web", "WEB"), ("api", "API"), ("ctl", "API"),
-                               ("engine", "ENGINE"), ("egress", "EGRESS")):
+                               ("engine", "ENGINE"), ("egress", "EGRESS"),
+                               ("backup", "BACKUP")):
             with self.subTest(service=name):
                 self.assertEqual(
                     resources[name]["source"],
@@ -435,7 +454,7 @@ class Images(unittest.TestCase):
         resources = evaluate("staging", RAMPSMITH_IMAGE_API=IMAGES["RAMPSMITH_IMAGE_API"])
         self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
         self.assertEqual(resources["ctl"]["source"], resources["api"]["source"])
-        for name in ("web", "engine", "egress"):
+        for name in ("web", "engine", "egress", "backup"):
             with self.subTest(service=name):
                 self.assertNotIn("source", resources[name])
         # The collector's pinned image is part of the file, not of a release.
@@ -502,10 +521,137 @@ class Images(unittest.TestCase):
                 self.assertEqual(build["dockerfilePath"], f"infra/{image}.Dockerfile")
                 self.assertIn(f"infra/{image}.Dockerfile", build["watchPatterns"])
 
+    def test_the_backup_image_must_be_the_backup_repository_by_digest(self) -> None:
+        bad = (
+            "ghcr.io/billyribeiro-ux/rampsmith-backup:latest",
+            f"ghcr.io/billyribeiro-ux/rampsmith-api@{DIGEST}",
+            f"ghcr.io/someone-else/rampsmith-backup@{DIGEST}",
+        )
+        for value in bad:
+            with self.subTest(image=value), self.assertRaises(ValueError):
+                evaluate("staging", RAMPSMITH_IMAGE_BACKUP=value)
+
     def test_postgres_is_railways_postgresql_18_template(self) -> None:
         postgres = full()["postgres"]
         self.assertEqual(postgres["engine"], "postgres")
         self.assertEqual(postgres["image"], "ghcr.io/railwayapp-templates/postgres-ssl:18")
+
+
+# What the backup service may hold, and the names that must never reach it (ADR-090, ADR-091).
+BACKUP_VARIABLES = {
+    "BACKUP_ENVIRONMENT",
+    "BACKUP_DB_HOST",
+    "BACKUP_DB_PORT",
+    "BACKUP_DB_NAME",
+    "BACKUP_DB_USER",
+    "BACKUP_DB_PASSWORD",
+    "BACKUP_AGE_RECIPIENTS",
+    "R2_ACCOUNT_ID",
+    "R2_BUCKET_BACKUPS",
+    "BACKUP_R2_ACCESS_KEY_ID",
+    "BACKUP_R2_SECRET_ACCESS_KEY",
+}
+BACKUP_FORBIDDEN = (
+    "RAILWAY_TOKEN",
+    "RAILWAY_API_TOKEN",
+    "RAMPSMITH_MASTER_KEYS",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET_EVIDENCE",
+    "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "RAMPSMITH_OTLP_TOKEN",
+)
+
+
+class BackupService(unittest.TestCase):
+    def test_it_runs_on_a_nightly_cron_schedule(self) -> None:
+        for environment in ("staging", "production"):
+            with self.subTest(environment=environment):
+                backup = evaluate(environment, **IMAGES)["backup"]
+                self.assertEqual(backup["deploy"]["cronSchedule"], "17 2 * * *")
+        # Five fields, one run a day: far above Railway's five-minute minimum between runs.
+        fields = load_module().BACKUP_CRON.split()
+        self.assertEqual(len(fields), 5)
+        self.assertEqual(fields[2:], ["*", "*", "*"])
+        self.assertTrue(fields[0].isdigit() and fields[1].isdigit())
+
+    def test_it_holds_exactly_the_backup_inputs(self) -> None:
+        for environment in ("staging", "production"):
+            backup = evaluate(environment, **IMAGES)["backup"]
+            with self.subTest(environment=environment):
+                self.assertEqual(set(variables(backup)), BACKUP_VARIABLES)
+                self.assertEqual(literal(backup, "BACKUP_ENVIRONMENT"), environment)
+                self.assertEqual(literal(backup, "BACKUP_DB_USER"), "rampsmith_backup")
+
+    def test_it_holds_no_other_credential(self) -> None:
+        """No Railway token, no SSH key, no master key, no engine R2 token (finding H2)."""
+        backup = full()["backup"]
+        for name in BACKUP_FORBIDDEN:
+            with self.subTest(variable=name):
+                self.assertNotIn(name, variables(backup))
+        self.assertFalse(
+            [name for name in variables(backup) if re.search(r"SSH|RAILWAY", name)],
+            "the backup service has no Railway or SSH credential",
+        )
+        self.assertEqual(
+            shared_refs(backup),
+            {
+                "BACKUP_DB_PASSWORD",
+                "BACKUP_AGE_RECIPIENTS",
+                "R2_ACCOUNT_ID",
+                "R2_BUCKET_BACKUPS",
+                "BACKUP_R2_ACCESS_KEY_ID",
+                "BACKUP_R2_SECRET_ACCESS_KEY",
+            },
+        )
+
+    def test_it_reaches_the_database_over_the_private_network(self) -> None:
+        backup = full()["backup"]
+        self.assertEqual(
+            literal(backup, "BACKUP_DB_HOST"), "${{postgres.RAILWAY_PRIVATE_DOMAIN}}"
+        )
+        self.assertEqual(literal(backup, "BACKUP_DB_NAME"), "${{postgres.PGDATABASE}}")
+        self.assertEqual(literal(backup, "BACKUP_DB_PORT"), "5432")
+
+    def test_only_the_backup_service_names_the_backup_bucket_and_token(self) -> None:
+        resources = full()
+        for name in ("BACKUP_R2_ACCESS_KEY_ID", "BACKUP_R2_SECRET_ACCESS_KEY", "R2_BUCKET_BACKUPS"):
+            holders = {n for n, r in resources.items() if name in shared_refs(r)}
+            with self.subTest(variable=name):
+                self.assertEqual(holders, {"backup"})
+        # And the engine's token stays an evidence-bucket token: it names no backups bucket.
+        for service in ("api", "ctl", "engine"):
+            with self.subTest(service=service):
+                self.assertNotIn("R2_BUCKET_BACKUPS", variables(resources[service]))
+
+    def test_it_is_not_a_listening_service(self) -> None:
+        backup = full()["backup"]
+        deploy = backup["deploy"]
+        for key in ("healthcheckPath", "healthcheckTimeout", "startCommand", "preDeployCommand"):
+            with self.subTest(setting=key):
+                self.assertNotIn(key, deploy)
+        self.assertNotIn("PORT", variables(backup))
+        self.assertNotIn("networking", backup)
+        self.assertNotIn("backup", load_module().PORTS)
+        self.assertNotIn("backup", {service for service, _, _ in load_module().PUBLIC})
+
+    def test_a_failed_run_is_retried_a_little_then_left_failed(self) -> None:
+        deploy = full()["backup"]["deploy"]
+        self.assertEqual(deploy["restartPolicyType"], "ON_FAILURE")
+        self.assertEqual(deploy["restartPolicyMaxRetries"], 2)
+
+    def test_preview_environments_have_no_backup_service(self) -> None:
+        self.assertNotIn("backup", evaluate("preview", **IMAGES))
+
+    def test_the_image_is_its_own_pinned_repository(self) -> None:
+        backup = evaluate("production", **IMAGES)["backup"]
+        self.assertEqual(
+            backup["source"], {"type": "image", "image": IMAGES["RAMPSMITH_IMAGE_BACKUP"]}
+        )
+        self.assertEqual(
+            load_module().IMAGE_REPOSITORIES["backup"], "ghcr.io/billyribeiro-ux/rampsmith-backup"
+        )
 
 
 if __name__ == "__main__":
