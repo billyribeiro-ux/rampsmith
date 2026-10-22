@@ -995,6 +995,7 @@ async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
         0
     );
     assert!(scans::fail(&mut tx, b.scan, "x").await.unwrap().is_none());
+    assert!(!scans::set_planned(&mut tx, b.scan, 3).await.unwrap());
     tx.rollback().await.unwrap();
     let mut tx = db.tenant(b.tenant).await.unwrap();
     assert_eq!(
@@ -1011,7 +1012,12 @@ async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
     assert_eq!(again, Some(id), "the same batch keeps its id");
     tx.rollback().await.unwrap();
 
-    // The data-fix lifecycle `ctl` drives.
+    assert_data_fixes_isolate(db, a, b).await;
+    assert_shop_info_isolates(db, a, b).await;
+}
+
+/// The data-fix lifecycle `ctl` drives.
+async fn assert_data_fixes_isolate(db: &Db, a: Graph, b: Graph) {
     let mut tx = db.tenant(a.tenant).await.unwrap();
     assert!(data_fixes::get(&mut tx, b.fix).await.unwrap().is_none());
     assert!(
@@ -1052,8 +1058,10 @@ async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
             .is_none()
     );
     tx.rollback().await.unwrap();
+}
 
-    // Shop info and uninstall.
+/// Shop info and uninstall.
+async fn assert_shop_info_isolates(db: &Db, a: Graph, b: Graph) {
     let mut tx = db.tenant(a.tenant).await.unwrap();
     assert!(!shopify::mark_uninstalled(&mut tx, b.shop).await.unwrap());
     assert!(

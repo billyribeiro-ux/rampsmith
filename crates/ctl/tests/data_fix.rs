@@ -223,6 +223,12 @@ async fn an_approved_fix_is_written_verified_and_logged_with_who_approved_it(
     .await
     .unwrap();
     assert_eq!(input["kind"], "products");
+    let planned: i32 = sqlx::query_scalar("select pages_planned from scans where id = $1")
+        .bind(scan)
+        .fetch_one(&w.owner)
+        .await
+        .unwrap();
+    assert_eq!(planned, 1, "pages_planned is the URL count");
     assert_eq!(input["items"][0]["id"], PRODUCT);
     let job: Value = sqlx::query_scalar("select payload from jobs where queue = 'verify.scan'")
         .fetch_one(&w.owner)

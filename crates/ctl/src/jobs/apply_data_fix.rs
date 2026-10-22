@@ -210,6 +210,10 @@ async fn finish(
         }
         None => (None, vec![loaded.base_url.clone()]),
     };
+    let planned = i32::try_from(urls.len()).unwrap_or(i32::MAX);
+    scans::set_planned(&mut tx, scan.id, planned)
+        .await
+        .map_err(|e| database(&e))?;
     let verify = VerifyScan {
         scan_id: scan.id.as_uuid(),
         site_id: site.as_uuid(),

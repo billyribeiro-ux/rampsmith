@@ -112,29 +112,24 @@ struct StoreData {
 impl StoreData {
     async fn read(client: &AdminClient) -> Result<Self, Failure> {
         let info = client.shop().await.map_err(|e| admin(&e))?;
-        let products = read_all(MAX_PRODUCT_PAGES, |after| {
-            let client = client;
-            async move { client.products(after.as_deref()).await }
+        let products = read_all(MAX_PRODUCT_PAGES, |after| async move {
+            client.products(after.as_deref()).await
         })
         .await?;
-        let collections = read_all(MAX_OTHER_PAGES, |after| {
-            let client = client;
-            async move { client.collections(after.as_deref()).await }
+        let collections = read_all(MAX_OTHER_PAGES, |after| async move {
+            client.collections(after.as_deref()).await
         })
         .await?;
-        let pages = read_all(MAX_OTHER_PAGES, |after| {
-            let client = client;
-            async move { client.pages(after.as_deref()).await }
+        let pages = read_all(MAX_OTHER_PAGES, |after| async move {
+            client.pages(after.as_deref()).await
         })
         .await?;
-        let articles = read_all(MAX_OTHER_PAGES, |after| {
-            let client = client;
-            async move { client.articles(after.as_deref()).await }
+        let articles = read_all(MAX_OTHER_PAGES, |after| async move {
+            client.articles(after.as_deref()).await
         })
         .await?;
-        let menus = read_all(MAX_OTHER_PAGES, |after| {
-            let client = client;
-            async move { client.menus(after.as_deref()).await }
+        let menus = read_all(MAX_OTHER_PAGES, |after| async move {
+            client.menus(after.as_deref()).await
         })
         .await?;
 

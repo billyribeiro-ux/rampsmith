@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update scans set pages_planned = $3\n            where tenant_id = $1 and id = $2 and status in ('queued', 'running')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5fb1d7a788e42e13b1eb9e767a8399e8ddd64c8456106e7d63544bd624c22209"
+}

@@ -189,3 +189,19 @@ pub async fn fail(
     .await?;
     row.map(Scan::try_from).transpose()
 }
+
+/// Sets how many pages a scan will load, for a verification scan whose pages are known when it
+/// is created. Only a scan that has not finished.
+pub async fn set_planned(tx: &mut TenantTx, id: ScanId, pages: i32) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update scans set pages_planned = $3
+            where tenant_id = $1 and id = $2 and status in ('queued', 'running')"#,
+        tenant,
+        id.as_uuid(),
+        pages,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
