@@ -155,6 +155,11 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [093](093-alt-text-review-queue.md) | The alt-text review queue: approve, edit, reject, undo | Accepted |
 | [094](094-app-home-test-shim.md) | Testing the App Home without Shopify: a typed fake api and a Polaris shim | Accepted |
 | [095](095-plan-gates-and-settings.md) | Plan gates and settings in the App Home | Accepted |
+| [080](080-webhook-listener-and-admin-client.md) | The webhook listener, the compliance topics and the Admin API client | Accepted |
+| [081](081-store-reads-and-scan-inputs.md) | Store reads, and what `scan_inputs` holds | Accepted |
+| [082](082-data-fix-lifecycle.md) | The data-fix lifecycle: approve, apply, verify, undo | Accepted |
+| [083](083-embedded-app-api-operations.md) | The embedded app's api operations | Accepted |
+| [084](084-plan-state-and-partner-api-fairness.md) | Plan state in the api, and Partner API fairness (audit M3) | Accepted |
 
 ## Template
 
