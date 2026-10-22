@@ -58,6 +58,7 @@ COPY infra/backup/requirements.txt /tmp/requirements.txt
 RUN python3 -m venv /opt/awscli \
     && /opt/awscli/bin/pip install --no-cache-dir --require-hashes --only-binary=:all: --no-deps \
          -r /tmp/requirements.txt \
+    && /opt/awscli/bin/pip uninstall --yes setuptools pkg_resources \
     && ln -s /opt/awscli/bin/aws /usr/local/bin/aws \
     && rm -f /tmp/requirements.txt
 RUN --mount=type=bind,from=age-release,source=/age.tar.gz,target=/tmp/age.tar.gz \

@@ -134,7 +134,7 @@ bk_utc_stamp() {
 }
 
 bk_valid_stamp() {
-  [[ ${1:-} =~ ^[0-9]{8}T[0-9]{6}Z$ ]]
+  [[ ${1:-} =~ ^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z$ ]]
 }
 
 # bk_object_base ENVIRONMENT KIND STAMP: the key without its extension.
@@ -175,6 +175,7 @@ bk_retention_victims() {
     BEGIN {
       if (kind == "daily") { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"; plen = 10 }
       else { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]"; plen = 7 }
+      # Explicit digit classes, not {n}: the awk of Debian images (mawk) has no interval expressions.
       key_re = "^" env "/" kind "/" period_re "/rampsmith-" env "-[0-9]+T[0-9]+Z\\.(dump\\.age|meta\\.json|meta\\.json\\.sig)$"
     }
     $0 ~ key_re {
@@ -231,7 +232,7 @@ bk_backups() {
     BEGIN {
       if (kind == "daily") { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"; plen = 10 }
       else { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]"; plen = 7 }
-      key_re = "^" env "/" kind "/" period_re "/rampsmith-" env "-[0-9]{8}T[0-9]{6}Z\\.(dump\\.age|meta\\.json|meta\\.json\\.sig)$"
+      key_re = "^" env "/" kind "/" period_re "/rampsmith-" env "-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z\\.(dump\\.age|meta\\.json|meta\\.json\\.sig)$"
     }
     $0 ~ key_re {
       key = $0
