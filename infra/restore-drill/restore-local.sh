@@ -4,8 +4,21 @@
 # from the bucket, this restores it), and the restore drill runs it on its own archive too, so
 # the code path that handles a real backup is exercised on every pull request.
 #
-#   restore-local.sh --file ARCHIVE.dump.age --identity AGE_KEY_FILE --out DIR
-#                    [--work DIR] [--min-tenants N]
+#   restore-local.sh (--file ARCHIVE.dump.age | --object KEY --verify-key PUBKEY.pem)
+#                    --identity AGE_KEY_FILE --out DIR [--work DIR [--discard-work]] [--min-tenants N]
+#
+# With --object the archive is fetched from the environment's R2 bucket by restore.sh, which verifies
+# the signature first (the runbook's rehearsal uses this, with the DRILL_R2_* variables); with --file
+# the caller has done that already (live.sh does it on the runner).
+#
+# --out receives reports only (timings, verification output) and may be collected or uploaded by the
+# caller. --work holds the restored cluster, the decrypted archive and its table of contents, which
+# are the production data: it must not be inside --out (the script refuses), and --discard-work
+# deletes it when the script ends, with the permissions of the user that made it. Without --work a
+# private temporary directory is used and always deleted (ADR-255).
+#
+# The restore and the verification run as rampsmith_migrator, not as the superuser (ADR-257); the
+# superuser only provisions the throwaway server.
 #
 # What a real backup can be checked against is what the archive itself says: the tables,
 # policies, constraints, indexes and triggers in its table of contents, and the migration version
@@ -22,21 +35,32 @@ umask 077
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 file=""
+object=""
+verify_key=""
 identity=""
 out=""
 work=""
+discard=0
 min_tenants=1
 while [ "$#" -gt 0 ]; do
   case $1 in
     --file) file=$2; shift 2 ;;
+    --object) object=$2; shift 2 ;;
+    --verify-key) verify_key=$2; shift 2 ;;
     --identity) identity=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
     --work) work=$2; shift 2 ;;
+    --discard-work) discard=1; shift ;;
     --min-tenants) min_tenants=$2; shift 2 ;;
     *) rd_die "unknown argument: $1" ;;
   esac
 done
-[ -f "$file" ] || rd_die "--file must be the encrypted archive"
+if [ -n "$object" ]; then
+  [ -z "$file" ] || rd_die "use --file or --object, not both"
+  [ -f "$verify_key" ] || rd_die "--object needs --verify-key, the public key committed under infra/backup/signing/"
+else
+  [ -f "$file" ] || rd_die "--file must be the encrypted archive"
+fi
 [ -f "$identity" ] || rd_die "--identity must be the age private key file"
 [ -n "$out" ] || rd_die "--out is required"
 mkdir -p "$out"
@@ -44,6 +68,18 @@ own_work=0
 if [ -z "$work" ]; then
   work=$(mktemp -d)
   own_work=1
+else
+  # The restored cluster must never sit where a report is collected or uploaded from.
+  real_out=$(realpath -m "$out")
+  real_work=$(realpath -m "$work")
+  case "$real_work/" in
+    "$real_out"/*) rd_die "--work (${work}) is inside --out (${out}): the restored data would be collected with the reports" ;;
+  esac
+  case "$real_out/" in
+    "$real_work"/*) rd_die "--out (${out}) is inside --work (${work}): the reports would be mixed with the restored data" ;;
+  esac
+  [ "$real_work" != "$real_out" ] || rd_die "--work and --out are the same directory"
+  if [ "$discard" -eq 1 ]; then own_work=1; fi
 fi
 mkdir -p "$work"
 
@@ -58,6 +94,11 @@ finish() {
 trap finish EXIT
 
 db=rampsmith
+if [ -n "$object" ]; then
+  source_args=(--object "$object" --verify-key "$verify_key")
+else
+  source_args=(--file "$file")
+fi
 started=$(rd_now_ms)
 
 provision() {
@@ -67,14 +108,14 @@ provision() {
 }
 
 restore() {
-  PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=postgres \
-    "$RD_ROOT/restore.sh" --target "$db" --file "$file" --identity "$identity" --jobs 4 \
+  PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=rampsmith_migrator \
+    "$RD_ROOT/restore.sh" --target "$db" "${source_args[@]}" --identity "$identity" --jobs 4 \
     --manifest-out "$out/derived.tsv" --work "$work/restore"
 }
 
 verify() {
   local status=0
-  PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=postgres PGDATABASE="$db" \
+  PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=rampsmith_migrator PGDATABASE="$db" \
     "$RD_ROOT/verify.sh" --partial --expected "$out/derived.tsv" --min-tenants "$min_tenants" \
     --out "$out/verify" >"$out/verify.txt" 2>&1 || status=1
   cat "$out/verify.txt"

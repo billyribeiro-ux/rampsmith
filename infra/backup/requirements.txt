@@ -1,4 +1,4 @@
-# The AWS CLI the backup image runs (infra/backup/Dockerfile, ADR-090), with every package it
+# The AWS CLI the backup image runs (infra/backup/Dockerfile, ADR-251), with every package it
 # needs, each pinned to the SHA-256 of one wheel. AWS CLI v1 1.46.1 vendors botocore and
 # s3transfer, so these ten wheels are the whole install. Resolved with pip for the image's
 # Python 3.11 on linux x86_64 and read from PyPI's JSON API on 2026-10-19; every wheel was then

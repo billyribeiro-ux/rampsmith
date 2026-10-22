@@ -189,7 +189,7 @@ jobs:
           - { service: api, dockerfile: infra/api.Dockerfile }
           - { service: engine, dockerfile: infra/engine.Dockerfile }
           - { service: egress, dockerfile: infra/egress.Dockerfile }
-          # The nightly backup's cron service (ADR-090) keeps its image beside its scripts.
+          # The nightly backup's cron service (ADR-251) keeps its image beside its scripts.
           - { service: backup, dockerfile: infra/backup/Dockerfile }
     services:
       postgres:
@@ -367,7 +367,9 @@ jobs:
       packages: read
       attestations: read
     strategy:
-      fail-fast: true
+      # One service's failed gate must not hide the other four's results (finding MEDIUM-1: a red
+      # backup image cancelled the rest).
+      fail-fast: false
       matrix:
         service: [web, api, engine, egress, backup]
     services:

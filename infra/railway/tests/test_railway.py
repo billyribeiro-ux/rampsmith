@@ -85,11 +85,12 @@ PROPOSED = {
     "RAMPSMITH_DB_PASSWORD_API",
     "RAMPSMITH_DB_PASSWORD_CTL",
     "RAMPSMITH_DB_PASSWORD_ENGINE",
-    # The backup service's own inputs (LAUNCH.md section C row 16, ADR-091).
+    # The backup service's own inputs (LAUNCH.md section C row 16, ADR-252).
     "BACKUP_R2_ACCESS_KEY_ID",
     "BACKUP_R2_SECRET_ACCESS_KEY",
     "BACKUP_DB_PASSWORD",
     "BACKUP_AGE_RECIPIENTS",
+    "BACKUP_SIGNING_KEY",
 }
 
 # Which services may hold each secret (least privilege). Anything not listed here may not be
@@ -114,10 +115,11 @@ SECRET_USERS = {
     "RAMPSMITH_DB_PASSWORD_CTL": {"ctl"},
     "RAMPSMITH_DB_PASSWORD_ENGINE": {"engine"},
     # The backup token and the backup login are read by the backup service and nothing else
-    # (ADR-091): no other service, and no workflow (the drill has its own read-only token).
+    # (ADR-252): no other service, and no workflow (the drill has its own read-only token).
     "BACKUP_R2_ACCESS_KEY_ID": {"backup"},
     "BACKUP_R2_SECRET_ACCESS_KEY": {"backup"},
     "BACKUP_DB_PASSWORD": {"backup"},
+    "BACKUP_SIGNING_KEY": {"backup"},
 }
 SECRET_NAME = re.compile(r"SECRET|TOKEN|PASSWORD|PRIVATE_KEY|MASTER_KEYS|API_KEY|DATABASE_URL")
 SHARED_REF = re.compile(r"\$\{\{shared\.([A-Z0-9_]+)\}\}")
@@ -133,7 +135,7 @@ CLI_RESOURCE_FIELDS = {
 }  # fmt: skip
 
 SERVICES = {"web", "api", "ctl", "engine", "egress", "collector"}
-# Cron services: no port, health check or telemetry; staging and production only (ADR-090).
+# Cron services: no port, health check or telemetry; staging and production only (ADR-251).
 CRON_SERVICES = {"backup"}
 
 
@@ -537,7 +539,7 @@ class Images(unittest.TestCase):
         self.assertEqual(postgres["image"], "ghcr.io/railwayapp-templates/postgres-ssl:18")
 
 
-# What the backup service may hold, and the names that must never reach it (ADR-090, ADR-091).
+# What the backup service may hold, and the names that must never reach it (ADR-251, ADR-252).
 BACKUP_VARIABLES = {
     "BACKUP_ENVIRONMENT",
     "BACKUP_DB_HOST",
@@ -546,6 +548,7 @@ BACKUP_VARIABLES = {
     "BACKUP_DB_USER",
     "BACKUP_DB_PASSWORD",
     "BACKUP_AGE_RECIPIENTS",
+    "BACKUP_SIGNING_KEY",
     "R2_ACCOUNT_ID",
     "R2_BUCKET_BACKUPS",
     "BACKUP_R2_ACCESS_KEY_ID",
@@ -599,6 +602,7 @@ class BackupService(unittest.TestCase):
             {
                 "BACKUP_DB_PASSWORD",
                 "BACKUP_AGE_RECIPIENTS",
+                "BACKUP_SIGNING_KEY",
                 "R2_ACCOUNT_ID",
                 "R2_BUCKET_BACKUPS",
                 "BACKUP_R2_ACCESS_KEY_ID",

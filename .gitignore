@@ -22,3 +22,11 @@ apps/web/src/lib/paraglide/
 .DS_Store
 *.log
 .vitest/
+
+# Python bytecode (it was committed once by mistake, ADR-259); CI fails on a tracked file
+__pycache__/
+*.pyc
+
+# Python bytecode (it was committed once by mistake, ADR-259); CI fails on a tracked file
+__pycache__/
+*.pyc

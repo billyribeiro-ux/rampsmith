@@ -1,5 +1,5 @@
 //! C row 16: the backup service's database password, the age recipients, and the restore
-//! drill's private key, checked for shape (ADR-093). No network.
+//! drill's private key, checked for shape (ADR-254). No network.
 
 use crate::support::{Rig, fail, pass, skip_missing};
 
@@ -125,4 +125,39 @@ async fn nothing_set_skips_and_half_set_names_the_rest() {
         detail.contains("incomplete") && detail.contains("BACKUP_AGE_RECIPIENTS"),
         "{detail}"
     );
+}
+
+const SIGNING: &str = "MC4CAQAwBQYDK2VwBCIEIECHOSIGNINGKEYSYNTHETICVALUE0123456789abcde";
+
+#[tokio::test]
+async fn a_well_formed_signing_key_passes_and_is_never_printed() {
+    assert_eq!(SIGNING.len(), 64);
+    let text = recipients();
+    let rig = Rig::new(&[
+        ("BACKUP_DB_PASSWORD", PASSWORD),
+        ("BACKUP_AGE_RECIPIENTS", text.as_str()),
+        ("BACKUP_SIGNING_KEY", SIGNING),
+    ])
+    .await;
+    let outcome = rig.run("backup.inputs").await;
+    let detail = pass(&outcome);
+    assert!(detail.contains("a signing key"), "{detail}");
+    assert!(!detail.contains(SIGNING), "{detail}");
+}
+
+#[tokio::test]
+async fn a_malformed_signing_key_fails_without_printing_it() {
+    let text = recipients();
+    for key in ["MC4CAQAwBQYDK2VwBCIEIshort", "-----BEGIN PRIVATE KEY-----"] {
+        let rig = Rig::new(&[
+            ("BACKUP_DB_PASSWORD", PASSWORD),
+            ("BACKUP_AGE_RECIPIENTS", text.as_str()),
+            ("BACKUP_SIGNING_KEY", key),
+        ])
+        .await;
+        let outcome = rig.run("backup.inputs").await;
+        let detail = fail(&outcome);
+        assert!(detail.contains("BACKUP_SIGNING_KEY"), "{detail}");
+        assert!(!detail.contains(key), "{detail}");
+    }
 }

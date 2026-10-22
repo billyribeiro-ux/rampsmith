@@ -12,7 +12,7 @@
 #                   head-fail, rm-fail; limited to keys matching FAKE_AWS_FAULT_KEY (a glob)
 #   FAKE_AWS_WRITE_KEY      when set, the access key id of a token that covers the bucket with
 #                           Object Read & Write; any other key id is refused (403 AccessDenied), as
-#                           R2 refuses a token scoped to other buckets (ADR-091)
+#                           R2 refuses a token scoped to other buckets (ADR-252)
 #   FAKE_AWS_READ_KEY       the access key id of an Object Read only token on the same bucket: it
 #                           may get, head and list, and is refused every write and delete
 set -euo pipefail

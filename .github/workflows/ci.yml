@@ -263,6 +263,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: No Python bytecode is tracked (ADR-259)
+        # Ten .pyc files were committed once (1a9d315). Bytecode is a build product; .gitignore
+        # keeps it out, and this fails the pull request that adds one anyway (git add -f).
+        run: |
+          tracked=$(git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$' || true)
+          if [ -n "$tracked" ]; then
+            printf '%s\n' "$tracked"
+            echo "::error title=Python bytecode::The files above are tracked. Remove them with git rm --cached; .gitignore already ignores __pycache__/ and *.pyc."
+            exit 1
+          fi
+          echo "No tracked Python bytecode."
       - name: Install the Rust toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -282,7 +293,9 @@ jobs:
 
   images:
     # One image per deployable (PLAN §22, §24 step 6; ADR-016, ADR-028): build, smoke-test,
-    # SBOM, and fail on fixable high or critical vulnerabilities.
+    # SBOM, and fail on fixable high or critical vulnerabilities. The backup image (ADR-251) is a
+    # deployable like the others: release.yml gates it on the same scan, so this job must too, or a
+    # pull request could merge an image that the release then refuses (finding MEDIUM-1).
     name: images (${{ matrix.image }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -291,7 +304,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [api, egress, engine, web]
+        image: [api, egress, engine, web, backup]
+    env:
+      # The first four live as infra/<name>.Dockerfile with infra/smoke/<name>.sh; the backup
+      # image sits beside its scripts.
+      DOCKERFILE: ${{ matrix.image == 'backup' && 'infra/backup/Dockerfile' || format('infra/{0}.Dockerfile', matrix.image) }}
+      SMOKE: ${{ matrix.image == 'backup' && 'infra/backup/tests/image_smoke.sh' || format('infra/smoke/{0}.sh', matrix.image) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -301,7 +319,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: infra/${{ matrix.image }}.Dockerfile
+          file: ${{ env.DOCKERFILE }}
           load: true
           push: false
           provenance: false
@@ -309,7 +327,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
       - name: Smoke test
-        run: infra/smoke/${{ matrix.image }}.sh rampsmith-${{ matrix.image }}:ci
+        run: ${{ env.SMOKE }} rampsmith-${{ matrix.image }}:ci
       - name: SBOM (CycloneDX)
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
@@ -329,7 +347,7 @@ jobs:
           grype-version: v0.120.1
 
   # Founder secrets are Railway variables or secrets of one GitHub environment that only `main`
-  # can deploy to (docs/FOUNDER_SETUP.md section 0, ADR-092). Never repository or organization
+  # can deploy to (docs/FOUNDER_SETUP.md section 0, ADR-253). Never repository or organization
   # secrets: any workflow of any branch, and every pull request, could read those. This job has
   # no environment, so a secret named below resolves here only if it exists at repository or
   # organization level, and then the job fails, naming it. Only presence is tested; no value is
@@ -367,6 +385,7 @@ jobs:
           SCOPE_BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
           SCOPE_BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
           SCOPE_BACKUP_DB_PASSWORD: ${{ secrets.BACKUP_DB_PASSWORD }}
+          SCOPE_BACKUP_SIGNING_KEY: ${{ secrets.BACKUP_SIGNING_KEY }}
           SCOPE_DRILL_R2_ACCESS_KEY_ID: ${{ secrets.DRILL_R2_ACCESS_KEY_ID }}
           SCOPE_DRILL_R2_SECRET_ACCESS_KEY: ${{ secrets.DRILL_R2_SECRET_ACCESS_KEY }}
           SCOPE_BACKUP_DRILL_AGE_KEY: ${{ secrets.BACKUP_DRILL_AGE_KEY }}

@@ -82,7 +82,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [171](171-nightly-logical-backup.md) | The nightly logical backup, in one streaming pass, written in bash | Accepted |
 | [172](172-backup-storage-in-r2-layout-verification-retention.md) | Backup storage in R2: layout, verification, retention, lifecycle rules and locks | Accepted |
 | [173](173-backup-encryption-with-age-and-key-custody.md) | Backup encryption with age, and who holds the private key | Accepted |
-| [174](174-backup-workflow-environments-schedule-and-transports.md) | The backup workflow: environments, schedule, the skip gate and how the job reaches the database | Accepted |
+| [174](174-backup-workflow-environments-schedule-and-transports.md) | The backup workflow: environments, schedule, the skip gate and how the job reaches the database | Superseded by ADR-251 |
 | [175](175-scripted-restore-drill.md) | The scripted restore drill: what it proves, how it can fail, what it cannot prove | Accepted |
 | [176](176-restore-procedures-pitr-and-logical.md) | Restore procedures: when to use point-in-time recovery, when the logical backup, and what is not verified | Accepted |
 | [177](177-key-rotation-runbooks.md) | Key rotation runbooks: the token master key, the GitHub App private key and the webhook secret | Accepted |
@@ -125,6 +125,16 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [247](247-corpus-runner.md) | The integrated corpus runner and its gates | Accepted |
 | [248](248-fix-planner.md) | The fix planner: from a rule and a mapped span to a recipe | Accepted |
 | [249](249-r2-measurement.md) | R2 measurement: the engine against the corpus, before and after | Accepted |
+| [250](250-backup-limits-are-positive-integers-and-drill-permissions.md) | Backup limits are positive integers; the restore drill starts with no token permissions | Accepted |
+| [251](251-backup-is-a-railway-cron-service.md) | The nightly backup is a Railway cron service, not a GitHub workflow | Accepted |
+| [252](252-one-bucket-and-one-token-per-environment.md) | One R2 bucket and one backup token per environment; the drill reads staging only | Accepted |
+| [253](253-where-backup-and-drill-secrets-live.md) | Where backup and drill secrets live | Accepted |
+| [254](254-rsctl-doctor-backup-checks.md) | `rsctl doctor` checks the backup inputs for shape, offline | Accepted |
+| [255](255-live-drill-in-a-public-repository.md) | The live restore drill hands nothing but a summary to a public repository | Accepted |
+| [256](256-signed-backup-metadata.md) | Backup metadata is signed with Ed25519; the public key is committed | Accepted |
+| [257](257-restore-as-migrator-and-toc-allow-list.md) | Restore as a non-superuser and refuse archives with out-of-schema entries | Accepted |
+| [258](258-backup-image-on-slim-debian.md) | The backup image is slim Debian with the PGDG client only, and CI scans it | Accepted |
+| [259](259-stray-environments-and-tracked-bytecode.md) | CI fails when the old backup environments exist or Python bytecode is tracked | Accepted |
 
 ## Template
 
