@@ -38,6 +38,21 @@ export default defineConfig({
         extraHTTPHeaders: { 'x-forwarded-proto': 'http' },
       },
     },
+    {
+      // The marketing site and the free scanner. Cloudflare Turnstile is replaced by a local
+      // stand-in (tests/site-turnstile-fake.ts) because the real widget needs the founder's
+      // Cloudflare account (LAUNCH.md section C, row 6); site-turnstile-live.spec.ts is the
+      // live check, and skips with a notice while the keys are missing.
+      name: 'site',
+      testMatch: 'site-*.spec.ts',
+      use: {
+        ...browser,
+        baseURL: 'http://127.0.0.1:3995',
+        // What the production proxy sends, so SvelteKit sees the real scheme and the form
+        // posts pass its origin check.
+        extraHTTPHeaders: { 'x-forwarded-proto': 'http' },
+      },
+    },
   ],
   webServer: [
     {
@@ -79,6 +94,57 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: '3996',
         API_URL: 'http://127.0.0.1:3997',
+        SHOPIFY_API_KEY: 'e2e-client-id',
+        PROTOCOL_HEADER: 'x-forwarded-proto',
+      },
+    },
+    {
+      command: 'node tests/site-turnstile-fake.ts',
+      url: 'http://127.0.0.1:3990/healthz',
+      reuseExistingServer: false,
+    },
+    {
+      // The site with the scanner not connected to an engine, which is how `main` ships it.
+      command: 'node build',
+      url: 'http://127.0.0.1:3995/',
+      reuseExistingServer: false,
+      env: {
+        HOST: '127.0.0.1',
+        PORT: '3995',
+        API_URL: 'http://127.0.0.1:3998',
+        SHOPIFY_API_KEY: 'e2e-client-id',
+        TURNSTILE_SITE_KEY: 'fake-site-key',
+        TURNSTILE_SECRET_KEY: 'fake-secret',
+        TURNSTILE_ORIGIN: 'http://127.0.0.1:3990',
+        PROTOCOL_HEADER: 'x-forwarded-proto',
+      },
+    },
+    {
+      // The site with the fixed sample result, to test the result page and the daily caps.
+      command: 'node build',
+      url: 'http://127.0.0.1:3994/',
+      reuseExistingServer: false,
+      env: {
+        HOST: '127.0.0.1',
+        PORT: '3994',
+        API_URL: 'http://127.0.0.1:3998',
+        SHOPIFY_API_KEY: 'e2e-client-id',
+        TURNSTILE_SITE_KEY: 'fake-site-key',
+        TURNSTILE_SECRET_KEY: 'fake-secret',
+        TURNSTILE_ORIGIN: 'http://127.0.0.1:3990',
+        FREE_SCANNER_BACKEND: 'fixture',
+        PROTOCOL_HEADER: 'x-forwarded-proto',
+      },
+    },
+    {
+      // The site without Turnstile keys: the scanner must stay closed.
+      command: 'node build',
+      url: 'http://127.0.0.1:3993/',
+      reuseExistingServer: false,
+      env: {
+        HOST: '127.0.0.1',
+        PORT: '3993',
+        API_URL: 'http://127.0.0.1:3998',
         SHOPIFY_API_KEY: 'e2e-client-id',
         PROTOCOL_HEADER: 'x-forwarded-proto',
       },

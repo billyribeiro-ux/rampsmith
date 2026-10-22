@@ -24,7 +24,8 @@
     "@opentelemetry/api": "1.9.1",
     "@rampsmith/contracts-ts": "workspace:*",
     "@rampsmith/telemetry": "workspace:*",
-    "@rampsmith/ui": "workspace:*"
+    "@rampsmith/ui": "workspace:*",
+    "phosphor-svelte": "3.1.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

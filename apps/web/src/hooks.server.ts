@@ -1,7 +1,9 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import { sequence } from '@sveltejs/kit/hooks';
+import { TURNSTILE_ORIGIN } from '$app/env/private';
 import { paraglideMiddleware } from '#lib/paraglide/server.js';
 import { securityHeaders } from '#lib/server/headers.ts';
+import { turnstileCsp } from '#lib/server/scanner/csp.ts';
 
 const i18n: Handle = ({ event, resolve }) =>
   // Only the base-locale strategy is configured, so the request is never rewritten.
@@ -17,7 +19,9 @@ const headers: Handle = async ({ event, resolve }) => {
   return response;
 };
 
-export const handle = sequence(i18n, headers);
+// The scanner page alone also lets Cloudflare's Turnstile widget script and frame in (ADR-261);
+// it runs inside `headers`, so frame-ancestors is still appended last.
+export const handle = sequence(i18n, headers, turnstileCsp(TURNSTILE_ORIGIN));
 
 /** Unknown errors get a reference to quote; their details stay in the server's span. */
 export const handleError: HandleServerError = ({ kind, error, event }) => {
