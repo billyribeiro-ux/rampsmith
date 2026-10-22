@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select identity_sweep() as \"swept!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "swept!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b18ff16e90a05390542146a35778bfd2017ce06c9577873cba56ff21fcc6de1d"
+}

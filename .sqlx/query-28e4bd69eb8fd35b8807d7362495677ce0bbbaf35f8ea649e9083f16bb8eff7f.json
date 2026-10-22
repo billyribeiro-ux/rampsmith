@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select tenant_id as \"tenant_id!\", shop_id as \"shop_id!\", status as \"status!\"\n                 from app_shop_by_domain($1)",
+  "query": "select tenant_id as \"tenant_id!\", shop_id as \"shop_id!\", version as \"version!\"\n                 from shopify_tokens_to_rewrap($1, $2, $3)",
   "describe": {
     "columns": [
       {
@@ -17,14 +17,16 @@
       },
       {
         "ordinal": 2,
-        "name": "status!",
-        "type_info": "Text",
+        "name": "version!",
+        "type_info": "Int8",
         "origin": "Expression"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Text",
+        "Uuid",
+        "Int4"
       ]
     },
     "nullable": [
@@ -33,5 +35,5 @@
       null
     ]
   },
-  "hash": "01356d63a7d3e715033d50b2aeeb714e3ed6bbcfe26c01557e98bbe3464a0e64"
+  "hash": "28e4bd69eb8fd35b8807d7362495677ce0bbbaf35f8ea649e9083f16bb8eff7f"
 }

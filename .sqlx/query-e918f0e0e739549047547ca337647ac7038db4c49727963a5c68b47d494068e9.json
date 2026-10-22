@@ -1,0 +1,37 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select tenant_id as \"tenant_id!\", shop_id as \"shop_id!\", status as \"status!\"\n             from app_shop_by_domain($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tenant_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "shop_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "status!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "e918f0e0e739549047547ca337647ac7038db4c49727963a5c68b47d494068e9"
+}

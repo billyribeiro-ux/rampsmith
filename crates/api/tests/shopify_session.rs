@@ -21,27 +21,21 @@ use secrecy::SecretString;
 use serde_json::{Value, json};
 use shopify::{SessionTokenVerifier, TokenClient, TokenEndpoint};
 use shopify_auth::ShopifyAuth;
-use sqlx::Executor;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower::ServiceExt;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+mod support;
+
+use support::app_login_pool;
 
 const CLIENT_ID: &str = "0123456789abcdef0123456789abcdef";
 const SECRET: &str = "shpss_api_test";
 const RETRY: &str = "x-shopify-retry-invalid-session-request";
 
 async fn state(opts: PgPoolOptions, conn: PgConnectOptions, shopify: &MockServer) -> AppState {
-    let pool = opts
-        .after_connect(|c, _| {
-            Box::pin(async move {
-                c.execute("set role rampsmith_app").await?;
-                Ok(())
-            })
-        })
-        .connect_with(conn)
-        .await
-        .unwrap();
+    let pool = app_login_pool(opts, conn).await;
     let db = Db::from_pool(pool);
     let auth = ShopifyAuth::new(
         db.clone(),
@@ -198,6 +192,58 @@ async fn a_shopify_outage_answers_502_without_the_retry_header(
     assert!(answer.retry.is_none());
 }
 
+/// Another process is still exchanging this shop's token (audit M5, ADR-041): the wait ends,
+/// the answer is a 503 the embedded app retries, and the connection is back in the pool.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_shop_locked_by_another_process_answers_503_after_a_bounded_wait(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let shopify = MockServer::start().await;
+    exchange_answers(&shopify, 200).await;
+
+    let other_process = Db::from_pool(app_login_pool(opts.clone(), conn.clone()).await);
+    let held = other_process
+        .shop_lock("demo-store.myshopify.com")
+        .await
+        .unwrap();
+
+    let db = Db::from_pool(app_login_pool(opts, conn).await)
+        .with_lock_timeout(Duration::from_millis(300));
+    let auth = ShopifyAuth::new(
+        db.clone(),
+        KeyRing::parse("k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8").unwrap(),
+        SessionTokenVerifier::new(CLIENT_ID, &SecretString::from(SECRET)),
+        TokenClient::new(
+            CLIENT_ID,
+            SecretString::from("client-secret"),
+            TokenEndpoint::Base(shopify.uri()),
+            Duration::from_secs(2),
+        )
+        .unwrap(),
+    );
+    let state = AppState::new(db.clone()).with_shopify(auth);
+
+    let started = std::time::Instant::now();
+    let answer = post_session(state, Some(&format!("Bearer {}", id_token(SECRET)))).await;
+    assert_eq!(
+        answer.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        answer.body
+    );
+    assert_eq!(answer.body["code"], "unavailable");
+    assert!(answer.retry.is_none());
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(
+        shopify.received_requests().await.unwrap().is_empty(),
+        "no exchange without the lock"
+    );
+    db.ping().await.unwrap();
+
+    held.release().await.unwrap();
+}
+
 #[sqlx::test(migrations = "../db/migrations")]
 async fn bad_client_credentials_are_a_server_error_that_leaks_nothing(
     opts: PgPoolOptions,
@@ -220,7 +266,7 @@ async fn without_shopify_configured_the_route_is_unavailable(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
-    let pool = opts.connect_with(conn).await.unwrap();
+    let pool = app_login_pool(opts, conn).await;
     let state = AppState::new(Db::from_pool(pool));
     let answer = post_session(state, Some("Bearer x")).await;
     assert_eq!(answer.status, StatusCode::SERVICE_UNAVAILABLE);

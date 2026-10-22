@@ -30,10 +30,18 @@ he does not need to approve anything. From now on:
   **FAIL**: H1 (backup secrets fall back to repository secrets) and H2 (`railway-ssh` holds a
   workspace token) must be fixed **before the founder adds any input**; nothing is exposed while
   no secret exists. The fixes are the next builder's first task, ahead of the R1 lanes.
-- **Lanes S2 and S3 (PRs #15, #16): the architect chat takes them over now** (no push for two
-  hours while red; the builder's disk is full). Builder: do not push to `r1-hardening` or
-  `r1-hardening-ts`; if you hold unpushed fixes for them, push them to a new branch and say so
-  here. After they merge, the builder's next work is the R1 lanes proposed below, from `main`.
+- **Lanes S2 and S3 are merged:** PR #16 (`9e40466`) and PR #15 (`ef63273`, CI green at
+  `21119f5`: ci 39320823505, release 39320823507, restore-drill 39320823496). Fixes on the way:
+  Clippy 1.99 (assertions without a message; an extractor that awaits nothing), the web
+  telemetry test's `SHOPIFY_API_KEY`, and the egress log-hygiene test's subscriber. CI now posts
+  Clippy, nextest, Vitest and e2e failures as check-run annotations, because the job log host is
+  unreachable from build sessions. Also merged: PR #19 (sqlx-cli and the migrations in the api
+  image) and PR #20 (billing follows ADR-141). **No pull request is open.**
+- **Known red on `main`:** `release.yml`'s strict image smoke test fails until the api serves a
+  webhook listener on `WEBHOOK_BIND_ADDR` (ADR-182) and the engine's sandbox decision is made
+  (ADR-028). Both are R1 work; nothing deploys before them (Node LTS pin, founder inputs).
+- **Next builder, in order:** the audit's H1 and H2 (backup secrets and transport), then the
+  R1 lanes below, all from `main`.
 - **App Store 1.1.3 and 5.1.1:** decided under the founder's delegation; see "Waiting on founder".
 
 ## Active builder

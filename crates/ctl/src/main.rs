@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::Context as _;
 use contracts::ShopifyTokenRefresh;
 use ctl::config::Config;
-use ctl::leader;
 use ctl::token_refresh::TokenRefresh;
+use ctl::{leader, startup};
 use db::Db;
 use queue::WorkerConfig;
 use secrecy::ExposeSecret;
@@ -36,6 +36,14 @@ async fn run(config: Config) -> anyhow::Result<()> {
         .connect_lazy(config.database_url.expose_secret())
         .context("database")?;
     let db = Db::from_pool(pool.clone());
+    // Never claim a job as a role that row-level security does not bind (ADR-040).
+    if !startup::require_worker_role(&db, Duration::from_secs(5), shutdown_signal())
+        .await
+        .context("database role")?
+    {
+        info!("ctl stopped before it started");
+        return Ok(());
+    }
     let auth = shopify_auth::ShopifyAuth::new(
         db.clone(),
         config.master_keys.clone(),

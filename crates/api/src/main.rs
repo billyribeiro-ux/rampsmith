@@ -3,9 +3,9 @@
 use anyhow::Context as _;
 use api::AppState;
 use api::config::Config;
-use db::Db;
+use db::{Db, RoleError, RuntimeRole};
 use secrecy::ExposeSecret;
-use tracing::info;
+use tracing::{info, warn};
 
 fn main() -> anyhow::Result<()> {
     let config = Config::from_env().context("configuration")?;
@@ -27,6 +27,17 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         config.db_max_connections,
     )
     .context("database")?;
+    // Refuse to serve tenants as a role that row-level security does not bind (ADR-040). A
+    // database that is down right now cannot be asked; /readyz asks again before any traffic.
+    match db.verify_runtime_role(RuntimeRole::App).await {
+        Ok(()) => {}
+        Err(refused @ RoleError::Refused { .. }) => {
+            return Err(anyhow::Error::new(refused).context("database role"));
+        }
+        Err(RoleError::Unreachable(error)) => {
+            warn!(%error, "could not check the database role at startup; /readyz will");
+        }
+    }
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("bind {}", config.bind))?;
