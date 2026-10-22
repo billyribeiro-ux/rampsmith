@@ -199,7 +199,7 @@ jobs:
           rc=0
           infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests 2>&1 | tee "$RUNNER_TEMP/backup-tests.log" || rc=$?
           # Name each failed check as an annotation, so a failure can be read without the log.
-          grep -E '^FAIL' "$RUNNER_TEMP/backup-tests.log" | cut -c1-300 | head -30 | while IFS= read -r line; do echo "::error title=backup test::${line}"; done
+          grep -E -A5 '^FAIL' "$RUNNER_TEMP/backup-tests.log" | cut -c1-300 | head -60 | while IFS= read -r line; do echo "::error title=backup test::${line}"; done
           exit "$rc"
       - name: Runbook SQL (the statements the runbooks tell an operator to run, on a migrated database)
         run: |
