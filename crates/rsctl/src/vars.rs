@@ -1,5 +1,5 @@
 //! The founder inputs `rsctl doctor` may read: every variable in LAUNCH.md section C, rows 1
-//! to 12 and row 16, and nothing else (ADR-151, ADR-093). A probe asks for a [`Var`], never a
+//! to 12 and row 16, and nothing else (ADR-151, ADR-254). A probe asks for a [`Var`], never a
 //! string, and the test suite records every read to prove each probe stays inside its declared
 //! set.
 //!
@@ -63,7 +63,7 @@ pub enum Var {
     StripeWebhookSecret,
     // Row 12: master keys.
     RampsmithMasterKeys,
-    // Row 16: the nightly backup service and the weekly restore drill (ADR-090 to ADR-093).
+    // Row 16: the nightly backup service and the weekly restore drill (ADR-251 to ADR-254).
     BackupR2AccessKeyId,
     BackupR2SecretAccessKey,
     BackupDbPassword,
@@ -71,6 +71,7 @@ pub enum Var {
     DrillR2AccessKeyId,
     DrillR2SecretAccessKey,
     BackupDrillAgeKey,
+    BackupSigningKey,
 }
 
 impl Var {
@@ -119,6 +120,7 @@ impl Var {
         Self::DrillR2AccessKeyId,
         Self::DrillR2SecretAccessKey,
         Self::BackupDrillAgeKey,
+        Self::BackupSigningKey,
     ];
 
     /// The variable's name.
@@ -168,6 +170,7 @@ impl Var {
             Self::DrillR2AccessKeyId => "DRILL_R2_ACCESS_KEY_ID",
             Self::DrillR2SecretAccessKey => "DRILL_R2_SECRET_ACCESS_KEY",
             Self::BackupDrillAgeKey => "BACKUP_DRILL_AGE_KEY",
+            Self::BackupSigningKey => "BACKUP_SIGNING_KEY",
         }
     }
 
@@ -212,7 +215,8 @@ impl Var {
             | Self::BackupAgeRecipients
             | Self::DrillR2AccessKeyId
             | Self::DrillR2SecretAccessKey
-            | Self::BackupDrillAgeKey => 16,
+            | Self::BackupDrillAgeKey
+            | Self::BackupSigningKey => 16,
         }
     }
 
@@ -248,12 +252,13 @@ impl Var {
                 | Self::DrillR2AccessKeyId
                 | Self::DrillR2SecretAccessKey
                 | Self::BackupDrillAgeKey
+                | Self::BackupSigningKey
         )
     }
 }
 
 /// The names of every founder secret, in LAUNCH.md order. None of them is ever a repository or
-/// organization secret (ADR-092): each is a Railway variable, or a secret of one GitHub
+/// organization secret (ADR-253): each is a Railway variable, or a secret of one GitHub
 /// environment that only `main` can deploy to.
 #[must_use]
 pub fn founder_secret_names() -> Vec<&'static str> {

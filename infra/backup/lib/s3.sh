@@ -13,7 +13,7 @@ AWS_BIN="${AWS_BIN:-aws}"
 #   BACKUP_R2  BACKUP_R2_ACCESS_KEY_ID, BACKUP_R2_SECRET_ACCESS_KEY  (the backup service)
 #   DRILL_R2   DRILL_R2_ACCESS_KEY_ID, DRILL_R2_SECRET_ACCESS_KEY    (the drill, an operator restoring)
 # plus R2_ACCOUNT_ID and R2_BUCKET_BACKUPS, which are identifiers. The engine's R2_ACCESS_KEY_ID
-# and R2_SECRET_ACCESS_KEY are never read: that token reaches the evidence bucket only (ADR-091).
+# and R2_SECRET_ACCESS_KEY are never read: that token reaches the evidence bucket only (ADR-252).
 #   endpoint   https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com (R2_ENDPOINT_URL overrides it,
 #              for the EU jurisdiction or a test double)
 #   region     auto

@@ -1,5 +1,8 @@
 # Restore drill (PLAN §22; ADR-175): proves that a logical backup restores into a fresh PostgreSQL 18
-# with the data, the policies and the isolation it had, inside the 4-hour recovery target.
+# with the data, the policies and the isolation it had, inside the 4-hour recovery target. The
+# repository is PUBLIC, and so are this workflow's logs and artifacts: nothing a live restore
+# produces (the restored cluster, the table of contents, tenant identifiers, database messages) may
+# reach either (ADR-255).
 #
 # On every pull request that touches the backup, the drill or the migrations, and every Monday:
 #   lint          ShellCheck and actionlint, pinned releases
@@ -10,19 +13,25 @@
 #                 the live drill's environment
 #   live          weekly and on demand, on main only: restore the newest real staging backup
 #
-# The nightly backup itself is not here. It is the Railway cron service `backup` (ADR-090), and
-# GitHub holds no credential that can write a backup.
+# The nightly backup itself is not here. It is the Railway cron service `backup` (ADR-251) of each
+# environment, and GitHub holds no credential that can write a backup. Each environment has its own
+# R2 bucket and its own write token, held as sealed variables of that environment's service only, so
+# a leak in staging cannot reach production's backups (ADR-252); the key that signs each backup's
+# metadata is held there too, and the public key that verifies it is committed under
+# infra/backup/signing/ (ADR-256).
 #
 # The live drill is the only job that reads a backup credential, and only the drill's own
-# (ADR-091, ADR-092): a read-only R2 token and the offline age key, as secrets of the GitHub
-# environment `backup-drill` and of nothing else. It is a chain of jobs, so that no step that can
-# read those secrets starts before the environment has been checked:
+# (ADR-252, ADR-253): a read-only R2 token on the STAGING bucket and the offline age key, as secrets
+# of the GitHub environment `backup-drill` and of nothing else. It is a chain of jobs, so that no
+# step that can read those secrets starts before the environment has been checked:
 #   drill-scope       no environment, no permissions: fails if any backup or drill secret exists
 #                     as a repository or organization secret, where every job of every workflow
 #                     (and a pull request's) could read it
 #   drill-protection  no environment, no secrets: fails unless `backup-drill` exists and deploys
 #                     from main only (infra/restore-drill/check_environment.py)
-#   live              `environment: backup-drill`; needs both jobs above
+#   drill-strays      no environment, no secrets: fails if the unprotected environments that the
+#                     deleted backup workflow created (`backup-production`, `backup-staging`) exist
+#   live              `environment: backup-drill`; needs the three jobs above
 #   live-skipped      when the repository variable BACKUP_DRILL_READY is not `true`: a warning
 #                     that names LAUNCH.md section C row 16. The job `live` is skipped, and a
 #                     skipped job reaches no secret.
@@ -35,7 +44,7 @@ on:
     paths:
       - infra/restore-drill/**
       - infra/backup/**
-      - docs/runbooks/sql/**
+      - docs/runbooks/**
       - crates/db/migrations/**
       - .github/workflows/restore-drill.yml
   schedule:
@@ -88,7 +97,7 @@ jobs:
         run: |
           shellcheck --version
           shellcheck -x -P SCRIPTDIR infra/restore-drill/*.sh infra/restore-drill/tests/*.sh \
-            infra/backup/*.sh infra/backup/lib/*.sh infra/backup/tests/*.sh
+            infra/backup/*.sh infra/backup/lib/*.sh infra/backup/tests/*.sh infra/backup/signing/*.sh
       - name: actionlint (runs ShellCheck on the workflow scripts too)
         run: |
           actionlint -version
@@ -184,9 +193,15 @@ jobs:
           echo "RD_SCRATCH=$RUNNER_TEMP/scratch" >>"$GITHUB_ENV"
       - name: Pull the pinned PostgreSQL image
         run: docker pull --quiet "$RD_IMAGE"
-      - name: Backup tests (names, retention, skip and failure paths, the three R2 tokens, the drill's hand-off)
+      - name: Backup tests (names, retention, signatures, skip and failure paths, the R2 tokens, the drill's hand-off, the runbooks)
         run: |
-          infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests
+          set -o pipefail
+          rc=0
+          infra/restore-drill/in-container.sh bash infra/backup/tests/run.sh --out /scratch/backup-tests 2>&1 | tee "$RUNNER_TEMP/backup-tests.log" || rc=$?
+          # Name each failed check as an annotation, so a failure can be read without the log.
+          { grep -E -A5 '^FAIL' "$RUNNER_TEMP/backup-tests.log" || true; } | cut -c1-300 | head -60 | while IFS= read -r line; do echo "::error title=backup test::${line}"; done
+          if [ "$rc" -ne 0 ]; then tail -n 12 "$RUNNER_TEMP/backup-tests.log" | cut -c1-300 | while IFS= read -r line; do echo "::error title=backup tests, last lines::${line}"; done; fi
+          exit "$rc"
       - name: Runbook SQL (the statements the runbooks tell an operator to run, on a migrated database)
         run: |
           infra/restore-drill/in-container.sh bash infra/restore-drill/tests/runbook-sql.sh --out /scratch/backup-tests/runbook-sql
@@ -224,6 +239,7 @@ jobs:
           BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
           BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
           BACKUP_DB_PASSWORD: ${{ secrets.BACKUP_DB_PASSWORD }}
+          BACKUP_SIGNING_KEY: ${{ secrets.BACKUP_SIGNING_KEY }}
           DRILL_R2_ACCESS_KEY_ID: ${{ secrets.DRILL_R2_ACCESS_KEY_ID }}
           DRILL_R2_SECRET_ACCESS_KEY: ${{ secrets.DRILL_R2_SECRET_ACCESS_KEY }}
           BACKUP_DRILL_AGE_KEY: ${{ secrets.BACKUP_DRILL_AGE_KEY }}
@@ -236,12 +252,13 @@ jobs:
         run: |
           # This job has no environment, so these resolve only to repository or organization
           # secrets. The backup credentials live in Railway, the drill's in the `backup-drill`
-          # environment, and a repository copy would reach every workflow and every job (ADR-092).
+          # environment, and a repository copy would reach every workflow and every job (ADR-253).
           # Only presence is checked, never printed.
           found=()
           [ -z "$BACKUP_R2_ACCESS_KEY_ID" ] || found+=("BACKUP_R2_ACCESS_KEY_ID")
           [ -z "$BACKUP_R2_SECRET_ACCESS_KEY" ] || found+=("BACKUP_R2_SECRET_ACCESS_KEY")
           [ -z "$BACKUP_DB_PASSWORD" ] || found+=("BACKUP_DB_PASSWORD")
+          [ -z "$BACKUP_SIGNING_KEY" ] || found+=("BACKUP_SIGNING_KEY")
           [ -z "$DRILL_R2_ACCESS_KEY_ID" ] || found+=("DRILL_R2_ACCESS_KEY_ID")
           [ -z "$DRILL_R2_SECRET_ACCESS_KEY" ] || found+=("DRILL_R2_SECRET_ACCESS_KEY")
           [ -z "$BACKUP_DRILL_AGE_KEY" ] || found+=("BACKUP_DRILL_AGE_KEY")
@@ -262,7 +279,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     # GET .../environments/{name} and .../deployment-branch-policies need "Actions: read"
-    # (GitHub REST documentation; ADR-092). This job has no environment and holds no secret.
+    # (GitHub REST documentation; ADR-253). This job has no environment and holds no secret.
     permissions:
       contents: read
       actions: read
@@ -282,6 +299,36 @@ jobs:
           python3 infra/restore-drill/check_environment.py \
             "$RUNNER_TEMP/environment.json" "$RUNNER_TEMP/policies.json"
 
+  drill-strays:
+    name: no stray backup environments
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # GET /repos/{owner}/{repo}/environments is listed under "Actions: read" for fine-grained
+    # tokens (GitHub REST documentation); if the workflow token is refused, the job warns instead
+    # of failing, because a refusal says nothing about the environments.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The environments of the deleted backup workflow do not exist (ADR-259)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # The first backup design ran as a workflow in `backup-production` and `backup-staging`.
+          # GitHub creates an environment, unprotected, the first time a workflow names one that
+          # does not exist, so those two may exist. Nothing names them now; they must go.
+          if ! gh api "repos/$REPOSITORY/environments?per_page=100" > "$RUNNER_TEMP/environments.json" 2> "$RUNNER_TEMP/environments.err"; then
+            echo "::warning title=Stray environments not checked::The workflow token cannot list the repository's environments, so this run did not check that backup-production and backup-staging are gone. Delete them by hand if they exist (LAUNCH.md section C row 16): $(tr '\n' ' ' < "$RUNNER_TEMP/environments.err" | head -c 200)"
+            exit 0
+          fi
+          python3 -B infra/restore-drill/check_environment.py --stray "$RUNNER_TEMP/environments.json"
+
   live-skipped:
     name: live restore skipped
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.BACKUP_DRILL_READY != 'true'
@@ -300,7 +347,7 @@ jobs:
 
   live:
     name: live restore (staging)
-    needs: [drill-scope, drill-protection]
+    needs: [drill-scope, drill-protection, drill-strays]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.BACKUP_DRILL_READY == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -325,7 +372,7 @@ jobs:
           echo "RD_TOOLS=$RUNNER_TEMP/tools" >>"$GITHUB_ENV"
       - name: Pull the pinned PostgreSQL image
         run: docker pull --quiet "$RD_IMAGE"
-      - name: Restore the newest staging backup (read-only token; the key reaches the container by name)
+      - name: Restore the newest staging backup (read-only token on the staging bucket; the key reaches the container by name)
         env:
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_BACKUPS: ${{ vars.R2_BUCKET_BACKUPS }}
@@ -333,11 +380,15 @@ jobs:
           DRILL_R2_SECRET_ACCESS_KEY: ${{ secrets.DRILL_R2_SECRET_ACCESS_KEY }}
           BACKUP_DRILL_AGE_KEY: ${{ secrets.BACKUP_DRILL_AGE_KEY }}
         run: infra/restore-drill/live.sh --environment staging --scratch "$RUNNER_TEMP/live"
-      - name: Upload the live drill report
+      - name: Upload the live drill summary (the only file; the repository is public)
+        # live.sh writes report/summary.txt with fixed fields: the result, the backup's date, times
+        # and counts. Never upload `out`, `work` or `log`: they are the restore's working files, and
+        # the restored cluster is customer data (finding HIGH-1, ADR-255). The restored cluster is
+        # not on the runner at all: it is made in the container's own /tmp and deleted there.
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: live-restore-report
-          path: ${{ runner.temp }}/live/out
+          name: live-restore-summary
+          path: ${{ runner.temp }}/live/report/summary.txt
           retention-days: 30
           if-no-files-found: ignore

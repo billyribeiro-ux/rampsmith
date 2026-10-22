@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# The nightly logical backup (ADR-171 to ADR-174, ADR-090): pg_dump -Fc, encrypted with age to
-# public recipients, uploaded to the R2 backups bucket under a dated key, verified, then pruned.
+# The nightly logical backup (ADR-171 to ADR-173, ADR-251): pg_dump -Fc, encrypted with age to
+# public recipients, uploaded to the environment's R2 backups bucket under a dated key, verified,
+# signed (ADR-256), then pruned.
 #
 #   backup.sh
 #
 # It runs as the entrypoint of the `backup` Railway service, a cron service inside the project
-# that reaches the database over the private network (infra/backup/entrypoint.sh, ADR-090). No
+# that reaches the database over the private network (infra/backup/entrypoint.sh, ADR-251). No
 # GitHub workflow runs it and no GitHub secret reaches it.
 #
 # The archive is never written unencrypted: pg_dump's output goes through a pipe, a copy of the
@@ -18,9 +19,12 @@
 #   BACKUP_DB_HOST/PORT/USER/NAME/PASSWORD
 #                           the database login (a least-privilege role: infra/backup/backup-role.sql)
 #   BACKUP_AGE_RECIPIENTS   public age recipients, one per line
+#   BACKUP_SIGNING_KEY      the Ed25519 key that signs the metadata object (ADR-256); the public half
+#                           is committed as infra/backup/signing/<environment>.pub.pem
 #   R2_ACCOUNT_ID, R2_BUCKET_BACKUPS, BACKUP_R2_ACCESS_KEY_ID, BACKUP_R2_SECRET_ACCESS_KEY
-#                           the backups bucket and the token scoped to it (LAUNCH.md C row 16). The
-#                           engine's R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are never read.
+#                           this environment's backups bucket (rampsmith-backups-<environment>) and
+#                           the token scoped to it alone (LAUNCH.md C row 16, ADR-252). The engine's
+#                           R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are never read.
 # Optional: BACKUP_KEEP_DAILY (30), BACKUP_KEEP_MONTHLY (12), BACKUP_PRUNE_MAX (10), PGBIN (a
 # directory holding the PostgreSQL 18 client programs), AWS_BIN, AGE_BIN, BACKUP_NOW.
 #
@@ -34,6 +38,8 @@ BK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$BK_DIR/lib/common.sh"
 # shellcheck source=lib/s3.sh
 source "$BK_DIR/lib/s3.sh"
+# shellcheck source=lib/sign.sh
+source "$BK_DIR/lib/sign.sh"
 
 AGE_BIN="${AGE_BIN:-age}"
 BACKUP_KEEP_DAILY="${BACKUP_KEEP_DAILY:-30}"
@@ -51,7 +57,7 @@ pg_tool() {
 # The founder's inputs. A variable that is empty or still an unresolved Railway reference counts
 # as unset. Everything else (host, name, login, environment) is wired by railway.py.
 missing=$(bk_missing_r2 BACKUP_R2 | tr '\n' ' ')
-for name in BACKUP_AGE_RECIPIENTS BACKUP_DB_PASSWORD; do
+for name in BACKUP_AGE_RECIPIENTS BACKUP_SIGNING_KEY BACKUP_DB_PASSWORD; do
   if bk_is_unset "$name"; then
     missing="${missing}${name} "
   fi
@@ -63,6 +69,8 @@ fi
 bk_require BACKUP_ENVIRONMENT BACKUP_DB_HOST BACKUP_DB_NAME BACKUP_DB_USER
 BACKUP_DB_PORT="${BACKUP_DB_PORT:-5432}"
 bk_valid_environment "$BACKUP_ENVIRONMENT" || bk_die "BACKUP_ENVIRONMENT is not a valid environment name"
+bk_bucket_matches_environment "$R2_BUCKET_BACKUPS" "$BACKUP_ENVIRONMENT" ||
+  bk_die "R2_BUCKET_BACKUPS is not the ${BACKUP_ENVIRONMENT} bucket: each environment has its own bucket, named rampsmith-backups-${BACKUP_ENVIRONMENT} (ADR-252)"
 for name in BACKUP_DB_USER BACKUP_DB_NAME; do
   [[ ${!name} =~ ^[A-Za-z0-9_.-]+$ ]] || bk_die "${name} holds characters outside A-Za-z0-9_.-"
 done
@@ -77,6 +85,9 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 bk_write_recipients "$BACKUP_AGE_RECIPIENTS" "$work/recipients.txt"
+bk_signing_key_file "$BACKUP_SIGNING_KEY" "$work/signing.der" ||
+  bk_die "BACKUP_SIGNING_KEY is not an Ed25519 private key (one line of base64, 64 characters; infra/backup/signing/generate.sh makes it)"
+bk_public_key_of "$work/signing.der" "$work/signing.pub.pem" || bk_die "could not derive the public signing key"
 s3_init BACKUP_R2
 
 # --- reaching the database ----------------------------------------------------------------------
@@ -101,6 +112,7 @@ query() {
 # --- 1. dump, check and encrypt in one pass --------------------------------------------------------
 stamp=$(bk_utc_stamp)
 bk_valid_stamp "$stamp" || bk_die "BACKUP_NOW is not YYYYMMDDTHHMMSSZ"
+run_epoch=$(bk_stamp_epoch "$stamp") || bk_die "BACKUP_NOW is not a real time"
 base=$(bk_object_base "$BACKUP_ENVIRONMENT" daily "$stamp")
 archive="$work/archive.age"
 bk_log "backup ${BACKUP_ENVIRONMENT} ${stamp}"
@@ -178,7 +190,8 @@ write_meta() {
 EOF
 }
 
-# store KIND: uploads the archive, checks size and content, then writes the metadata object last.
+# store KIND: uploads the archive, checks size and content, then signs the metadata and writes its
+# signature and the metadata object last (the metadata object is the commit marker).
 store() {
   local kind=$1 object remote_size remote_sha
   object=$(bk_object_base "$BACKUP_ENVIRONMENT" "$kind" "$stamp")
@@ -192,7 +205,16 @@ store() {
     bk_die "stored content of ${object}.dump.age differs from what was sent (sha256 mismatch)"
   fi
   write_meta "$kind" "${object}.dump.age" "$work/meta-${kind}.json"
+  bk_sign "$work/meta-${kind}.json" "$work/signing.der" "$work/meta-${kind}.sig" || bk_die "could not sign the metadata of ${object}"
+  s3_put "$work/meta-${kind}.sig" "${object}.meta.json.sig" || bk_die "upload of ${object}.meta.json.sig failed"
   s3_put "$work/meta-${kind}.json" "${object}.meta.json" || bk_die "upload of ${object}.meta.json failed"
+  # Read both back and verify them the way a restore will, with the public half of the key just used.
+  s3_get "${object}.meta.json" "$work/readback.json" || bk_die "could not read the metadata of ${object} back"
+  s3_get "${object}.meta.json.sig" "$work/readback.sig" || bk_die "could not read the signature of ${object} back"
+  if ! reason=$(bk_verify_backup "$BACKUP_ENVIRONMENT" "${object}.dump.age" "$work/readback.json" \
+    "$work/readback.sig" "$work/signing.pub.pem" "$run_epoch"); then
+    bk_die "the stored metadata of ${object} does not verify: ${reason}"
+  fi
   bk_log "stored ${object}.dump.age (${size} bytes, sha256 ${sha:0:16}...)"
 }
 
@@ -209,10 +231,16 @@ else
 fi
 
 # --- 3. retention (after the new backup is in place and verified) ---------------------------------------
+limit_stamp=$(bk_future_limit "$run_epoch")
 prune_kind() {
-  local kind=$1 keep=$2 keys victims count key
+  local kind=$1 keep=$2 keys victims count key future
   keys=$(s3_list "${BACKUP_ENVIRONMENT}/${kind}/") || bk_die "could not list ${BACKUP_ENVIRONMENT}/${kind}/ for pruning"
-  victims=$(printf '%s\n' "$keys" | bk_retention_victims "$BACKUP_ENVIRONMENT" "$kind" "$keep")
+  # Objects stamped after this run's own time (plus the clock skew) are neither counted nor deleted.
+  future=$(printf '%s\n' "$keys" | bk_backups "$BACKUP_ENVIRONMENT" "$kind" "$limit_stamp" | awk -F'\t' '$3 == "future"' | wc -l | tr -d ' ')
+  if [ "$future" -gt 0 ]; then
+    bk_warning "${BACKUP_ENVIRONMENT}/${kind}/ holds ${future} backup(s) dated in the future; restores ignore them and retention leaves them alone. Someone with write access to the bucket put them there: investigate (ADR-256)"
+  fi
+  victims=$(printf '%s\n' "$keys" | bk_retention_victims "$BACKUP_ENVIRONMENT" "$kind" "$keep" "$limit_stamp")
   count=$(printf '%s\n' "$victims" | awk 'NF' | wc -l | tr -d ' ')
   if [ "$count" -eq 0 ]; then
     bk_log "retention ${kind}: nothing to prune (keeping the newest ${keep} periods)"

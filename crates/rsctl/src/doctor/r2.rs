@@ -1,4 +1,4 @@
-//! R2: three tokens, each proved for what it is allowed to do and no more (ADR-152, ADR-091).
+//! R2: three tokens, each proved for what it is allowed to do and no more (ADR-152, ADR-252).
 //!
 //! | Token | Variables | Allowed | Check |
 //! | --- | --- | --- | --- |

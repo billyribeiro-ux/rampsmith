@@ -1,4 +1,4 @@
-"""Unit tests for check_environment.py (ADR-092): the live drill's environment protection check.
+"""Unit tests for check_environment.py (ADR-253, ADR-259): the live drill's environment protection check.
 
 Recorded shapes of `GET /repos/{owner}/{repo}/environments/{name}` and
 `GET .../deployment-branch-policies`; no network and no token.
@@ -91,7 +91,7 @@ class DrillEnvironment(unittest.TestCase):
         self.assertIn("is not called backup-drill", out)
 
     def test_no_reviewer_is_required(self) -> None:
-        # The drill is scheduled; a reviewer gate would hold every run (ADR-092).
+        # The drill is scheduled; a reviewer gate would hold every run (ADR-253).
         self.assertEqual(check.problems(PROTECTED, MAIN_ONLY), [])
 
     def test_unreadable_or_malformed_settings_fail_without_a_traceback(self) -> None:
@@ -117,3 +117,52 @@ class DrillEnvironment(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def run_stray(listing: Any) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "environments.json"
+        path.write_text(json.dumps(listing), encoding="utf-8")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = check.main(["check_environment.py", "--stray", str(path)])
+        return code, out.getvalue()
+
+
+class StrayEnvironments(unittest.TestCase):
+    """The environments the deleted backup workflow may have created unprotected (finding LOW-2)."""
+
+    @staticmethod
+    def listing(*names: str) -> dict[str, Any]:
+        return {
+            "total_count": len(names),
+            "environments": [{"id": index, "name": name} for index, name in enumerate(names)],
+        }
+
+    def test_the_expected_environments_pass(self) -> None:
+        code, out = run_stray(self.listing("staging", "production", "backup-drill"))
+        self.assertEqual(code, 0)
+        self.assertIn("No stray", out)
+
+    def test_no_environments_at_all_passes(self) -> None:
+        self.assertEqual(run_stray({"total_count": 0, "environments": []})[0], 0)
+
+    def test_each_old_backup_environment_fails_and_is_named(self) -> None:
+        for name in ("backup-production", "backup-staging"):
+            with self.subTest(name=name):
+                code, out = run_stray(self.listing("staging", name))
+                self.assertEqual(code, 1)
+                self.assertIn(name, out)
+                self.assertIn("::error", out)
+
+    def test_both_are_named_together(self) -> None:
+        code, out = run_stray(self.listing("backup-production", "backup-staging"))
+        self.assertEqual(code, 1)
+        self.assertIn("backup-production, backup-staging", out)
+
+    def test_a_similar_name_is_not_stray(self) -> None:
+        self.assertEqual(run_stray(self.listing("backup-drill", "backup-production-2"))[0], 0)
+
+    def test_an_unreadable_or_odd_listing_fails_closed(self) -> None:
+        self.assertEqual(run_stray([1, 2])[0], 1)
+        self.assertEqual(check.main(["check_environment.py", "--stray", "/does/not/exist"]), 1)

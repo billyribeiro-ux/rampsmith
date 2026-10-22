@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# A stand-in for in-container.sh that checks what the real container could do (ADR-094). It is the
+# A stand-in for in-container.sh that checks what the real container could do (ADR-255). It is the
 # test that would have caught finding M3: live.sh made its scratch directories under umask 077, so
 # the container's user (uid 999, the postgres image's user) could neither enter them nor read the
 # archive, and the live drill failed on its first real run.
 #
-#   RD_SCRATCH=DIR RD_IDENTITY=KEY AGE=age RD_IN_CONTAINER=this-script live.sh ...
+#   RD_SCRATCH=DIR RD_IDENTITY=KEY AGE=age [RD_CONTAINER_TMP=DIR] RD_IN_CONTAINER=this-script live.sh ...
 #
 # A test cannot become another user without root, so this checks the permission bits a different,
 # unrelated user would be held to: the "other" triple of every directory from RD_SCRATCH down to
@@ -12,8 +12,14 @@
 # private key reached it in the environment and is not on disk anywhere under the scratch
 # directory, then decrypts the archive with it, as restore-local.sh would.
 #
-# Output: tab-separated PASS or FAIL lines, and exit 1 when any failed. On success it writes
-# out/window_ms, as restore-local.sh does.
+# Given a command (as live.sh gives one), it then RUNS it the way the container would: the paths
+# /scratch, /tmp/rd-identity.key and /tmp/rd-restore become RD_SCRATCH and files under
+# RD_CONTAINER_TMP (the container's own filesystem, outside every directory the runner collects),
+# and container-run.sh wraps the command as it does in the image. So a test can look at what a live
+# run leaves in the scratch directory, which is what the workflow uploads from (finding HIGH-1).
+#
+# Output: tab-separated PASS or FAIL lines, and exit 1 when any failed. Without a command, on success
+# it writes out/window_ms, as restore-local.sh does.
 set -uo pipefail
 
 scratch=${RD_SCRATCH:?RD_SCRATCH is not set}
@@ -90,6 +96,25 @@ if [ "$failed" -eq 0 ]; then
   fi
 fi
 
+if [ "$#" -gt 0 ]; then
+  [ "$failed" -eq 0 ] || exit 1
+  tmp=${RD_CONTAINER_TMP:?RD_CONTAINER_TMP is not set}
+  repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+  mkdir -p "$tmp"
+  mapped=()
+  for arg in "$@"; do
+    case $arg in
+      /scratch | /scratch/*) arg="$scratch${arg#/scratch}" ;;
+      /tmp/rd-*) arg="$tmp/${arg#/tmp/}" ;;
+    esac
+    mapped+=("$arg")
+  done
+  discard=""
+  for dir in ${RD_DISCARD_DIRS:-}; do discard="$discard $tmp/${dir#/tmp/}"; done
+  cd "$repo" || exit 1
+  RD_IDENTITY_FILE="$tmp/rd-identity.key" RD_SCRATCH_DIR="$scratch" RD_DISCARD_DIRS="$discard" \
+    exec "$repo/infra/restore-drill/container-run.sh" "${mapped[@]}"
+fi
 if [ "$failed" -eq 0 ]; then
   printf '%s\n' 1 >"$scratch/out/window_ms"
   printf 'restore-local\tPASS\n'

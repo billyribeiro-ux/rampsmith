@@ -51,7 +51,7 @@ This is a decision, not an input, and R2 depends on it. Shopify's App Store requ
 
 ### 0. One-time: where values go
 
-Founder secrets live in two places only: Railway variables (what the running services read), and, for the few values a workflow needs, secrets of a GitHub environment that only `main` can deploy to. There are no repository or organization secrets at all. A repository secret can be read by every workflow on every branch and by every pull request opened from this repository, so it is only as safe as the least-reviewed workflow. The `secrets-scope` job in `.github/workflows/ci.yml` fails the build when any founder secret name below exists at repository or organization level (ADR-092). Do not set a secret there "temporarily".
+Founder secrets live in two places only: Railway variables (what the running services read), and, for the few values a workflow needs, secrets of a GitHub environment that only `main` can deploy to. There are no repository or organization secrets at all. A repository secret can be read by every workflow on every branch and by every pull request opened from this repository, so it is only as safe as the least-reviewed workflow. The `secrets-scope` job in `.github/workflows/ci.yml` fails the build when any founder secret name below exists at repository or organization level (ADR-253). Do not set a secret there "temporarily".
 
 - **RW**: a Railway shared variable, in both `staging` and `production` unless the section says otherwise.
   - Path: Project Settings > Shared Variables > choose the environment > name and value > Add.
@@ -213,7 +213,7 @@ Wait until builders commit `shopify.app.toml`. Shopify says App Store apps shoul
 
 Values:
 - `SHOPIFY_API_KEY` = Client ID (*public*) → RW. Railway `production` only; staging needs its own app (see the last section).
-- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. No workflow uses it. If one ever does, it goes in as a secret of a GitHub environment limited to `main` (ADR-031, ADR-092).
+- `SHOPIFY_API_SECRET` = Client secret → RW only. Same Railway note. No workflow uses it. If one ever does, it goes in as a secret of a GitHub environment limited to `main` (ADR-031, ADR-253).
 
 These are the names in LAUNCH.md section C, row 1, and the ones `rsctl doctor` reads. The code on `r0-foundations` reads the same two values as `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` (`crates/api`, `crates/ctl`, `apps/web`, `.env.example`; finding 2 of ADR-156 on `ws/rsctl`), and the Railway configuration on `ws/deploy` (ADR-182) maps the first pair to the second. You set only the names above.
 
@@ -357,29 +357,34 @@ Docs: [send data via OTLP](https://grafana.com/docs/grafana-cloud/send-data/otlp
 
 ### 10. Cloudflare R2 and Turnstile (input 6)
 
-You create: an R2 subscription, two buckets, **three** S3 tokens, and one Turnstile widget.
+You create: an R2 subscription, **three** buckets (evidence, and one backups bucket per environment), **four** S3 tokens, and one Turnstile widget.
 
 1. Storage & databases > R2 > Overview. Complete the checkout to add the R2 subscription. Tokens can't be created before this.
-2. Create bucket, twice:
-   - Name them, for example, `rampsmith-evidence` and `rampsmith-backups`.
+2. Create bucket, three times:
+   - Name them exactly `rampsmith-evidence`, `rampsmith-backups-staging` and `rampsmith-backups-production`. The backup scripts refuse a backups bucket whose name does not end in its environment (ADR-252).
    - Location: Automatic, or a North America hint. Don't set a jurisdiction; it can never be changed.
    - Storage class: Standard. The free tier covers Standard only.
    - Then Create bucket.
-3. Lifecycle rule:
+3. Locks and lifecycle rules:
+   - Backups buckets, each one: apply the retention lock and lifecycle rules in the repository, with an account API token that can edit R2 buckets, from a checkout: `npx wrangler r2 bucket lock set rampsmith-backups-<environment> --file infra/backup/r2/bucket-lock.json` and `npx wrangler r2 bucket lifecycle set rampsmith-backups-<environment> --file infra/backup/r2/lifecycle.json` (do it for `staging` and `production`; Cloudflare docs: *Bucket locks* and *Object lifecycles*). `rsctl doctor` cannot check this, because the engine's and backups' tokens cannot read bucket settings: LAUNCH.md section E keeps a row until you confirm it in the dashboard (Bucket > Settings).
+   - Evidence bucket (it has no lock):
    - Evidence bucket > Settings > Object Lifecycle Rules > Add rule.
    - Delete objects after 90 days (PLAN §19, §22), on the prefix builders give you. Evidence attached to a fix is kept (PLAN §19), so a rule on the whole bucket would delete records that must stay. Then Save changes.
    - Not verified: the form's field names.
-4. Tokens. R2 Overview > API Tokens > Manage > Create Account API token, **three times**. Each covers one job and one bucket, so a leak of one reaches no more than that job ([R2 token permissions](https://developers.cloudflare.com/r2/api/tokens/#permissions)):
+4. Tokens. R2 Overview > API Tokens > Manage > Create Account API token, **four times**. Each covers one job and one bucket, so a leak of one reaches no more than that job ([R2 token permissions](https://developers.cloudflare.com/r2/api/tokens/#permissions)):
 
    | Token name | Permission | Apply to | Used by |
    | --- | --- | --- | --- |
    | `rampsmith-engine` | Object Read & Write | the evidence bucket only | the engine, which handles untrusted scan content |
-   | `rampsmith-backup` | Object Read & Write | the backups bucket only | the `backup` service (section 16) |
-   | `rampsmith-drill` | Object Read only | the backups bucket only | the weekly restore drill and an operator restoring (section 16) |
+   | `rampsmith-backup-production` | Object Read & Write | `rampsmith-backups-production` only | the production `backup` service (section 16) |
+   | `rampsmith-backup-staging` | Object Read & Write | `rampsmith-backups-staging` only | the staging `backup` service (section 16) |
+   | `rampsmith-drill` | Object Read only | `rampsmith-backups-staging` only | the weekly restore drill (section 16). It never reads production |
+
+   A fifth token, Object Read only on `rampsmith-backups-production`, is for you when you restore production by hand (`docs/runbooks/restore-from-logical-backup.md`). Keep it in your password manager; it is not a Railway or GitHub value.
 
    - For each: choose the permission, then Apply to specific buckets only and tick the one bucket, then Create API Token.
    - Copy each Access Key ID and Secret Access Key. The secret is never shown again. The S3 endpoint is also shown here.
-   - One token for both buckets would let the engine overwrite or delete every backup. `rsctl doctor` checks this: the engine's token must be refused on the backups bucket, and the drill's token must be refused a write.
+   - One token or one bucket for both environments would let a leak in staging overwrite or delete production's backups. `rsctl doctor` checks this: the engine's token must be refused on the backups bucket, and the drill's token must be refused a write.
 5. Account ID: Account home > Cmd/Ctrl+K > "Copy account ID".
 6. Turnstile widget:
    - Turnstile > Add widget > Widget name.
@@ -390,8 +395,8 @@ You create: an R2 subscription, two buckets, **three** S3 tokens, and one Turnst
 Values:
 - `R2_ACCOUNT_ID` → RW. Also an environment variable of `backup-drill` (section 16); it is an identifier, not a secret.
 - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the `rampsmith-engine` token → RW
-- `R2_BUCKET_EVIDENCE` and `R2_BUCKET_BACKUPS`, the bucket names (*public*) → RW. `R2_BUCKET_BACKUPS` is also an environment variable of `backup-drill`.
-- The `rampsmith-backup` and `rampsmith-drill` tokens are row 16: `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY` → RW, and `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY` → GH env `backup-drill` only (section 16).
+- `R2_BUCKET_EVIDENCE` and `R2_BUCKET_BACKUPS`, the bucket names (*public*) → RW. `R2_BUCKET_BACKUPS` is `rampsmith-backups-staging` in staging and `rampsmith-backups-production` in production, and `rampsmith-backups-staging` as an environment variable of `backup-drill`.
+- The `rampsmith-backup-<environment>` and `rampsmith-drill` tokens are row 16: `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY` → RW, and `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY` → GH env `backup-drill` only (section 16).
 - `TURNSTILE_SITE_KEY` (*public*) → RW
 - `TURNSTILE_SECRET_KEY` → RW
 
@@ -514,7 +519,7 @@ Check: the settings are the check. A test pull request shows the three required 
 
 No cost beyond the R2 storage of section 10. Do this after section 10 and once the deploy workflow has created the Railway services. Until the `backup` service has its variables, it logs a warning that names this section and exits 0, so it never looks like a crash; until `BACKUP_DRILL_READY` is `true`, the weekly drill shows a warning and skips.
 
-You create: a database login, age keys, the Railway variables of the `backup` service, the GitHub environment `backup-drill`, and one repository variable.
+You create: a database login, age keys, a signing key pair per environment, the Railway variables of the `backup` service (sealed), the GitHub environment `backup-drill`, and one repository variable. You also delete two GitHub environments that an earlier design created (step 6).
 
 1. The database login, once per Railway environment. In a Railway shell on the PostgreSQL service, as the database owner, with a new password from `openssl rand -base64 24`:
    `BACKUP_DB_PASSWORD='<the password>' psql -X -v ON_ERROR_STOP=1 -d <database> -f infra/backup/backup-role.sql`
@@ -523,28 +528,32 @@ You create: a database login, age keys, the Railway variables of the `backup` se
    - Staging: `age-keygen -o staging-drill.key` (note the `age1...` public key it prints) and `age-keygen -o staging-offline.key`. Staging data is test data, so the first key may sit in GitHub as the drill's key.
    - Production: `age-keygen -o production-primary.key` and `age-keygen -o production-offline.key`. Production's private keys never go to GitHub or Railway: the primary in your vault, the offline key on paper or a hardware token in a different place. A production backup is restored by you (`docs/runbooks/restore-from-logical-backup.md`), which is also the quarterly drill.
    - All keys classic (`age-keygen`) or all post-quantum (`age-keygen -pq`); age refuses a mix in one list (ADR-173).
-3. Railway variables, in each environment (RW):
-   - `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`, the `rampsmith-backup` token of section 10 → RW, sealed in production
-   - `BACKUP_DB_PASSWORD`, the password from step 1 → RW, sealed in production
+3. Signing keys, on your machine, from a checkout, once per environment: `infra/backup/signing/generate.sh --environment staging --private-out ~/rampsmith-staging-signing.key` (then `production`). Each backup's metadata is signed, so a restore trusts the signature and a key committed in the repository, not whatever is in the bucket (ADR-256). The script writes the private key to the file you name (mode 600; it refuses a path inside the repository, and never prints it) and the public key to `infra/backup/signing/<environment>.pub.pem`. Commit the two `.pub.pem` files (public keys; builders will do it if you send them). The private key goes only into step 4's `BACKUP_SIGNING_KEY` of that environment, and into your vault.
+4. Railway variables, in **each** environment (RW), and **sealed in every environment, production and staging alike** (Railway: *Variables* > the variable's menu > *Seal*; a sealed value cannot be read back, is not copied into pull-request environments and is not shown by `railway variables`):
+   - `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`, the `rampsmith-backup-<environment>` token of section 10 → RW, sealed. Staging gets the staging token and production the production token, never the other way round.
+   - `BACKUP_DB_PASSWORD`, the password from step 1 → RW, sealed
+   - `BACKUP_SIGNING_KEY`, the contents of that environment's private key file from step 3 (one line) → RW, sealed
    - `BACKUP_AGE_RECIPIENTS`, the two public keys of that environment, one per line (*public*) → RW
-   - `R2_ACCOUNT_ID` and `R2_BUCKET_BACKUPS` from section 10 are already there.
-   Then deploy. At 02:17 UTC the service dumps the database over Railway's private network, encrypts it, uploads it and prunes by the retention rules. The deploy workflow only warns if Railway does not report the cron service's first deployment as successful (ADR-090).
-4. The GitHub environment `backup-drill` (section 0): deployments from `main` only, no required reviewer. Then:
-   - secrets: `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY`, the `rampsmith-drill` token of section 10 (Object Read only); `BACKUP_DRILL_AGE_KEY`, the line that starts with `AGE-SECRET-KEY-1` from `staging-drill.key` (not the comment lines). For example `gh secret set BACKUP_DRILL_AGE_KEY --env backup-drill` and paste the line.
-   - environment variables (not secrets): `gh variable set R2_ACCOUNT_ID --env backup-drill --body <id>` and `gh variable set R2_BUCKET_BACKUPS --env backup-drill --body <bucket>`.
-5. The repository variable, once step 4 is complete: `gh variable set BACKUP_DRILL_READY --body true`. On the next Monday run, or `gh workflow run restore-drill.yml`, the job `live restore (staging)` restores the newest staging backup in a throwaway PostgreSQL 18. Before it starts, `drill-scope` fails if any backup or drill secret exists at repository level, and `drill-protection` fails unless `backup-drill` deploys from `main` only.
+   - `R2_ACCOUNT_ID` and `R2_BUCKET_BACKUPS` from section 10 are already there (the bucket of that environment).
+   Then deploy. At 02:17 UTC the service dumps the database over Railway's private network, encrypts it, uploads it and prunes by the retention rules. The deploy workflow only warns if Railway does not report the cron service's first deployment as successful (ADR-251).
+5. The GitHub environment `backup-drill` (section 0): deployments from `main` only, no required reviewer. Then:
+   - secrets: `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY`, the `rampsmith-drill` token of section 10 (Object Read only, staging bucket); `BACKUP_DRILL_AGE_KEY`, the line that starts with `AGE-SECRET-KEY-1` from `staging-drill.key` (not the comment lines). For example `gh secret set BACKUP_DRILL_AGE_KEY --env backup-drill` and paste the line.
+   - environment variables (not secrets): `gh variable set R2_ACCOUNT_ID --env backup-drill --body <id>` and `gh variable set R2_BUCKET_BACKUPS --env backup-drill --body rampsmith-backups-staging`. The drill refuses any other bucket, and refuses to run if the staging public key is not committed.
+6. Delete two GitHub environments. The first backup design ran as a workflow, and GitHub creates an environment, unprotected, the first time a workflow names one that does not exist. If Settings > Environments lists `backup-production` or `backup-staging`, delete both (`gh api -X DELETE repos/<owner>/<repo>/environments/backup-production`, and the same for `backup-staging`). The `drill-strays` job fails the weekly run while either exists, when the workflow token may list environments, and warns otherwise.
+7. The repository variable, once steps 5 and 6 are complete: `gh variable set BACKUP_DRILL_READY --body true`. On the next Monday run, or `gh workflow run restore-drill.yml`, the job `live restore (staging)` restores the newest staging backup in a throwaway PostgreSQL 18. Before it starts, `drill-scope` fails if any backup or drill secret exists at repository level, and `drill-protection` fails unless `backup-drill` deploys from `main` only. The repository is public, so the job uploads one summary file with fixed fields, never the restored data (ADR-255).
 
 Values:
 - `BACKUP_R2_ACCESS_KEY_ID` → RW
 - `BACKUP_R2_SECRET_ACCESS_KEY` → RW
 - `BACKUP_DB_PASSWORD` → RW
+- `BACKUP_SIGNING_KEY` → RW, sealed, one per environment
 - `BACKUP_AGE_RECIPIENTS` (*public*) → RW
 - `DRILL_R2_ACCESS_KEY_ID` → GH env `backup-drill` only
 - `DRILL_R2_SECRET_ACCESS_KEY` → GH env `backup-drill` only
 - `BACKUP_DRILL_AGE_KEY` → GH env `backup-drill` only, the staging key
 - `BACKUP_DRILL_READY` (*public*) → a repository variable, not a secret
 
-Check: `rsctl doctor --row 16 --environment staging`, with the staging values exported on your machine. It writes, reads back and deletes an object with the backup token, reads with the drill token and expects a write to be refused, and checks the shape of the password, the recipients and the drill key. Then `rsctl doctor --row 6` for the engine's token. It cannot try the database password (the database is on Railway's private network) or that the drill key opens what the recipients encrypt: the first nightly run and the first green `live restore (staging)` job are those checks (LAUNCH.md section E).
+Check: `rsctl doctor --row 16 --environment staging`, with the staging values exported on your machine. It writes, reads back and deletes an object with the backup token, reads with the drill token and expects a write to be refused, and checks the shape of the password, the recipients, the signing key and the drill key. Then `rsctl doctor --row 6` for the engine's token. It cannot try the database password (the database is on Railway's private network) or that the drill key opens what the recipients encrypt: the first nightly run and the first green `live restore (staging)` job are those checks (LAUNCH.md section E).
 
 Docs: [Railway cron jobs](https://docs.railway.com/reference/cron-jobs) (source: `railwayapp/docs`, `content/docs/cron-jobs.md`; the URL is not verified) · [age](https://github.com/FiloSottile/age) · [GitHub: deployment environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) · [gh variable set](https://cli.github.com/manual/gh_variable_set)
 
@@ -570,7 +579,7 @@ Docs: [Railway cron jobs](https://docs.railway.com/reference/cron-jobs) (source:
   - The DKIM CNAMEs can't be proxied.
 - **SES permissions:** the sending user also needs `ses:GetAccount` and `ses:GetEmailIdentity`, or `rsctl doctor --row 7` fails with a 403.
 - **R2 tokens:**
-  - Make three (engine, backup, drill), each scoped to its own bucket and permission; one token for everything would let the engine delete backups.
+  - Make four (engine, backup for each environment, drill), each scoped to its own bucket and permission; one token for everything would let the engine delete backups.
   - The secret is shown only once.
   - Object Read & Write can't change bucket settings, so set lifecycle rules yourself. Through the API, lifecycle rules need a "Workers R2 Storage Write" token.
   - A jurisdiction can't be changed after the bucket exists.

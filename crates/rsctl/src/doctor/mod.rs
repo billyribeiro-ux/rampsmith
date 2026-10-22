@@ -1,6 +1,6 @@
 //! `rsctl doctor`: one probe per founder input in LAUNCH.md section C, rows 1 to 12, plus the
 //! row 15 staging check and the row 16 backup and restore-drill inputs (ADR-151, ADR-152,
-//! ADR-093).
+//! ADR-254).
 //!
 //! Every probe:
 //! - reads only the variables it declares in [`CheckDef::reads`] (the test suite records reads);
@@ -129,7 +129,7 @@ pub const CHECKS: &[CheckDef] = &[
         run: r2::run_evidence,
     },
     // The engine's token covers the evidence bucket only. It is never asked to reach the backups
-    // bucket (so `--strict` does not ask for that); this check fails if it can (ADR-093).
+    // bucket (so `--strict` does not ask for that); this check fails if it can (ADR-254).
     CheckDef {
         id: "r2.engine-not-backups",
         row: 6,
