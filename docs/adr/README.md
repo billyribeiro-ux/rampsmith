@@ -129,6 +129,26 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [261](261-turnstile-integration.md) | Cloudflare Turnstile protects the free scanner; the script and frame are allowed on that page only | Accepted |
 | [262](262-free-scanner-limits.md) | The free scanner's caps and cache live in the web process | Accepted |
 | [263](263-marketing-site-structure.md) | How the marketing site is built | Accepted |
+| [040](040-runtime-database-roles.md) | Runtime database roles and the startup guard | Accepted |
+| [041](041-per-shop-token-lock.md) | The per-shop token lock holds one connection and waits a bounded time | Accepted |
+| [042](042-passkey-start-limits-and-sweep.md) | Rate limits on the passkey start endpoints, and the sweep of expired sign-in state | Accepted |
+| [043](043-egress-ipv6-and-token-horizon.md) | Egress refuses IPv6 outside global unicast, scan tokens have a horizon, and spans carry no hosts | Accepted |
+| [044](044-exchange-writes-are-compare-and-swap.md) | Exchange writes are compare-and-swap | Accepted |
+| [045](045-master-key-rewrap-job.md) | Re-wrapping stored tokens when the master key rotates | Accepted |
+| [046](046-one-session-per-sign-in.md) | A sign-in ends the user's earlier sessions, and session responses are not printable | Accepted |
+| [047](047-leader-connection-and-jobs-isolation.md) | A failed leader check abandons the connection, and `jobs` joins the isolation suite | Accepted |
+| [050](050-browser-network-isolation.md) | Network isolation of the scanning browser | Accepted |
+| [051](051-scrub-stored-selectors-and-urls.md) | Scrubbing stored selectors and page addresses | Accepted |
+| [052](052-engine-database-role-guard.md) | The engine refuses an unsafe database login | Accepted |
+| [053](053-telemetry-url-redaction.md) | Spans leave the process without URLs, tokens or shop names | Accepted |
+| [054](054-csp-shopify-script-directory.md) | The content security policy names Shopify's script directory, not the CDN host | Accepted |
+| [055](055-dashboard-session-cookie-and-caching.md) | The dashboard session cookie carries the `__Host-` prefix, and dashboard pages are never cached | Accepted |
+| [056](056-pnpm-minimum-release-age.md) | pnpm waits a day before installing a new version, and fails rather than fall back | Accepted |
+| [070](070-scan-plan-and-progress.md) | Scan planning, sampling and progress | Accepted |
+| [071](071-storefront-password-and-challenges.md) | Password-protected storefronts and challenges | Accepted |
+| [072](072-ranking-and-fix-kind.md) | Dedupe, ranking and fix kind | Accepted |
+| [073](073-verify-scan.md) | Verification scan semantics | Accepted |
+| [250](250-backup-limits-are-positive-integers-and-drill-permissions.md) | Backup limits are positive integers; the restore drill starts with no token permissions | Accepted |
 
 ## Template
 
