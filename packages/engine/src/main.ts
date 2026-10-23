@@ -10,6 +10,7 @@ import { startTelemetry } from '@rampsmith/telemetry';
 import { runWorker } from '@rampsmith/queue';
 import postgres from 'postgres';
 import { launchEngineBrowser } from './browser.ts';
+import { createEmailRuntime } from './email/runtime.ts';
 import { startHealthServer } from './health.ts';
 import { assertWorkerRole } from './role-guard.ts';
 import { userAgent } from './user-agent.ts';
@@ -58,15 +59,24 @@ async function run(): Promise<void> {
     });
   }
 
-  const handlers = engineHandlers({
-    sql,
-    browser,
-    egress: {
-      proxyUrl: required('EGRESS_PROXY_URL'),
-      tokenSecret: required('EGRESS_TOKEN_SECRET'),
+  // Email is optional for scanning: the missing settings are named once here (no values), and
+  // `email.send` jobs retry until they are set (ADR-273).
+  const email = createEmailRuntime(process.env);
+  for (const problem of email.problems)
+    process.stderr.write(`engine: warning: email: ${problem}\n`);
+
+  const handlers = engineHandlers(
+    {
+      sql,
+      browser,
+      egress: {
+        proxyUrl: required('EGRESS_PROXY_URL'),
+        tokenSecret: required('EGRESS_TOKEN_SECRET'),
+      },
+      userAgent: userAgent(version, process.env['BOT_INFO_URL']),
     },
-    userAgent: userAgent(version, process.env['BOT_INFO_URL']),
-  });
+    email,
+  );
   const workerId = process.env['WORKER_ID'] ?? `engine-${hostname()}-${process.pid.toString()}`;
 
   try {

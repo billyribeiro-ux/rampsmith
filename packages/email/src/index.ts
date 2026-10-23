@@ -8,7 +8,7 @@
  * await guardSender(sesSender).send({ to, idempotencyKey, email });
  * ```
  */
-export { EMAIL_KINDS, isEmailKind, type EmailInput, type EmailKind } from './kinds.ts';
+export { categoryOf, EMAIL_KINDS, isEmailKind, type EmailInput, type EmailKind } from './kinds.ts';
 export {
   createEmailRenderer,
   POSTAL_ADDRESS_PLACEHOLDER,

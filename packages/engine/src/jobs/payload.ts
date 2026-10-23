@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import type {
   AiAltText,
   AuditData,
+  EmailSend,
   ScanFinalize,
   ScanPageV2,
   ScanPlan,
@@ -40,6 +41,7 @@ interface Payloads {
   'audit.data@1': AuditData;
   'ai.alt_text@1': AiAltText;
   'verify.scan@1': VerifyScan;
+  'email.send@1': EmailSend;
 }
 export type PayloadSchema = keyof Payloads;
 
@@ -51,6 +53,7 @@ const FILES: Readonly<Record<PayloadSchema, string>> = {
   'audit.data@1': 'audit-data',
   'ai.alt_text@1': 'ai-alt-text',
   'verify.scan@1': 'verify-scan',
+  'email.send@1': 'email-send',
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

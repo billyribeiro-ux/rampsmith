@@ -6,6 +6,8 @@
  */
 import { altTextHandler } from './jobs/alt-text.ts';
 import { auditDataHandler } from './jobs/audit-data.ts';
+import type { EmailRuntime } from './email/runtime.ts';
+import { emailSendHandler } from './jobs/email-send.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
 import type { JobHandler } from './jobs/payload.ts';
 import { scanPlanHandler } from './jobs/plan.ts';
@@ -19,11 +21,16 @@ export const ENGINE_QUEUES = [
   'audit.data',
   'ai.alt_text',
   'verify.scan',
+  'email.send',
 ] as const;
 export type EngineQueue = (typeof ENGINE_QUEUES)[number];
 
 /** Each engine queue's handler. */
-export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
+export function engineHandlers(
+  deps: EngineDeps,
+  /** Absent: `email.send` jobs fail retryably naming the missing settings (ADR-273). */
+  email?: EmailRuntime,
+): Record<EngineQueue, JobHandler> {
   return {
     'scan.plan': scanPlanHandler(deps),
     'scan.page': scanPageHandler(deps),
@@ -31,5 +38,6 @@ export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler
     'audit.data': auditDataHandler(deps),
     'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
     'verify.scan': verifyScanHandler(deps),
+    'email.send': emailSendHandler({ sql: deps.sql, email }),
   };
 }

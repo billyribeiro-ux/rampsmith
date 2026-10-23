@@ -93,6 +93,7 @@ describe('the engine queue registry (ADR-035)', () => {
     expect([...ENGINE_QUEUES].sort()).toEqual([
       'ai.alt_text',
       'audit.data',
+      'email.send',
       'scan.finalize',
       'scan.page',
       'scan.plan',
