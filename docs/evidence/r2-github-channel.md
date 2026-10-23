@@ -86,3 +86,27 @@ finding is skipped as unmapped.
 
 Section E of LAUNCH.md has the rows: a live pull request on the test repository, the real theme
 read, and pull request state sync. They need rows 3 and 4 of section C. They are not passed.
+
+# R2 GitHub channel, part 3: the App Home screen and the GitHub hops (PR3)
+
+Scope: ADR-291 (App Home section). Local: Node 26.12.0, Chromium at `/tmp/chromium`, the built web
+server against `tests/app-fake-api.ts` and `tests/mock-api.ts`.
+
+| Command | Result |
+| --- | --- |
+| `svelte-check --fail-on-warnings` in `apps/web` | 0 errors, 0 warnings |
+| `vitest run` in `apps/web` | 24 files, all pass (new: `github-connect.test.ts`, proxy and header cases) |
+| `playwright test` over the `app-home` and `site` projects (the dashboard project needs the api binary and is run by CI) | 184 pass, 1 skipped (the live Turnstile check, which names C row 6) |
+| `tests/app-axe.spec.ts`, Code fixes in five states (connected, not connected, plan locked, channel off, api error) | 0 violations at WCAG 2.2 A and AA |
+| `tests/app-codefix.spec.ts` | 6 pass: keyboard-only connect (focus lands on the continue link), repository save, request and follow to a pull request, disconnect, plan gate, flag off |
+| `tests/site-github.spec.ts` | 9 pass: cookie flags and redirect, malformed state, callback hands the cookie state to the api and clears the cookie, no cookie never reaches the api, the api's 403/409/400/502 shown as words, bad installation id |
+| `cargo test -p rampsmith-rsctl` | pass, including the registry test with `GITHUB_APP_SLUG` in C row 4 and the new slug mismatch case |
+| `knip`, `eslint`, `prettier --check`, claims lint | clean |
+
+The Svelte autofixer was run on the screen's script and markup patterns: no issues, only the
+polling-in-`$effect` suggestions that the existing Fixes screen shares.
+
+## Not proved here
+
+The real Polaris components, the real GitHub redirect and whether GitHub echoes `state`: LAUNCH.md
+section E has the row. Not passed.

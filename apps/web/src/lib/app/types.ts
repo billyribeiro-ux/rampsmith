@@ -287,3 +287,63 @@ export type Draft<T> = {
       ? Draft<T[K]>
       : T[K];
 };
+
+/** The "Code fixes" screen (`GET /v1/shopify/code-fixes`, ADR-290). */
+export interface CodeFixes {
+  /** False when the channel is switched off on the server: the screen says so and shows nothing else. */
+  readonly enabled: boolean;
+  readonly plan: { readonly gate: FeatureGate['gate']; readonly unlocked_by: PlanHandle | null };
+  readonly connection: GithubConnection | null;
+  readonly repositories: readonly GithubRepository[];
+  readonly batches: readonly CodeFixBatch[];
+  readonly pull_requests: readonly CodeFixPullRequest[];
+}
+
+interface GithubConnection {
+  readonly account: string;
+  readonly account_type: string;
+  readonly status: string;
+  readonly repository_selection: string;
+  readonly connected_by: string | null;
+  readonly linked_at: string;
+}
+
+export interface GithubRepository {
+  readonly id: string;
+  readonly full_name: string;
+  readonly default_branch: string;
+  readonly visibility: 'private' | 'public';
+  readonly archived: boolean;
+  readonly can_push: boolean;
+  readonly selected: boolean;
+  readonly connected_branch: string | null;
+  /** `unchecked`, `ok` or a reason the repository is not a theme. */
+  readonly theme_state: string;
+}
+
+export type CodeFixBatchStatus =
+  'reading' | 'patching' | 'ready' | 'opening' | 'opened' | 'nothing_to_fix' | 'failed';
+
+export interface CodeFixBatch {
+  readonly id: string;
+  readonly status: CodeFixBatchStatus;
+  readonly recipes: 'core' | 'every';
+  readonly considered: number | null;
+  readonly fixed: number | null;
+  readonly skipped: readonly { readonly code: string; readonly count: number }[];
+  readonly failure_code: string | null;
+  readonly created_at: string;
+}
+
+export interface CodeFixPullRequest {
+  readonly id: string;
+  readonly number: number;
+  readonly part: number;
+  readonly state: 'open' | 'merged' | 'closed';
+  readonly html_url: string;
+  readonly fix_count: number;
+  readonly files: number;
+  readonly changed_lines: number;
+  readonly edited: boolean;
+  readonly opened_at: string;
+}

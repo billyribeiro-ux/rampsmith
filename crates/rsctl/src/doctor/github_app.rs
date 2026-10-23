@@ -27,6 +27,7 @@ pub(super) const READS: &[Var] = &[
     Var::GithubAppPrivateKey,
     Var::GithubAppWebhookSecret,
     Var::GithubAppClientSecret,
+    Var::GithubAppSlug,
 ];
 
 /// The REST API version header. The OpenAPI description for 2026-03-10 is what the fields
@@ -127,6 +128,15 @@ async fn probe(ctx: &Ctx) -> Step<Outcome> {
     {
         return Ok(Outcome::fail(
             "GET /app reports a client id that differs from GITHUB_APP_CLIENT_ID",
+        ));
+    }
+    // The web server builds the installation link from this name (ADR-291): a wrong one sends
+    // merchants to somebody else's App page, or to a 404.
+    if let Some(found) = &app.slug
+        && found != inputs.text(Var::GithubAppSlug)
+    {
+        return Ok(Outcome::fail(
+            "GET /app reports a slug that differs from GITHUB_APP_SLUG",
         ));
     }
     let slug = app

@@ -61,6 +61,12 @@ const SCREENS: readonly Screen[] = [
     scenarios: ['default', 'fresh', 'error'],
   },
   {
+    name: 'code fixes',
+    path: '/app/code-fixes',
+    heading: 'Code fixes',
+    scenarios: ['codefix', 'codefix_new', 'codefix_locked', 'codefix_off', 'error'],
+  },
+  {
     name: 'settings',
     path: '/app/settings',
     heading: 'Settings',

@@ -11,6 +11,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import process from 'node:process';
 import type {
   AltTextChange,
+  CodeFixes,
   Entitlements,
   FeatureGate,
   FeatureKey,
@@ -29,7 +30,18 @@ import type {
 
 const port = Number(process.env['FAKE_API_PORT'] ?? '3984');
 
-export type ScenarioName = 'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error' | 'flagged';
+export type ScenarioName =
+  | 'default'
+  | 'free'
+  | 'starter'
+  | 'fresh'
+  | 'empty'
+  | 'error'
+  | 'flagged'
+  | 'codefix'
+  | 'codefix_new'
+  | 'codefix_locked'
+  | 'codefix_off';
 
 interface Product {
   readonly title: string;
@@ -168,6 +180,10 @@ interface Scenario {
   emailOff: boolean;
   statement: StatementState;
   failing: boolean;
+  /** The pull-request channel's screen; absent when the scenario predates it (404). */
+  codeFixes?: CodeFixes;
+  /** Reads left before the newest batch finishes. */
+  batchSteps: number;
   firstFixAt: string | null;
   seq: number;
 }
@@ -338,6 +354,94 @@ function populate(s: Scenario, withFixes: 'review' | 'history' | 'none'): void {
   });
 }
 
+const REPOS: CodeFixes['repositories'] = [
+  {
+    id: '1001',
+    full_name: 'demo-store/theme',
+    default_branch: 'main',
+    visibility: 'private',
+    archived: false,
+    can_push: true,
+    selected: false,
+    connected_branch: null,
+    theme_state: 'unchecked',
+  },
+  {
+    id: '1002',
+    full_name: 'demo-store/theme-staging',
+    default_branch: 'develop',
+    visibility: 'private',
+    archived: false,
+    can_push: true,
+    selected: false,
+    connected_branch: null,
+    theme_state: 'unchecked',
+  },
+];
+
+function codeFixesFor(name: ScenarioName): CodeFixes {
+  const connected = name === 'codefix';
+  return {
+    enabled: name !== 'codefix_off',
+    plan:
+      name === 'codefix_locked'
+        ? { gate: 'locked', unlocked_by: 'starter' }
+        : { gate: 'allowed', unlocked_by: null },
+    connection: connected
+      ? {
+          account: 'demo-store',
+          account_type: 'Organization',
+          status: 'active',
+          repository_selection: 'selected',
+          connected_by: 'ada',
+          linked_at: iso(-60),
+        }
+      : null,
+    repositories: connected ? REPOS : [],
+    batches: [],
+    pull_requests: [],
+  };
+}
+
+/** One read of the screen moves the newest batch on, as the background jobs would. */
+function advanceBatch(cf: CodeFixes): CodeFixes {
+  const [latest, ...older] = cf.batches;
+  if (latest === undefined || state.batchSteps <= 0) return cf;
+  state.batchSteps -= 1;
+  if (state.batchSteps > 0)
+    return { ...cf, batches: [{ ...latest, status: 'patching' }, ...older] };
+  return {
+    ...cf,
+    batches: [
+      {
+        ...latest,
+        status: 'opened',
+        considered: 12,
+        fixed: 7,
+        skipped: [
+          { code: 'refused', count: 3 },
+          { code: 'no-recipe', count: 2 },
+        ],
+      },
+      ...older,
+    ],
+    pull_requests: [
+      {
+        id: uuid(0x900),
+        number: 41,
+        part: 1,
+        state: 'open',
+        html_url: 'https://github.com/demo-store/theme/pull/41',
+        fix_count: 7,
+        files: 4,
+        changed_lines: 19,
+        edited: false,
+        opened_at: iso(5),
+      },
+    ],
+  };
+}
+
 function scenario(name: ScenarioName): Scenario {
   const plan: PlanHandle =
     name === 'free' || name === 'fresh' ? 'free' : name === 'starter' ? 'starter' : 'growth';
@@ -360,6 +464,7 @@ function scenario(name: ScenarioName): Scenario {
     emailOff: false,
     statement: { draft: null, versions: [] },
     failing: name === 'error',
+    batchSteps: 0,
     firstFixAt: null,
     seq: 100,
   };
@@ -388,6 +493,9 @@ function scenario(name: ScenarioName): Scenario {
     }
   } else if (name === 'empty') {
     s.scan = scan(2, 'succeeded', 6);
+  } else if (name.startsWith('codefix')) {
+    s.scan = scan(2, 'succeeded', 6);
+    s.codeFixes = codeFixesFor(name);
   }
   return s;
 }
@@ -489,6 +597,63 @@ function overview(): Overview {
   };
 }
 
+function codeFixRoute(method: string, path: string, body: Record<string, unknown>): Reply {
+  const cf = state.codeFixes;
+  if (cf === undefined) return problem(404, 'not_found', 'Not found');
+  if (method === 'GET' && path === 'code-fixes') {
+    state.codeFixes = advanceBatch(cf);
+    return { status: 200, body: state.codeFixes };
+  }
+  if (!cf.enabled) return problem(404, 'not_found', 'Not found');
+  if (cf.plan.gate !== 'allowed') return problem(403, 'forbidden', 'Needs a higher plan');
+  if (method === 'POST' && path === 'code-fixes/connection') {
+    return { status: 200, body: { state: 'A'.repeat(43) } };
+  }
+  if (method === 'DELETE' && path === 'code-fixes/connection') {
+    state.codeFixes = { ...cf, connection: null, repositories: [], batches: [] };
+    return { status: 200, body: state.codeFixes };
+  }
+  if (method === 'PUT' && path === 'code-fixes/repository') {
+    const id = body['repository_id'];
+    const branch = body['connected_branch'];
+    if (typeof id !== 'string' || typeof branch !== 'string' || branch === '')
+      return problem(422, 'validation_failed', 'Invalid repository');
+    state.codeFixes = {
+      ...cf,
+      repositories: cf.repositories.map((r) => ({
+        ...r,
+        selected: r.id === id,
+        connected_branch: r.id === id ? branch : null,
+        theme_state: r.id === id ? 'ok' : 'unchecked',
+      })),
+    };
+    return { status: 200, body: state.codeFixes };
+  }
+  if (method === 'POST' && path === 'code-fixes/batches') {
+    if (!cf.repositories.some((r) => r.selected && r.theme_state === 'ok'))
+      return problem(409, 'conflict', 'Choose a theme repository first');
+    state.batchSteps = 2;
+    state.codeFixes = {
+      ...cf,
+      batches: [
+        {
+          id: uuid(0x910),
+          status: 'reading',
+          recipes: 'every',
+          considered: null,
+          fixed: null,
+          skipped: [],
+          failure_code: null,
+          created_at: iso(4),
+        },
+        ...cf.batches,
+      ],
+    };
+    return { status: 202, body: { id: uuid(0x910), status: 'reading', recipes: 'every' } };
+  }
+  return problem(404, 'not_found', 'Not found');
+}
+
 function route(method: string, url: URL, body: Record<string, unknown>): Reply {
   const path = url.pathname.replace(/^\/v1\/shopify\//u, '');
   const id = path.split('/')[1] ?? '';
@@ -585,6 +750,7 @@ function route(method: string, url: URL, body: Record<string, unknown>): Reply {
   }
   if (method === 'GET' && path.startsWith('evidence/'))
     return { status: 200, raw: PNG, type: 'image/png' };
+  if (path.startsWith('code-fixes')) return codeFixRoute(method, path, body);
   if (method === 'GET' && path === 'settings') return { status: 200, body: state.settings };
   if (method === 'PUT' && path === 'settings') {
     const errors: { field: string; message: string }[] = [];

@@ -163,14 +163,44 @@ async function emailLinks(request: IncomingMessage, response: ServerResponse): P
   return true;
 }
 
+/** What the GitHub callback route sent, for the tests to read back (never the real code). */
+const githubCallbacks: object[] = [];
+
+async function githubHops(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const path = request.url ?? '';
+  if (request.method === 'GET' && path === '/__github') {
+    response
+      .writeHead(200, { 'content-type': 'application/json' })
+      .end(JSON.stringify(githubCallbacks));
+    return true;
+  }
+  if (request.method !== 'POST' || path !== '/v1/github/callback') return false;
+  const body = JSON.parse((await readBody(request)) || '{}') as Record<string, unknown>;
+  githubCallbacks.push(body);
+  const status = { denied: 403, taken: 409, spent: 400, down: 502 }[String(body['code'])] ?? 200;
+  response
+    .writeHead(status, {
+      'content-type': status === 200 ? 'application/json' : 'application/problem+json',
+    })
+    .end(JSON.stringify(status === 200 ? { connected: true } : { status, code: 'x' }));
+  return true;
+}
+
 createServer((request, response) => {
+  void githubHops(request, response).then((github) => {
+    if (github) return;
+    route2(request, response);
+  });
+}).listen(port, '127.0.0.1');
+
+function route2(request: IncomingMessage, response: ServerResponse): void {
   void emailLinks(request, response).then((done) => {
     if (done) return;
     void freeScans(request, response).then((handled) => {
       if (!handled) route(request, response);
     });
   });
-}).listen(port, '127.0.0.1');
+}
 
 function route(request: IncomingMessage, response: ServerResponse): void {
   if (request.method === 'GET' && request.url === '/healthz') {

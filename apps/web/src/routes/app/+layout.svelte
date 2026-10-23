@@ -29,6 +29,8 @@
   setAppContext(app);
 
   let session = $state<'connecting' | 'ready' | 'failed'>('connecting');
+  /** Whether the pull-request channel is switched on; the link to its screen shows only then. */
+  let codeFixes = $state(false);
 
   $effect(() => {
     app.carry = carriedQuery(page.url.searchParams);
@@ -40,6 +42,12 @@
       const started = await app.api.startSession();
       app.shop = started.shop;
       session = 'ready';
+      app.api.codeFixes().then(
+        (screen) => {
+          codeFixes = screen.enabled;
+        },
+        () => undefined,
+      );
     } catch {
       session = 'failed';
     }
@@ -53,6 +61,7 @@
     { path: '/app', label: m.app_nav_overview(), home: true },
     { path: '/app/findings', label: m.app_nav_findings(), home: false },
     { path: '/app/fixes', label: m.app_nav_fixes(), home: false },
+    ...(codeFixes ? [{ path: '/app/code-fixes', label: m.app_nav_codefixes(), home: false }] : []),
     { path: '/app/log', label: m.app_nav_log(), home: false },
     { path: '/app/statement', label: m.app_nav_statement(), home: false },
     { path: '/app/settings', label: m.app_nav_settings(), home: false },

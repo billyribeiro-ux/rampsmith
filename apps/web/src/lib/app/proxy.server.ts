@@ -38,6 +38,10 @@ const ROUTES: readonly Route[] = [
   { methods: ['GET', 'PUT'], path: /^settings$/u, query: [] },
   { methods: ['GET', 'PUT'], path: /^email-preferences$/u, query: [] },
   { methods: ['GET', 'PUT'], path: /^statement$/u, query: [] },
+  { methods: ['GET'], path: /^code-fixes$/u, query: [] },
+  { methods: ['POST', 'DELETE'], path: /^code-fixes\/connection$/u, query: [] },
+  { methods: ['PUT'], path: /^code-fixes\/repository$/u, query: [] },
+  { methods: ['POST'], path: /^code-fixes\/batches$/u, query: [] },
 ];
 
 const SAFE_VALUE = /^[A-Za-z0-9_.:=+/-]{1,300}$/u;
@@ -79,7 +83,7 @@ export async function forward(
   if (authorization === undefined) return unauthenticated();
 
   const init: RequestInit = { method: request.method };
-  if (request.method === 'POST' || request.method === 'PUT') {
+  if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') {
     const body = await request.text();
     if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) {
       return problem(413, 'payload_too_large', 'Request too large');

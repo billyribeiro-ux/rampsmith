@@ -15,6 +15,12 @@ const DASHBOARD = /^\/dashboard(\/|$)/;
  */
 const EMAIL_LINK = /^\/email(\/|$)/;
 
+/**
+ * The two GitHub hops carry a one-time `code` and `state` in their addresses, so no other site
+ * may see them in a Referer and no cache may keep the answer (ADR-291).
+ */
+const GITHUB_HOP = /^\/github(\/|$)/;
+
 export function securityHeaders(url: URL, headers: Headers): void {
   const framing = EMBEDDED.test(url.pathname) ? frameAncestors(url) : "frame-ancestors 'none'";
   const csp = headers.get('content-security-policy');
@@ -25,10 +31,14 @@ export function securityHeaders(url: URL, headers: Headers): void {
   headers.set('x-content-type-options', 'nosniff');
   headers.set(
     'referrer-policy',
-    EMAIL_LINK.test(url.pathname) ? 'same-origin' : 'strict-origin-when-cross-origin',
+    EMAIL_LINK.test(url.pathname)
+      ? 'same-origin'
+      : GITHUB_HOP.test(url.pathname)
+        ? 'no-referrer'
+        : 'strict-origin-when-cross-origin',
   );
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-  if (EMAIL_LINK.test(url.pathname)) {
+  if (EMAIL_LINK.test(url.pathname) || GITHUB_HOP.test(url.pathname)) {
     // Not cached and not indexed. Set here and not with `setHeaders`: a load and an action both
     // setting a header on one request is an error in SvelteKit.
     headers.set('cache-control', 'private, no-store');
