@@ -2301,7 +2301,9 @@ async fn only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_
 ) {
     let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
     let owner = owner_pool(opts.clone(), conn.clone()).await;
-    sqlx::query("delete from scans")
+    // The seeded tenants' scans are referenced by findings, fixes and evidence; this test
+    // needs shops with no scan at all, so it clears them with everything that points at them.
+    sqlx::query("truncate table scans cascade")
         .execute(&owner)
         .await
         .unwrap();
