@@ -2,7 +2,7 @@
 
 Draft for the founder, to paste into the "testing instructions" part of the app submission form.
 Nothing here is submitted. Updated 23 October 2026 for the App Store build: **the code-fix
-channel is off** (ADR-141), so there is no Code screen, no GitHub connection and no theme to
+channel is off** (ADR-141; the flag is `CODE_FIX_CHANNEL_ENABLED`, ADR-290), so there is no Code screen, no GitHub connection and no theme to
 download. Every step below runs in the App Store build, and each was exercised against the typed
 fake api by the tests named in the last column of the table at the end. Before submission the
 founder runs every step once on a development store with the real admin (LAUNCH.md section E).

@@ -48,7 +48,7 @@ what proves it today; the `release-verifier` checks the table before submission.
 | Optional footer link and barrier-report form (theme app embed) | Yes; off until the merchant turns it on; the app links to the theme editor to do so | `packages/theme-app-ext-test`, `app-review.spec.ts` (setup deep link) |
 | Corrected headings and link text in descriptions and pages | No (PLAN §5 R2, Growth plan); the app shows it as a locked feature | Not built; not in the copy |
 | Daily scans and regression alerts | No (PLAN §5 R2) | Not built; not in the copy |
-| Pull requests for the merchant's developer | Built behind a flag that is off in the App Store build (ADR-141) | Not in the copy |
+| Pull requests for the merchant's developer | Built behind a flag that is off in the App Store build (ADR-141, ADR-290) | Not in the copy |
 | Patched theme package | Retired (ADR-141, requirement 1.1.3) | Not in the copy |
 
 ## App name
