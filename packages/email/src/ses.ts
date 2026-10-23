@@ -21,6 +21,12 @@ export interface SesConfig extends AwsCredentials {
   readonly region: string;
   /** `EMAIL_FROM`: `name@example.com` or `Name <name@example.com>`. */
   readonly from: string;
+  /**
+   * `SES_CONFIGURATION_SET`: the SES configuration set every message is sent through. Its event
+   * destination is what delivers bounces and complaints to the api (ADR-278). Without it the
+   * message is sent and nothing reports a bounce, so LAUNCH.md C row 7 asks for it.
+   */
+  readonly configurationSet?: string | undefined;
   /** Tests only: the base URL of a stand-in for SES. HTTPS, or HTTP on a loopback host. */
   readonly endpoint?: string | undefined;
   /** Tests only. */
@@ -38,6 +44,8 @@ export class SesConfigError extends Error {
 }
 
 const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d{1,2}$/u;
+/** SES: letters, digits, underscores and hyphens, at most 64 characters. */
+const CONFIGURATION_SET = /^[A-Za-z0-9_-]{1,64}$/u;
 const DISPLAY_NAME = /^[ -~]{1,70}$/u;
 const SENDING_PATH = '/v2/email/outbound-emails';
 const SERVICE = 'ses';
@@ -170,6 +178,11 @@ export function createSesSender(config: SesConfig): EmailSender {
     throw new SesConfigError('SES_ACCESS_KEY_ID and SES_SECRET_ACCESS_KEY must be set');
   }
   const from = fromHeader(config.from);
+  if (config.configurationSet !== undefined && !CONFIGURATION_SET.test(config.configurationSet)) {
+    throw new SesConfigError(
+      'SES_CONFIGURATION_SET is not a configuration set name (letters, digits, - and _, at most 64)',
+    );
+  }
   const endpoint = endpointFor(config);
   const doFetch = config.fetch ?? fetch;
   const now = config.now ?? (() => new Date());
@@ -203,6 +216,9 @@ export function createSesSender(config: SesConfig): EmailSender {
       const body = JSON.stringify({
         FromEmailAddress: from,
         Destination: { ToAddresses: [message.to] },
+        ...(config.configurationSet === undefined
+          ? {}
+          : { ConfigurationSetName: config.configurationSet }),
         Content: {
           Simple: {
             Subject: { Data: encodeSubject(email.subject), Charset: 'UTF-8' },
@@ -292,6 +308,9 @@ export function sesConfigFromEnv(
     accessKeyId: (env['SES_ACCESS_KEY_ID'] ?? '').trim(),
     secretAccessKey: (env['SES_SECRET_ACCESS_KEY'] ?? '').trim(),
     from: (env['EMAIL_FROM'] ?? '').trim(),
+    ...((env['SES_CONFIGURATION_SET'] ?? '').trim() === ''
+      ? {}
+      : { configurationSet: (env['SES_CONFIGURATION_SET'] ?? '').trim() }),
     ...((env['SES_SESSION_TOKEN'] ?? '') === ''
       ? {}
       : { sessionToken: (env['SES_SESSION_TOKEN'] ?? '').trim() }),

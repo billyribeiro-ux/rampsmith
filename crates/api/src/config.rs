@@ -39,6 +39,9 @@ pub struct Config {
     /// The keys of the links in email and the app's origin (`EMAIL_LINK_KEYS`, `APP_ORIGIN`;
     /// ADR-274). Both or neither: without them the unsubscribe and preferences routes answer 503.
     pub email_links: Option<crate::email_link::EmailLinks>,
+    /// The SNS topic whose SES bounce and complaint events are accepted (`SES_SNS_TOPIC_ARN`;
+    /// ADR-278). Without it `/webhooks/ses` does not exist.
+    pub ses_sns_topic: Option<crate::ses_events::SnsTopic>,
     /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).
     pub webauthn_rp_id: String,
     /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
@@ -154,7 +157,17 @@ impl Config {
         let partner = partner_config(&get)?;
         let free_scan = free_scan_config(&get)?;
         let email_links = email_links_config(&get)?;
+        let ses_sns_topic = match get("SES_SNS_TOPIC_ARN") {
+            None => None,
+            Some(arn) => Some(crate::ses_events::SnsTopic::parse(arn.trim()).map_err(|e| {
+                ConfigError::Invalid {
+                    name: "SES_SNS_TOPIC_ARN",
+                    reason: e.to_string(),
+                }
+            })?),
+        };
         Ok(Self {
+            ses_sns_topic,
             partner,
             free_scan,
             email_links,
@@ -406,6 +419,33 @@ mod tests {
             c.database_url.expose_secret(),
             "postgres://app@db/rampsmith"
         );
+    }
+
+    #[test]
+    fn the_ses_topic_is_optional_and_must_be_a_topic_arn_when_set() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        assert!(config(&[base]).unwrap().ses_sns_topic.is_none());
+        let arn = "arn:aws:sns:eu-west-1:123456789012:rampsmith-ses-events";
+        let topic = config(&[base, ("SES_SNS_TOPIC_ARN", arn)])
+            .unwrap()
+            .ses_sns_topic
+            .unwrap();
+        assert_eq!(topic.arn(), arn);
+        for bad in [
+            "rampsmith-ses-events",
+            "arn:aws:sqs:eu-west-1:123456789012:q",
+        ] {
+            assert!(
+                matches!(
+                    config(&[base, ("SES_SNS_TOPIC_ARN", bad)]).unwrap_err(),
+                    ConfigError::Invalid {
+                        name: "SES_SNS_TOPIC_ARN",
+                        ..
+                    }
+                ),
+                "{bad:?}"
+            );
+        }
     }
 
     #[test]

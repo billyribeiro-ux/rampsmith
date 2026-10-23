@@ -378,6 +378,8 @@ def _api(env: str, inputs: Inputs) -> Any:
         # Checks the signed links in email (ADR-274); the engine, which mints them, holds the
         # same ring, and nothing else does.
         "EMAIL_LINK_KEYS": shared("EMAIL_LINK_KEYS"),
+        # The SNS topic whose SES bounce and complaint events `/webhooks/ses` accepts (ADR-278).
+        "SES_SNS_TOPIC_ARN": shared("SES_SNS_TOPIC_ARN"),
         "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }
@@ -466,6 +468,9 @@ def _mailer(env: str, inputs: Inputs) -> Any:
         "SES_ACCESS_KEY_ID": shared("SES_ACCESS_KEY_ID"),
         "SES_SECRET_ACCESS_KEY": shared("SES_SECRET_ACCESS_KEY"),
         "EMAIL_FROM": shared("EMAIL_FROM"),
+        # Every message goes through this set, whose event destination reports bounces and
+        # complaints to the api (ADR-278).
+        "SES_CONFIGURATION_SET": shared("SES_CONFIGURATION_SET"),
         # Required in marketing mail (ADR-191); the sender refuses to send such mail without it.
         "EMAIL_POSTAL_ADDRESS": shared("EMAIL_POSTAL_ADDRESS"),
         # Mints the unsubscribe and preferences links (ADR-274), and the address a mail client

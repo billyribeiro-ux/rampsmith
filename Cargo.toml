@@ -33,9 +33,12 @@ opentelemetry = "0.33.1"
 opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
 opentelemetry_sdk = { version = "0.33.1", features = ["rt-tokio"] }
 proptest = "1.12.0"
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 queue = { package = "rampsmith-queue", path = "crates/queue" }
 rand = "0.10.3"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form", "json", "http2"] }
+rustls-pki-types = "1.15.1"
+rustls-webpki = { version = "0.103.16", default-features = false, features = ["aws-lc-rs", "std"] }
 schemars = "1.2.3"
 secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
