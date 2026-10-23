@@ -24,3 +24,13 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * The root error page. SvelteKit loads that page's code before it starts, so a scoped <style>
+ * here would add a second request to every first load (ADR-300).
+ */
+.error-page {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+}
