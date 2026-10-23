@@ -140,6 +140,14 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    sqlx::query(
+        "insert into webhook_digests (tenant_id, body_sha256, topic, expires_at)
+         values ($1, decode(repeat('ab', 32), 'hex'), 'app/uninstalled', now() + interval '1 day')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 }
 
@@ -406,7 +414,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 20] = [
+const TENANT_TABLES: [&str; 21] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -428,10 +436,11 @@ const TENANT_TABLES: [&str; 20] = [
     "ai_budgets",
     "ai_reservations",
     "webhook_events",
+    "webhook_digests",
 ];
 
 /// The tables ADR-037 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 8] = [
+const R1_TABLES: [&str; 9] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -440,6 +449,7 @@ const R1_TABLES: [&str; 8] = [
     "ai_budgets",
     "ai_reservations",
     "webhook_events",
+    "webhook_digests",
 ];
 
 #[sqlx::test]
@@ -773,7 +783,13 @@ async fn r1_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
         );
     }
     // Updates and deletes of the other tenant's rows touch nothing.
-    for table in ["scan_inputs", "evidence", "statements", "webhook_events"] {
+    for table in [
+        "scan_inputs",
+        "evidence",
+        "statements",
+        "webhook_events",
+        "webhook_digests",
+    ] {
         let deleted = as_tenant(
             &pool,
             a.tenant,

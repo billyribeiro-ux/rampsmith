@@ -409,6 +409,34 @@ async fn an_unreadable_body_is_a_decode_error_and_a_dead_token_is_recognised() {
 }
 
 #[tokio::test]
+async fn the_grant_check_asks_for_the_shop_id_only_and_only_a_401_is_a_dead_grant() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "RampsmithGrant",
+        json!({"data": {"shop": {"id": "gid://shopify/Shop/1"}}}),
+    )
+    .await;
+    client(&server).grant_check().await.unwrap();
+    let request = &server.received_requests().await.unwrap()[0];
+    let sent = String::from_utf8_lossy(&request.body).into_owned();
+    assert!(
+        sent.contains("shop { id }") && !sent.contains("themes"),
+        "{sent}"
+    );
+
+    for (status, dead) in [(401, true), (403, false), (503, false)] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(json!({})))
+            .mount(&server)
+            .await;
+        let error = client(&server).grant_check().await.unwrap_err();
+        assert_eq!(error.is_token_dead(), dead, "HTTP {status}: {error:?}");
+    }
+}
+
+#[tokio::test]
 async fn the_throttle_follows_what_responses_report() {
     let server = MockServer::start().await;
     answer(&server, "RampsmithShop", fixture("shop")).await;

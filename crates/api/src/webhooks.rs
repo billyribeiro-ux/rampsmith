@@ -153,6 +153,45 @@ fn topic_is_well_formed(topic: &str) -> bool {
         })
 }
 
+/// Whether `body` has the shape Shopify documents for `topic`. The topic header is not covered
+/// by the signature, so a signed body captured under one topic could be resent under another:
+/// a body that is not shaped like its topic is refused (lane A audit H1, ADR-085).
+///
+/// - `shop/redact`: exactly `{shop_id, shop_domain}`;
+/// - `customers/data_request`, `customers/redact`: `shop_id`, `shop_domain` and a `customer`
+///   object;
+/// - `app/uninstalled`, `shop/update`: the shop object, which names `myshopify_domain` (and
+///   never the compliance payloads' `shop_domain`).
+fn body_fits_topic(topic: &str, body: &serde_json::Value) -> bool {
+    let Some(map) = body.as_object() else {
+        return false;
+    };
+    match topic {
+        "shop/redact" => {
+            map.len() == 2
+                && map.get("shop_id").is_some_and(serde_json::Value::is_u64)
+                && map
+                    .get("shop_domain")
+                    .is_some_and(serde_json::Value::is_string)
+        }
+        "customers/data_request" | "customers/redact" => {
+            map.get("shop_id").is_some_and(serde_json::Value::is_u64)
+                && map
+                    .get("shop_domain")
+                    .is_some_and(serde_json::Value::is_string)
+                && map
+                    .get("customer")
+                    .is_some_and(serde_json::Value::is_object)
+        }
+        "app/uninstalled" | "shop/update" => {
+            map.get("myshopify_domain")
+                .is_some_and(serde_json::Value::is_string)
+                && !map.contains_key("shop_domain")
+        }
+        _ => false,
+    }
+}
+
 fn delivery_id_is_well_formed(id: &str) -> bool {
     (1..=200).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_graphic())
 }
@@ -189,8 +228,33 @@ async fn shopify(
         return Err(unauthorized());
     }
 
-    // 5. Trusted from here on.
-    let topic = header(&parts.headers, TOPIC).ok_or_else(|| {
+    store_verified(&state, &parts.headers, &body).await
+}
+
+/// Whether a `shop/redact` body names the shop by the Shopify id stored for it. The id is
+/// recorded by the first scan; before that nothing can be compared and the worker's grant
+/// check is the only guard.
+async fn redact_names_this_shop(
+    tx: &mut db::TenantTx,
+    shop: domain::ShopId,
+    body: &serde_json::Value,
+) -> Result<bool, db::DbError> {
+    let Some(stored) = db::repo::shopify::shop_gid(tx, shop).await? else {
+        return Ok(true);
+    };
+    let named = body.get("shop_id").and_then(serde_json::Value::as_u64);
+    Ok(named
+        .map(|id| format!("gid://shopify/Shop/{id}"))
+        .is_some_and(|gid| gid == stored))
+}
+
+/// Steps 5 and 6: everything after the signature checked out.
+async fn store_verified(
+    state: &WebhookState,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<StatusCode, ApiError> {
+    let topic = header(headers, TOPIC).ok_or_else(|| {
         ApiError::new(ProblemCode::BadRequest).detail("X-Shopify-Topic is missing.")
     })?;
     if !topic_is_well_formed(topic) {
@@ -200,20 +264,20 @@ async fn shopify(
         debug!(topic, "webhook topic not handled; acknowledged");
         return Ok(StatusCode::OK);
     }
-    let shop = header(&parts.headers, SHOP_DOMAIN)
+    let shop = header(headers, SHOP_DOMAIN)
         .and_then(|v| ShopDomain::parse(v.trim()).ok())
         .ok_or_else(|| {
             ApiError::new(ProblemCode::BadRequest)
                 .detail("X-Shopify-Shop-Domain is missing or malformed.")
         })?;
-    let delivery = header(&parts.headers, WEBHOOK_ID)
+    let delivery = header(headers, WEBHOOK_ID)
         .map(str::trim)
         .filter(|id| delivery_id_is_well_formed(id))
         .ok_or_else(|| {
             ApiError::new(ProblemCode::BadRequest)
                 .detail("X-Shopify-Webhook-Id is missing or malformed.")
         })?;
-    let json: serde_json::Value = serde_json::from_slice(&body)
+    let json: serde_json::Value = serde_json::from_slice(body)
         .map_err(|_| ApiError::new(ProblemCode::BadRequest).detail("The body is not JSON."))?;
     // The shop header is unsigned and the body is signed: they must name the same shop, or a
     // captured delivery of one shop could be filed under another (and, for `shop/redact`,
@@ -229,7 +293,16 @@ async fn shopify(
         );
         return Err(unauthorized());
     }
-    let digest: [u8; 32] = Sha256::digest(&body).into();
+    if !body_fits_topic(topic, &json) {
+        warn!(
+            topic,
+            reason = "body_not_for_topic",
+            "webhook refused: the body is not shaped like its topic"
+        );
+        return Err(ApiError::new(ProblemCode::BadRequest)
+            .detail("The body does not match the X-Shopify-Topic."));
+    }
+    let digest: [u8; 32] = Sha256::digest(body).into();
 
     let Some(shop_ref) = state.db.shop_by_domain(shop.as_str()).await? else {
         // A shop that never installed, or whose row is gone. Nothing to do; acknowledging
@@ -239,6 +312,14 @@ async fn shopify(
     };
 
     let mut tx = state.db.tenant(shop_ref.tenant).await?;
+    if topic == "shop/redact" && !redact_names_this_shop(&mut tx, shop_ref.shop, &json).await? {
+        warn!(
+            reason = "shop_id_mismatch",
+            "webhook refused: shop/redact names another shop id than the stored one"
+        );
+        tx.rollback().await?;
+        return Err(unauthorized());
+    }
     let recorded = webhooks::record(
         &mut tx,
         &NewWebhook {

@@ -74,9 +74,37 @@ async fn fixture(opts: PgPoolOptions, conn: PgConnectOptions) -> Fixture {
     }
 }
 
-/// A body that names its shop, as every real payload does.
+/// A shop object, as `shop/update` and `app/uninstalled` carry it.
 fn named(id: u32) -> Value {
-    json!({"id": id, "shop_domain": SHOP})
+    json!({"id": id, "myshopify_domain": SHOP})
+}
+
+/// A body shaped like Shopify's documented payload for `topic`.
+fn body_for(topic: &str) -> Value {
+    match topic {
+        "shop/redact" => json!({"shop_id": 954_889, "shop_domain": SHOP}),
+        "customers/data_request" => json!({
+            "shop_id": 954_889, "shop_domain": SHOP,
+            "customer": {"id": 191_167}, "data_request": {"id": 9999}
+        }),
+        "customers/redact" => json!({
+            "shop_id": 954_889, "shop_domain": SHOP,
+            "customer": {"id": 191_167}, "orders_to_redact": [299_938]
+        }),
+        "app/uninstalled" => named(2),
+        _ => named(1),
+    }
+}
+
+async fn set_age(owner: &PgPool, hours: i32) {
+    sqlx::query(
+        "update webhook_digests set claimed_at = now() - make_interval(hours => $1),
+                                    expires_at = expires_at - make_interval(hours => $1)",
+    )
+    .bind(hours)
+    .execute(owner)
+    .await
+    .unwrap();
 }
 
 struct Delivery {
@@ -240,7 +268,8 @@ async fn repeats_by_delivery_id_and_by_body_digest_are_acknowledged_not_processe
     assert_eq!(events(&f.owner).await, 1);
     assert_eq!(process_jobs(&f.owner).await, 1);
 
-    // A different body is a new event; the same body under another topic is too.
+    // A different body is a new event; the same body under another topic is a replay too
+    // (the topic header is unsigned, audit H1).
     let changed = Delivery::signed("shop/update", "w-3", &named(2));
     assert_eq!(
         send(&f.router, changed.request("/webhooks/shopify"))
@@ -255,21 +284,150 @@ async fn repeats_by_delivery_id_and_by_body_digest_are_acknowledged_not_processe
             .0,
         StatusCode::OK
     );
-    assert_eq!(events(&f.owner).await, 3);
-    assert_eq!(process_jobs(&f.owner).await, 3);
+    assert_eq!(events(&f.owner).await, 2);
+    assert_eq!(process_jobs(&f.owner).await, 2);
 
-    // After the replay window a body is accepted again (a second shop/redact after a
-    // reinstall and uninstall carries the same body).
-    sqlx::query("update webhook_events set received_at = now() - interval '25 hours'")
-        .execute(&f.owner)
-        .await
-        .unwrap();
+    // After the replay window a body is accepted again.
+    set_age(&f.owner, 25).await;
     let again = Delivery::signed("shop/update", "w-5", &body);
     assert_eq!(
         send(&f.router, again.request("/webhooks/shopify")).await.0,
         StatusCode::OK
     );
-    assert_eq!(events(&f.owner).await, 4);
+    assert_eq!(events(&f.owner).await, 3);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_redact_body_stays_a_replay_for_longer_than_other_topics(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let f = fixture(opts, conn).await;
+    let body = body_for("shop/redact");
+    let first = Delivery::signed("shop/redact", "w-1", &body);
+    assert_eq!(
+        send(&f.router, first.request("/webhooks/shopify")).await.0,
+        StatusCode::OK
+    );
+    // 30 hours later, under a new id: still a replay (the 24 hour window would let it in).
+    set_age(&f.owner, 30).await;
+    let replay = Delivery::signed("shop/redact", "w-2", &body);
+    assert_eq!(
+        send(&f.router, replay.request("/webhooks/shopify")).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(events(&f.owner).await, 1);
+    // 41 hours after the first, under 48 hours of a genuine repeat: accepted as new.
+    set_age(&f.owner, 11).await;
+    let genuine = Delivery::signed("shop/redact", "w-3", &body);
+    assert_eq!(
+        send(&f.router, genuine.request("/webhooks/shopify"))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(events(&f.owner).await, 2);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn concurrent_replays_of_one_body_store_one_event(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let f = fixture(opts, conn).await;
+    let body = named(77);
+    let mut sends = Vec::new();
+    for i in 0..12 {
+        let router = f.router.clone();
+        let delivery = Delivery::signed("shop/update", &format!("c-{i}"), &body);
+        sends.push(tokio::spawn(async move {
+            send(&router, delivery.request("/webhooks/shopify")).await.0
+        }));
+    }
+    for handle in sends {
+        assert_eq!(handle.await.unwrap(), StatusCode::OK);
+    }
+    assert_eq!(events(&f.owner).await, 1);
+    assert_eq!(process_jobs(&f.owner).await, 1);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_body_that_is_not_shaped_like_its_topic_is_refused(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let f = fixture(opts, conn).await;
+    let uninstall = named(1);
+    let request = body_for("customers/data_request");
+    let redact = body_for("shop/redact");
+    let mut wide_redact = redact.clone();
+    wide_redact["extra"] = json!(1);
+    for (name, topic, body) in [
+        // A signed customers/data_request relabelled shop/redact.
+        (
+            "data_request as shop/redact",
+            "shop/redact",
+            request.clone(),
+        ),
+        // A signed app/uninstalled relabelled shop/redact.
+        (
+            "uninstalled as shop/redact",
+            "shop/redact",
+            uninstall.clone(),
+        ),
+        ("redact with extra keys", "shop/redact", wide_redact),
+        (
+            "redact as customers/redact",
+            "customers/redact",
+            redact.clone(),
+        ),
+        (
+            "redact as app/uninstalled",
+            "app/uninstalled",
+            redact.clone(),
+        ),
+        ("request as shop/update", "shop/update", request.clone()),
+        ("array", "shop/update", json!([1, 2])),
+    ] {
+        let delivery = Delivery::signed(topic, "w-x", &body);
+        let (status, _) = send(&f.router, delivery.request("/webhooks/shopify")).await;
+        // A bare array names no shop (401); the rest are well-signed bodies for the wrong topic.
+        assert!(
+            status == StatusCode::BAD_REQUEST || status == StatusCode::UNAUTHORIZED,
+            "{name}: {status}"
+        );
+    }
+    assert_eq!(events(&f.owner).await, 0);
+    assert_eq!(process_jobs(&f.owner).await, 0);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_shop_redact_naming_another_shop_id_than_the_stored_one_is_refused(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let f = fixture(opts, conn).await;
+    sqlx::query("update shopify_shops set shop_gid = 'gid://shopify/Shop/954889'")
+        .execute(&f.owner)
+        .await
+        .unwrap();
+    let wrong = Delivery::signed(
+        "shop/redact",
+        "w-1",
+        &json!({"shop_id": 1, "shop_domain": SHOP}),
+    );
+    assert_eq!(
+        send(&f.router, wrong.request("/webhooks/shopify")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(events(&f.owner).await, 0);
+    // The right id is stored. (The refused one left no digest behind.)
+    let right = Delivery::signed("shop/redact", "w-2", &body_for("shop/redact"));
+    assert_eq!(
+        send(&f.router, right.request("/webhooks/shopify")).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(events(&f.owner).await, 1);
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
@@ -289,11 +447,7 @@ async fn every_compliance_topic_and_app_uninstalled_are_stored(
         ]
     );
     for (i, topic) in ACCEPTED_TOPICS.iter().enumerate() {
-        let delivery = Delivery::signed(
-            topic,
-            &format!("w-{i}"),
-            &json!({"topic": topic, "shop_domain": SHOP}),
-        );
+        let delivery = Delivery::signed(topic, &format!("w-{i}"), &body_for(topic));
         assert_eq!(
             send(&f.router, delivery.request("/webhooks/shopify"))
                 .await

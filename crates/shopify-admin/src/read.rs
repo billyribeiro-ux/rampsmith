@@ -27,6 +27,17 @@ const SHOP: Query = Query {
 }",
 };
 
+/// The grant check: the smallest query that needs no access scope, so only a dead grant (or an
+/// outage) can make it fail. Shopify's own `shopify-app-express` package proves a token the
+/// same way, with `{ shop { name } }`, and reads only a 401 as "re-authenticate".
+const GRANT: Query = Query {
+    name: "RampsmithGrant",
+    cost_hint: 1.0,
+    text: r"query RampsmithGrant {
+  shop { id }
+}",
+};
+
 const PRODUCTS: Query = Query {
     name: "RampsmithProducts",
     cost_hint: 520.0,
@@ -636,7 +647,27 @@ fn variables(first: u32, after: Option<&str>) -> serde_json::Value {
     json!({ "first": first, "after": after })
 }
 
+#[derive(Debug, Deserialize)]
+struct GrantWire {
+    #[allow(dead_code, reason = "read only to prove the answer is a shop")]
+    shop: GrantShop,
+}
+
+#[derive(Debug, Deserialize)]
+struct GrantShop {
+    #[allow(dead_code, reason = "read only to prove the answer is a shop")]
+    id: String,
+}
+
 impl AdminClient {
+    /// Whether the access token still works: `Ok` when Shopify answers a `shop { id }` query,
+    /// [`AdminError::Unauthorized`] (HTTP 401) when the grant is gone. Used before an
+    /// unsigned `app/uninstalled` or `shop/redact` is allowed to change an installed shop.
+    pub async fn grant_check(&self) -> Result<(), AdminError> {
+        let _: GrantWire = self.run(&GRANT, &json!({})).await?;
+        Ok(())
+    }
+
     /// The shop, its locales and its live theme. Also the cheapest call that proves the access
     /// token still works.
     pub async fn shop(&self) -> Result<ShopInfo, AdminError> {
