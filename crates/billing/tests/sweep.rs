@@ -45,31 +45,47 @@ fn failing(mut state: BillingState, failures: u32, attempt: OffsetDateTime) -> B
 const NO_REDIRECT: RedirectParam = RedirectParam::Absent;
 
 #[test]
-fn a_plan_redirect_is_always_confirmed() {
+fn a_plan_redirect_checks_sooner_but_not_more_often_than_every_fifteen_seconds() {
+    use billing::sweep::REDIRECT_MIN_GAP;
     let state = failing(paid_state(), 5, CONFIRMED);
     let redirect = RedirectParam::Plan(Plan::Pro);
+    // Fresh and in a retry backoff, yet asked once the gap has passed: the merchant just chose.
     assert_eq!(
-        on_app_load(&state, &redirect, CONFIRMED),
+        on_app_load(&state, &redirect, CONFIRMED + REDIRECT_MIN_GAP),
         Decision::Confirm(ConfirmReason::PlanRedirect),
-        "even during a retry backoff: the merchant just chose a plan"
+    );
+    // A visitor repeating the parameter cannot force a call per request.
+    assert_eq!(
+        on_app_load(&state, &redirect, CONFIRMED + Duration::seconds(3)),
+        Decision::UseStored {
+            next_check_at: CONFIRMED + REDIRECT_MIN_GAP
+        }
     );
     let typo = RedirectParam::Unrecognized("x".to_owned());
     assert_eq!(
-        on_app_load(&paid_state(), &typo, CONFIRMED),
+        on_app_load(&paid_state(), &typo, CONFIRMED + REDIRECT_MIN_GAP),
         Decision::Confirm(ConfirmReason::PlanRedirect)
     );
 }
 
 #[test]
-fn no_confirmed_plan_is_never_served_from_cache() {
+fn a_shop_never_asked_is_confirmed_and_a_no_plan_answer_is_cached_for_two_minutes() {
+    use billing::sweep::NO_PLAN_CACHE;
     assert_eq!(
         on_app_load(&BillingState::new(), &NO_REDIRECT, CONFIRMED),
         Decision::Confirm(ConfirmReason::NoConfirmedPlan)
     );
     let mut none = paid_state();
     none.standing = Standing::NoActivePlan;
+    assert_eq!(NO_PLAN_CACHE, Duration::minutes(2));
     assert_eq!(
         on_app_load(&none, &NO_REDIRECT, CONFIRMED + Duration::SECOND),
+        Decision::UseStored {
+            next_check_at: CONFIRMED + NO_PLAN_CACHE
+        }
+    );
+    assert_eq!(
+        on_app_load(&none, &NO_REDIRECT, CONFIRMED + NO_PLAN_CACHE),
         Decision::Confirm(ConfirmReason::NoConfirmedPlan)
     );
     let mut unconfirmed_free = BillingState::new();

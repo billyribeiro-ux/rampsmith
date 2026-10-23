@@ -62,6 +62,7 @@ proptest! {
     fn a_higher_plan_fixes_at_least_as_many_images((low, high) in ordered_plans(), fixed in any::<u32>()) {
         prop_assert!(entitlements(high).image_fixes().is_at_least(entitlements(low).image_fixes()));
         prop_assert!(entitlements(high).ai_budget_micro_usd() >= entitlements(low).ai_budget_micro_usd());
+        prop_assert!(entitlements(high).manual_scans_per_day() >= entitlements(low).manual_scans_per_day());
         if image_fix_gate(low, fixed).is_allowed() {
             prop_assert!(image_fix_gate(high, fixed).is_allowed());
         }

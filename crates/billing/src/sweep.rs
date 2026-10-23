@@ -10,6 +10,18 @@ use crate::reconcile::{BillingState, RedirectParam, Standing};
 /// subscriptions "with a short expiry such as five minutes".
 pub const APP_LOAD_FRESHNESS: Duration = Duration::minutes(5);
 
+/// How long an app load trusts a "no plan" answer. Shopify says a short expiry is fine for
+/// confirmed subscriptions; for "no plan" the app must not ask on every load, or one shop
+/// reloading in a loop would spend the whole organization's Partner API budget (lane A audit
+/// M3, ADR-087). A merchant who has just subscribed arrives with `plan_handle`, which checks
+/// sooner (see [`REDIRECT_MIN_GAP`]).
+pub const NO_PLAN_CACHE: Duration = Duration::minutes(2);
+
+/// A `plan_handle` redirect asks the Partner API even when the stored state is fresh, but not
+/// more often than this for one shop: the parameter is a hint typed by a visitor, never a grant
+/// and never a way to force a call per request.
+pub const REDIRECT_MIN_GAP: Duration = Duration::seconds(15);
+
 /// The sweep re-confirms a shop once its last confirmation is this old. Evaluate the sweep
 /// hourly so that every installed shop is confirmed at least once a day.
 pub const SWEEP_MAX_AGE: Duration = Duration::hours(24);
@@ -29,7 +41,7 @@ pub const RETRY_MAX: Duration = Duration::hours(6);
 pub enum ConfirmReason {
     /// The request carries a `plan_handle` parameter: the merchant just chose a plan.
     PlanRedirect,
-    /// No plan is confirmed; a "no plan" answer is never cached.
+    /// No plan is confirmed, and none was asked about in the last [`NO_PLAN_CACHE`].
     NoConfirmedPlan,
     /// A billing-cycle or trial boundary passed since the last confirmation.
     BoundaryPassed,
@@ -104,6 +116,10 @@ fn age_based(state: &BillingState, max_age: Duration, now: OffsetDateTime) -> De
 }
 
 /// The decision when the embedded app loads (its root route, before serving a page).
+///
+/// A `plan_handle` redirect is only a reason to check sooner: it skips the freshness and "no
+/// plan" caches but not [`REDIRECT_MIN_GAP`], and it never grants anything (the stored plan
+/// changes only from a Partner API answer).
 #[must_use]
 pub fn on_app_load(
     state: &BillingState,
@@ -111,6 +127,13 @@ pub fn on_app_load(
     now: OffsetDateTime,
 ) -> Decision {
     if *redirect != RedirectParam::Absent {
+        if let Some(last) = state.last_attempt_at
+            && now < last + REDIRECT_MIN_GAP
+        {
+            return Decision::UseStored {
+                next_check_at: last + REDIRECT_MIN_GAP,
+            };
+        }
         return Decision::Confirm(ConfirmReason::PlanRedirect);
     }
     if let Some(retry_at) = retry_at(state)
@@ -121,6 +144,15 @@ pub fn on_app_load(
         };
     }
     if state.effective_plan().is_none() {
+        // Cache the answer "no plan" for a short while, whether it was confirmed by Shopify or
+        // is simply the standing of a shop that was just asked.
+        if let Some(asked) = state.last_confirmed_at
+            && now < asked + NO_PLAN_CACHE
+        {
+            return Decision::UseStored {
+                next_check_at: asked + NO_PLAN_CACHE,
+            };
+        }
         return Decision::Confirm(ConfirmReason::NoConfirmedPlan);
     }
     age_based(state, APP_LOAD_FRESHNESS, now)

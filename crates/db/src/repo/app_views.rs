@@ -95,6 +95,21 @@ pub async fn has_live_scan(
     .await?)
 }
 
+/// How many scans the merchant started by hand in the last 24 hours. Scans that failed to
+/// start count too: the limit is on presses of the button, not on finished work.
+pub async fn manual_scans_today(tx: &mut TenantTx, site: SiteId) -> Result<i64, DbError> {
+    let tenant = tx.tenant_uuid();
+    Ok(sqlx::query_scalar!(
+        r#"select count(*) as "n!" from scans
+            where tenant_id = $1 and site_id = $2 and trigger = 'manual'
+              and created_at > now() - interval '24 hours'"#,
+        tenant,
+        site.as_uuid(),
+    )
+    .fetch_one(tx.conn())
+    .await?)
+}
+
 /// Counts for the overview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Counts {

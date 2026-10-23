@@ -1451,8 +1451,26 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The shop has not chosen a plan yet */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A scan is already running */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan's manual scans for the last 24 hours are used */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

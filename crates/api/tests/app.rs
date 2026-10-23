@@ -581,6 +581,119 @@ async fn starting_a_scan_queues_the_read_and_refuses_a_second_while_one_runs(
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
+async fn manual_scans_are_limited_per_plan_per_day_and_need_a_chosen_plan(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    // Free allows two scans started by hand in 24 hours; scheduled ones do not count.
+    h.scan("succeeded", "scheduled", 5, None).await;
+    h.scan("succeeded", "manual", 60, None).await;
+    let second = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(second.status, StatusCode::ACCEPTED, "{}", second.body);
+    sqlx::query("update scans set status = 'succeeded' where tenant_id = $1")
+        .bind(h.tenant)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let third = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(
+        third.status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "{}",
+        third.body
+    );
+    assert_eq!(third.body["code"], "rate_limited");
+    assert!(
+        third.body["detail"]
+            .as_str()
+            .unwrap()
+            .contains("free plan allows 2"),
+        "{}",
+        third.body
+    );
+
+    // A scan from 25 hours ago is out of the window; a paid plan has more.
+    sqlx::query(
+        "update scans set created_at = created_at - interval '25 hours' where trigger = 'manual'",
+    )
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    let after = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(after.status, StatusCode::ACCEPTED, "{}", after.body);
+
+    // A shop Shopify says has no plan yet is told to choose one.
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'no_active_plan')",
+    )
+    .bind(h.shop)
+    .bind(h.tenant)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    let none = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(none.status, StatusCode::FORBIDDEN, "{}", none.body);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_paid_plan_allows_more_manual_scans(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = plain(opts, conn).await;
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing, plan, plan_interval,
+                                   last_confirmed_at)
+         values ($1, $2, 'paid', 'starter', 'monthly', now())",
+    )
+    .bind(h.shop)
+    .bind(h.tenant)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    for _ in 0..5 {
+        h.scan("succeeded", "manual", 10, None).await;
+    }
+    let sixth = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(sixth.status, StatusCode::ACCEPTED, "{}", sixth.body);
+    sqlx::query("update scans set status = 'succeeded' where tenant_id = $1")
+        .bind(h.tenant)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let seventh = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(seventh.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn twenty_concurrent_scan_starts_create_one_scan(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let h = std::sync::Arc::new(h);
+    let mut calls = Vec::new();
+    for _ in 0..20 {
+        let h = std::sync::Arc::clone(&h);
+        calls.push(tokio::spawn(async move {
+            h.call("POST", "/v1/shopify/scans", None).await.status
+        }));
+    }
+    let mut accepted = 0;
+    for call in calls {
+        match call.await.unwrap() {
+            StatusCode::ACCEPTED => accepted += 1,
+            StatusCode::CONFLICT => {}
+            other => panic!("unexpected {other}"),
+        }
+    }
+    assert_eq!(accepted, 1);
+    assert_eq!(
+        h.count("select count(*) from scans where tenant_id = $1")
+            .await,
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
 async fn a_stale_running_scan_does_not_block_a_new_one(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
@@ -1564,6 +1677,7 @@ fn partner(server: &MockServer) -> PartnerPlans {
         billing::AppGid::parse("gid://shopify/App/1234").unwrap(),
         Some(url::Url::parse(&server.uri()).unwrap()),
     )
+    .unwrap()
 }
 
 fn growth_subscription() -> Value {
@@ -1689,6 +1803,104 @@ async fn the_plan_handle_query_parameter_is_ignored_and_grants_nothing(
             .unwrap()
             .flatten();
     assert_ne!(stored.as_deref(), Some("pro"));
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "a \"no plan\" answer is cached; the parameter is no reason to ask again"
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_shop_that_reloads_in_a_loop_gets_one_call_for_no_plan_and_three_a_minute_at_most(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"activeSubscription": null}})),
+        )
+        .mount(&server)
+        .await;
+    let h = harness(opts, conn, false, Some(partner(&server))).await;
+    record_shop_gid(&h).await;
+    for _ in 0..40 {
+        assert_eq!(h.get("/v1/shopify/overview").await.status, StatusCode::OK);
+    }
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "forty loads of a shop with no plan cost one call"
+    );
+
+    // Even when its stored answer keeps looking stale, the shop's share of the pacer is three
+    // calls a minute.
+    for _ in 0..40 {
+        sqlx::query(
+            "update shop_billing set last_confirmed_at = now() - interval '1 hour',
+                                     last_attempt_at = now() - interval '1 hour'",
+        )
+        .execute(&h.owner)
+        .await
+        .unwrap();
+        assert_eq!(h.get("/v1/shopify/overview").await.status, StatusCode::OK);
+    }
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        3,
+        "one cached answer, then the shop's share of three calls a minute"
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_downgrade_takes_the_stored_ai_budget_down_to_the_new_ceiling_in_the_same_transaction(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(growth_subscription()))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"activeSubscription": null}})),
+        )
+        .mount(&server)
+        .await;
+    let h = harness(opts, conn, false, Some(partner(&server))).await;
+    record_shop_gid(&h).await;
+    h.get("/v1/shopify/overview").await;
+    let set = h
+        .call(
+            "PUT",
+            "/v1/shopify/settings",
+            Some(json!({"ai_budget_micro_usd": 15_000_000})),
+        )
+        .await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.body);
+
+    // Shopify now says the subscription is gone; the stored plan falls to the free ceiling.
+    sqlx::query(
+        "update shop_billing set last_confirmed_at = now() - interval '1 hour',
+                                 last_attempt_at = now() - interval '1 hour'",
+    )
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    h.get("/v1/shopify/overview").await;
+    let stored: i64 = sqlx::query_scalar(
+        "select (settings ->> 'ai_budget_micro_usd')::bigint from sites where id = $1",
+    )
+    .bind(h.site)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap();
+    assert_eq!(
+        stored, 500_000,
+        "the stored budget no longer exceeds the ceiling"
+    );
 }
 
 #[sqlx::test(migrations = "../db/migrations")]

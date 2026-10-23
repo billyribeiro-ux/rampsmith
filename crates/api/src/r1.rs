@@ -148,6 +148,8 @@ pub(crate) struct EntitlementsDto {
 
 /// Everything the plan allows the shop, with what it has used.
 struct PlanView {
+    /// Shopify confirmed that the shop has no active plan (it has not chosen one yet).
+    confirmed_no_plan: bool,
     entitlements: Entitlements,
     dto: EntitlementsDto,
 }
@@ -184,6 +186,7 @@ async fn plan_view(
         })
         .collect();
     Ok(PlanView {
+        confirmed_no_plan: matches!(state.standing, billing::reconcile::Standing::NoActivePlan),
         entitlements: granted,
         dto: EntitlementsDto {
             plan: granted.plan().handle().to_owned(),
@@ -414,6 +417,10 @@ pub(crate) struct StartedScanDto {
         (status = ACCEPTED, description = "The scan is queued", body = StartedScanDto),
         (status = CONFLICT, description = "A scan is already running",
             body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = FORBIDDEN, description = "The shop has not chosen a plan yet",
+            body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = TOO_MANY_REQUESTS, description = "The plan's manual scans for the last 24 hours are used",
+            body = http_kit::Problem, content_type = "application/problem+json"),
         (status = UNAUTHORIZED, description = "Missing or invalid session token",
             body = http_kit::Problem, content_type = "application/problem+json")
     )
@@ -424,8 +431,24 @@ pub(crate) async fn start_scan(
 ) -> Result<(StatusCode, Json<StartedScanDto>), ApiError> {
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
+    // One start at a time per shop, so the live-scan check and the plan's daily limit cannot be
+    // passed by two presses at once.
+    app_views::lock_site(&mut tx, site).await?;
+    let view = plan_view(&mut tx, session.shop_id, OffsetDateTime::now_utc()).await?;
+    if view.confirmed_no_plan {
+        return Err(ApiError::new(ProblemCode::Forbidden)
+            .detail("Choose a plan before scanning the store."));
+    }
     if app_views::has_live_scan(&mut tx, site, STALE_SCAN_SECONDS).await? {
         return Err(ApiError::new(ProblemCode::Conflict).detail("A scan is already running."));
+    }
+    let allowed = i64::from(view.entitlements.manual_scans_per_day());
+    if app_views::manual_scans_today(&mut tx, site).await? >= allowed {
+        return Err(ApiError::new(ProblemCode::RateLimited).detail(format!(
+            "The {} plan allows {allowed} scans started by hand in 24 hours. \
+             Scheduled scans are not counted.",
+            view.entitlements.plan().handle()
+        )));
     }
     let ruleset = db::repo::data_fixes::latest_ruleset(&mut tx, site)
         .await?
