@@ -23,4 +23,10 @@ function and does not need the grant). The test `the_engine_can_update_only_what
 
 ## Consequences
 
+A column-level grant puts an `ACL public COLUMN` entry in a backup's table of contents. The restore
+drill refuses any entry it does not know (ADR-257), so `rd_toc_violations` accepts `COLUMN` ACLs of
+schema `public` (`infra/restore-drill/lib.sh`, tested in `infra/backup/tests/run.sh`). The first CI
+run of this migration failed the drill and the backup tests until that line was added.
+
+
 A new column the engine must write needs its own grant in a new migration.

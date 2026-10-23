@@ -953,6 +953,10 @@ assert_eq "toc: a table of the schema is accepted" "" \
   "$(toc_with '9100; 1259 16500 TABLE public brand_new_table rampsmith_migrator')"
 assert_eq "toc: a policy of the schema is accepted" "" \
   "$(toc_with '9101; 3256 16501 POLICY public findings findings_tenant rampsmith_migrator')"
+assert_eq "toc: a column privilege of the schema is accepted (ADR-285)" "" \
+  "$(toc_with '9102; 0 0 ACL public COLUMN free_scans.status rampsmith_migrator')"
+assert_contains "toc: ... but one in another schema is not" "ACL evil COLUMN payload.x postgres" \
+  "$(toc_with '9103; 0 0 ACL evil COLUMN payload.x postgres')"
 restore_out=$(env -i "${STD[@]}" AGE="$AGE" PGHOST="$sock" PGPORT="$port" PGUSER=postgres "$RD/restore.sh" --target rampsmith \
   --identity "$work/primary.key" --file "$work/handoff/work/backup.dump.age" --work "$work/restore-super" 2>&1)
 assert_rc "restore: a superuser connection is refused" 1 $?
