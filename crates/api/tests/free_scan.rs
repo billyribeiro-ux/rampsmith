@@ -564,3 +564,52 @@ async fn a_fresh_heartbeat_from_any_one_engine_is_enough(
         call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{body}");
 }
+
+/// Audit M1: behind one shared address (or after the day's budget is spent) a cached result is
+/// still served, without a Cloudflare call and without spending anything.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_cached_result_is_served_before_the_budget_and_before_cloudflare(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true).await;
+    solved(&h).await;
+    let (_, _, first) = call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+    finish(
+        &h.owner,
+        first["id"].as_str().unwrap(),
+        "complete",
+        "shop.com",
+    )
+    .await;
+    for domain in ["a.example.com", "b.example.com"] {
+        let (status, _, _) = call(&h.state, post(Some(TOKEN), &ask(domain, "203.0.113.5"))).await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+    }
+    // The address has now used its 3 scans.
+    let (status, _, _) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("c.example.com", "203.0.113.5")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    let before = h
+        .turnstile
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .len();
+
+    let (status, _, again) =
+        call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["cached"], true);
+    assert_eq!(again["id"], first["id"]);
+    let after = h
+        .turnstile
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .len();
+    assert_eq!(before, after, "a cache hit called Cloudflare");
+}

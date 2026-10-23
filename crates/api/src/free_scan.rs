@@ -538,6 +538,18 @@ pub(crate) async fn create_free_scan(
         .map_err(|_| invalid("client_ip", "not an address"))?;
     let ip_hash = free.hash_address(address);
 
+    // A complete scan of the domain from the last day answers first, before the address budget
+    // is read and before Cloudflare is called: it runs nothing, so it costs the visitor nothing
+    // and an address that has used its day (or shares one with many others) can still read it.
+    {
+        let mut tx = state.db.public().await?;
+        let cached = free_scans::cached(&mut tx, &site.domain).await?;
+        tx.rollback().await?;
+        if let Some(cached) = cached {
+            return Ok((StatusCode::OK, Json(dto(cached, true))));
+        }
+    }
+
     // The budget is read before the challenge, so an address that has used its day does not
     // spend Cloudflare calls; it is spent only below, under the locks.
     {
