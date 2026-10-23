@@ -10,6 +10,7 @@ import { auditDataHandler } from '../src/jobs/audit-data.ts';
 import { scanFinalizeHandler } from '../src/jobs/finalize.ts';
 import type { JobHandler, JobInput } from '../src/jobs/payload.ts';
 import { verifyScanHandler } from '../src/jobs/verify.ts';
+import { RULESET_VERSION } from '../src/ruleset.ts';
 import { scanPage, type Occurrence, type PageScan, type ScanOptions } from '../src/scan-page.ts';
 import { scanPageHandler, type EngineDeps } from '../src/worker.ts';
 import { freshDatabase, seed, type Fixture, type TestDatabase } from './db.ts';
@@ -650,6 +651,11 @@ describe('finalize closes what was not seen again', () => {
     const open = await db.owner<{ n: number }[]>`
       select count(*)::int as n from findings where site_id = ${f.siteId} and status = 'open'`;
     expect(open[0]?.n).toBeGreaterThan(3);
+    // The scan records what it checked with (the api stops falling back to a bare "axe-core").
+    const [ruleset] = await db.owner<{ ruleset_version: string }[]>`
+      select ruleset_version from scans where id = ${f.scanId}`;
+    expect(ruleset?.ruleset_version).toBe(RULESET_VERSION);
+    expect(RULESET_VERSION).toMatch(/^axe-core \d+\.\d+\.\d+; a11y-rules [0-9a-f]{8}$/);
 
     // A second scan of the same site: the cart is fixed and the alt text was written.
     const second = uuidv7();

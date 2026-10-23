@@ -28,10 +28,15 @@ export interface EngineDeps {
   readonly scan?: (browser: Browser, options: ScanOptions) => Promise<PageScan>;
   /**
    * The storefront password of a protected store, for this scan only. The engine holds no key to
-   * unseal the stored one (ADR-035, ADR-071), so production wiring supplies none and a protected
-   * store is reported as blocked.
+   * unseal the stored one (ADR-035, ADR-071); `ctl` seals a copy for the scan under the scan key
+   * ring and `storefrontPasswordFromScan` opens it (ADR-264). Without that ring, wiring supplies
+   * none and a protected store is reported as blocked.
    */
-  readonly storefrontPassword?: (tenantId: string, siteId: string) => Promise<string | undefined>;
+  readonly storefrontPassword?: (
+    tenantId: string,
+    siteId: string,
+    scanId: string,
+  ) => Promise<string | undefined>;
   /**
    * Tests only: maps the planned `https://` URL to the one the browser loads, so a local HTTP
    * fixture site can stand in for a store. Production wiring leaves it unset.
@@ -128,7 +133,11 @@ export async function scanThroughEgress(deps: EngineDeps, request: PageRequest):
     budget: deps.budget ?? 400,
     exp: Math.floor(Date.now() / 1000) + 300,
   });
-  const password = await deps.storefrontPassword?.(request.tenantId, request.siteId);
+  const password = await deps.storefrontPassword?.(
+    request.tenantId,
+    request.siteId,
+    request.scanId,
+  );
   return scan(deps.browser, {
     url: load.href,
     userAgent: deps.userAgent,

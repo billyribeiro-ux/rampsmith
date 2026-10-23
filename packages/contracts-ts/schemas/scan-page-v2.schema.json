@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ScanPageV2",
-  "description": "Payload of `scan.page` jobs, schema `scan.page@2`. Runs in the engine: loads `url` at the\nviewport, checks it in each state in order, and records the findings. Replaces `scan.page@1`,\nwhich carries only the URL and is removed once the engine reads `@2` (ADR-036).",
+  "description": "Payload of `scan.page` jobs, schema `scan.page@2`. Runs in the engine: loads `url` at the\nviewport, checks it in each state in order, and records the findings. It replaced\n`scan.page@1`, which carried only the URL; `@1` was removed once nothing enqueued it\n(ADR-036, ADR-264).",
   "type": "object",
   "properties": {
     "page_type": {

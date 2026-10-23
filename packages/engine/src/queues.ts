@@ -2,8 +2,10 @@
  * Every queue the engine serves, with its handler (PLAN §10, ADR-035, ADR-036). `ctl` serves
  * the queues that need a Shopify token; the engine never does. An R1 lane builds a queue by
  * replacing its stub in `jobs/` and, when the handler needs dependencies, its line below.
- * Every queue is built as of R1.
+ * Every queue is built as of R1. `free_scan.run` serves the marketing site's free scanner for no
+ * tenant (ADR-265).
  */
+import { freeScanHandler } from './free-scan.ts';
 import { altTextHandler } from './jobs/alt-text.ts';
 import { auditDataHandler } from './jobs/audit-data.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
@@ -19,6 +21,7 @@ export const ENGINE_QUEUES = [
   'audit.data',
   'ai.alt_text',
   'verify.scan',
+  'free_scan.run',
 ] as const;
 export type EngineQueue = (typeof ENGINE_QUEUES)[number];
 
@@ -31,5 +34,6 @@ export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler
     'audit.data': auditDataHandler(deps),
     'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
     'verify.scan': verifyScanHandler(deps),
+    'free_scan.run': freeScanHandler(deps),
   };
 }

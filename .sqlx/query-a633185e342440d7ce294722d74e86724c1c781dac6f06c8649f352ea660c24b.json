@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_shops\n              set name = $3, primary_domain = $4, locales = $5, synced_at = now()\n            where tenant_id = $1 and id = $2 and status = 'installed'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a633185e342440d7ce294722d74e86724c1c781dac6f06c8649f352ea660c24b"
+}

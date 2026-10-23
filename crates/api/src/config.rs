@@ -32,6 +32,10 @@ pub struct Config {
     /// `SHOPIFY_PARTNER_API_TOKEN`, `SHOPIFY_APP_GID`; LAUNCH.md section C). All three or none:
     /// without them the app serves each shop's stored plan, Free until one is stored.
     pub partner: Option<PartnerConfig>,
+    /// The free scanner (`FREE_SCAN_SERVICE_TOKEN`, `TURNSTILE_SECRET_KEY`, optional
+    /// `TURNSTILE_ORIGIN`; ADR-265). Both secrets or neither: without them the free scanner's
+    /// routes answer 503 and the marketing site's form stays closed.
+    pub free_scan: Option<crate::free_scan::FreeScanSettings>,
     /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).
     pub webauthn_rp_id: String,
     /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
@@ -145,8 +149,10 @@ impl Config {
                 }
             })?;
         let partner = partner_config(&get)?;
+        let free_scan = free_scan_config(&get)?;
         Ok(Self {
             partner,
+            free_scan,
             webauthn_rp_id: rp_id,
             webauthn_rp_origin,
             shopify_client_id: shopify_client_id.trim().to_owned(),
@@ -187,6 +193,43 @@ fn partner_config(
             name: "SHOPIFY_APP_GID",
             reason: e.to_string(),
         })?,
+    }))
+}
+
+/// The free scanner's settings: the service token and the Turnstile secret, both or neither.
+fn free_scan_config(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<crate::free_scan::FreeScanSettings>, ConfigError> {
+    let token = get("FREE_SCAN_SERVICE_TOKEN");
+    let secret = get("TURNSTILE_SECRET_KEY");
+    if token.is_none() && secret.is_none() {
+        return Ok(None);
+    }
+    let token = token.ok_or(ConfigError::Missing("FREE_SCAN_SERVICE_TOKEN"))?;
+    let secret = secret.ok_or(ConfigError::Missing("TURNSTILE_SECRET_KEY"))?;
+    if token.trim().len() < crate::free_scan::MIN_SERVICE_TOKEN {
+        return Err(ConfigError::Invalid {
+            name: "FREE_SCAN_SERVICE_TOKEN",
+            reason: format!(
+                "must be at least {} characters",
+                crate::free_scan::MIN_SERVICE_TOKEN
+            ),
+        });
+    }
+    let origin =
+        get("TURNSTILE_ORIGIN").unwrap_or_else(|| crate::free_scan::TURNSTILE_ORIGIN.to_owned());
+    let origin = Url::parse(origin.trim())
+        .ok()
+        .filter(|u| matches!(u.scheme(), "http" | "https") && u.host().is_some() && u.path() == "/")
+        .ok_or(ConfigError::Invalid {
+            name: "TURNSTILE_ORIGIN",
+            reason: "must be an http(s) origin such as https://challenges.cloudflare.com"
+                .to_owned(),
+        })?;
+    Ok(Some(crate::free_scan::FreeScanSettings {
+        service_token: SecretString::from(token.trim().to_owned()),
+        turnstile_secret: SecretString::from(secret.trim().to_owned()),
+        turnstile_origin: origin,
     }))
 }
 
@@ -313,6 +356,53 @@ mod tests {
         assert!(!debug.contains("hunter2"));
         assert!(!debug.contains("hunter3"));
         assert!(!debug.contains(KEY));
+    }
+
+    #[test]
+    fn the_free_scanner_needs_both_secrets_or_neither() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        assert!(config(&[base]).unwrap().free_scan.is_none());
+        let long = "x".repeat(32);
+        assert_eq!(
+            config(&[base, ("FREE_SCAN_SERVICE_TOKEN", &long)]).unwrap_err(),
+            ConfigError::Missing("TURNSTILE_SECRET_KEY")
+        );
+        assert_eq!(
+            config(&[base, ("TURNSTILE_SECRET_KEY", "s")]).unwrap_err(),
+            ConfigError::Missing("FREE_SCAN_SERVICE_TOKEN")
+        );
+        let short = config(&[
+            base,
+            ("FREE_SCAN_SERVICE_TOKEN", "too-short"),
+            ("TURNSTILE_SECRET_KEY", "s"),
+        ])
+        .unwrap_err();
+        assert!(!short.to_string().contains("too-short"));
+        let ok = config(&[
+            base,
+            ("FREE_SCAN_SERVICE_TOKEN", &long),
+            ("TURNSTILE_SECRET_KEY", "s"),
+        ])
+        .unwrap();
+        let settings = ok.free_scan.unwrap();
+        assert_eq!(
+            settings.turnstile_origin.as_str(),
+            "https://challenges.cloudflare.com/"
+        );
+        assert!(!format!("{settings:?}").contains(&long));
+        assert!(matches!(
+            config(&[
+                base,
+                ("FREE_SCAN_SERVICE_TOKEN", &long),
+                ("TURNSTILE_SECRET_KEY", "s"),
+                ("TURNSTILE_ORIGIN", "ftp://x"),
+            ])
+            .unwrap_err(),
+            ConfigError::Invalid {
+                name: "TURNSTILE_ORIGIN",
+                ..
+            }
+        ));
     }
 
     fn origin_config(id: &str, origin: &str) -> Result<Config, ConfigError> {

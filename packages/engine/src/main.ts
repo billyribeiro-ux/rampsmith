@@ -11,6 +11,7 @@ import { runWorker } from '@rampsmith/queue';
 import postgres from 'postgres';
 import { launchBrowser } from './browser.ts';
 import { assertWorkerRole } from './role-guard.ts';
+import { ScanKeyRing, storefrontPasswordFromScan } from './scan-secret.ts';
 import { userAgent } from './user-agent.ts';
 import { ENGINE_QUEUES, engineHandlers } from './queues.ts';
 
@@ -48,9 +49,18 @@ async function run(): Promise<void> {
     });
   }
 
+  // The key ring `ctl` seals a protected store's password under, for one scan (ADR-264).
+  // Optional: without it such a store is reported as blocked. It is not a master key.
+  const scanKeys = process.env['RAMPSMITH_SCAN_SECRET_KEYS']?.trim();
+  const storefrontPassword =
+    scanKeys === undefined || scanKeys === ''
+      ? undefined
+      : storefrontPasswordFromScan(sql, new ScanKeyRing(scanKeys));
+
   const handlers = engineHandlers({
     sql,
     browser,
+    ...(storefrontPassword === undefined ? {} : { storefrontPassword }),
     egress: {
       proxyUrl: required('EGRESS_PROXY_URL'),
       tokenSecret: required('EGRESS_TOKEN_SECRET'),

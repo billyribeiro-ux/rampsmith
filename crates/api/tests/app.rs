@@ -196,7 +196,7 @@ impl Harness {
         sqlx::query_scalar(
             "insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version, coverage,
                                 pages_planned, pages_done, checks_run, checks_passed, created_at)
-             values (gen_random_uuid(), $1, $2, $3, $4, 'axe-core 4', $5, 6, 6, 120, 100,
+             values (gen_random_uuid(), $1, $2, $3, $4, 'axe-core 4.11.1; a11y-rules 0a1b2c3d', $5, 6, 6, 120, 100,
                      now() - make_interval(mins => $6))
              returning id",
         )
@@ -410,10 +410,22 @@ async fn the_overview_counts_open_findings_and_fixes_without_best_practices(
     let empty = h.get("/v1/shopify/overview").await;
     assert_eq!(empty.status, StatusCode::OK, "{}", empty.body);
     assert_eq!(empty.body["shop"]["domain"], SHOP);
+    assert_eq!(
+        empty.body["shop"]["name"],
+        Value::Null,
+        "no name before the first read"
+    );
     assert_eq!(empty.body["latest_scan"], Value::Null);
     assert_eq!(empty.body["entitlements"]["plan"], "free");
     assert_eq!(empty.body["entitlements"]["alt_text_drafts"]["limit"], 25);
     assert_eq!(empty.body["entitlements"]["alt_text_drafts"]["used"], 0);
+    sqlx::query("update shopify_shops set name = 'Super Toys' where tenant_id = $1")
+        .bind(h.tenant)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let named = h.get("/v1/shopify/overview").await;
+    assert_eq!(named.body["shop"]["name"], "Super Toys");
 
     let scan = h
         .scan(
@@ -495,7 +507,10 @@ async fn the_overview_counts_open_findings_and_fixes_without_best_practices(
     );
     assert_eq!(latest["coverage"]["automated"], json!(["1.1.1", "2.4.4"]));
     assert_eq!(latest["coverage"]["review_queue"], 3);
-    assert_eq!(latest["ruleset_version"], "axe-core 4.11.1");
+    assert_eq!(
+        latest["ruleset_version"], "axe-core 4.11.1; a11y-rules 0a1b2c3d",
+        "the version the engine recorded is served as it is"
+    );
     assert_eq!(overview.body["next_scan_at"], Value::Null);
     let features = overview.body["entitlements"]["features"]
         .as_array()
@@ -1060,6 +1075,39 @@ async fn free_covers_the_first_twenty_five_images_and_no_more(
         .await,
         0
     );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_scan_the_engine_has_not_stamped_falls_back_to_the_coverage_documents_axe_version(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let scan = h
+        .scan(
+            "succeeded",
+            "manual",
+            5,
+            Some(json!({"ruleset": {"axe": "4.11.1"}})),
+        )
+        .await;
+    sqlx::query("update scans set ruleset_version = 'axe-core' where id = $1")
+        .bind(scan)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(
+        overview.body["latest_scan"]["ruleset_version"],
+        "axe-core 4.11.1"
+    );
+    sqlx::query("update scans set coverage = null where id = $1")
+        .bind(scan)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let bare = h.get("/v1/shopify/overview").await;
+    assert_eq!(bare.body["latest_scan"]["ruleset_version"], "axe-core");
 }
 
 #[sqlx::test(migrations = "../db/migrations")]

@@ -7,6 +7,9 @@ const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 export const SITE = 'http://127.0.0.1:3995';
 /** The site with the fixed sample result. */
 export const SITE_FIXTURE = 'http://127.0.0.1:3994';
+/** The site with the scanner running through the api (stood in by tests/mock-api.ts). */
+export const SITE_API = 'http://127.0.0.1:3992';
+export const MOCK_API = 'http://127.0.0.1:3998';
 /** A server started without Turnstile keys: the scanner must stay closed. */
 export const SITE_CLOSED = 'http://127.0.0.1:3993';
 /** What the production proxy sends, so SvelteKit sees the real scheme (see playwright.config.ts). */

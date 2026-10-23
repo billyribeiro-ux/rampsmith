@@ -104,6 +104,14 @@ async fn serve(config: Config) -> anyhow::Result<()> {
             None,
         ));
     }
+    if let Some(settings) = config.free_scan {
+        state = state.with_free_scans(
+            api::free_scan::FreeScans::new(settings)
+                .map_err(|e| anyhow::anyhow!("free scanner: {e}"))?,
+        );
+    } else {
+        warn!("the free scanner is not configured; its routes answer 503");
+    }
     axum::serve(listener, api::app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select scan_inputs_sweep() as \"swept!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "swept!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "fa063de7abd785c5a176cec59ab0979ec674e0657f95dac1e6206f95fd47d0e3"
+}

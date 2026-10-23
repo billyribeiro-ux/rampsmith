@@ -123,6 +123,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/free-scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts a free scan of one public website, or returns the answer already held for it. */
+        post: operations["createFreeScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/free-scans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A free scan's state and result. The id is unguessable and the scan holds nothing about the
+         *     visitor; it is gone 24 hours after it was asked for.
+         */
+        get: operations["getFreeScan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/shopify/evidence/{evidence_id}": {
         parameters: {
             query?: never;
@@ -413,6 +450,15 @@ export interface components {
              */
             review_queue?: number | null;
         };
+        /** @description A request for a free scan, from the web server. */
+        CreateFreeScan: {
+            /** @description The visitor's address, as the web server saw it. */
+            client_ip: string;
+            /** @description The visitor's Turnstile token. */
+            turnstile_token: string;
+            /** @description The address the visitor typed. */
+            url: string;
+        };
         DraftsDto: {
             /**
              * Format: int32
@@ -534,6 +580,62 @@ export interface components {
         FixListDto: {
             items: components["schemas"]["FixDto"][];
             next_cursor?: string | null;
+        };
+        /** @description A free scan and, once finished, what it found. */
+        FreeScanDto: {
+            /** @description True when an earlier scan of this domain answered the request. */
+            cached: boolean;
+            domain: string;
+            id: string;
+            /** @description Why a refused scan was refused: `robots`, `bot-challenge` or `unreachable`. */
+            refusal?: string | null;
+            result?: components["schemas"]["FreeScanResult"] | null;
+            /** @description `queued`, `running`, `complete`, `refused` or `failed`. */
+            status: string;
+        };
+        /** @description One example of a failure: a page and the offending element's markup. */
+        FreeScanExample: {
+            /** @description The page the element is on. */
+            page: string;
+            /** @description The element's markup, scrubbed and cut to a few hundred characters. */
+            snippet: string;
+        };
+        /** @description One kind of failure on the scanned pages, with up to three examples. */
+        FreeScanFailure: {
+            /**
+             * Format: int32
+             * @description How many elements failed across the scanned pages.
+             */
+            count: number;
+            /** @description The WCAG 2.2 success criterion, such as `1.4.3`. */
+            criterion: string;
+            /** @description At most three. */
+            examples: components["schemas"]["FreeScanExample"][];
+            /** @description The rule's id, such as `color-contrast`. */
+            rule_id: string;
+            /** @description What the failure is, in plain words. */
+            title: string;
+        };
+        /** @description What a free scan found (PLAN §16): checks passed of checks run, and the failures by type. */
+        FreeScanResult: {
+            /**
+             * Format: int32
+             * @description Automated checks that passed.
+             */
+            checks_passed: number;
+            /**
+             * Format: int32
+             * @description Automated checks that ran.
+             */
+            checks_run: number;
+            /** @description The scanned domain, without a leading `www.`. */
+            domain: string;
+            /** @description Failures, most numerous first. */
+            failures: components["schemas"]["FreeScanFailure"][];
+            /** @description The pages checked: the home page and up to two linked pages. */
+            pages: string[];
+            /** @description When the scan finished, RFC 3339. */
+            scanned_at: string;
         };
         /** @description The process is up. */
         Health: {
@@ -698,6 +800,7 @@ export interface components {
         };
         ShopDto: {
             domain: string;
+            /** @description The shop's name, once `shopify.read_store` has read it; null before the first scan. */
             name?: string | null;
         };
         StartedScanDto: {
@@ -986,6 +1089,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CeremonyStarted"];
+                };
+            };
+        };
+    };
+    createFreeScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFreeScan"];
+            };
+        };
+        responses: {
+            /** @description A scan of this domain from the last 24 hours answers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeScanDto"];
+                };
+            };
+            /** @description The scan is queued or running */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeScanDto"];
+                };
+            };
+            /** @description The address or the challenge was refused */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A daily limit was reached */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The scanner is busy or not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getFreeScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The scan's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeScanDto"];
+                };
+            };
+            /** @description No such scan, or it expired */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

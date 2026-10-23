@@ -17,8 +17,8 @@ mod support;
 use db::Db;
 use db::repo::webhooks::{self, NewWebhook, Recorded};
 use db::repo::{
-    app_views, audit, data_fixes, findings, fixes, jobs, occurrences, redact, scan_inputs, scans,
-    shop_billing, shopify, sites, tenants,
+    app_views, audit, data_fixes, findings, fixes, jobs, occurrences, redact, scan_inputs,
+    scan_secrets, scans, shop_billing, shopify, sites, tenants,
 };
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -137,6 +137,14 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .bind(graph.tenant.as_uuid())
     .bind(graph.shop.as_uuid())
     .bind(format!("event-{}", graph.tenant))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'unknown')",
+    )
+    .bind(graph.shop.as_uuid())
+    .bind(graph.tenant.as_uuid())
     .execute(&mut *tx)
     .await
     .unwrap();
@@ -406,7 +414,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 20] = [
+const TENANT_TABLES: [&str; 21] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -428,10 +436,12 @@ const TENANT_TABLES: [&str; 20] = [
     "ai_budgets",
     "ai_reservations",
     "webhook_events",
+    // The fix loop's plan state (ADR-084).
+    "shop_billing",
 ];
 
-/// The tables ADR-037 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 8] = [
+/// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
+const R1_TABLES: [&str; 9] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -440,6 +450,7 @@ const R1_TABLES: [&str; 8] = [
     "ai_budgets",
     "ai_reservations",
     "webhook_events",
+    "shop_billing",
 ];
 
 #[sqlx::test]
@@ -706,6 +717,45 @@ async fn creating_a_tenant_uses_the_transactions_own_id(
         .await
         .unwrap();
     assert_eq!(created.id, tx.tenant_id());
+}
+
+/// The suite above lists its tables by hand, so a migration that adds a tenant table and forgets
+/// the list would leave that table unchecked. This reads the catalog: every table of the public
+/// schema that has a `tenant_id` column or row-level security must be in `TENANT_TABLES`, and
+/// every one of those must have row-level security switched on and a policy for the application
+/// role. A partition is checked through its parent.
+#[sqlx::test]
+async fn every_tenant_table_in_the_schema_is_in_the_isolation_suite(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let owner = owner_pool(opts, conn).await;
+    let rows: Vec<(String, bool, bool)> = sqlx::query_as(
+        "select c.relname::text, c.relrowsecurity,
+                exists (select 1 from pg_policy p where p.polrelid = c.oid)
+           from pg_class c
+           join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relispartition
+            and (c.relrowsecurity or exists (
+                  select 1 from pg_attribute a
+                   where a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped))
+          order by 1",
+    )
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    let mut in_schema: Vec<&str> = rows.iter().map(|(name, _, _)| name.as_str()).collect();
+    let mut listed = TENANT_TABLES.to_vec();
+    in_schema.sort_unstable();
+    listed.sort_unstable();
+    assert_eq!(
+        in_schema, listed,
+        "a tenant table is missing from TENANT_TABLES (or the list names a table that is gone)"
+    );
+    for (name, secured, has_policy) in rows {
+        assert!(secured, "{name}: row-level security is not enabled");
+        assert!(has_policy, "{name}: no row-level security policy");
+    }
 }
 
 // --- The R1 pipeline's tables (ADR-037) ----------------------------------------------------
@@ -1014,6 +1064,7 @@ async fn assert_webhooks_and_shop_info_isolate(db: &Db, a: Graph, b: Graph) {
 
     assert_data_fixes_isolate(db, a, b).await;
     assert_shop_info_isolates(db, a, b).await;
+    assert_scan_secrets_isolate(db, a, b).await;
 }
 
 /// The data-fix lifecycle `ctl` drives.
@@ -1060,20 +1111,92 @@ async fn assert_data_fixes_isolate(db: &Db, a: Graph, b: Graph) {
     tx.rollback().await.unwrap();
 }
 
+/// The storefront password of a site and the sealed copy on a scan (ADR-264).
+async fn assert_scan_secrets_isolate(db: &Db, a: Graph, b: Graph) {
+    let secret = scan_secrets::SealedSecret {
+        key_id: "scan1".to_owned(),
+        bytes: vec![1, 2, 3],
+    };
+    // Tenant B has a saved password and a sealed copy.
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert!(
+        app_views::set_storefront_password(&mut tx, b.site, Some((&[9, 9, 9], "k1")))
+            .await
+            .unwrap()
+    );
+    assert!(
+        scan_secrets::set_scan_password(&mut tx, b.scan, Some(&secret))
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    // Tenant A reads, writes and clears none of it.
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        scan_secrets::site_password(&mut tx, b.site)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        scan_secrets::scan_password(&mut tx, b.scan)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !scan_secrets::set_scan_password(&mut tx, b.scan, Some(&secret))
+            .await
+            .unwrap()
+    );
+    assert!(
+        !scan_secrets::set_scan_password(&mut tx, b.scan, None)
+            .await
+            .unwrap()
+    );
+    tx.rollback().await.unwrap();
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert_eq!(
+        scan_secrets::scan_password(&mut tx, b.scan).await.unwrap(),
+        Some(secret.clone())
+    );
+    // A scan that has ended takes no new copy, and a failed scan drops the one it had.
+    assert!(scans::fail(&mut tx, b.scan, "x").await.unwrap().is_some());
+    assert!(
+        scan_secrets::scan_password(&mut tx, b.scan)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !scan_secrets::set_scan_password(&mut tx, b.scan, Some(&secret))
+            .await
+            .unwrap()
+    );
+    tx.rollback().await.unwrap();
+}
+
 /// Shop info and uninstall.
 async fn assert_shop_info_isolates(db: &Db, a: Graph, b: Graph) {
     let mut tx = db.tenant(a.tenant).await.unwrap();
     assert!(!shopify::mark_uninstalled(&mut tx, b.shop).await.unwrap());
     assert!(
-        !shopify::set_info(&mut tx, b.shop, Some("evil.example"), &["xx".to_owned()])
-            .await
-            .unwrap()
+        !shopify::set_info(
+            &mut tx,
+            b.shop,
+            "Evil",
+            Some("evil.example"),
+            &["xx".to_owned()]
+        )
+        .await
+        .unwrap()
     );
     assert!(shopify::get_info(&mut tx, b.shop).await.unwrap().is_none());
     tx.rollback().await.unwrap();
     let mut tx = db.tenant(b.tenant).await.unwrap();
     let info = shopify::get_info(&mut tx, b.shop).await.unwrap().unwrap();
     assert_ne!(info.primary_domain.as_deref(), Some("evil.example"));
+    assert_ne!(info.name.as_deref(), Some("Evil"));
     assert!(
         shopify::get(&mut tx, b.shop)
             .await

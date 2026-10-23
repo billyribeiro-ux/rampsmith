@@ -60,6 +60,10 @@ async fn run(config: Config) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
     let refresh = TokenRefresh::new(db.clone(), auth.clone());
+    let scan_secrets = config
+        .scan_secret_keys
+        .clone()
+        .map(|scan| jobs::scan_secret::ScanSecrets::new(config.master_keys.clone(), scan));
     let handlers = jobs::Jobs::new(
         db.clone(),
         auth,
@@ -69,6 +73,10 @@ async fn run(config: Config) -> anyhow::Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
     );
+    let handlers = match scan_secrets {
+        Some(secrets) => handlers.with_scan_secrets(secrets),
+        None => handlers,
+    };
 
     let (stop, stopped) = watch::channel(false);
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {

@@ -193,6 +193,8 @@ async fn finish(
     )
     .await
     .map_err(|e| database(&e))?;
+    jobs.hand_storefront_password(&mut tx, scan.id, site)
+        .await?;
     let (input_id, urls) = match owner {
         Some(owner) => {
             let batch = read_store::owner_payload(owner);

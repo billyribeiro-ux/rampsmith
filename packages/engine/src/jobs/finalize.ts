@@ -4,6 +4,7 @@
  * findings (PLAN §11 priority score), writes the coverage disclosure (ADR-225) and ends the
  * scan. Running it again changes nothing.
  */
+import { RULESET_VERSION } from '../ruleset.ts';
 import { AXE_VERSION } from '../scan-page.ts';
 import { RULES } from '@rampsmith/a11y-rules';
 import axe from 'axe-core';
@@ -246,8 +247,10 @@ export function scanFinalizeHandler(deps: FinalizeDeps): JobHandler {
           : null;
       await tx`
         update scans
-           set status = ${status}, error_code = ${errorCode}, coverage = ${tx.json(coverage as postgres.JSONValue)},
-               finished_at = now(), finalized_at = now()
+           set status = ${status}, error_code = ${errorCode}, ruleset_version = ${RULESET_VERSION},
+               coverage = ${tx.json(coverage as postgres.JSONValue)},
+               finished_at = now(), finalized_at = now(),
+               storefront_password_ct = null, storefront_password_key_id = null
          where tenant_id = ${tenantId} and id = ${payload.scan_id}`;
     });
   };

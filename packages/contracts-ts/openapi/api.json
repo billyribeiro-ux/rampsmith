@@ -280,6 +280,129 @@
         }
       }
     },
+    "/v1/free-scans": {
+      "post": {
+        "tags": [
+          "free-scanner"
+        ],
+        "summary": "Starts a free scan of one public website, or returns the answer already held for it.",
+        "operationId": "createFreeScan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFreeScan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A scan of this domain from the last 24 hours answers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeScanDto"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The scan is queued or running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeScanDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The address or the challenge was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A daily limit was reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The scanner is busy or not configured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "free_scan_service": []
+          }
+        ]
+      }
+    },
+    "/v1/free-scans/{id}": {
+      "get": {
+        "tags": [
+          "free-scanner"
+        ],
+        "summary": "A free scan's state and result. The id is unguessable and the scan holds nothing about the\nvisitor; it is gone 24 hours after it was asked for.",
+        "operationId": "getFreeScan",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The scan's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeScanDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such scan, or it expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "free_scan_service": []
+          }
+        ]
+      }
+    },
     "/v1/shopify/evidence/{evidence_id}": {
       "get": {
         "tags": [
@@ -1417,6 +1540,30 @@
           }
         }
       },
+      "CreateFreeScan": {
+        "type": "object",
+        "description": "A request for a free scan, from the web server.",
+        "required": [
+          "url",
+          "turnstile_token",
+          "client_ip"
+        ],
+        "properties": {
+          "client_ip": {
+            "type": "string",
+            "description": "The visitor's address, as the web server saw it."
+          },
+          "turnstile_token": {
+            "type": "string",
+            "description": "The visitor's Turnstile token."
+          },
+          "url": {
+            "type": "string",
+            "description": "The address the visitor typed."
+          }
+        },
+        "additionalProperties": false
+      },
       "DraftsDto": {
         "type": "object",
         "required": [
@@ -1879,6 +2026,157 @@
           }
         }
       },
+      "FreeScanDto": {
+        "type": "object",
+        "description": "A free scan and, once finished, what it found.",
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "cached"
+        ],
+        "properties": {
+          "cached": {
+            "type": "boolean",
+            "description": "True when an earlier scan of this domain answered the request."
+          },
+          "domain": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "refusal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a refused scan was refused: `robots`, `bot-challenge` or `unreachable`."
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FreeScanResult",
+                "description": "The result, once complete."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "`queued`, `running`, `complete`, `refused` or `failed`."
+          }
+        }
+      },
+      "FreeScanExample": {
+        "type": "object",
+        "description": "One example of a failure: a page and the offending element's markup.",
+        "required": [
+          "page",
+          "snippet"
+        ],
+        "properties": {
+          "page": {
+            "type": "string",
+            "description": "The page the element is on."
+          },
+          "snippet": {
+            "type": "string",
+            "description": "The element's markup, scrubbed and cut to a few hundred characters."
+          }
+        },
+        "additionalProperties": false
+      },
+      "FreeScanFailure": {
+        "type": "object",
+        "description": "One kind of failure on the scanned pages, with up to three examples.",
+        "required": [
+          "rule_id",
+          "title",
+          "criterion",
+          "count",
+          "examples"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many elements failed across the scanned pages.",
+            "minimum": 0
+          },
+          "criterion": {
+            "type": "string",
+            "description": "The WCAG 2.2 success criterion, such as `1.4.3`."
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FreeScanExample"
+            },
+            "description": "At most three."
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "The rule's id, such as `color-contrast`."
+          },
+          "title": {
+            "type": "string",
+            "description": "What the failure is, in plain words."
+          }
+        },
+        "additionalProperties": false
+      },
+      "FreeScanResult": {
+        "type": "object",
+        "description": "What a free scan found (PLAN §16): checks passed of checks run, and the failures by type.",
+        "required": [
+          "domain",
+          "scanned_at",
+          "pages",
+          "checks_passed",
+          "checks_run",
+          "failures"
+        ],
+        "properties": {
+          "checks_passed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Automated checks that passed.",
+            "minimum": 0
+          },
+          "checks_run": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Automated checks that ran.",
+            "minimum": 0
+          },
+          "domain": {
+            "type": "string",
+            "description": "The scanned domain, without a leading `www.`."
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FreeScanFailure"
+            },
+            "description": "Failures, most numerous first."
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The pages checked: the home page and up to two linked pages."
+          },
+          "scanned_at": {
+            "type": "string",
+            "description": "When the scan finished, RFC 3339."
+          }
+        },
+        "additionalProperties": false
+      },
       "Health": {
         "type": "object",
         "description": "The process is up.",
@@ -2328,7 +2626,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The shop's name, once `shopify.read_store` has read it; null before the first scan."
           }
         }
       },
@@ -2513,6 +2812,11 @@
         "name": "Authorization",
         "description": "`Session <token>`: the dashboard session token, forwarded by the web app (ADR-024)."
       },
+      "free_scan_service": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`FREE_SCAN_SERVICE_TOKEN`: the secret the web server presents for the free scanner (ADR-265)."
+      },
       "shopify_session": {
         "type": "http",
         "scheme": "bearer",
@@ -2533,6 +2837,10 @@
     {
       "name": "auth",
       "description": "Standalone dashboard sign-in with passkeys"
+    },
+    {
+      "name": "free-scanner",
+      "description": "The marketing site's anonymous single-page scan (ADR-265)"
     },
     {
       "name": "app",

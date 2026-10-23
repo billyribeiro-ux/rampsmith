@@ -21,6 +21,10 @@ pub struct Config {
     pub shopify_client_secret: SecretString,
     /// Master keys for envelope encryption (ADR-021).
     pub master_keys: KeyRing,
+    /// The key ring shared with the engine, to seal a storefront password for one scan
+    /// (`RAMPSMITH_SCAN_SECRET_KEYS`, ADR-264). Optional: without it a password-protected
+    /// store is reported as blocked.
+    pub scan_secret_keys: Option<KeyRing>,
 }
 
 /// A configuration value is missing or malformed. Never contains the value.
@@ -75,6 +79,13 @@ impl Config {
                 reason: e.to_string(),
             }
         })?;
+        let scan_secret_keys = get("RAMPSMITH_SCAN_SECRET_KEYS")
+            .map(|spec| KeyRing::parse(&spec))
+            .transpose()
+            .map_err(|e| ConfigError::Invalid {
+                name: "RAMPSMITH_SCAN_SECRET_KEYS",
+                reason: e.to_string(),
+            })?;
         Ok(Self {
             database_url: SecretString::from(database_url),
             db_max_connections,
@@ -84,6 +95,7 @@ impl Config {
             shopify_client_id: require("SHOPIFY_API_KEY")?.trim().to_owned(),
             shopify_client_secret: SecretString::from(require("SHOPIFY_API_SECRET")?),
             master_keys,
+            scan_secret_keys,
         })
     }
 }

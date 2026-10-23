@@ -252,6 +252,7 @@ async fn shop_update(
     shops::set_info(
         &mut tx,
         shop,
+        &info.name,
         info.primary_domain.as_ref().map(|d| d.host.as_str()),
         &locales,
     )

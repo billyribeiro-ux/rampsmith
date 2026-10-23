@@ -53,7 +53,8 @@ export function checkImageUrl(raw: string): URL {
   return url;
 }
 
-function openTunnel(proxy: URL, authority: string, token: string, timeoutMs: number) {
+/** Opens a CONNECT tunnel through egress to `authority`, presenting `token`. */
+export function openTunnel(proxy: URL, authority: string, token: string, timeoutMs: number) {
   return new Promise<Duplex>((resolve, reject) => {
     const connect = httpRequest({
       host: proxy.hostname,

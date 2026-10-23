@@ -34,30 +34,6 @@ impl ShopifyTokenRefresh {
     pub const SCHEMA: &'static str = "shopify.token_refresh@1";
 }
 
-/// Payload of `scan.page` jobs, schema `scan.page@1` (PLAN §10, §11). The job's tenant owns the
-/// site. Runs in the engine: loads `url` in Chromium through egress, runs axe-core, and records
-/// the findings against the scan.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ScanPage {
-    /// The `scans.id` this page belongs to.
-    #[schemars(with = "String", extend("format" = "uuid"))]
-    pub scan_id: Uuid,
-    /// The `sites.id` the page is on; it must be verified.
-    #[schemars(with = "String", extend("format" = "uuid"))]
-    pub site_id: Uuid,
-    /// The page to load: an `https://` URL on the site's host.
-    #[schemars(extend("format" = "uri"))]
-    pub url: String,
-}
-
-impl ScanPage {
-    /// The queue.
-    pub const QUEUE: &'static str = "scan.page";
-    /// The payload schema and version.
-    pub const SCHEMA: &'static str = "scan.page@1";
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
