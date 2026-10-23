@@ -161,6 +161,16 @@ test('every control in the queue can be reached with Tab alone, in reading order
   }
 });
 
+test('the email switch works with the keyboard alone', async ({ page }) => {
+  await open(page, 'default', '/app/settings', 'Settings');
+  const emails = page.getByRole('switch', { name: 'Email me about my store' });
+  await emails.focus();
+  await expect(emails).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(emails).not.toBeChecked();
+  await expect(live(page)).toHaveText('Email preference saved.');
+});
+
 test('the settings form works with the keyboard alone', async ({ page }) => {
   await open(page, 'default', '/app/settings', 'Settings');
   const weekly = page.getByRole('switch', { name: 'Rescan every week' });

@@ -69,7 +69,7 @@ fn id_token() -> String {
 }
 
 fn links() -> EmailLinks {
-    EmailLinks::new(LinkKeys::parse(LINK_KEYS).unwrap(), APP.to_owned())
+    EmailLinks::new(LinkKeys::parse(LINK_KEYS).unwrap(), APP)
 }
 
 async fn harness(opts: PgPoolOptions, conn: PgConnectOptions, configured: bool) -> Harness {

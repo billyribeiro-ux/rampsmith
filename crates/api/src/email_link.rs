@@ -296,7 +296,7 @@ pub struct EmailLinks {
 impl EmailLinks {
     /// `app_origin` is `https://app.rampsmith.com`: scheme, host and optional port.
     #[must_use]
-    pub fn new(keys: LinkKeys, app_origin: String) -> Self {
+    pub fn new(keys: LinkKeys, app_origin: &str) -> Self {
         Self {
             keys: Arc::new(keys),
             app_origin: app_origin.trim_end_matches('/').to_owned(),

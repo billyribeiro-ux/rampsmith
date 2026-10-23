@@ -223,6 +223,19 @@ export interface SettingsUpdate {
   readonly storefront_password?: string | null;
 }
 
+/** One category of the shop's notification mail and whether it is on. */
+export interface EmailCategoryState {
+  readonly category: 'notification';
+  readonly enabled: boolean;
+}
+
+/** Where the shop's notification mail stands (ADR-275). */
+export interface EmailPreferences {
+  /** Without an address on file nothing is sent. */
+  readonly address_known: boolean;
+  readonly categories: readonly EmailCategoryState[];
+}
+
 export interface StatementContent {
   readonly organization: string;
   readonly contact: {

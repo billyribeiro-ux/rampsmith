@@ -272,7 +272,7 @@ fn email_links_config(
         })?;
     Ok(Some(crate::email_link::EmailLinks::new(
         keys,
-        url.origin().ascii_serialization(),
+        &url.origin().ascii_serialization(),
     )))
 }
 

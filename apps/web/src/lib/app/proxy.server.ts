@@ -36,6 +36,7 @@ const ROUTES: readonly Route[] = [
   { methods: ['POST'], path: new RegExp(`^fixes/${UUID}/(?:reject|undo)$`, 'u'), query: [] },
   { methods: ['GET'], path: new RegExp(`^evidence/${UUID}$`, 'u'), query: [] },
   { methods: ['GET', 'PUT'], path: /^settings$/u, query: [] },
+  { methods: ['GET', 'PUT'], path: /^email-preferences$/u, query: [] },
   { methods: ['GET', 'PUT'], path: /^statement$/u, query: [] },
 ];
 
