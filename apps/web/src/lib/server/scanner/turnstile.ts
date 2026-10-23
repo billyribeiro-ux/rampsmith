@@ -78,7 +78,7 @@ export async function verifyTurnstile(input: VerifyTurnstileInput): Promise<Turn
   }
   if (payload.success === true) {
     if (input.expectedAction !== undefined) {
-      const reported = 'action' in payload ? payload['action'] : undefined;
+      const reported = 'action' in payload ? payload.action : undefined;
       if (reported !== input.expectedAction) return { ok: false, reason: 'invalid' };
     }
     return { ok: true };

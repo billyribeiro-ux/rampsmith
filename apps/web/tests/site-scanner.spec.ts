@@ -201,7 +201,12 @@ test.describe('the scanner, with a fixed sample result', () => {
   });
 
   test('serves a result that is no cache hit with private, no-store headers', async ({ page }) => {
-    const response = await post(page, SITE_FIXTURE, 'headers-check.com', 'fake-pass-free_scan-headers-1');
+    const response = await post(
+      page,
+      SITE_FIXTURE,
+      'headers-check.com',
+      'fake-pass-free_scan-headers-1',
+    );
     expect(response.status()).toBe(200);
     expect(response.headers()['cache-control']).toBe('private, no-store');
     expect(response.headers()['x-robots-tag']).toBe('noindex, nofollow');
