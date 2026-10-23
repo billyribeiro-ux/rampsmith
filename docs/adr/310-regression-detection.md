@@ -45,7 +45,7 @@ which scans recorded it. Nothing compared two scans.
 - One extra index, `finding_occurrences (tenant_id, scan_id, finding_id)`, keeps the comparison to
   two index scans per site.
 - A regression is a statement about checks Rampsmith ran. The email and screen say "new issues" and
-  "issues that came back",.
+  "issues that came back", and make no claim about conformance.
 - Free and Starter shops still get the record (the data exists); only the email and the screen are
   gated (ADR-311).
 

@@ -72,17 +72,16 @@ async fn clear_scans(w: &World) {
 /// Another installed shop with the setting on and the given cadence, in `tenant` (a new tenant
 /// when `None`). Returns its tenant.
 async fn extra_shop(w: &World, tenant: Option<Uuid>, cadence: &str) -> Uuid {
-    let tenant = match tenant {
-        Some(t) => t,
-        None => {
-            let t = Uuid::now_v7();
-            sqlx::query("insert into tenants (id, kind) values ($1, 'shopify_store')")
-                .bind(t)
-                .execute(&w.owner)
-                .await
-                .unwrap();
-            t
-        }
+    let tenant = if let Some(t) = tenant {
+        t
+    } else {
+        let t = Uuid::now_v7();
+        sqlx::query("insert into tenants (id, kind) values ($1, 'shopify_store')")
+            .bind(t)
+            .execute(&w.owner)
+            .await
+            .unwrap();
+        t
     };
     let (site, shop) = (Uuid::now_v7(), Uuid::now_v7());
     sqlx::query(

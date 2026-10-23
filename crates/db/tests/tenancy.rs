@@ -2348,10 +2348,10 @@ async fn an_opt_out_is_idempotent_per_category_and_can_be_taken_back(
     tx.commit().await.unwrap();
 }
 
-// --- The weekly rescan listing (ADR-279) ---------------------------------------------
+// --- The scheduled rescan listing (ADR-279, ADR-312) ---------------------------------
 
 #[sqlx::test]
-async fn only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_shop(
+async fn only_the_worker_may_list_the_shops_due_a_rescan_and_every_tenant_gets_a_turn(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
@@ -2368,34 +2368,38 @@ async fn only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_
         .await
         .unwrap();
 
-    let (public, worker, app): (bool, bool, bool) = sqlx::query_as(
-        "select has_function_privilege('public', 'due_weekly_rescans(uuid, int)', 'execute'),
-                has_function_privilege('rampsmith_worker', 'due_weekly_rescans(uuid, int)', 'execute'),
-                has_function_privilege('rampsmith_app', 'due_weekly_rescans(uuid, int)', 'execute')",
-    )
-    .fetch_one(&owner)
-    .await
-    .unwrap();
-    assert_eq!((public, worker, app), (false, true, false));
-
-    // Both tenants' shops come back, a page at a time, in the order of their ids.
-    let db = Db::from_pool(worker_pool(opts, conn).await);
-    let mut seen = Vec::new();
-    let mut after = None;
-    loop {
-        let mut tx = db.public().await.unwrap();
-        let page = db::repo::rescans::due(&mut tx, after, 1).await.unwrap();
-        tx.commit().await.unwrap();
-        let Some(last) = page.last() else { break };
-        after = Some(last.shop);
-        seen.extend(page);
+    for function in [
+        "due_weekly_rescans(uuid, int)",
+        "due_scheduled_rescans(int, int, uuid)",
+    ] {
+        let (public, worker, app): (bool, bool, bool) =
+            sqlx::query_as(sqlx::AssertSqlSafe(format!(
+                "select has_function_privilege('public', '{function}', 'execute'),
+                    has_function_privilege('rampsmith_worker', '{function}', 'execute'),
+                    has_function_privilege('rampsmith_app', '{function}', 'execute')"
+            )))
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+        assert_eq!((public, worker, app), (false, true, false), "{function}");
     }
+
+    // Both tenants' shops come back, and with room for one each a round names both tenants.
+    let db = Db::from_pool(worker_pool(opts.clone(), conn.clone()).await);
+    let mut tx = db.public().await.unwrap();
+    let found = db::repo::rescans::due(&mut tx, 10, 1).await.unwrap();
+    tx.commit().await.unwrap();
+    let mut seen: Vec<_> = found.iter().map(|due| (due.tenant, due.shop)).collect();
+    seen.sort_by_key(|(_, shop)| shop.as_uuid());
     let mut expected = vec![(a.tenant, a.shop), (b.tenant, b.shop)];
     expected.sort_by_key(|(_, shop)| shop.as_uuid());
-    assert_eq!(
-        seen.iter()
-            .map(|due| (due.tenant, due.shop))
-            .collect::<Vec<_>>(),
-        expected
+    assert_eq!(seen, expected);
+
+    // The app role cannot call either function.
+    let app = Db::from_pool(app_pool(opts, conn).await);
+    let mut tx = app.public().await.unwrap();
+    assert!(
+        db::repo::rescans::due(&mut tx, 10, 1).await.is_err(),
+        "the app role listed the shops due a rescan"
     );
 }
