@@ -211,6 +211,17 @@ export function createSesSender(config: SesConfig): EmailSender {
               Html: { Data: email.html, Charset: 'UTF-8' },
             },
             ...(headers.length > 0 ? { Headers: headers } : {}),
+            ...(message.attachments === undefined || message.attachments.length === 0
+              ? {}
+              : {
+                  Attachments: message.attachments.map((file) => ({
+                    FileName: file.fileName,
+                    ContentType: file.contentType,
+                    ContentDisposition: 'ATTACHMENT',
+                    ContentTransferEncoding: 'BASE64',
+                    RawContent: Buffer.from(file.data).toString('base64'),
+                  })),
+                }),
           },
         },
         // Per message, so neither the account nor a configuration set can switch it on (ADR-191).

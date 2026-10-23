@@ -17,8 +17,8 @@ mod support;
 use db::Db;
 use db::repo::webhooks::{self, NewWebhook, Recorded};
 use db::repo::{
-    app_views, audit, data_fixes, email, findings, fixes, jobs, occurrences, redact, scan_inputs,
-    scan_secrets, scans, shop_billing, shopify, sites, tenants,
+    app_views, audit, data_fixes, email, findings, fixes, jobs, occurrences, redact, retention,
+    scan_inputs, scan_secrets, scans, shop_billing, shopify, sites, tenants,
 };
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -1819,9 +1819,10 @@ async fn email_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
     }
 }
 
-/// Only `ctl`'s group writes a shop's contact; the engine, a plain worker member, and the
-/// application login read it, the latter so the restore drill's row-level-security count can see
-/// every tenant table (ADR-272). A deletion of suppressions or deliveries is nobody's job but the application's.
+/// Only `ctl`'s group writes a shop's contact; the engine, a plain worker member, reads it. The
+/// application login does not (audit L6, ADR-277): nothing it serves needs the owner's address,
+/// and the restore drill counts that table as the owner. A deletion of suppressions or deliveries
+/// is nobody's job but the application's.
 #[sqlx::test]
 async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
     opts: PgPoolOptions,
@@ -1840,6 +1841,7 @@ async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
             &worker,
             "insert into email_opt_outs (tenant_id, address_hash, category) values (gen_random_uuid(), sha256('x'), 'marketing')",
         ),
+        (&app, "select count(*) from shop_contacts"),
         (&app, "update shop_contacts set store_name = 'x'"),
         (&app, "delete from shop_contacts"),
         (
@@ -1855,6 +1857,161 @@ async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
             "{sql}: {err}"
         );
     }
+}
+
+/// `shop/redact` deletes the shop's delivery records with the rest (audit L5), and only that
+/// tenant's.
+#[sqlx::test]
+async fn redaction_deletes_the_shops_delivery_records_and_contact_and_no_one_elses(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    let db = Db::from_pool(ctl_pool(opts, conn).await);
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(redact::shop(&mut tx, a.shop).await.unwrap().is_some());
+    tx.commit().await.unwrap();
+    for (table, a_rows, b_rows) in [("email_deliveries", 0, 1), ("shop_contacts", 0, 1)] {
+        let text = format!("select count(*) from {table} where tenant_id = $1");
+        let count = |t: TenantId| {
+            let owner = owner.clone();
+            let text = text.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(text))
+                    .bind(t.as_uuid())
+                    .fetch_one(&owner)
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(
+            count(a.tenant).await,
+            a_rows,
+            "{table}: the redacted shop's rows"
+        );
+        assert_eq!(
+            count(b.tenant).await,
+            b_rows,
+            "{table}: another tenant's rows"
+        );
+    }
+    // The pseudonymous opt-out and suppression rows stay: an opt-out is honoured on reinstall.
+    for table in ["email_suppressions", "email_opt_outs"] {
+        let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select count(*) from {table} where tenant_id = $1"
+        )))
+        .bind(a.tenant.as_uuid())
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+        assert_eq!(n, 1, "{table}");
+    }
+}
+
+/// The sweep for email data whose purpose has passed, with ages fixed in the migration.
+#[sqlx::test]
+async fn the_email_sweep_removes_old_deliveries_and_contacts_of_long_gone_shops_only(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    let db = Db::from_pool(worker_pool(opts, conn).await);
+    // A's shop was uninstalled 31 days ago and its delivery record is 91 days old; B's shop was
+    // uninstalled 10 days ago, and B's record is current.
+    sqlx::query(
+        "update shopify_shops set status = 'uninstalled', uninstalled_at = now() - interval '31 days'
+          where tenant_id = $1",
+    )
+    .bind(a.tenant.as_uuid())
+    .execute(&owner)
+    .await
+    .unwrap();
+    sqlx::query(
+        "update shopify_shops set status = 'uninstalled', uninstalled_at = now() - interval '10 days'
+          where tenant_id = $1",
+    )
+    .bind(b.tenant.as_uuid())
+    .execute(&owner)
+    .await
+    .unwrap();
+    sqlx::query(
+        "update email_deliveries set state = 'failed', updated_at = now() - interval '91 days'
+          where tenant_id = $1",
+    )
+    .bind(a.tenant.as_uuid())
+    .execute(&owner)
+    .await
+    .unwrap();
+
+    let mut tx = db.public().await.unwrap();
+    assert_eq!(retention::email_records(&mut tx).await.unwrap(), 2);
+    tx.commit().await.unwrap();
+    for (table, tenant, expected) in [
+        ("shop_contacts", a.tenant, 0),
+        ("email_deliveries", a.tenant, 0),
+        ("shop_contacts", b.tenant, 1),
+        ("email_deliveries", b.tenant, 1),
+        ("email_suppressions", a.tenant, 1),
+        ("email_opt_outs", a.tenant, 1),
+    ] {
+        let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select count(*) from {table} where tenant_id = $1"
+        )))
+        .bind(tenant.as_uuid())
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+        assert_eq!(n, expected, "{table} of {tenant}");
+    }
+    // A record still being sent is never swept, however old.
+    sqlx::query(
+        "update email_deliveries set state = 'sending', updated_at = now() - interval '200 days'",
+    )
+    .execute(&owner)
+    .await
+    .unwrap();
+    let mut tx = db.public().await.unwrap();
+    assert_eq!(retention::email_records(&mut tx).await.unwrap(), 0);
+    tx.commit().await.unwrap();
+}
+
+/// A repeated `app/uninstalled` cancels the waiting scans but not the mail still to be sent
+/// (audit L1).
+#[sqlx::test]
+async fn cancelling_pending_jobs_spares_the_email_queue(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, _, a, _) = two_tenants(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    sqlx::query(
+        "insert into jobs (id, queue, payload_schema, payload, tenant_id, state)
+         values (gen_random_uuid(), 'email.send', 'email.send@1', '{}', $1, 'ready')",
+    )
+    .bind(a.tenant.as_uuid())
+    .execute(&owner)
+    .await
+    .unwrap();
+    let db = Db::from_pool(ctl_pool(opts, conn).await);
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let cancelled = jobs::cancel_pending(&mut tx, "webhook.process")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(cancelled, 1, "the scan job goes, the mail does not");
+    let states: Vec<(String, String)> = sqlx::query_as(
+        "select queue, state from jobs where tenant_id = $1 and queue in ('email.send', 'scan.plan') order by queue",
+    )
+    .bind(a.tenant.as_uuid())
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    assert!(
+        states.contains(&("email.send".to_owned(), "ready".to_owned())),
+        "{states:?}"
+    );
 }
 
 #[sqlx::test]

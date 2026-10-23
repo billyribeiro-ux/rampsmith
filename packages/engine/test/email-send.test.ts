@@ -64,7 +64,6 @@ async function tenant(address: string | null = OWNER_ADDRESS): Promise<Tenant> {
 
 const UNINSTALL_INPUT = {
   storeName: 'Demo Outfitters',
-  exportUrl: `${APP}/app/log`,
   deleteAt: '2026-10-24T18:30:00Z',
   locale: 'fr',
 };
@@ -142,7 +141,7 @@ describe('a message that can be sent', () => {
     expect(request?.body.FromEmailAddress).toBe('Rampsmith <hello@rampsmith.example>');
     const text = request?.body.Content.Simple.Body.Text?.Data ?? '';
     expect(text).toContain('Demo Outfitters');
-    expect(text).toContain(`${APP}/app/log`);
+    expect(text).toContain('attached');
     // Never tracked, whatever the account or a configuration set say.
     expect(request?.body.ConfigurationOverrides?.Tracking).toEqual({
       OpenTrackingEnabled: 'DISABLED',
@@ -248,8 +247,9 @@ describe('errors from SES', () => {
     const t = await tenant();
     const j = job(t);
     await db.owner`
-      insert into email_deliveries (tenant_id, message_key, template, state, tries)
-      values (${t.tenantId}, ${keyOf(j)}, 'uninstall_export', 'sending', ${MAX_SEND_TRIES - 1})`;
+      insert into email_deliveries (tenant_id, message_key, template, state, tries, error_code)
+      values (${t.tenantId}, ${keyOf(j)}, 'uninstall_export', 'sending', ${MAX_SEND_TRIES - 1},
+              'ses_unavailable')`;
     ses.failNext({ status: 503, type: 'ServiceUnavailable' });
     const failure = (await outcome(handler()(j))) as JobFailure;
     expect(failure.failure.kind).toBe('permanent');
@@ -264,6 +264,68 @@ describe('errors from SES', () => {
     expect((await delivery(t, keyOf(j)))?.state).toBe('failed');
     expect(await outcome(handler()(j))).toBe('done');
     expect((await delivery(t, keyOf(j)))?.state).toBe('sent');
+  });
+});
+
+describe('two attempts at one message (audit L2)', () => {
+  it('does not send while another attempt is in flight, and defers for the rest of the window', async () => {
+    const t = await tenant();
+    const j = job(t);
+    // An attempt that claimed the key a moment ago and has not recorded an outcome.
+    await db.owner`
+      insert into email_deliveries (tenant_id, message_key, template, state, tries)
+      values (${t.tenantId}, ${keyOf(j)}, 'uninstall_export', 'sending', 1)`;
+    const before = ses.requests.length;
+    const failure = (await outcome(handler()(j))) as JobFailure;
+    expect(failure.failure.kind).toBe('defer');
+    expect(failure.failure.error.code).toBe('email_in_flight');
+    expect(failure.failure.kind === 'defer' && failure.failure.delayMs).toBeGreaterThanOrEqual(
+      3750,
+    );
+    expect(ses.requests.length).toBe(before);
+    expect((await delivery(t, keyOf(j)))?.tries).toBe(1);
+
+    // Once the window has passed the attempt is presumed dead and the key is claimed again.
+    await db.owner`
+      update email_deliveries set updated_at = now() - interval '5 minutes'
+       where tenant_id = ${t.tenantId} and message_key = ${keyOf(j)}`;
+    expect(await outcome(handler()(j))).toBe('done');
+    expect(ses.requests.length).toBe(before + 1);
+    const row = await delivery(t, keyOf(j));
+    expect([row?.state, row?.tries]).toEqual(['sent', 2]);
+  });
+
+  it('does not call SES for a job whose lease was lost, and leaves the key claimable', async () => {
+    const t = await tenant();
+    const j = job(t);
+    const before = ses.requests.length;
+    const lost = new AbortController();
+    lost.abort(new Error('lease lost'));
+    const failure = (await outcome(handler()(j, lost.signal))) as JobFailure;
+    expect(failure.failure.kind).toBe('defer');
+    expect(failure.failure.error.code).toBe('lease_lost');
+    expect(ses.requests.length).toBe(before);
+    const row = await delivery(t, keyOf(j));
+    expect([row?.state, row?.error_code]).toEqual(['sending', 'lease_lost']);
+    // The next attempt does not wait out the in-flight window.
+    expect(await outcome(handler()(j))).toBe('done');
+    expect(ses.requests.length).toBe(before + 1);
+  });
+
+  it('ends a waiting retry as suppressed when the recipient has since opted out', async () => {
+    const t = await tenant();
+    const j = welcomeJob(t);
+    ses.failNext({ status: 503, type: 'ServiceUnavailable' });
+    await handler()(j).catch(() => undefined);
+    expect((await delivery(t, keyOf(j)))?.state).toBe('sending');
+    await db.owner`
+      insert into email_opt_outs (tenant_id, address_hash, category)
+      values (${t.tenantId}, email_address_hash(${t.tenantId}, ${OWNER_ADDRESS}), 'notification')`;
+    const before = ses.requests.length;
+    expect(await outcome(handler()(j))).toBe('done');
+    expect(ses.requests.length).toBe(before);
+    const row = await delivery(t, keyOf(j));
+    expect([row?.state, row?.error_code]).toEqual(['suppressed', 'suppressed_opted_out']);
   });
 });
 
@@ -436,16 +498,104 @@ describe('mail a recipient can switch off', () => {
   });
 });
 
+/** One finding and one applied fix for a tenant, as the record's rows come. */
+async function seedFix(t: Tenant, diff: Record<string, unknown>): Promise<string> {
+  const [site] = await db.owner<
+    { id: string }[]
+  >`select id from sites where tenant_id = ${t.tenantId}`;
+  const scan = uuidv7();
+  const finding = uuidv7();
+  const fix = uuidv7();
+  await db.owner`
+    insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version, pages_planned)
+    values (${scan}, ${t.tenantId}, ${site?.id ?? ''}, 'manual', 'succeeded', 'axe-4.14.0', 0)`;
+  await db.owner`
+    insert into findings (id, tenant_id, site_id, fingerprint, rule_id, criteria, impact, status,
+                          first_seen_scan, last_seen_scan, occurrence_count)
+    values (${finding}, ${t.tenantId}, ${site?.id ?? ''}, ${Buffer.alloc(32, 3)}, 'rs-media-alt-empty',
+            ${db.owner.array(['1.1.1'])}, 'serious', 'fixed', ${scan}, ${scan}, 1)`;
+  await db.owner`
+    insert into fixes (id, tenant_id, site_id, kind, channel, status, origin, diff, approved_by, approved_at, applied_at)
+    values (${fix}, ${t.tenantId}, ${site?.id ?? ''}, 'data', 'admin_api', 'applied', 'rule',
+            ${db.owner.json(diff as never)}, ${uuidv7()}, now(), now())`;
+  await db.owner`insert into fix_findings (fix_id, finding_id, tenant_id) values (${fix}, ${finding}, ${t.tenantId})`;
+  return fix;
+}
+
+describe('the uninstall mail carries the remediation record (audit M2, ADR-277)', () => {
+  const sent = (before: number) => ses.requests.slice(before);
+
+  it("attaches the tenant's record as a CSV, and links nowhere that needs a session", async () => {
+    const t = await tenant();
+    const fixId = await seedFix(t, {
+      resource_gid: 'gid://shopify/MediaImage/11',
+      before: '',
+      after: 'Linen shirt in sand, front',
+    });
+    const other = await tenant();
+    const otherFix = await seedFix(other, {
+      resource_gid: 'gid://shopify/MediaImage/99',
+      before: '',
+      after: 'x',
+    });
+    const before = ses.requests.length;
+    expect(await outcome(handler()(job(t)))).toBe('done');
+    const [request] = sent(before);
+    const files = request?.body.Content.Simple.Attachments ?? [];
+    expect(files).toHaveLength(1);
+    expect(files[0]?.FileName).toBe('rampsmith-remediation-record.csv');
+    expect(files[0]?.ContentType).toBe('text/csv');
+    const csv = Buffer.from(files[0]?.RawContent ?? '', 'base64').toString('utf8');
+    expect(csv).toContain(fixId);
+    expect(csv).toContain('gid://shopify/MediaImage/11');
+    expect(csv).toContain('Linen shirt in sand, front');
+    expect(csv).toContain('1.1.1');
+    expect(csv, "another tenant's fix must not travel").not.toContain(otherFix);
+    expect(csv).not.toContain('gid://shopify/MediaImage/99');
+    const body = request?.body.Content.Simple.Body;
+    expect(body?.Text?.Data).toContain('attached');
+    expect(body?.Text?.Data).not.toContain('/app/log');
+    expect(body?.Html?.Data).not.toContain('/app/log');
+  });
+
+  it('attaches the header-only record of a store with no fixes, because the copy says so', async () => {
+    const t = await tenant();
+    const before = ses.requests.length;
+    expect(await outcome(handler()(job(t)))).toBe('done');
+    const files = sent(before)[0]?.body.Content.Simple.Attachments ?? [];
+    expect(files).toHaveLength(1);
+    const csv = Buffer.from(files[0]?.RawContent ?? '', 'base64').toString('utf8');
+    expect(csv.trim().split(/\r?\n/u)).toHaveLength(1);
+  });
+
+  it('fails for good, sending nothing, when a row cannot be written to the record', async () => {
+    const t = await tenant();
+    await seedFix(t, { resource_gid: '', before: '', after: 'x' });
+    const before = ses.requests.length;
+    const failure = (await outcome(handler()(job(t)))) as JobFailure;
+    expect(failure.failure.kind).toBe('permanent');
+    expect(failure.failure.error.code).toBe('record_invalid');
+    expect(ses.requests.length).toBe(before);
+  });
+
+  it('attaches nothing to any other mail', async () => {
+    const t = await tenant();
+    const before = ses.requests.length;
+    expect(await outcome(handler()(welcomeJob(t)))).toBe('done');
+    expect(sent(before)[0]?.body.Content.Simple.Attachments).toBeUndefined();
+  });
+});
+
 describe('a payload that cannot be sent', () => {
   it('fails for good, naming the field and never its value', async () => {
     const t = await tenant();
     const before = ses.requests.length;
     const failure = (await outcome(
-      handler()(job(t, { input: { ...UNINSTALL_INPUT, exportUrl: 'https://evil.example/steal' } })),
+      handler()(job(t, { input: { ...UNINSTALL_INPUT, deleteAt: 'https://evil.example/steal' } })),
     )) as JobFailure;
     expect(failure.failure.kind).toBe('permanent');
     expect(failure.failure.error.code).toBe('email_input_invalid');
-    expect(failure.failure.error.message).toContain('exportUrl');
+    expect(failure.failure.error.message).toContain('deleteAt');
     expect(failure.failure.error.message).not.toContain('evil.example');
     expect(ses.requests.length).toBe(before);
   });

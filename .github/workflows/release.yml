@@ -272,6 +272,9 @@ jobs:
           if [ "$SERVICE" = api ]; then
             bash infra/railway/tests/image_smoke.sh ctl rampsmith-api:dry-run
           fi
+          if [ "$SERVICE" = engine ]; then
+            bash infra/railway/tests/image_smoke.sh mailer rampsmith-engine:dry-run
+          fi
 
   # main: build once, push, sign. Nothing else runs while this job can write packages or mint
   # an OIDC token (ADR-185): no scanner, no SBOM tool, no image is started here.
@@ -475,6 +478,9 @@ jobs:
           bash infra/railway/tests/image_smoke.sh "$SERVICE" "$REF"
           if [ "$SERVICE" = api ]; then
             bash infra/railway/tests/image_smoke.sh ctl "$REF"
+          fi
+          if [ "$SERVICE" = engine ]; then
+            bash infra/railway/tests/image_smoke.sh mailer "$REF"
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

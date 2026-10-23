@@ -118,6 +118,8 @@ tenant_count=$(printf '%s\n' "$tenants" | grep -c . || true)
 if [ "$tenant_count" -lt "$min_tenants" ]; then
   fail "rls	the restored database holds ${tenant_count} tenants, the drill needs ${min_tenants} to prove isolation"
 fi
+# Tables the application login holds no SELECT on (migration 20261109000010).
+APP_UNREADABLE_TABLES="public.shop_contacts"
 foreign_seen=0
 rls_lines=0
 for tenant in $tenants; do
@@ -134,6 +136,13 @@ for tenant in $tenants; do
     app_other=${app_row#*$'\t'}
     if [ -z "$app_row" ]; then
       fail "rls	${table}: the application login saw nothing for tenant ${tenant}"
+    elif [ "$app_own" = "denied" ]; then
+      # Only the tables the application login is meant not to read; anywhere else a lost grant
+      # would hide a table from this check. The owner's count above stands for the rows.
+      case " ${APP_UNREADABLE_TABLES} " in
+        *" ${table} "*) ;;
+        *) fail "rls	${table}: the application login cannot read it, and it is not on the list of tables it may not" ;;
+      esac
     elif [ "$app_own" != "$own" ]; then
       fail "rls	${table}: tenant ${tenant} owns ${own} rows but the application login sees ${app_own}"
     elif [ "$app_other" != "0" ]; then

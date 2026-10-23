@@ -1050,6 +1050,9 @@ Rampsmith processes store content on the merchant's behalf and holds almost no s
 | Dashboard users: email, passkeys | Sign-up | Authentication | Until the user deletes the account |
 | AI call metadata: model, tokens, cost | System | Cost and quality control | 13 months; prompt content is not stored |
 | Billing records | Shopify, Stripe | Accounting | As tax law requires |
+| Shop owner's email address and store name (`shop_contacts`) | Admin API (`Shop.email`) | Transactional and notification email about the store (ADR-272) | While installed; deleted on `shop/redact`, and by a sweep 30 days after the uninstall if `shop/redact` never arrives. Read by the mailer only; the application role cannot select it |
+| Email delivery records (`email_deliveries`): message key, template, state, SES message id; no address, subject or body | System | Sending each email once (ADR-271) | Deleted on `shop/redact`; swept 90 days after the last change |
+| Email suppression and opt-out lists (`email_suppressions`, `email_opt_outs`): SHA-256 of the tenant id and the address, never the address | Unsubscribe links, SES bounces and complaints | Honouring an unsubscribe, a bounce or a complaint, including after a reinstall | Life of the tenant. The hash is pseudonymous, not anonymous: anyone holding the database can test a guessed address against it |
 
 ### Shopify compliance webhooks
 
@@ -1059,7 +1062,7 @@ Rampsmith processes store content on the merchant's behalf and holds almost no s
 | `customers/redact` | Delete that customer's barrier reports |
 | `shop/redact` | Delete all of the shop's data, keeping only billing records the law requires |
 
-Uninstalling triggers an email to the shop owner with a link to export the remediation record before `shop/redact` deletes it. The link expires when the data does.
+Uninstalling triggers an email to the shop owner with the remediation record attached as a CSV file, sent before `shop/redact` deletes the data (ADR-277). It is an attachment and not a link because the app's pages need an App Bridge session, which an uninstalled shop no longer has, and because a tokenised download route would be a second way into the record. After `shop/redact` Rampsmith cannot produce the record again; the email says so.
 
 ### Subprocessors
 

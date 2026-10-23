@@ -6,14 +6,11 @@ Rampsmith was uninstalled
 Rampsmith was uninstalled from Example Outfitters. It will delete the data
 it holds for the store on October 19, 2026.
 
-Before then, you can download the remediation record: every fix, its
-finding, its WCAG criterion, who approved it and when, and its verification
-result.
+The remediation record is attached to this email as a CSV file: every fix,
+its finding, its WCAG criterion, who approved it and when, and its
+verification result. Keep this email if you need the record.
 
-Download the remediation record:
-https://app.rampsmith.example/export/TESTONLYexport0055
-
-The download link stops working when the data is deleted.
+After that date Rampsmith cannot produce the record again.
 
 ____________________________________________________________________________
 

@@ -21,7 +21,6 @@ mod support;
 use support::world::{SHOP, World, world};
 
 const OWNER: &str = "Owner.Of.Demo@Demo-Store.example";
-const ORIGIN: &str = "https://app.rampsmith.example";
 
 async fn store(w: &World, topic: &str, body: Value) -> Uuid {
     let mut tx = w.db.tenant(w.session.tenant).await.unwrap();
@@ -100,6 +99,8 @@ async fn export_email_result(w: &World, action: &str) -> String {
 async fn contact_stored(w: &World, jobs: &ctl::jobs::Jobs) {
     w.admin_operation("RampsmithShop", shop_response(Some(OWNER)))
         .await;
+    w.admin_operation("RampsmithShopOwner", shop_response(Some(OWNER)))
+        .await;
     let update = store(w, "shop/update", shop_object()).await;
     process(w, jobs, update).await;
 }
@@ -149,9 +150,13 @@ async fn a_shop_that_reports_no_usable_address_gets_no_contact(
     for (email, expected) in [
         (None, "none_reported"),
         (Some("not an address"), "unusable"),
+        // Passes the table's check but not the sender's rule (audit L3).
+        (Some("owner@.com"), "unusable"),
     ] {
         w.admin.reset().await;
         w.admin_operation("RampsmithShop", shop_response(email))
+            .await;
+        w.admin_operation("RampsmithShopOwner", shop_response(email))
             .await;
         let update = store(&w, "shop/update", shop_object()).await;
         process(&w, &w.jobs, update).await;
@@ -173,7 +178,7 @@ async fn an_uninstall_queues_the_export_email_by_reference_in_the_same_transacti
     conn: PgConnectOptions,
 ) {
     let w = world(opts, conn).await;
-    let jobs = w.jobs.clone().with_app_origin(Some(ORIGIN.to_owned()));
+    let jobs = w.jobs.clone();
     contact_stored(&w, &jobs).await;
     w.admin.reset().await;
     shopify_revoked(&w).await;
@@ -222,7 +227,10 @@ async fn an_uninstall_queues_the_export_email_by_reference_in_the_same_transacti
     );
     assert_eq!(message.message_key, format!("uninstall-export:{event}"));
     assert_eq!(message.input["storeName"], "Demo Outfitters");
-    assert_eq!(message.input["exportUrl"], format!("{ORIGIN}/app/log"));
+    assert!(
+        message.input.get("exportUrl").is_none(),
+        "the record is an attachment the mailer builds, not a link (ADR-277)"
+    );
     assert_eq!(message.input["locale"], "fr");
     let delete_at =
         OffsetDateTime::parse(message.input["deleteAt"].as_str().unwrap(), &Rfc3339).unwrap();
@@ -248,7 +256,7 @@ async fn an_uninstall_queues_the_export_email_by_reference_in_the_same_transacti
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_replayed_uninstall_queues_nothing_more(opts: PgPoolOptions, conn: PgConnectOptions) {
     let w = world(opts, conn).await;
-    let jobs = w.jobs.clone().with_app_origin(Some(ORIGIN.to_owned()));
+    let jobs = w.jobs.clone();
     contact_stored(&w, &jobs).await;
     w.admin.reset().await;
     shopify_revoked(&w).await;
@@ -272,32 +280,19 @@ async fn a_replayed_uninstall_queues_nothing_more(opts: PgPoolOptions, conn: PgC
         export_email_result(&w, "shopify.app_uninstalled").await,
         "not_queued_already_uninstalled"
     );
-}
-
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn the_audit_entry_says_why_no_email_was_queued(opts: PgPoolOptions, conn: PgConnectOptions) {
-    // No origin configured.
-    let w = world(opts.clone(), conn.clone()).await;
-    contact_stored(&w, &w.jobs).await;
-    w.admin.reset().await;
-    shopify_revoked(&w).await;
-    let event = store(&w, "app/uninstalled", shop_object()).await;
-    process(&w, &w.jobs, event).await;
+    // The second uninstall's cancellation spared the mail still waiting to go out (audit L1).
     assert_eq!(
-        export_email_result(&w, "shopify.app_uninstalled").await,
-        "not_queued_no_app_origin"
-    );
-    assert_eq!(
-        w.count("select count(*) from jobs where queue = 'email.send'")
+        w.count("select count(*) from jobs where queue = 'email.send' and state = 'ready'")
             .await,
-        0
+        1,
+        "the export email is still ready after a repeated app/uninstalled"
     );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_shop_never_read_has_no_contact_to_email(opts: PgPoolOptions, conn: PgConnectOptions) {
     let w = world(opts, conn).await;
-    let jobs = w.jobs.clone().with_app_origin(Some(ORIGIN.to_owned()));
+    let jobs = w.jobs.clone();
     shopify_revoked(&w).await;
     let event = store(&w, "app/uninstalled", shop_object()).await;
     process(&w, &jobs, event).await;
@@ -318,7 +313,7 @@ async fn an_uninstall_for_a_shop_whose_token_still_works_queues_nothing(
     conn: PgConnectOptions,
 ) {
     let w = world(opts, conn).await;
-    let jobs = w.jobs.clone().with_app_origin(Some(ORIGIN.to_owned()));
+    let jobs = w.jobs.clone();
     contact_stored(&w, &jobs).await;
     // Shopify still accepts the token: the delivery is a replay (audit M1).
     w.admin_answers(200, shop_response(Some(OWNER))).await;
@@ -335,7 +330,7 @@ async fn an_uninstall_for_a_shop_whose_token_still_works_queues_nothing(
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn shop_redact_deletes_the_contact(opts: PgPoolOptions, conn: PgConnectOptions) {
     let w = world(opts, conn).await;
-    let jobs = w.jobs.clone().with_app_origin(Some(ORIGIN.to_owned()));
+    let jobs = w.jobs.clone();
     contact_stored(&w, &jobs).await;
     assert_eq!(w.count("select count(*) from shop_contacts").await, 1);
     w.admin.reset().await;

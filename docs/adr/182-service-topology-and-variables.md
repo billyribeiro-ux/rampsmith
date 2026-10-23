@@ -98,7 +98,7 @@ argument, so a variable change can never label an old image as a new release.
 | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID` (not secret) | api, ctl |
 | `ANTHROPIC_API_KEY` | engine |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID`, `R2_BUCKET_EVIDENCE` (a token scoped to the evidence bucket only) | api, ctl, engine |
-| `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `EMAIL_FROM` | ctl |
+| `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `EMAIL_FROM` | mailer (ADR-276) |
 | `TURNSTILE_SITE_KEY` | web |
 | `TURNSTILE_SECRET_KEY` | api (verifies the challenge before it queues a free scan, ADR-267) |
 | `FREE_SCAN_SERVICE_TOKEN` (32 or more random characters, the same value on both) | api, web |

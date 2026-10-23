@@ -1,5 +1,5 @@
 /**
- * Data and security notices (PLAN §18, §19): data-deletion confirmation, the export link sent
+ * Data and security notices (PLAN §18, §19): data-deletion confirmation, the export sent
  * on uninstall, incident notices and subprocessor changes. None can be switched off.
  */
 import { scanText } from '@rampsmith/claims-lint/src/scan.ts';
@@ -72,14 +72,17 @@ export const dataDeletion = defineTemplate({
   },
 });
 
-/** On uninstall: a link to export the remediation record before the data goes (PLAN §19). */
+/**
+ * On uninstall: the remediation record, attached as a CSV, before the data goes (PLAN §19,
+ * ADR-277). The engine attaches the file; the mail has no link, because the app's own pages need
+ * a session that an uninstalled shop no longer has.
+ */
 export const uninstallExport = defineTemplate({
   category: 'transactional',
   schema: object({
     ...COMMON,
     storeName: label(STORE_NAME_MAX),
-    exportUrl: link(['app']),
-    /** When the data is deleted and the link stops working. */
+    /** When the data is deleted. */
     deleteAt: instant(),
   }),
   build(input, t) {
@@ -92,7 +95,6 @@ export const uninstallExport = defineTemplate({
       blocks: [
         paragraph(msg(t, 'uninstall_intro', { store, date })),
         paragraph(msg(t, 'uninstall_export')),
-        action(t, t.text('uninstall_button'), input.exportUrl, true),
         paragraph(msg(t, 'uninstall_expiry')),
       ],
       reason: msg(t, 'common_reason_store_contact', { store }),

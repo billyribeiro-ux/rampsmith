@@ -12,6 +12,7 @@
   },
   "bin": {
     "rampsmith-engine": "./src/main.ts",
+    "rampsmith-mailer": "./src/mailer.ts",
     "rampsmith-engine-self-check": "./src/self-check.ts"
   },
   "scripts": {
@@ -27,6 +28,7 @@
     "@rampsmith/contracts-ts": "workspace:*",
     "@rampsmith/email": "workspace:*",
     "@rampsmith/queue": "workspace:*",
+    "@rampsmith/reports": "workspace:*",
     "@rampsmith/telemetry": "workspace:*",
     "ajv": "8.20.0",
     "axe-core": "4.14.0",

@@ -50,9 +50,14 @@ IMAGE_REPOSITORIES = {
     "api": f"{REGISTRY}/rampsmith-api",
     "ctl": f"{REGISTRY}/rampsmith-api",  # same image, different start command
     "engine": f"{REGISTRY}/rampsmith-engine",
+    # The mailer is the engine's image with another entry point (ADR-276): the process that
+    # holds the Amazon SES keys and never opens a page.
+    "mailer": f"{REGISTRY}/rampsmith-engine",
     "egress": f"{REGISTRY}/rampsmith-egress",
     "backup": f"{REGISTRY}/rampsmith-backup",
 }
+# Services that run another service's image (with another start command).
+SHARED_IMAGE = {"ctl": "api", "mailer": "engine"}
 IMAGE_INPUTS = {name: f"RAMPSMITH_IMAGE_{name.upper()}" for name in IMAGE_REPOSITORIES}
 # The upstream collector, pinned by its index digest (ADR-184). Updated by hand: renovate.json
 # has no rule that reads this constant yet (integration note in docs/evidence/ws-9-deploy.md).
@@ -71,6 +76,7 @@ PORTS = {
     "api": 8080,
     "ctl": 8080,
     "engine": 8080,
+    "mailer": 8080,
     "egress": 8888,
     "collector": 13133,
 }
@@ -81,6 +87,7 @@ HEALTHCHECKS = {
     "api": "/readyz",
     "ctl": "/healthz",
     "engine": "/healthz",
+    "mailer": "/healthz",
     "egress": "/healthz",
     "collector": "/healthz",
 }
@@ -91,7 +98,7 @@ PUBLIC = (
     ("web", "RAMPSMITH_SITE_HOST", PORTS["web"]),
     ("api", "RAMPSMITH_WEBHOOK_HOST", API_WEBHOOK_PORT),
 )
-SERVICES = ("web", "api", "ctl", "engine", "egress", "collector", "backup", "postgres")
+SERVICES = ("web", "api", "ctl", "engine", "mailer", "egress", "collector", "backup", "postgres")
 
 # The nightly logical backup is a cron service inside the project (ADR-251): Railway starts the
 # image's entrypoint on this schedule (UTC, at least five minutes apart), and the process exits
@@ -117,6 +124,9 @@ START_COMMANDS = {
     # The migration credential is for the pre-deploy step only: the api process never sees it.
     "api": '/bin/sh -c "unset MIGRATION_DATABASE_URL; exec /usr/local/bin/api"',
     "ctl": "/usr/local/bin/ctl",
+    # The engine image's entry point is the browser engine; the mailer is its other program
+    # (ADR-276), started in exec form like the others.
+    "mailer": "/usr/local/bin/node packages/engine/src/mailer.ts",
     "collector": "/otelcol-contrib --config=env:OTELCOL_CONFIG",
 }
 
@@ -126,6 +136,7 @@ DRAINING_SECONDS = {
     "api": 30,
     "ctl": 120,
     "engine": 180,
+    "mailer": 120,
     "egress": 60,
     "collector": 30,
     "backup": 60,
@@ -137,6 +148,9 @@ DB_LOGINS = {
     "api": ("rampsmith_api", "RAMPSMITH_DB_PASSWORD_API"),
     "ctl": ("rampsmith_ctl", "RAMPSMITH_DB_PASSWORD_CTL"),
     "engine": ("rampsmith_engine", "RAMPSMITH_DB_PASSWORD_ENGINE"),
+    # The same login as the engine's: a plain member of rampsmith_worker, which is all
+    # `email.send` needs. A separate login would add a role for no extra privilege (ADR-276).
+    "mailer": ("rampsmith_engine", "RAMPSMITH_DB_PASSWORD_ENGINE"),
 }
 DB_MIGRATOR = ("rampsmith_migrator", "RAMPSMITH_DB_PASSWORD_MIGRATOR")
 
@@ -188,8 +202,8 @@ class Inputs:
         self.images: dict[str, str] = {}
         for name, variable in IMAGE_INPUTS.items():
             raw = environ.get(variable)
-            if raw is None and name == "ctl":
-                raw = environ.get(IMAGE_INPUTS["api"])
+            if raw is None and name in SHARED_IMAGE:
+                raw = environ.get(IMAGE_INPUTS[SHARED_IMAGE[name]])
             value = (raw or "").strip()
             if not value:
                 continue
@@ -244,7 +258,7 @@ def _source(name: str, env: str, inputs: Inputs) -> dict[str, Any]:
         return {"source": image(reference)} if reference else {}
     if name == "collector":
         return {"source": image(COLLECTOR_IMAGE)}
-    image_name = "api" if name == "ctl" else name
+    image_name = SHARED_IMAGE.get(name, name)
     if env == PREVIEW:
         return {
             "source": github(REPOSITORY, branch="main"),
@@ -388,7 +402,7 @@ def _ctl(env: str, inputs: Inputs) -> Any:
         "GITHUB_APP_ID": shared("GITHUB_APP_ID"),
         "GITHUB_APP_CLIENT_ID": shared("GITHUB_APP_CLIENT_ID"),
         "GITHUB_APP_PRIVATE_KEY": shared("GITHUB_APP_PRIVATE_KEY"),
-        # Where the app's links point (the uninstall export email); the engine reads it too.
+        # Where the app's links point (the uninstall export email); the mailer reads it too.
         "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }
@@ -415,21 +429,6 @@ def _engine(env: str, inputs: Inputs) -> Any:
         # Opens the password ctl sealed for the scan it is running; not a master key (ADR-266).
         "RAMPSMITH_SCAN_SECRET_KEYS": shared("RAMPSMITH_SCAN_SECRET_KEYS"),
         "ANTHROPIC_API_KEY": shared("ANTHROPIC_API_KEY"),
-        # Transactional email (ADR-194, ADR-270): the engine renders and sends, so it alone holds
-        # the Amazon SES keys.
-        "SES_REGION": shared("SES_REGION"),
-        "SES_ACCESS_KEY_ID": shared("SES_ACCESS_KEY_ID"),
-        "SES_SECRET_ACCESS_KEY": shared("SES_SECRET_ACCESS_KEY"),
-        "EMAIL_FROM": shared("EMAIL_FROM"),
-        # Required in marketing mail (ADR-191); the engine refuses to send such mail without it.
-        "EMAIL_POSTAL_ADDRESS": shared("EMAIL_POSTAL_ADDRESS"),
-        # Mints the unsubscribe and preferences links (ADR-274), and the address a mail client
-        # POSTs to for RFC 8058 one-click, which must be the api's public webhook host.
-        "EMAIL_LINK_KEYS": shared("EMAIL_LINK_KEYS"),
-        "EMAIL_ONE_CLICK_ORIGIN": (
-            f"https://{inputs.webhook_host}" if inputs.webhook_host else preserve_existing()
-        ),
-        "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }
     return service(
@@ -438,6 +437,44 @@ def _engine(env: str, inputs: Inputs) -> Any:
         healthcheck=HEALTHCHECKS["engine"],
         healthcheckTimeout=180,
         deploy=_deploy("engine"),
+        replicas={REGION: 1},
+        env=variables,
+    )
+
+
+def _mailer(env: str, inputs: Inputs) -> Any:
+    """Sends email (ADR-194, ADR-276): the only service that holds the Amazon SES keys.
+
+    It runs the engine image's other program, which imports no browser code. It has the
+    database login of a plain worker, the SES keys, the sender's identity and the key that signs
+    the links in email, and nothing else: no egress token, no Claude key, no evidence keys.
+    """
+    login, password = DB_LOGINS["mailer"]
+    variables = {
+        **_common("mailer"),
+        "DATABASE_URL": database_url(login, password),
+        "SES_REGION": shared("SES_REGION"),
+        "SES_ACCESS_KEY_ID": shared("SES_ACCESS_KEY_ID"),
+        "SES_SECRET_ACCESS_KEY": shared("SES_SECRET_ACCESS_KEY"),
+        "EMAIL_FROM": shared("EMAIL_FROM"),
+        # Required in marketing mail (ADR-191); the sender refuses to send such mail without it.
+        "EMAIL_POSTAL_ADDRESS": shared("EMAIL_POSTAL_ADDRESS"),
+        # Mints the unsubscribe and preferences links (ADR-274), and the address a mail client
+        # POSTs to for RFC 8058 one-click, which must be the api's public webhook host.
+        "EMAIL_LINK_KEYS": shared("EMAIL_LINK_KEYS"),
+        "EMAIL_ONE_CLICK_ORIGIN": (
+            f"https://{inputs.webhook_host}" if inputs.webhook_host else preserve_existing()
+        ),
+        # Where the links in email point (the app and its pages).
+        "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
+    }
+    return service(
+        "mailer",
+        **_source("mailer", env, inputs),
+        start=START_COMMANDS["mailer"],
+        healthcheck=HEALTHCHECKS["mailer"],
+        healthcheckTimeout=120,
+        deploy=_deploy("mailer"),
         replicas={REGION: 1},
         env=variables,
     )
@@ -540,6 +577,7 @@ def main(ctx: Any = None) -> Any:
         _collector(env, inputs),
         _egress(env, inputs),
         _engine(env, inputs),
+        _mailer(env, inputs),
         _ctl(env, inputs),
         _api(env, inputs),
         _web(env, inputs),

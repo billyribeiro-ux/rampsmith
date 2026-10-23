@@ -10,6 +10,7 @@
 import { JobFailure, retryDelayMs } from '@rampsmith/queue';
 import {
   categoryOf,
+  type EmailSender,
   guardSender,
   isSubscribedCategory,
   InputError,
@@ -19,6 +20,7 @@ import {
   withLedger,
 } from '@rampsmith/email';
 import type postgres from 'postgres';
+import { RecordUnavailableError, remediationRecord } from '../email/export.ts';
 import { PgLedger } from '../email/ledger.ts';
 import { resolveRecipient } from '../email/recipient.ts';
 import type { EmailRuntime } from '../email/runtime.ts';
@@ -47,7 +49,7 @@ function permanent(code: string, message: string): JobFailure {
 
 export function emailSendHandler(deps: EmailDeps): JobHandler {
   const random = deps.random ?? Math.random;
-  return async (job) => {
+  return async (job, signal) => {
     const payload = parsePayload(job, 'email.send@1');
     const tenantId = requireTenant(job);
     const kind = payload.template;
@@ -117,11 +119,31 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
         throw error;
       }
 
-      const sender = guardSender(withLedger(runtime.transport, ledger));
+      // The uninstall mail carries the remediation record as a CSV file (ADR-277).
+      const attachments =
+        kind === 'uninstall_export'
+          ? [await remediationRecord(deps.sql, tenantId, recipient.shopId, new Date())]
+          : undefined;
+
+      // A job whose lease was lost belongs to another attempt now. Checking after the claim, and
+      // failing as a retry, leaves the ledger saying so and SES uncalled (audit L2).
+      const transport = runtime.transport;
+      const leased: EmailSender = {
+        send(message) {
+          if (signal?.aborted === true) {
+            return Promise.reject(
+              new SendFailure('defer', 'lease_lost', 'the job lost its lease before the send'),
+            );
+          }
+          return transport.send(message);
+        },
+      };
+      const sender = guardSender(withLedger(leased, ledger));
       await sender.send({
         to: recipient.address,
         idempotencyKey: payload.message_key,
         email,
+        ...(attachments === undefined ? {} : { attachments }),
       });
     } catch (error) {
       throw failureFor(error, random);
@@ -132,6 +154,9 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
 /** The job failure for whatever went wrong, without the cause's message when it is not ours. */
 function failureFor(error: unknown, random: () => number): JobFailure {
   if (error instanceof JobFailure) return error;
+  if (error instanceof RecordUnavailableError) {
+    return permanent(error.code, error.message);
+  }
   if (error instanceof SendRefusedError) {
     return permanent('send_refused', error.message);
   }

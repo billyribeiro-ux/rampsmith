@@ -113,7 +113,11 @@ pub async fn sweep_retention(db: &Db) -> Result<(i64, i64), DbError> {
     let mut tx = db.public().await?;
     let inputs = db::repo::retention::scan_inputs(&mut tx).await?;
     let free = db::repo::retention::free_scans(&mut tx).await?;
+    let email = db::repo::retention::email_records(&mut tx).await?;
     tx.commit().await?;
+    if email > 0 {
+        info!(email, "removed expired email records");
+    }
     if inputs > 0 || free > 0 {
         info!(inputs, free, "removed expired scan data");
     }

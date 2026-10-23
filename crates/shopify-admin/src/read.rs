@@ -21,9 +21,19 @@ const SHOP: Query = Query {
     name: "RampsmithShop",
     cost_hint: 6.0,
     text: r"query RampsmithShop {
-  shop { id name email myshopifyDomain primaryDomain { host url } }
+  shop { id name myshopifyDomain primaryDomain { host url } }
   shopLocales { locale primary published }
   themes(first: 1, roles: [MAIN]) { nodes { id name role updatedAt } }
+}",
+};
+
+/// The owner's address, in a query of its own so that a store that will not show it (a missing
+/// grant, a changed field) still has its shop, locales and theme read (audit L4, ADR-277).
+const SHOP_OWNER: Query = Query {
+    name: "RampsmithShopOwner",
+    cost_hint: 1.0,
+    text: r"query RampsmithShopOwner {
+  shop { email }
 }",
 };
 
@@ -193,7 +203,10 @@ pub struct ShopInfo {
     /// The shop's name.
     pub name: String,
     /// The shop owner's address, for the emails Rampsmith sends about the shop (ADR-272). It is
-    /// personal data: callers store it in `shop_contacts` and never log it.
+    /// personal data: callers store it in `shop_contacts` and never log it, and it is never
+    /// serialised (the shop is stored as a scan input for the engine, which does not need it).
+    /// `None` when Shopify reported none or the separate read of it failed.
+    #[serde(skip_serializing)]
     pub email: Option<OwnerEmail>,
     /// The permanent `*.myshopify.com` host.
     pub myshopify_domain: String,
@@ -248,6 +261,17 @@ struct ShopWire {
 }
 
 #[derive(Debug, Deserialize)]
+struct ShopOwnerWire {
+    shop: ShopOwnerNode,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShopOwnerNode {
+    #[serde(default)]
+    email: Option<OwnerEmail>,
+}
+
+#[derive(Debug, Deserialize)]
 struct Connection2<T> {
     nodes: Vec<T>,
 }
@@ -257,10 +281,6 @@ struct Connection2<T> {
 struct ShopNode {
     id: String,
     name: String,
-    /// The shop owner's address (`Shop.email`, the one Shopify writes to). Personal data: it is
-    /// stored for the transactional email only and never logged.
-    #[serde(default)]
-    email: Option<OwnerEmail>,
     myshopify_domain: String,
     #[serde(default)]
     primary_domain: Option<Domain>,
@@ -699,10 +719,13 @@ impl AdminClient {
     /// token still works.
     pub async fn shop(&self) -> Result<ShopInfo, AdminError> {
         let data: ShopWire = self.run(&SHOP, &json!({})).await?;
+        // A failure of this second read is "none reported": the shop itself was read (audit L4).
+        let owner: Result<ShopOwnerWire, AdminError> = self.run(&SHOP_OWNER, &json!({})).await;
+        let email = owner.ok().and_then(|owner| owner.shop.email);
         Ok(ShopInfo {
             gid: data.shop.id,
             name: data.shop.name,
-            email: data.shop.email,
+            email,
             myshopify_domain: data.shop.myshopify_domain,
             primary_domain: data.shop.primary_domain,
             locales: data.shop_locales,

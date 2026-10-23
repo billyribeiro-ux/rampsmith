@@ -4,9 +4,11 @@ import {
   createEmailRenderer,
   describeForLog,
   guardSender,
+  MAX_ATTACHMENT_BYTES,
   MemorySender,
   RenderedEmail,
   SendRefusedError,
+  type EmailAttachment,
   type EmailSender,
   type OutboundEmail,
 } from '../src/index.ts';
@@ -73,6 +75,53 @@ describe('checkOutbound', () => {
     expect(() => {
       (email as unknown as { subject: string }).subject = 'x\r\nBcc: a@example.com';
     }).toThrow(TypeError);
+  });
+});
+
+describe('attachments', () => {
+  const csv = (over: Partial<EmailAttachment> = {}): EmailAttachment => ({
+    fileName: 'rampsmith-remediation-record.csv',
+    contentType: 'text/csv',
+    data: new TextEncoder().encode('a,b\n1,2\n'),
+    ...over,
+  });
+
+  it('accepts a named CSV and refuses nothing else about the message', () => {
+    expect(checkOutbound({ ...message, attachments: [csv()] })).toEqual([]);
+  });
+
+  it.each([
+    ['a path in the name', csv({ fileName: '../record.csv' })],
+    ['a name with a line break', csv({ fileName: 'a\r\nBcc: x@y.example' })],
+    ['a name that is empty', csv({ fileName: '' })],
+    ['a type that runs code', csv({ contentType: 'text/html' })],
+    ['a type that is an executable', csv({ contentType: 'application/x-msdownload' })],
+    ['more than the cap', csv({ data: new Uint8Array(MAX_ATTACHMENT_BYTES + 1) })],
+  ])('refuses %s', (_why, file) => {
+    expect(checkOutbound({ ...message, attachments: [file] })).toEqual(['attachment-invalid']);
+  });
+
+  it('refuses three files, and two that together pass the cap', () => {
+    expect(checkOutbound({ ...message, attachments: [csv(), csv(), csv()] })).toEqual([
+      'attachment-invalid',
+    ]);
+    const half = new Uint8Array(MAX_ATTACHMENT_BYTES / 2 + 1);
+    expect(
+      checkOutbound({ ...message, attachments: [csv({ data: half }), csv({ data: half })] }),
+    ).toEqual(['attachment-invalid']);
+  });
+
+  it('hands the inner sender the checked, frozen list', async () => {
+    const seen: OutboundEmail[] = [];
+    const sender = guardSender({
+      send(m) {
+        seen.push(m);
+        return Promise.resolve({ status: 'sent', messageId: 'x' });
+      },
+    });
+    await sender.send({ ...message, attachments: [csv()] });
+    expect(seen[0]?.attachments).toHaveLength(1);
+    expect(Object.isFrozen(seen[0]?.attachments)).toBe(true);
   });
 });
 

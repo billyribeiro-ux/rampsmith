@@ -114,18 +114,19 @@ SECRET_USERS = {
     "FREE_SCAN_SERVICE_TOKEN": {"web", "api"},
     "RAMPSMITH_SCAN_SECRET_KEYS": {"ctl", "engine"},
     # The engine mints the links; the api checks them (ADR-274).
-    "EMAIL_LINK_KEYS": {"api", "engine"},
-    "SES_SECRET_ACCESS_KEY": {"engine"},
+    "EMAIL_LINK_KEYS": {"api", "mailer"},
+    # Only the mailer sends email; the engine, which opens pages, holds no SES key (ADR-276).
+    "SES_SECRET_ACCESS_KEY": {"mailer"},
     "RAMPSMITH_MASTER_KEYS": {"api", "ctl"},
     "GRAFANA_CLOUD_OTLP_TOKEN": {"collector"},
     "R2_LOGS_SECRET_ACCESS_KEY": {"collector"},
     "EGRESS_TOKEN_SECRET": {"engine", "egress"},
     # Every service writes telemetry with it; the collector checks it (ADR-184).
-    "RAMPSMITH_OTLP_TOKEN": {"web", "api", "ctl", "engine", "egress", "collector"},
+    "RAMPSMITH_OTLP_TOKEN": {"web", "api", "ctl", "engine", "mailer", "egress", "collector"},
     "RAMPSMITH_DB_PASSWORD_MIGRATOR": {"api"},
     "RAMPSMITH_DB_PASSWORD_API": {"api"},
     "RAMPSMITH_DB_PASSWORD_CTL": {"ctl"},
-    "RAMPSMITH_DB_PASSWORD_ENGINE": {"engine"},
+    "RAMPSMITH_DB_PASSWORD_ENGINE": {"engine", "mailer"},
     # The backup token and the backup login are read by the backup service and nothing else
     # (ADR-252): no other service, and no workflow (the drill has its own read-only token).
     "BACKUP_R2_ACCESS_KEY_ID": {"backup"},
@@ -146,7 +147,7 @@ CLI_RESOURCE_FIELDS = {
     "isCollapsed", "environments",
 }  # fmt: skip
 
-SERVICES = {"web", "api", "ctl", "engine", "egress", "collector"}
+SERVICES = {"web", "api", "ctl", "engine", "mailer", "egress", "collector"}
 # Cron services: no port, health check or telemetry; staging and production only (ADR-251).
 CRON_SERVICES = {"backup"}
 
@@ -294,6 +295,36 @@ class HealthAndCommands(unittest.TestCase):
         self.assertEqual(resources["ctl"]["deploy"]["startCommand"], "/usr/local/bin/ctl")
         self.assertEqual(resources["ctl"]["source"], resources["api"]["source"])
 
+    def test_the_mailer_runs_the_engine_image_with_its_own_program(self) -> None:
+        resources = full()
+        self.assertEqual(
+            resources["mailer"]["deploy"]["startCommand"],
+            "/usr/local/bin/node packages/engine/src/mailer.ts",
+        )
+        self.assertEqual(resources["mailer"]["source"], resources["engine"]["source"])
+
+    def test_only_the_mailer_holds_the_ses_keys_and_the_engine_holds_none_of_email(self) -> None:
+        resources = full()
+        names = set(variables(resources["engine"]))
+        self.assertEqual(
+            names & {"SES_REGION", "SES_ACCESS_KEY_ID", "SES_SECRET_ACCESS_KEY", "EMAIL_FROM",
+                     "EMAIL_LINK_KEYS", "EMAIL_POSTAL_ADDRESS", "EMAIL_ONE_CLICK_ORIGIN",
+                     "APP_ORIGIN"},
+            set(),
+            "the process that opens pages holds an email setting (audit M1)",
+        )
+        for name in ("SES_ACCESS_KEY_ID", "SES_SECRET_ACCESS_KEY"):
+            holders = {n for n, r in resources.items() if name in shared_refs(r)}
+            self.assertEqual(holders, {"mailer"}, name)
+        # And the mailer holds nothing the browser engine's secrets would add.
+        mailer = set(variables(resources["mailer"]))
+        self.assertEqual(
+            mailer & {"EGRESS_TOKEN_SECRET", "EGRESS_PROXY_URL", "ANTHROPIC_API_KEY",
+                      "RAMPSMITH_SCAN_SECRET_KEYS", "RAMPSMITH_MASTER_KEYS",
+                      "R2_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID"},
+            set(),
+        )
+
     def test_the_collector_reads_its_config_from_a_variable(self) -> None:
         collector = full()["collector"]
         self.assertEqual(
@@ -414,11 +445,14 @@ class Secrets(unittest.TestCase):
     def test_each_service_connects_as_its_own_login(self) -> None:
         resources = full()
         for service, login in (("api", "rampsmith_api"), ("ctl", "rampsmith_ctl"),
-                               ("engine", "rampsmith_engine")):
+                               ("engine", "rampsmith_engine"), ("mailer", "rampsmith_engine")):
             with self.subTest(service=service):
                 url = literal(resources[service], "DATABASE_URL")
                 self.assertTrue(url.startswith(f"postgresql://{login}:"))
-                self.assertIn(f"RAMPSMITH_DB_PASSWORD_{service.upper()}", url)
+                # The mailer connects as the engine's login, a plain worker (ADR-276).
+                self.assertIn(
+                    f"RAMPSMITH_DB_PASSWORD_{login.removeprefix('rampsmith_').upper()}", url
+                )
         for name in ("web", "egress", "collector"):
             with self.subTest(service=name):
                 self.assertNotIn("DATABASE_URL", variables(resources[name]))
@@ -454,7 +488,7 @@ class Images(unittest.TestCase):
     def test_images_are_pinned_by_digest(self) -> None:
         resources = evaluate("staging", **IMAGES)
         for name, variable in (("web", "WEB"), ("api", "API"), ("ctl", "API"),
-                               ("engine", "ENGINE"), ("egress", "EGRESS"),
+                               ("engine", "ENGINE"), ("mailer", "ENGINE"), ("egress", "EGRESS"),
                                ("backup", "BACKUP")):
             with self.subTest(service=name):
                 self.assertEqual(
@@ -468,7 +502,7 @@ class Images(unittest.TestCase):
         resources = evaluate("staging", RAMPSMITH_IMAGE_API=IMAGES["RAMPSMITH_IMAGE_API"])
         self.assertEqual(resources["api"]["source"]["image"], IMAGES["RAMPSMITH_IMAGE_API"])
         self.assertEqual(resources["ctl"]["source"], resources["api"]["source"])
-        for name in ("web", "engine", "egress", "backup"):
+        for name in ("web", "engine", "mailer", "egress", "backup"):
             with self.subTest(service=name):
                 self.assertNotIn("source", resources[name])
         # The collector's pinned image is part of the file, not of a release.
@@ -523,8 +557,8 @@ class Images(unittest.TestCase):
 
     def test_preview_builds_from_the_repository(self) -> None:
         resources = evaluate("preview", **IMAGES)
-        for name in ("web", "api", "ctl", "engine", "egress"):
-            image = "api" if name == "ctl" else name
+        for name in ("web", "api", "ctl", "engine", "mailer", "egress"):
+            image = {"ctl": "api", "mailer": "engine"}.get(name, name)
             with self.subTest(service=name):
                 self.assertEqual(
                     resources[name]["source"],
@@ -640,7 +674,7 @@ class BackupService(unittest.TestCase):
             with self.subTest(variable=name):
                 self.assertEqual(holders, {"backup"})
         # And the engine's token stays an evidence-bucket token: it names no backups bucket.
-        for service in ("api", "ctl", "engine"):
+        for service in ("api", "ctl", "engine", "mailer"):
             with self.subTest(service=service):
                 self.assertNotIn("R2_BUCKET_BACKUPS", variables(resources[service]))
 

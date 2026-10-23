@@ -424,6 +424,9 @@ importers:
       '@rampsmith/queue':
         specifier: workspace:*
         version: link:../queue
+      '@rampsmith/reports':
+        specifier: workspace:*
+        version: link:../reports
       '@rampsmith/telemetry':
         specifier: workspace:*
         version: link:../telemetry

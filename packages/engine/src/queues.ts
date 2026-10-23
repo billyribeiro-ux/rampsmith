@@ -2,14 +2,12 @@
  * Every queue the engine serves, with its handler (PLAN §10, ADR-035, ADR-036). `ctl` serves
  * the queues that need a Shopify token; the engine never does. An R1 lane builds a queue by
  * replacing its stub in `jobs/` and, when the handler needs dependencies, its line below.
- * Every queue is built as of R1. `free_scan.run` serves the marketing site's free scanner for no
+ * Every queue is built as of R1 (`email.send` is the mailer's, ADR-276). `free_scan.run` serves the marketing site's free scanner for no
  * tenant (ADR-267).
  */
 import { freeScanHandler } from './free-scan.ts';
 import { altTextHandler } from './jobs/alt-text.ts';
 import { auditDataHandler } from './jobs/audit-data.ts';
-import type { EmailRuntime } from './email/runtime.ts';
-import { emailSendHandler } from './jobs/email-send.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
 import type { JobHandler } from './jobs/payload.ts';
 import { scanPlanHandler } from './jobs/plan.ts';
@@ -24,7 +22,6 @@ export const ENGINE_QUEUES = [
   'audit.data',
   'ai.alt_text',
   'verify.scan',
-  'email.send',
   'free_scan.run',
 ] as const;
 export type EngineQueue = (typeof ENGINE_QUEUES)[number];
@@ -45,12 +42,12 @@ export function queuesFor(sandbox: SandboxMode): readonly EngineQueue[] {
     : ENGINE_QUEUES.filter((queue) => !SANDBOX_ONLY_QUEUES.includes(queue));
 }
 
-/** Each engine queue's handler. */
-export function engineHandlers(
-  deps: EngineDeps,
-  /** Absent: `email.send` jobs fail retryably naming the missing settings (ADR-273). */
-  email?: EmailRuntime,
-): Record<EngineQueue, JobHandler> {
+/**
+ * Each engine queue's handler. `email.send` is not here: the mailer serves it (`mailer.ts`,
+ * ADR-276), because the process that runs Chromium on strangers' pages must not hold the Amazon
+ * SES keys.
+ */
+export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
   return {
     'scan.plan': scanPlanHandler(deps),
     'scan.page': scanPageHandler(deps),
@@ -58,7 +55,6 @@ export function engineHandlers(
     'audit.data': auditDataHandler(deps),
     'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
     'verify.scan': verifyScanHandler(deps),
-    'email.send': emailSendHandler({ sql: deps.sql, email }),
     'free_scan.run': freeScanHandler(deps),
   };
 }

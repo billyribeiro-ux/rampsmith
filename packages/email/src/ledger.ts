@@ -11,7 +11,12 @@ export type LedgerClaim =
   /** Go ahead. `tries` counts this send, so the first is 1. */
   | { readonly status: 'claimed'; readonly tries: number }
   /** A message with this key was already sent. */
-  | { readonly status: 'duplicate' };
+  | { readonly status: 'duplicate' }
+  /**
+   * Another attempt claimed this key a moment ago and has not recorded an outcome, so a second
+   * send now could deliver the message twice. Try again after `retryAfterMs`.
+   */
+  | { readonly status: 'in_flight'; readonly retryAfterMs: number };
 
 export interface IdempotencyLedger {
   begin(key: string): Promise<LedgerClaim>;
@@ -26,6 +31,14 @@ export function withLedger(transport: EmailSender, ledger: IdempotencyLedger): E
       const claim = await ledger.begin(message.idempotencyKey);
       if (claim.status === 'duplicate') {
         return { status: 'duplicate' };
+      }
+      if (claim.status === 'in_flight') {
+        throw new SendFailure(
+          'defer',
+          'email_in_flight',
+          'another attempt at this message is in flight',
+          claim.retryAfterMs,
+        );
       }
       let receipt: SendReceipt;
       try {

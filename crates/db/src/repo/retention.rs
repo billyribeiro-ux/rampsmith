@@ -14,6 +14,17 @@ pub async fn scan_inputs(tx: &mut PublicTx) -> Result<i64, DbError> {
     )
 }
 
+/// Deletes the email data that outlived its purpose: contacts of shops uninstalled for 30 days
+/// whose `shop/redact` never came, and delivery records not touched for 90 days (audit L5,
+/// ADR-277). Returns how many rows went.
+pub async fn email_records(tx: &mut PublicTx) -> Result<i64, DbError> {
+    Ok(
+        sqlx::query_scalar!(r#"select email_records_sweep() as "swept!""#)
+            .fetch_one(tx.conn())
+            .await?,
+    )
+}
+
 /// Ends free scans the engine never finished and deletes expired ones (ADR-267); returns how
 /// many it deleted.
 pub async fn free_scans(tx: &mut PublicTx) -> Result<i64, DbError> {
