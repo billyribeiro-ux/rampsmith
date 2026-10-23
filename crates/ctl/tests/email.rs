@@ -200,7 +200,7 @@ async fn an_uninstall_queues_the_export_email_by_reference_in_the_same_transacti
         String,
     ) = sqlx::query_as(
         "select queue, payload_schema, payload, tenant_id, idempotency_key, state
-               from jobs where queue = 'email.send'",
+               from jobs where queue = 'email.send' and payload ->> 'template' = 'uninstall_export'",
     )
     .fetch_one(&w.owner)
     .await
@@ -272,8 +272,11 @@ async fn a_replayed_uninstall_queues_nothing_more(opts: PgPoolOptions, conn: PgC
     process(&w, &jobs, again).await;
 
     assert_eq!(
-        w.count("select count(*) from jobs where queue = 'email.send'")
-            .await,
+        w.count(
+            "select count(*) from jobs
+              where queue = 'email.send' and payload ->> 'template' = 'uninstall_export'"
+        )
+        .await,
         1
     );
     assert_eq!(
@@ -284,8 +287,8 @@ async fn a_replayed_uninstall_queues_nothing_more(opts: PgPoolOptions, conn: PgC
     assert_eq!(
         w.count("select count(*) from jobs where queue = 'email.send' and state = 'ready'")
             .await,
-        1,
-        "the export email is still ready after a repeated app/uninstalled"
+        2,
+        "the export email and the welcome are still ready after a repeated app/uninstalled"
     );
 }
 
@@ -320,8 +323,11 @@ async fn an_uninstall_for_a_shop_whose_token_still_works_queues_nothing(
     let event = store(&w, "app/uninstalled", shop_object()).await;
     process(&w, &jobs, event).await;
     assert_eq!(
-        w.count("select count(*) from jobs where queue = 'email.send'")
-            .await,
+        w.count(
+            "select count(*) from jobs
+              where queue = 'email.send' and payload ->> 'template' = 'uninstall_export'"
+        )
+        .await,
         0
     );
     assert_eq!(w.count("select count(*) from shop_contacts").await, 1);
@@ -343,4 +349,96 @@ async fn shop_redact_deletes_the_contact(opts: PgPoolOptions, conn: PgConnectOpt
     .await;
     process(&w, &jobs, event).await;
     assert_eq!(w.count("select count(*) from shop_contacts").await, 0);
+}
+
+fn welcome_jobs_sql() -> &'static str {
+    "select count(*) from jobs where queue = 'email.send' and payload ->> 'template' = 'welcome'"
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_first_stored_contact_queues_one_welcome_by_reference(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let jobs = w.jobs.clone();
+    contact_stored(&w, &jobs).await;
+
+    let (payload, key, state): (Value, String, String) = sqlx::query_as(
+        "select payload, idempotency_key, state from jobs
+          where queue = 'email.send' and payload ->> 'template' = 'welcome'",
+    )
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
+    let message: EmailSend = serde_json::from_value(payload.clone()).unwrap();
+    assert_eq!(message.template, EmailTemplate::Welcome);
+    assert_eq!(
+        message.recipient,
+        EmailRecipient::ShopOwner {
+            shop_id: w.session.shop_id.as_uuid()
+        }
+    );
+    assert_eq!(
+        message.message_key,
+        format!("welcome:{}", w.session.shop_id.as_uuid())
+    );
+    assert_eq!(key, format!("email.send:{}", message.message_key));
+    assert_eq!(state, "ready");
+    assert_eq!(
+        Value::Object(message.input),
+        json!({"storeName": "Demo Outfitters", "locale": "fr"})
+    );
+    assert!(
+        !payload
+            .to_string()
+            .to_lowercase()
+            .contains("demo-store.example"),
+        "no address travels through the queue"
+    );
+
+    // Every later write of the contact (shop/update, a rescan) welcomes nobody again.
+    for _ in 0..2 {
+        w.admin.reset().await;
+        contact_stored(&w, &jobs).await;
+    }
+    assert_eq!(w.count(welcome_jobs_sql()).await, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_shop_that_reports_no_address_is_not_welcomed(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let jobs = w.jobs.clone();
+    w.admin_operation("RampsmithShop", shop_response(None))
+        .await;
+    w.admin_operation("RampsmithShopOwner", shop_response(None))
+        .await;
+    let update = store(&w, "shop/update", shop_object()).await;
+    process(&w, &jobs, update).await;
+    assert_eq!(w.count(welcome_jobs_sql()).await, 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_long_store_name_is_cut_to_what_the_templates_accept(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let jobs = w.jobs.clone();
+    let mut response = shop_response(Some(OWNER));
+    response["data"]["shop"]["name"] = json!("N".repeat(200));
+    w.admin_operation("RampsmithShop", response.clone()).await;
+    w.admin_operation("RampsmithShopOwner", response).await;
+    let update = store(&w, "shop/update", shop_object()).await;
+    process(&w, &jobs, update).await;
+    let payload: Value = sqlx::query_scalar(
+        "select payload from jobs where queue = 'email.send' and payload ->> 'template' = 'welcome'",
+    )
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
+    assert_eq!(payload["input"]["storeName"].as_str().unwrap().len(), 100);
 }

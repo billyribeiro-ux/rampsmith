@@ -19,6 +19,7 @@ import {
 } from '../pipeline/snapshot.ts';
 import type { PageType } from '../pipeline/vocab.ts';
 import { RULESET_VERSION } from '../ruleset.ts';
+import { queueFixVerified, ruleTitle } from '../email/triggers.ts';
 import { recordPage, violationPrints, withTenant } from '../store.ts';
 import { onSiteUrl, scanThroughEgress, type EngineDeps } from '../worker.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
@@ -292,6 +293,29 @@ export function verifyScanHandler(deps: EngineDeps): JobHandler {
                status = case when ${verdict.ok} and status = 'applied' then 'verified' else status end,
                error_code = ${verdict.ok ? null : verdict.code}
          where tenant_id = ${tenantId} and id = ${payload.fix_id}`;
+      }
+      if (current?.status === 'applied') {
+        // The merchant hears the outcome once per verdict (ADR-279). A fix already verified is
+        // not announced again by a repeat check.
+        const first = loaded.findings[0];
+        const [rule] =
+          first === undefined
+            ? []
+            : await tx<{ rule_id: string; criteria: string[] }[]>`
+                select rule_id, criteria from findings
+                 where tenant_id = ${tenantId} and id = ${first.id}`;
+        const criterion = rule?.criteria.find((c) => /^[1-4]\.[0-9]{1,2}\.[0-9]{1,2}$/u.test(c));
+        if (rule !== undefined && criterion !== undefined) {
+          await queueFixVerified(tx, {
+            tenantId,
+            siteId: payload.site_id,
+            fixId: payload.fix_id,
+            verified: verdict.ok,
+            title: ruleTitle(rule.rule_id),
+            criterion,
+            now: new Date(),
+          });
+        }
       }
       await tx`
         update scans

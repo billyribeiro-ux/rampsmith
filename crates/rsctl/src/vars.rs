@@ -50,6 +50,8 @@ pub enum Var {
     SesSecretAccessKey,
     EmailFrom,
     EmailPostalAddress,
+    SesConfigurationSet,
+    SesSnsTopicArn,
     // Row 8: Railway.
     RailwayToken,
     RailwayApiToken,
@@ -110,6 +112,8 @@ impl Var {
         Self::SesSecretAccessKey,
         Self::EmailFrom,
         Self::EmailPostalAddress,
+        Self::SesConfigurationSet,
+        Self::SesSnsTopicArn,
         Self::RailwayToken,
         Self::RailwayApiToken,
         Self::OtelExporterOtlpEndpoint,
@@ -165,6 +169,8 @@ impl Var {
             Self::SesSecretAccessKey => "SES_SECRET_ACCESS_KEY",
             Self::EmailFrom => "EMAIL_FROM",
             Self::EmailPostalAddress => "EMAIL_POSTAL_ADDRESS",
+            Self::SesConfigurationSet => "SES_CONFIGURATION_SET",
+            Self::SesSnsTopicArn => "SES_SNS_TOPIC_ARN",
             Self::RailwayToken => "RAILWAY_TOKEN",
             Self::RailwayApiToken => "RAILWAY_API_TOKEN",
             Self::OtelExporterOtlpEndpoint => "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -219,7 +225,9 @@ impl Var {
             | Self::SesAccessKeyId
             | Self::SesSecretAccessKey
             | Self::EmailFrom
-            | Self::EmailPostalAddress => 7,
+            | Self::EmailPostalAddress
+            | Self::SesConfigurationSet
+            | Self::SesSnsTopicArn => 7,
             Self::RailwayToken | Self::RailwayApiToken => 8,
             Self::OtelExporterOtlpEndpoint
             | Self::OtelExporterOtlpHeaders

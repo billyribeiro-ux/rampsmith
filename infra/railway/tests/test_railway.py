@@ -72,6 +72,8 @@ LAUNCH_C_RUNTIME = {
     "SES_SECRET_ACCESS_KEY",
     "EMAIL_FROM",
     "EMAIL_POSTAL_ADDRESS",
+    "SES_CONFIGURATION_SET",
+    "SES_SNS_TOPIC_ARN",
     "RAMPSMITH_MASTER_KEYS",
 }
 PROPOSED = {
@@ -340,6 +342,12 @@ class HealthAndCommands(unittest.TestCase):
                       "R2_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID"},
             set(),
         )
+
+    def test_the_bounce_settings_reach_only_the_services_that_use_them(self) -> None:
+        resources = full()
+        for name, holder in (("SES_CONFIGURATION_SET", "mailer"), ("SES_SNS_TOPIC_ARN", "api")):
+            holders = {n for n, r in resources.items() if name in shared_refs(r)}
+            self.assertEqual(holders, {holder}, name)
 
     def test_the_collector_reads_its_config_from_a_variable(self) -> None:
         collector = full()["collector"]

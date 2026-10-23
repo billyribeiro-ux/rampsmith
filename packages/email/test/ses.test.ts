@@ -295,8 +295,25 @@ describe('configuration', () => {
     ['a sender that is not an address', { from: 'Rampsmith' }],
     ['a display name with a quote', { from: '"Ramp"smith" <hello@rampsmith.example>' }],
     ['a plain-HTTP endpoint that is not loopback', { endpoint: 'http://ses.example' }],
+    ['a configuration set with a space', { configurationSet: 'two words' }],
+    ['an empty configuration set', { configurationSet: '' }],
+    ['a configuration set over 64 characters', { configurationSet: 'a'.repeat(65) }],
   ])('refuses %s at startup', (_name, over) => {
     expect(() => createSesSender(config(over))).toThrow(SesConfigError);
+  });
+
+  it('sends through the configuration set when there is one, and names none otherwise', async () => {
+    const before = ses.requests.length;
+    await createSesSender(config({ configurationSet: 'rampsmith-events' })).send(
+      message('email.send:config-set-0000001'),
+    );
+    await createSesSender(config()).send(message('email.send:config-set-0000002'));
+    expect(ses.requests[before]?.body.ConfigurationSetName).toBe('rampsmith-events');
+    expect(ses.requests[before + 1]?.body.ConfigurationSetName).toBeUndefined();
+    // Tracking stays off per message whatever the set says (ADR-191).
+    expect(ses.requests[before]?.body.ConfigurationOverrides?.Tracking?.OpenTrackingEnabled).toBe(
+      'DISABLED',
+    );
   });
 
   it('accepts a bare address as the sender', async () => {
@@ -319,5 +336,17 @@ describe('configuration', () => {
         EMAIL_FROM: 'x@rampsmith.example',
       }),
     ).toMatchObject({ region: 'eu-west-1', from: 'x@rampsmith.example' });
+    const base = {
+      SES_REGION: 'eu-west-1',
+      SES_ACCESS_KEY_ID: 'a',
+      SES_SECRET_ACCESS_KEY: 'b',
+      EMAIL_FROM: 'x@rampsmith.example',
+    };
+    expect(
+      sesConfigFromEnv({ ...base, SES_CONFIGURATION_SET: ' rampsmith-events ' }),
+    ).toMatchObject({ configurationSet: 'rampsmith-events' });
+    expect(sesConfigFromEnv({ ...base, SES_CONFIGURATION_SET: '  ' })).not.toHaveProperty(
+      'configurationSet',
+    );
   });
 });

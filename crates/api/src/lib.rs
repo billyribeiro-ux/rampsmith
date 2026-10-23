@@ -17,6 +17,7 @@ pub mod rate_limit;
 mod regressions;
 mod rules;
 pub mod serve;
+pub mod ses_events;
 pub mod shopify;
 pub mod webhooks;
 

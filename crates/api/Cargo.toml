@@ -35,6 +35,8 @@ identity.workspace = true
 queue.workspace = true
 rand.workspace = true
 reqwest.workspace = true
+rustls-pki-types.workspace = true
+rustls-webpki.workspace = true
 secrecy = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -58,9 +60,14 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "ti
 time = { workspace = true, features = ["macros"] }
 http-body-util.workspace = true
 jsonwebtoken.workspace = true
+rcgen.workspace = true
 tower.workspace = true
 webauthn-authenticator-rs.workspace = true
 wiremock.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+# The library behind `rustls-webpki` is named `webpki`, which the scan cannot match.
+ignored = ["rustls-webpki"]
