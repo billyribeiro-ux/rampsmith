@@ -8,13 +8,34 @@ import { ALT_TEXT_LONG_EDGE, type ImageInput } from '@rampsmith/ai';
 import { JobFailure } from '@rampsmith/queue';
 import sharp from 'sharp';
 
-/** Formats the engine decodes. SVG, PDF and the rest of libvips' loaders stay off. */
-const DECODABLE = new Set(['jpeg', 'png', 'webp', 'gif', 'avif', 'heif', 'tiff']);
+/** Formats the engine decodes. SVG, TIFF, PDF and the rest of libvips' loaders stay off. */
+const DECODABLE = new Set(['jpeg', 'png', 'webp', 'gif', 'avif', 'heif']);
+
+/**
+ * The only libvips loaders that may open a download (security audit LOW L1, ADR-099). libvips
+ * picks a loader by sniffing the bytes, so the format check below would run only after an
+ * SVG, TIFF or ImageMagick loader had already parsed the attacker's file. Every loader is
+ * blocked and exactly these buffer loaders are allowed back; GIF is read by `nsgif`, AVIF and
+ * HEIC by `heif`. The names were checked against the libvips bundled with the pinned `sharp`
+ * (the test fails if a name stops matching).
+ */
+export const ALLOWED_LOADERS: readonly string[] = [
+  'VipsForeignLoadJpegBuffer',
+  'VipsForeignLoadPngBuffer',
+  'VipsForeignLoadWebpBuffer',
+  'VipsForeignLoadNsgifBuffer',
+  'VipsForeignLoadHeifBuffer',
+];
+sharp.block({ operation: ['VipsForeignLoad'] });
+sharp.unblock({ operation: [...ALLOWED_LOADERS] });
 
 /** Larger downloads are refused before they are decoded. */
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
-/** A decompression-bomb guard: sharp refuses images with more pixels than this. */
-const MAX_SOURCE_PIXELS = 100_000_000;
+/**
+ * A decompression-bomb guard: sharp refuses images with more pixels than this. Shopify accepts
+ * product images up to 20 megapixels, so 25 leaves headroom and nothing more.
+ */
+const MAX_SOURCE_PIXELS = 25_000_000;
 const JPEG_QUALITY = 85;
 
 function unreadable(message: string): JobFailure {

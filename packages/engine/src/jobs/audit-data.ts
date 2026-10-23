@@ -6,6 +6,7 @@
  */
 import { JobFailure, enqueue } from '@rampsmith/queue';
 import type postgres from 'postgres';
+import { enqueueRoom } from '../ai/allowance.ts';
 import { auditBatch } from '../pipeline/audit.ts';
 import { finalizeWhenComplete } from '../pipeline/finalize-trigger.ts';
 import { recordDataItems } from '../pipeline/data-store.ts';
@@ -15,7 +16,10 @@ import { AUDITED_KINDS, parseBatch, parseShop, type AuditedKind } from '../pipel
 import { withTenant } from '../store.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
-/** Most alt-text drafts one batch queues; the rest are queued by the next scan. */
+/**
+ * Most alt-text drafts one batch queues; the rest are queued by the next scan. Never more than
+ * the plan's draft allowance has room for (security audit M3, ADR-097).
+ */
 const MAX_ALT_TEXT_JOBS = 500;
 
 const ALT_RULES = new Set(['rs-media-alt-empty', 'rs-media-alt-filename']);
@@ -73,8 +77,13 @@ export function auditDataHandler(deps: AuditDeps): JobHandler {
       const recorded = await recordDataItems(tx, ctx, input.id, result.items);
 
       let queued = 0;
-      for (const r of recorded) {
-        if (!ALT_RULES.has(r.ruleId) || queued >= MAX_ALT_TEXT_JOBS) continue;
+      const candidates = recorded.filter((r) => ALT_RULES.has(r.ruleId));
+      const room =
+        candidates.length === 0
+          ? 0
+          : Math.min(MAX_ALT_TEXT_JOBS, await enqueueRoom(tx, tenantId, payload.site_id));
+      for (const r of candidates) {
+        if (queued >= room) break;
         const created = await enqueue(tx, {
           queue: 'ai.alt_text',
           payloadSchema: 'ai.alt_text@1',

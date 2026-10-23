@@ -164,6 +164,10 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [093](093-alt-text-review-queue.md) | The alt-text review queue: approve, edit, reject, undo | Accepted |
 | [094](094-app-home-test-shim.md) | Testing the App Home without Shopify: a typed fake api and a Polaris shim | Accepted |
 | [095](095-plan-gates-and-settings.md) | Plan gates and settings in the App Home | Accepted |
+| [096](096-review-flags-and-flagged-approval.md) | Review flags reach the stored draft, and a flagged draft needs a confirmation | Accepted |
+| [097](097-plan-limits-where-drafts-are-made.md) | The plan's AI budget and draft allowance are enforced where drafts are made | Accepted |
+| [098](098-defer-instead-of-lose.md) | Outages and a missing key defer the job; they do not spend its attempts | Accepted |
+| [099](099-image-loaders-media-limits-and-preview-load.md) | Image loaders are allow-listed; the media route is limited; the preview loads once | Accepted |
 | [080](080-webhook-listener-and-admin-client.md) | The webhook listener, the compliance topics and the Admin API client | Accepted |
 | [081](081-store-reads-and-scan-inputs.md) | Store reads, and what `scan_inputs` holds | Accepted |
 | [082](082-data-fix-lifecycle.md) | The data-fix lifecycle: approve, apply, verify, undo | Accepted |

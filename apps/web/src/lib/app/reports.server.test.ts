@@ -20,6 +20,7 @@ const fix = (over: Partial<FixSummary> = {}): FixSummary => ({
     language: 'en',
     contains_text: false,
     escalated: false,
+    flags: [],
   },
   product_title: 'Mug',
   image_url: null,

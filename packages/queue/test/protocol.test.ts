@@ -137,6 +137,65 @@ describe('the TypeScript queue protocol', () => {
     });
   });
 
+  it('defers a job without spending its attempt, however often it is deferred', async () => {
+    await enqueue(workers, job('a', { maxAttempts: 2 }));
+    for (let round = 0; round < 4; round += 1) {
+      const [j] = await claim(workers, 'test.effect', 1, 'w', LEASE_MS);
+      if (j === undefined) throw new Error('nothing claimed');
+      expect(j.lease.attempt, 'a deferral gives the attempt back').toBe(1);
+      const outcome = await fail(workers, j.lease, {
+        kind: 'defer',
+        error: error('ai_unavailable'),
+        delayMs: 3_600_000,
+      });
+      if (outcome.state !== 'retrying') throw new Error(`expected a retry, got ${outcome.state}`);
+      expect(outcome.runAt.getTime() - Date.now()).toBeGreaterThan(3_590_000);
+      expect(await claim(workers, 'test.effect', 1, 'w', LEASE_MS), 'not before its time').toEqual(
+        [],
+      );
+      await db.owner`update jobs set run_at = now()`;
+    }
+    const [row] = await db.owner<
+      { state: string; attempts: number; last_error: { code: string; retryable: boolean } }[]
+    >`select state, attempts, last_error from jobs`;
+    expect(row).toMatchObject({
+      state: 'ready',
+      attempts: 0,
+      last_error: { code: 'ai_unavailable', retryable: true },
+    });
+    // A real failure afterwards still counts: two attempts, then dead.
+    for (const expected of ['retrying', 'dead']) {
+      const [j] = await claim(workers, 'test.effect', 1, 'w', LEASE_MS);
+      if (j === undefined) throw new Error('nothing claimed');
+      const outcome = await fail(workers, j.lease, { kind: 'retryable', error: error('x') }, 0.5);
+      expect(outcome.state).toBe(expected);
+      await db.owner`update jobs set run_at = now() where state = 'ready'`;
+    }
+  });
+
+  it('bounds a deferral: at least a few seconds, at most 35 days', async () => {
+    await enqueue(workers, job('a'));
+    const [j] = await claim(workers, 'test.effect', 1, 'w', LEASE_MS);
+    if (j === undefined) throw new Error('nothing claimed');
+    const outcome = await fail(workers, j.lease, {
+      kind: 'defer',
+      error: error('ai_unavailable'),
+      delayMs: -1,
+    });
+    if (outcome.state !== 'retrying') throw new Error('expected a retry');
+    expect(outcome.runAt.getTime() - Date.now()).toBeGreaterThan(3_000);
+    await db.owner`update jobs set run_at = now()`;
+    const [k] = await claim(workers, 'test.effect', 1, 'w', LEASE_MS);
+    if (k === undefined) throw new Error('nothing claimed');
+    const far = await fail(workers, k.lease, {
+      kind: 'defer',
+      error: error('ai_unavailable'),
+      delayMs: 400 * 24 * 3_600_000,
+    });
+    if (far.state !== 'retrying') throw new Error('expected a retry');
+    expect(far.runAt.getTime() - Date.now()).toBeLessThan(35.1 * 24 * 3_600_000);
+  });
+
   it('notifies listeners on commit, not before', async () => {
     const heard: string[] = [];
     const listening = await workers.listen(CHANNEL, (payload) => heard.push(payload));

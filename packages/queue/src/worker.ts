@@ -27,10 +27,24 @@ import {
 export class JobFailure extends Error {
   readonly failure: Failure;
 
-  constructor(kind: Failure['kind'], error: Omit<JobError, 'retryable'>) {
+  constructor(
+    kind: 'retryable' | 'permanent',
+    error: Omit<JobError, 'retryable'>,
+    options?: undefined,
+  );
+  /** A deferral: ready again after `delayMs`, the attempt is not spent. */
+  constructor(kind: 'defer', error: Omit<JobError, 'retryable'>, options: { delayMs: number });
+  constructor(
+    kind: Failure['kind'],
+    error: Omit<JobError, 'retryable'>,
+    options?: { delayMs: number },
+  ) {
     super(error.message);
     this.name = 'JobFailure';
-    this.failure = { kind, error: { ...error, retryable: kind === 'retryable' } };
+    this.failure =
+      kind === 'defer'
+        ? { kind, error: { ...error, retryable: true }, delayMs: options?.delayMs ?? 0 }
+        : { kind, error: { ...error, retryable: kind === 'retryable' } };
   }
 }
 
@@ -114,7 +128,8 @@ function attempt(options: WorkerOptions, job: ClaimedJob, leaseMs: number): Prom
   );
 }
 
-type Outcome = 'succeeded' | 'retryable' | 'permanent' | 'lease_lost' | 'record_failed';
+type Outcome =
+  'succeeded' | 'retryable' | 'permanent' | 'deferred' | 'lease_lost' | 'record_failed';
 
 async function runAttempt(
   options: WorkerOptions,
@@ -157,7 +172,7 @@ async function runAttempt(
     const failure = toFailure(outcome.error);
     const result = await fail(options.sql, job.lease, failure);
     emit({ type: result.state, jobId: job.lease.jobId });
-    return failure.kind;
+    return failure.kind === 'defer' ? 'deferred' : failure.kind;
   } catch (error: unknown) {
     const leaseLost = error instanceof LeaseLostError;
     emit({ type: leaseLost ? 'lease_lost' : 'record_failed', jobId: job.lease.jobId, error });

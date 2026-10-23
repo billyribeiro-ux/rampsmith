@@ -532,6 +532,32 @@ describe('audit.data', () => {
     expect(scan).toEqual({ data_inputs_done: 1, data_inputs_planned: 1 });
   });
 
+  it("queues no more alt-text drafts than the plan's allowance has room for (audit M3)", async () => {
+    const f = await seed(db.owner, SHOP, { pages: 1 });
+    await addInput(f, 'shop', 0, { primary_locale: 'en' });
+    const id = await addInput(f, 'products', 0, PRODUCTS);
+    // Free: 25 drafts, once. Twenty-four are used, so one more job has room.
+    for (let i = 0; i < 24; i += 1) {
+      await db.owner`
+        insert into ai_calls (id, tenant_id, task, model, mode, prompt_version, input_tokens,
+                              output_tokens, cost_micro_usd, cost_is_estimate, outcome, attempts,
+                              duration_ms, started_at)
+        values (${uuidv7()}, ${f.tenantId}, 'alt_text', 'claude-haiku-5-5', 'sync', 'alt-text@2',
+                10, 5, 100, false, 'ok', 1, 20, now())`;
+    }
+    await auditDataHandler({ sql })(
+      input('audit.data@1', { input_id: id, scan_id: f.scanId, site_id: f.siteId }, f.tenantId),
+    );
+    const jobs = await db.owner`
+      select 1 from jobs where queue = 'ai.alt_text' and tenant_id = ${f.tenantId}`;
+    expect(jobs).toHaveLength(1);
+    // Findings without a draft job stay open for a later scan; nothing was marked as failed.
+    const open = await db.owner`
+      select 1 from findings where site_id = ${f.siteId} and rule_id like 'rs-media-alt-%'
+         and status = 'open'`;
+    expect(open).toHaveLength(2);
+  });
+
   it('audits menus, pages, articles and collections', async () => {
     const f = await seed(db.owner, SHOP, { pages: 1 });
     const menus = await addInput(f, 'menus', 0, {

@@ -29,7 +29,7 @@ import type {
 
 const port = Number(process.env['FAKE_API_PORT'] ?? '3984');
 
-export type ScenarioName = 'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error';
+export type ScenarioName = 'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error' | 'flagged';
 
 interface Product {
   readonly title: string;
@@ -214,6 +214,7 @@ function fix(
     language: 'en',
     contains_text: n === 2,
     escalated: false,
+    flags: [],
   };
   const applied = status === 'applied' || status === 'verified';
   return {
@@ -353,10 +354,29 @@ function scenario(name: ScenarioName): Scenario {
     firstFixAt: null,
     seq: 100,
   };
-  if (name === 'default' || name === 'free' || name === 'starter' || name === 'error') {
+  if (
+    name === 'default' ||
+    name === 'free' ||
+    name === 'starter' ||
+    name === 'error' ||
+    name === 'flagged'
+  ) {
     s.scan = scan(2, 'succeeded', 6);
     populate(s, 'history');
     s.firstFixAt = iso(21);
+    if (name === 'flagged') {
+      // The brass lamp's draft was flagged by the engine (security audit M1): both flags.
+      const lamp = [...s.fixes.values()].find((f) => f.product_title === 'Brass desk lamp');
+      if (lamp !== undefined) {
+        s.fixes.set(lamp.id, {
+          ...lamp,
+          change: {
+            ...lamp.change,
+            flags: ['instruction_like_text_seen', 'suspected_prompt_injection'],
+          },
+        });
+      }
+    }
   } else if (name === 'empty') {
     s.scan = scan(2, 'succeeded', 6);
   }
@@ -529,6 +549,10 @@ function route(method: string, url: URL, body: Record<string, unknown>): Reply {
     }
     if (method === 'POST' && action === 'approve') {
       if (found.status !== 'proposed') return problem(409, 'conflict', 'Already decided');
+      if (found.change.flags.length > 0 && q.get('confirm_flagged') !== 'true')
+        return problem(422, 'validation_failed', 'Invalid request', [
+          { field: 'confirm_flagged', message: 'must be true' },
+        ]);
       const next = {
         ...found,
         status: 'approved' as const,
