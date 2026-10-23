@@ -136,19 +136,11 @@ async fn another_tenants_records_are_invisible_and_cannot_be_dismissed(
     let b = seed(&db, 2).await;
     let theirs = record(&owner, b, 3, 0, 0).await;
     let mut tx = db.tenant(a.tenant).await.unwrap();
-    assert!(
-        regressions::list(&mut tx, a.site, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let seen = regressions::list(&mut tx, a.site, 10).await.unwrap();
+    assert_eq!(seen.len(), 0);
     // A's transaction asked about B's site or B's record finds nothing, and changes nothing.
-    assert!(
-        regressions::list(&mut tx, b.site, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let seen = regressions::list(&mut tx, b.site, 10).await.unwrap();
+    assert_eq!(seen.len(), 0);
     assert!(
         regressions::get(&mut tx, b.site, theirs)
             .await
