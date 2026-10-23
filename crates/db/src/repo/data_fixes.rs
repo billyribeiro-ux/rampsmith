@@ -195,6 +195,41 @@ pub async fn fail(tx: &mut TenantTx, id: FixId, code: &str) -> Result<bool, DbEr
     Ok(done.rows_affected() == 1)
 }
 
+/// Fails every fix of the tenant that was approved or being applied, with `code`, because the
+/// shop is gone and nothing can write to it any more. Returns how many it ended (lane A audit
+/// L2: such a fix would otherwise sit in `approved` or `applying` for ever).
+pub async fn fail_in_flight(tx: &mut TenantTx, code: &str) -> Result<u64, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update fixes set status = 'failed', error_code = $2
+            where tenant_id = $1 and status in ('approved', 'applying')"#,
+        tenant,
+        code,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected())
+}
+
+/// Cancels the fix's `verify.scan` job if it has not started. An undo calls this in its own
+/// transaction so a verification queued after the apply does not run against a fix that is
+/// no longer in the shop (lane A audit L3; the engine also refuses to close findings for a fix
+/// that is not `applied`, which covers a verification already running). Returns how many jobs
+/// it cancelled.
+pub async fn cancel_verification(tx: &mut TenantTx, id: FixId) -> Result<u64, DbError> {
+    let tenant = tx.tenant_uuid();
+    let key = format!("verify.scan:{id}");
+    let done = sqlx::query!(
+        r#"update jobs set state = 'cancelled', finished_at = now()
+            where tenant_id = $1 and idempotency_key = $2 and state = 'ready'"#,
+        tenant,
+        key,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected())
+}
+
 /// `applied` or `verified` to `reverted`. `false` when it was neither.
 pub async fn finish_revert(tx: &mut TenantTx, id: FixId) -> Result<bool, DbError> {
     let tenant = tx.tenant_uuid();

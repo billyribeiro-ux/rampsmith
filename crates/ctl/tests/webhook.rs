@@ -119,11 +119,25 @@ async fn a_real_uninstall_ends_the_shop_cancels_its_jobs_and_deletes_its_tokens(
         .await
         .unwrap();
     }
+    seed_shop_data(&w).await;
+    sqlx::query("update fixes set status = 'approved', applied_at = null, approved_by_ref = '1', approved_at = now()")
+        .execute(&w.owner)
+        .await
+        .unwrap();
     let event = store(&w, "app/uninstalled", shop_object()).await;
 
     process(&w, event).await.unwrap();
 
     assert_eq!(status(&w).await, "uninstalled");
+    // A fix waiting for its apply job, which was cancelled, ends as failed.
+    let fix: (String, Option<String>) = sqlx::query_as("select status, error_code from fixes")
+        .fetch_one(&w.owner)
+        .await
+        .unwrap();
+    assert_eq!(
+        fix,
+        ("failed".to_owned(), Some("shop_uninstalled".to_owned()))
+    );
     assert_eq!(w.count("select count(*) from shopify_tokens").await, 0);
     assert_eq!(
         w.count("select count(*) from shopify_shops where uninstalled_at is not null")

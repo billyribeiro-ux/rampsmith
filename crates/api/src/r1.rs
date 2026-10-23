@@ -21,6 +21,7 @@ use db::repo::{audit, jobs as job_repo, scans, shop_billing};
 use domain::{ActorKind, ScanTrigger, ShopId, SiteId};
 use http_kit::{ApiError, FieldError, ProblemCode};
 use queue::NewJob;
+use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -1374,7 +1375,7 @@ pub(crate) struct SettingsUpdateBody {
     ai_budget_micro_usd: Option<i64>,
     #[serde(default)]
     #[schema(value_type = Option<String>)]
-    storefront_password: Field<String>,
+    storefront_password: Field<SecretString>,
 }
 
 async fn settings_dto(
@@ -1483,7 +1484,7 @@ pub(crate) async fn update_settings(
             })?;
             let sealed = keys
                 .seal(
-                    password.as_bytes(),
+                    password.expose_secret().as_bytes(),
                     format!("sites/storefront_password/{}", site.as_uuid()).as_bytes(),
                 )
                 .map_err(|error| queue_error(&error))?;
@@ -1560,7 +1561,7 @@ fn validated_patch(
         }
     }
     if let Field::Value(password) = &body.storefront_password
-        && (password.is_empty() || password.len() > 256)
+        && (password.expose_secret().is_empty() || password.expose_secret().len() > 256)
     {
         errors.push(("storefront_password", "must be 1 to 256 characters"));
     }

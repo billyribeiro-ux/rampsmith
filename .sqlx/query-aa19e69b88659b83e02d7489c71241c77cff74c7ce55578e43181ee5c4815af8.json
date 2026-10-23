@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select storefront_password_ct, storefront_password_key_id\n             from sites where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "storefront_password_ct",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "storefront_password_ct"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "storefront_password_key_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sites",
+            "name": "storefront_password_key_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "aa19e69b88659b83e02d7489c71241c77cff74c7ce55578e43181ee5c4815af8"
+}

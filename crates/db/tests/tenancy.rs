@@ -148,6 +148,14 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'no_active_plan')",
+    )
+    .bind(graph.shop.as_uuid())
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 }
 
@@ -414,7 +422,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 21] = [
+const TENANT_TABLES: [&str; 22] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -437,10 +445,11 @@ const TENANT_TABLES: [&str; 21] = [
     "ai_reservations",
     "webhook_events",
     "webhook_digests",
+    "shop_billing",
 ];
 
 /// The tables ADR-037 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 9] = [
+const R1_TABLES: [&str; 10] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -450,6 +459,7 @@ const R1_TABLES: [&str; 9] = [
     "ai_reservations",
     "webhook_events",
     "webhook_digests",
+    "shop_billing",
 ];
 
 #[sqlx::test]

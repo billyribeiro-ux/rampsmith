@@ -829,6 +829,37 @@ describe('verify.scan', () => {
     expect(others?.n).toBeGreaterThan(0);
   });
 
+  it('closes nothing for a fix that was undone while the verification ran (audit L3)', async () => {
+    const a = await applied();
+    const fixedInput = await addInput(
+      { ...a.f, scanId: a.verifyScan },
+      'verify',
+      0,
+      reread({
+        ...PRODUCTS.items[0],
+        description_html: '',
+        media: [
+          { id: 'gid://shopify/MediaImage/11', alt: 'Linen shirt in sand, front' },
+          { id: 'gid://shopify/MediaImage/12', alt: 'IMG_4032.jpg' },
+        ],
+      }),
+    );
+    // The merchant pressed undo: the fix is reverted and its finding reopened.
+    await db.owner`update fixes set status = 'reverted', reverted_at = now() where id = ${a.fixId}`;
+    await verifyScanHandler(deps({}))(
+      input('verify.scan@1', payloadOf(a, fixedInput), a.f.tenantId),
+    );
+    const [fix] = await db.owner<{ status: string; verified_scan: string | null }[]>`
+      select status, verified_scan from fixes where id = ${a.fixId}`;
+    expect(fix).toEqual({ status: 'reverted', verified_scan: null });
+    const [finding] = await db.owner<{ status: string }[]>`
+      select status from findings where id = ${a.findingId}`;
+    expect(finding?.status).toBe('open');
+    const [scan] = await db.owner<{ finalized: boolean }[]>`
+      select finalized_at is not null as finalized from scans where id = ${a.verifyScan}`;
+    expect(scan?.finalized).toBe(true);
+  });
+
   it('reopens the finding and keeps the fix applied when the finding remains', async () => {
     const a = await applied();
     const same = await addInput(

@@ -1175,12 +1175,8 @@ async fn free_covers_the_first_twenty_five_images_and_no_more(
     );
 }
 
-#[sqlx::test(migrations = "../db/migrations")]
-async fn two_approvals_at_once_cannot_pass_the_last_image_of_the_allowance(
-    opts: PgPoolOptions,
-    conn: PgConnectOptions,
-) {
-    let h = plain(opts, conn).await;
+/// A shop at 24 of its 25 free image fixes, with `proposed` more fixes waiting for approval.
+async fn one_image_left(h: &Harness, proposed: usize) -> Vec<Uuid> {
     let scan = h.scan("succeeded", "manual", 5, None).await;
     let finding = h
         .finding(
@@ -1197,32 +1193,83 @@ async fn two_approvals_at_once_cannot_pass_the_last_image_of_the_allowance(
     for n in 0..24 {
         h.fix(finding, "applied", &format!("Done {n}"), false).await;
     }
-    let first = h.fix(finding, "proposed", "One", true).await;
-    let second = h.fix(finding, "proposed", "Two", true).await;
-    let (first_uri, second_uri) = (
-        format!("/v1/shopify/fixes/{first}/approve"),
-        format!("/v1/shopify/fixes/{second}/approve"),
+    let mut waiting = Vec::new();
+    for n in 0..proposed {
+        waiting.push(
+            h.fix(finding, "proposed", &format!("Waiting {n}"), true)
+                .await,
+        );
+    }
+    waiting
+}
+
+async fn apply_jobs(h: &Harness) -> i64 {
+    h.count("select count(*) from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'")
+        .await
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn twenty_approvals_at_once_pass_the_last_image_of_the_allowance_exactly_once(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = std::sync::Arc::new(plain(opts, conn).await);
+    let waiting = one_image_left(&h, 20).await;
+    let mut calls = Vec::new();
+    for fix in waiting {
+        let h = std::sync::Arc::clone(&h);
+        calls.push(tokio::spawn(async move {
+            h.call("POST", &format!("/v1/shopify/fixes/{fix}/approve"), None)
+                .await
+                .status
+        }));
+    }
+    let mut ok = 0;
+    let mut forbidden = 0;
+    for call in calls {
+        match call.await.unwrap() {
+            StatusCode::OK => ok += 1,
+            StatusCode::FORBIDDEN => forbidden += 1,
+            other => panic!("unexpected {other}"),
+        }
+    }
+    assert_eq!((ok, forbidden), (1, 19), "exactly one approval fits");
+    assert_eq!(apply_jobs(&h).await, 1);
+}
+
+/// The lock is what makes the count above reliable, so this test pins the lock itself: while
+/// another transaction holds the site row, an approval waits; when it lets go, the approval
+/// goes through. A version of `approve_fix` that forgot `lock_site` would answer at once.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn an_approval_waits_for_the_site_lock(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = std::sync::Arc::new(plain(opts, conn).await);
+    let waiting = one_image_left(&h, 1).await;
+    let mut holder = h.owner.begin().await.unwrap();
+    sqlx::query("select id from sites where id = $1 for update")
+        .bind(h.site)
+        .fetch_one(&mut *holder)
+        .await
+        .unwrap();
+
+    let fix = waiting[0];
+    let approving = {
+        let h = std::sync::Arc::clone(&h);
+        tokio::spawn(async move {
+            h.call("POST", &format!("/v1/shopify/fixes/{fix}/approve"), None)
+                .await
+                .status
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    assert!(
+        !approving.is_finished(),
+        "the approval did not wait for the site lock"
     );
-    let (a, b) = tokio::join!(
-        h.call("POST", &first_uri, None),
-        h.call("POST", &second_uri, None),
-    );
-    let mut statuses = [a.status, b.status];
-    statuses.sort();
-    assert_eq!(
-        statuses,
-        [StatusCode::OK, StatusCode::FORBIDDEN],
-        "{} {}",
-        a.body,
-        b.body
-    );
-    assert_eq!(
-        h.count(
-            "select count(*) from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'"
-        )
-        .await,
-        1
-    );
+    assert_eq!(apply_jobs(&h).await, 0);
+
+    holder.rollback().await.unwrap();
+    assert_eq!(approving.await.unwrap(), StatusCode::OK);
+    assert_eq!(apply_jobs(&h).await, 1);
 }
 
 #[sqlx::test(migrations = "../db/migrations")]

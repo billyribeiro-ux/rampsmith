@@ -391,10 +391,27 @@ async fn an_applied_fix_is_undone_when_the_live_value_is_still_the_fixes(
     .await;
     w.admin_operation("RampsmithSetMediaAlt", fixture("file_update_ok"))
         .await;
+    // The verification queued by the apply has not run yet.
+    sqlx::query(
+        "insert into jobs (id, queue, payload_schema, payload, tenant_id, state, idempotency_key)
+         values ($1, 'verify.scan', 'verify.scan@1', '{}', $2, 'ready', $3)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(w.session.tenant.as_uuid())
+    .bind(format!("verify.scan:{}", s.fix))
+    .execute(&w.owner)
+    .await
+    .unwrap();
 
     revert(&w, s.fix).await.unwrap();
 
     assert_eq!(state(&w, s.fix).await, ("reverted".to_owned(), None));
+    assert_eq!(
+        w.count("select count(*) from jobs where queue = 'verify.scan' and state = 'cancelled'")
+            .await,
+        1,
+        "the pending verification of an undone fix is cancelled"
+    );
     let reverted: bool =
         sqlx::query_scalar("select reverted_at is not null from fixes where id = $1")
             .bind(s.fix)
@@ -472,5 +489,46 @@ async fn an_undo_refuses_with_a_conflict_when_the_value_changed_since(
     assert_eq!(
         code(revert(&w, proposed.fix).await),
         (false, "fix_not_applied".to_owned())
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_last_attempt_records_a_failure_instead_of_leaving_the_fix_applying(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let s = seed(&w, "approved", true, None, "Draft alt text").await;
+    w.admin_answers(503, json!({})).await;
+
+    // An early attempt retries and leaves the fix where it is.
+    assert_eq!(
+        code(apply(&w, s.fix).await),
+        (true, "shopify_unavailable".to_owned())
+    );
+    assert_eq!(state(&w, s.fix).await.0, "applying");
+
+    // The last attempt gives up: the fix is failed with a code, the job fails for good.
+    let mut last = w.job(
+        ShopifyApplyDataFix::QUEUE,
+        ShopifyApplyDataFix::SCHEMA,
+        json!({"fix_id": s.fix, "shop_id": w.session.shop_id.as_uuid()}),
+    );
+    last.lease.attempt = last.max_attempts;
+    assert_eq!(
+        code(w.jobs.dispatch(last).await),
+        (false, "retries_exhausted".to_owned())
+    );
+    assert_eq!(
+        state(&w, s.fix).await,
+        ("failed".to_owned(), Some("retries_exhausted".to_owned()))
+    );
+    assert_eq!(
+        w.count(
+            "select count(*) from audit_log where action = 'shopify.data_fix_failed'
+                and data ->> 'code' = 'retries_exhausted'"
+        )
+        .await,
+        1
     );
 }

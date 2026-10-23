@@ -4,8 +4,8 @@
 --   \i docs/runbooks/sql/master-key-usage.sql
 --
 -- `shopify_tokens.key_id` names the key that wrapped each row's data key. A key may be dropped
--- from the ring only when no table holds its id. Today `shopify_tokens` is the only table with
--- sealed values (crates/db/migrations); when a migration adds another table with a `key_id`
+-- from the ring only when no table holds its id. `shopify_tokens` and `sites.storefront_password_ct` (lane A audit L4)
+-- hold sealed values (crates/db/migrations); when a migration adds another table with a `key_id`
 -- column, add it below in the same change.
 --
 -- Row-level security hides every tenant's rows from a role that does not bypass it, and the
@@ -30,3 +30,10 @@ select key_id, count(*) as rows
   from shopify_tokens
  group by key_id
  order by key_id;
+
+\echo 'stored storefront passwords by wrapping key'
+select storefront_password_key_id as key_id, count(*) as rows
+  from sites
+ where storefront_password_ct is not null
+ group by storefront_password_key_id
+ order by storefront_password_key_id;
