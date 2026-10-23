@@ -10,6 +10,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import process from 'node:process';
 import type {
+  AgencyLink,
   AltTextChange,
   Entitlements,
   FeatureGate,
@@ -32,7 +33,7 @@ import type {
 const port = Number(process.env['FAKE_API_PORT'] ?? '3984');
 
 export type ScenarioName =
-  'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error' | 'flagged' | 'regressed';
+  'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error' | 'flagged' | 'regressed' | 'agency';
 
 interface Product {
   readonly title: string;
@@ -173,6 +174,9 @@ interface Scenario {
   failing: boolean;
   firstFixAt: string | null;
   regressions: Regression[];
+  agencyLinks: AgencyLink[];
+  /** Wrong link codes tried; the api refuses more after five. */
+  badCodes: number;
   seq: number;
 }
 
@@ -366,6 +370,11 @@ function scenario(name: ScenarioName): Scenario {
     failing: name === 'error',
     firstFixAt: null,
     regressions: [],
+    agencyLinks:
+      name === 'agency'
+        ? [{ id: uuid(950), organization_name: 'Northwind Digital', granted_at: iso(30) }]
+        : [],
+    badCodes: 0,
     seq: 100,
   };
   if (
@@ -374,7 +383,8 @@ function scenario(name: ScenarioName): Scenario {
     name === 'starter' ||
     name === 'error' ||
     name === 'flagged' ||
-    name === 'regressed'
+    name === 'regressed' ||
+    name === 'agency'
   ) {
     s.scan = scan(2, 'succeeded', 6);
     populate(s, 'history');
@@ -550,6 +560,38 @@ function route(method: string, url: URL, body: Record<string, unknown>): Reply {
     const found = state.regressions.find((r) => r.id === id);
     if (found === undefined) return problem(404, 'not_found', 'Not found');
     state.regressions = state.regressions.map((r) => (r.id === id ? { ...r, dismissed: true } : r));
+    return { status: 204 };
+  }
+  if (method === 'GET' && path === 'agency-links') {
+    return { status: 200, body: { links: state.agencyLinks } };
+  }
+  if (method === 'POST' && (path === 'agency-links' || path === 'agency-links/preview')) {
+    if (state.badCodes >= 5) return problem(429, 'rate_limited', 'Too many codes were not valid');
+    const typed = String(body['code'] ?? '')
+      .replace(/[\s-]/gu, '')
+      .toUpperCase();
+    if (typed !== 'ABCDE12345') {
+      state.badCodes += 1;
+      return problem(404, 'not_found', 'Not found');
+    }
+    if (path === 'agency-links/preview') {
+      return {
+        status: 200,
+        body: { organization_name: 'Northwind Digital', expires_at: iso(-60 * 23) },
+      };
+    }
+    const link: AgencyLink = {
+      id: uuid(951 + state.agencyLinks.length),
+      organization_name: 'Northwind Digital',
+      granted_at: iso(0),
+    };
+    state.agencyLinks = [...state.agencyLinks, link];
+    return { status: 201, body: link };
+  }
+  if (method === 'DELETE' && path.startsWith('agency-links/')) {
+    const found = state.agencyLinks.find((l) => l.id === id);
+    if (found === undefined) return problem(404, 'not_found', 'Not found');
+    state.agencyLinks = state.agencyLinks.filter((l) => l.id !== id);
     return { status: 204 };
   }
   if (method === 'POST' && path === 'scans') {

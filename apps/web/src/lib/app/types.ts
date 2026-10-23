@@ -124,6 +124,23 @@ export interface RegressionList {
   readonly items: readonly Regression[];
 }
 
+/** An agency that can see this store, as its merchant approved (ADR-313). */
+export interface AgencyLink {
+  readonly id: string;
+  readonly organization_name: string;
+  readonly granted_at: string;
+}
+
+export interface AgencyLinkList {
+  readonly links: readonly AgencyLink[];
+}
+
+/** Who a link code belongs to, shown before the merchant approves. */
+export interface AgencyCodePreview {
+  readonly organization_name: string;
+  readonly expires_at: string;
+}
+
 export type FindingStatus = 'open' | 'fixed' | 'needs_review' | 'accepted_risk' | 'false_positive';
 export type FindingOrigin = 'render' | 'data';
 export type FixStatus =

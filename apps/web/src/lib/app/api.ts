@@ -6,6 +6,9 @@
  */
 import { sessionFetch, type SessionTokenSource } from '#lib/shopify/session-fetch.ts';
 import type {
+  AgencyCodePreview,
+  AgencyLink,
+  AgencyLinkList,
   FindingDetail,
   FindingList,
   FindingOrigin,
@@ -85,6 +88,10 @@ export interface AppApi {
   undoFix(id: string): Promise<FixSummary>;
   regressions(): Promise<RegressionList>;
   dismissRegression(id: string): Promise<void>;
+  agencyLinks(): Promise<AgencyLinkList>;
+  previewAgencyLink(code: string): Promise<AgencyCodePreview>;
+  approveAgencyLink(code: string): Promise<AgencyLink>;
+  revokeAgencyLink(id: string): Promise<void>;
   settings(): Promise<Settings>;
   updateSettings(update: SettingsUpdate): Promise<Settings>;
   emailPreferences(): Promise<EmailPreferences>;
@@ -191,6 +198,13 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
     regressions: () => json<RegressionList>(`${BASE}/regressions`),
     dismissRegression: async (id) => {
       await send(`${BASE}/regressions/${encodeURIComponent(id)}/dismiss`, write('POST'));
+    },
+    agencyLinks: () => json<AgencyLinkList>(`${BASE}/agency-links`),
+    previewAgencyLink: (code) =>
+      json<AgencyCodePreview>(`${BASE}/agency-links/preview`, write('POST', { code })),
+    approveAgencyLink: (code) => json<AgencyLink>(`${BASE}/agency-links`, write('POST', { code })),
+    revokeAgencyLink: async (id) => {
+      await send(`${BASE}/agency-links/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
     settings: () => json<Settings>(`${BASE}/settings`),
     updateSettings: (update) => json<Settings>(`${BASE}/settings`, write('PUT', update)),
