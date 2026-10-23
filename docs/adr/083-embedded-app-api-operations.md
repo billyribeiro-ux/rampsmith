@@ -14,7 +14,8 @@ one that does not exist.
 - **Overview.** Entitlements (below), the newest scan that is not a verification of one fix, open
   findings by impact (best practices are not counted), fixes awaiting approval, fixes applied and
   the time of the first one. `next_scan_at` is the latest scan plus 7 days when the merchant turned
-  weekly rescans on, else null. The shop's name is null: the Admin read stores no name.
+  weekly rescans on, else null. The shop's name is null: the Admin read asks Shopify for `shop { name }`, but no column stores it
+  (ADR-087).
 - **Scans.** `POST` is 202 with the queued scan and a `shopify.read_store` job in the same
   transaction (key `shopify.read_store:<scan>`); 409 while a scan is queued or running and was
   queued within the last hour (an older one is a crashed run and does not block). The scan's

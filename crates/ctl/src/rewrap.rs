@@ -13,13 +13,18 @@
 //! skipped, and the next pass sees it again. A pass can be run any number of times, by any
 //! number of processes, and stopped at any point.
 //!
+//! The storefront passwords sealed in `sites` are re-wrapped in a second pass of the same run
+//! (lane A audit L4), with the same compare-and-swap, and [`Rewrap::remaining`] counts them with
+//! the tokens, so a key is reported removable only when nothing is left under it.
+//!
 //! The operator command that calls this (`rsctl keys rewrap`) is not here. It needs a database
 //! connection as `rampsmith_worker` and the key ring, and calls `Rewrap::new(db, keys).run()`.
 
 use crypto::{CryptoError, KeyRing};
+use db::repo::app_views;
 use db::repo::shopify::{self, Rewrapped, SealedTokens};
-use db::{Db, DbError, KeyCount, RewrapCandidate};
-use domain::ShopId;
+use db::{Db, DbError, KeyCount, PasswordCandidate, RewrapCandidate};
+use domain::{ShopId, SiteId};
 use shopify_auth::{access_context, refresh_context};
 use tracing::{info, warn};
 
@@ -44,7 +49,12 @@ pub struct Report {
     pub failed: u64,
 }
 
-/// Re-wraps stored Shopify tokens under the active master key.
+/// The context a storefront password is sealed under (the api seals it with the same string).
+fn password_context(site: SiteId) -> String {
+    format!("sites/storefront_password/{}", site.as_uuid())
+}
+
+/// Re-wraps stored Shopify tokens and storefront passwords under the active master key.
 #[derive(Debug, Clone)]
 pub struct Rewrap {
     db: Db,
@@ -78,9 +88,87 @@ impl Rewrap {
         self
     }
 
-    /// Re-wraps every token row that is not under the active key, batch by batch, and reports
-    /// what it did. A database error ends the pass; run it again to continue.
+    /// Re-wraps every token row and storefront password that is not under the active key, batch
+    /// by batch, and reports what it did. A database error ends the pass; run it again to
+    /// continue.
     pub async fn run(&self) -> Result<Report, DbError> {
+        let mut report = self.run_tokens().await?;
+        let passwords = self.run_passwords().await?;
+        report.examined += passwords.examined;
+        report.rewrapped += passwords.rewrapped;
+        report.skipped += passwords.skipped;
+        report.failed += passwords.failed;
+        info!(
+            examined = report.examined,
+            rewrapped = report.rewrapped,
+            skipped = report.skipped,
+            failed = report.failed,
+            "re-wrap run finished"
+        );
+        Ok(report)
+    }
+
+    async fn run_passwords(&self) -> Result<Report, DbError> {
+        let active = self.keys.active().as_str();
+        let mut report = Report::default();
+        let mut after: Option<SiteId> = None;
+        loop {
+            let rows = self
+                .db
+                .passwords_to_rewrap(active, after, i32::from(self.batch))
+                .await?;
+            let Some(last) = rows.last() else { break };
+            after = Some(last.site);
+            let listed = rows.len();
+            for row in &rows {
+                report.examined += 1;
+                match self.rewrap_password(row).await? {
+                    Outcome::Rewrapped => report.rewrapped += 1,
+                    Outcome::Skipped => report.skipped += 1,
+                    Outcome::Failed => report.failed += 1,
+                }
+            }
+            if listed < usize::from(self.batch) {
+                break;
+            }
+        }
+        Ok(report)
+    }
+
+    async fn rewrap_password(&self, row: &PasswordCandidate) -> Result<Outcome, DbError> {
+        let mut tx = self.db.tenant(row.tenant).await?;
+        let Some((ct, key_id)) = app_views::storefront_password(&mut tx, row.site).await? else {
+            return Ok(Outcome::Skipped);
+        };
+        if !self.keys.needs_rewrap(&key_id) {
+            return Ok(Outcome::Skipped);
+        }
+        let context = password_context(row.site);
+        let sealed = match self.keys.rewrap(&key_id, &ct, context.as_bytes()) {
+            Ok(sealed) => sealed,
+            Err(error) => {
+                warn!(tenant = %row.tenant, site = %row.site, key = %key_id, %error,
+                    "could not re-wrap a stored storefront password");
+                return Ok(Outcome::Failed);
+            }
+        };
+        let (new_key, new_ct) = sealed.into_parts();
+        let swapped = app_views::replace_password_wrapping(
+            &mut tx,
+            row.site,
+            (&ct, &key_id),
+            (&new_ct, new_key.as_str()),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(if swapped {
+            Outcome::Rewrapped
+        } else {
+            Outcome::Skipped
+        })
+    }
+
+    async fn run_tokens(&self) -> Result<Report, DbError> {
         let active = self.keys.active().as_str();
         let mut report = Report::default();
         let mut after: Option<ShopId> = None;

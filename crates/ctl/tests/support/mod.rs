@@ -14,7 +14,8 @@ use std::time::Duration;
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
-/// The `LOGIN` member of `rampsmith_worker` the tests connect as.
+/// The `LOGIN` member of `rampsmith_ctl` (and through it of `rampsmith_worker`) the tests
+/// connect as.
 pub const WORKER_LOGIN: &str = "rampsmith_test_ctl_login";
 const PASSWORD: &str = "rampsmith-test-only";
 
@@ -29,9 +30,15 @@ async fn ensure_worker_login(opts: &PgPoolOptions, conn: &PgConnectOptions) {
     for attempt in 0..20_u64 {
         let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
             "do $$ begin
-               create role {WORKER_LOGIN} login password '{PASSWORD}' in role rampsmith_worker;
+               create role {WORKER_LOGIN} login password '{PASSWORD}' in role rampsmith_ctl;
              exception when duplicate_object or unique_violation then null;
              end $$"
+        )))
+        .execute(&admin)
+        .await;
+        // A login left by an earlier run of this suite may predate the group.
+        let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "grant rampsmith_ctl to {WORKER_LOGIN}"
         )))
         .execute(&admin)
         .await;

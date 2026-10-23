@@ -146,9 +146,18 @@ async fn grant_is_gone(jobs: &Jobs, tenant: TenantId, shop: ShopId) -> Result<bo
     }
 }
 
-/// Marks the shop uninstalled and removes what an uninstall removes. Returns how many queued
-/// jobs were cancelled and whether the status changed.
-async fn end_installation(tx: &mut db::TenantTx, shop: ShopId) -> Result<(bool, u64), Failure> {
+/// What ending an installation changed.
+struct Ended {
+    /// The shop's status changed (it was installed).
+    changed: bool,
+    /// Queued jobs cancelled.
+    cancelled: u64,
+    /// Approved or applying fixes ended as failed (`shop_uninstalled`).
+    fixes_failed: u64,
+}
+
+/// Marks the shop uninstalled and removes what an uninstall removes.
+async fn end_installation(tx: &mut db::TenantTx, shop: ShopId) -> Result<Ended, Failure> {
     let changed = shops::mark_uninstalled(tx, shop)
         .await
         .map_err(|e| database(&e))?;
@@ -158,7 +167,16 @@ async fn end_installation(tx: &mut db::TenantTx, shop: ShopId) -> Result<(bool, 
     let cancelled = db::repo::jobs::cancel_pending(tx, WebhookProcess::QUEUE)
         .await
         .map_err(|e| database(&e))?;
-    Ok((changed, cancelled))
+    // Their apply jobs were cancelled with the rest: without this they would stay approved for
+    // ever (lane A audit L2).
+    let fixes_failed = db::repo::data_fixes::fail_in_flight(tx, "shop_uninstalled")
+        .await
+        .map_err(|e| database(&e))?;
+    Ok(Ended {
+        changed,
+        cancelled,
+        fixes_failed,
+    })
 }
 
 async fn uninstalled(
@@ -180,17 +198,20 @@ async fn uninstalled(
         .await;
     }
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
-    let (changed, cancelled) = end_installation(&mut tx, shop).await?;
+    let ended = end_installation(&mut tx, shop).await?;
     record(
         &mut tx,
         event_id,
         "shopify.app_uninstalled",
         shop,
-        json!({"changed": changed, "jobs_cancelled": cancelled}),
+        json!({"changed": ended.changed, "jobs_cancelled": ended.cancelled,
+               "fixes_failed": ended.fixes_failed,
+               // No mail transport or send job exists yet (audit L8, ADR-087).
+               "export_email": "not_queued_no_sender"}),
     )
     .await?;
     tx.commit().await.map_err(|e| database(&e))?;
-    info!(%shop, changed, cancelled, "app uninstalled");
+    info!(%shop, changed = ended.changed, cancelled = ended.cancelled, "app uninstalled");
     Ok(())
 }
 
@@ -219,7 +240,7 @@ async fn redact_shop(
     }
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
     let cancelled = if installed {
-        end_installation(&mut tx, shop).await?.1
+        end_installation(&mut tx, shop).await?.cancelled
     } else {
         db::repo::jobs::cancel_pending(&mut tx, WebhookProcess::QUEUE)
             .await

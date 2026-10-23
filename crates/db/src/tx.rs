@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use domain::{ShopId, ShopStatus, TenantId};
+use domain::{ShopId, ShopStatus, SiteId, TenantId};
 use sqlx::postgres::{PgConnection, PgPool, PgPoolOptions};
 use sqlx::{Postgres, Transaction};
 
@@ -192,9 +192,37 @@ impl Db {
             .collect())
     }
 
-    /// How many stored Shopify token rows each master key id wraps, by key id (audit L6,
-    /// ADR-045). A key is safe to remove from the key ring once it no longer appears. Only the
-    /// worker role may call this.
+    /// Up to `limit` (1 to 1000) sites whose storefront password a master key other than
+    /// `active_key_id` still wraps, across tenants, in site id order after `after` (lane A audit
+    /// L4). Same contract as [`Db::tokens_to_rewrap`]: ids only, worker role only.
+    pub async fn passwords_to_rewrap(
+        &self,
+        active_key_id: &str,
+        after: Option<SiteId>,
+        limit: i32,
+    ) -> Result<Vec<PasswordCandidate>, DbError> {
+        let rows = sqlx::query!(
+            r#"select tenant_id as "tenant_id!", site_id as "site_id!"
+                 from site_passwords_to_rewrap($1, $2, $3)"#,
+            active_key_id,
+            after.map(SiteId::as_uuid),
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| PasswordCandidate {
+                tenant: TenantId::from_uuid(r.tenant_id),
+                site: SiteId::from_uuid(r.site_id),
+            })
+            .collect())
+    }
+
+    /// How many stored secrets (Shopify token rows and sealed storefront passwords) each master
+    /// key id wraps, by key id (audit L6, ADR-045; passwords since lane A audit L4). A key is
+    /// safe to remove from the key ring once it no longer appears. Only the worker role may call
+    /// this.
     pub async fn token_key_counts(&self) -> Result<Vec<KeyCount>, DbError> {
         let rows = sqlx::query!(
             r#"select key_id as "key_id!", tokens as "tokens!" from shopify_token_key_counts()"#
@@ -255,12 +283,22 @@ pub struct RewrapCandidate {
     pub version: i64,
 }
 
-/// How many token rows one master key id wraps; see [`Db::token_key_counts`].
+/// A site whose storefront password a retired master key still wraps, found by
+/// [`Db::passwords_to_rewrap`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PasswordCandidate {
+    /// The tenant that owns the site.
+    pub tenant: TenantId,
+    /// The site.
+    pub site: SiteId,
+}
+
+/// How many stored secrets one master key id wraps; see [`Db::token_key_counts`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyCount {
     /// The master key id stored on the rows.
     pub key_id: String,
-    /// How many rows carry it.
+    /// How many secrets carry it (token rows and storefront passwords).
     pub tokens: i64,
 }
 

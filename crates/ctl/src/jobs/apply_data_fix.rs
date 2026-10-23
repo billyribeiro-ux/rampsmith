@@ -28,10 +28,38 @@ use super::data_fix::{self, Loaded, Refused, refuse_fix};
 use super::{Jobs, admin, database, failure, payload, read_store, tenant_of};
 
 /// Handles one `shopify.apply_data_fix@1` job.
+///
+/// On the last attempt a failure that would have been retried is recorded on the fix instead
+/// (`retries_exhausted`), so the fix is never left `approved` or `applying` behind a dead job
+/// (lane A audit L2). A fix interrupted after the write is safe to fail here: the merchant can
+/// approve a new one, and its live-value check recognises the text already written.
 #[instrument(skip_all, fields(job = %job.lease.job_id), err(Debug))]
 pub async fn handle(jobs: &Jobs, job: ClaimedJob) -> Result<(), Failure> {
-    let ShopifyApplyDataFix { fix_id, shop_id } = payload(&job, ShopifyApplyDataFix::SCHEMA)?;
-    let tenant = tenant_of(&job)?;
+    let last_attempt = job.lease.attempt >= job.max_attempts;
+    let result = run(jobs, &job).await;
+    if last_attempt
+        && let Err(Failure::Retryable(error)) = &result
+        && let Ok(ShopifyApplyDataFix { fix_id, .. }) = payload(&job, ShopifyApplyDataFix::SCHEMA)
+        && let Ok(tenant) = tenant_of(&job)
+    {
+        return Err(refuse_fix(
+            jobs,
+            tenant,
+            FixId::from_uuid(fix_id),
+            "retries_exhausted",
+            format!(
+                "gave up after {} attempts: {}",
+                job.lease.attempt, error.code
+            ),
+        )
+        .await);
+    }
+    result
+}
+
+async fn run(jobs: &Jobs, job: &ClaimedJob) -> Result<(), Failure> {
+    let ShopifyApplyDataFix { fix_id, shop_id } = payload(job, ShopifyApplyDataFix::SCHEMA)?;
+    let tenant = tenant_of(job)?;
     let fix = FixId::from_uuid(fix_id);
     let shop = ShopId::from_uuid(shop_id);
     let loaded = match data_fix::load(jobs, tenant, fix, shop).await {

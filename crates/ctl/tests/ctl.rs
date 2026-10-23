@@ -720,6 +720,91 @@ async fn a_rewrap_pass_moves_every_token_to_the_new_key_and_changes_nothing_else
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_rewrap_pass_also_moves_the_sealed_storefront_passwords(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    use sqlx::Row as _;
+    let fleet = fleet(opts, conn, 3).await;
+    // Two of the three sites have a storefront password sealed under k1, as the api stores it.
+    let old = KeyRing::parse(&format!("k1:{K1}")).unwrap();
+    let sites: Vec<uuid::Uuid> = sqlx::query_scalar("select id from sites order by id")
+        .fetch_all(&fleet.owner)
+        .await
+        .unwrap();
+    for (site, password) in sites.iter().zip(["hunter2", "correct horse"]) {
+        let sealed = old
+            .seal(
+                password.as_bytes(),
+                format!("sites/storefront_password/{site}").as_bytes(),
+            )
+            .unwrap();
+        sqlx::query(
+            "update sites set storefront_password_ct = $2, storefront_password_key_id = $3
+              where id = $1",
+        )
+        .bind(site)
+        .bind(sealed.bytes())
+        .bind(sealed.key_id().as_str())
+        .execute(&fleet.owner)
+        .await
+        .unwrap();
+    }
+    let job = Rewrap::new(fleet.db.clone(), rotated_ring()).with_batch(1);
+    // k1 wraps three token rows and two passwords: the key cannot be retired yet.
+    assert_eq!(job.remaining().await.unwrap(), vec![key_count("k1", 5)]);
+
+    let report = job.run().await.unwrap();
+    assert_eq!(
+        report,
+        Report {
+            examined: 5,
+            rewrapped: 5,
+            skipped: 0,
+            failed: 0
+        }
+    );
+    assert_eq!(job.remaining().await.unwrap(), vec![key_count("k2", 5)]);
+
+    // With k1 gone from the ring, each password still opens, bound to its site.
+    let only_new = KeyRing::parse(&format!("k2:{K2}")).unwrap();
+    let rows = sqlx::query(
+        "select id, storefront_password_ct, storefront_password_key_id from sites
+          where storefront_password_ct is not null order by id",
+    )
+    .fetch_all(&fleet.owner)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 2);
+    let mut opened = Vec::new();
+    for row in &rows {
+        let site: uuid::Uuid = row.get("id");
+        let key: String = row.get("storefront_password_key_id");
+        let ct: Vec<u8> = row.get("storefront_password_ct");
+        assert_eq!(key, "k2");
+        let secret = only_new
+            .open_string(
+                &key,
+                &ct,
+                format!("sites/storefront_password/{site}").as_bytes(),
+            )
+            .unwrap();
+        opened.push(secret.expose_secret().to_owned());
+        // Another site's context does not open it.
+        assert!(
+            only_new
+                .open_string(&key, &ct, b"sites/storefront_password/other")
+                .is_err()
+        );
+    }
+    opened.sort();
+    assert_eq!(opened, ["correct horse", "hunter2"]);
+
+    // A second pass finds nothing.
+    assert_eq!(job.run().await.unwrap(), Report::default());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn passes_running_at_once_re_wrap_each_row_exactly_once(
     opts: PgPoolOptions,
     conn: PgConnectOptions,

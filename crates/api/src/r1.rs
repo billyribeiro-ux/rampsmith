@@ -21,6 +21,7 @@ use db::repo::{audit, jobs as job_repo, scans, shop_billing};
 use domain::{ActorKind, ScanTrigger, ShopId, SiteId};
 use http_kit::{ApiError, FieldError, ProblemCode};
 use queue::NewJob;
+use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -113,6 +114,15 @@ fn staff(session: &shopify_auth::ShopSession) -> Result<&str, ApiError> {
     })
 }
 
+/// The audit actor for a signed-in staff member: the one format `shopify:<sub>`, the same the
+/// install writes (lane A audit L10, ADR-087).
+fn actor_id(session: &shopify_auth::ShopSession) -> Option<String> {
+    session
+        .user_id
+        .as_deref()
+        .map(|sub| format!("shopify:{sub}"))
+}
+
 // ---------------------------------------------------------------------------------------------
 // Entitlements and settings
 
@@ -148,6 +158,8 @@ pub(crate) struct EntitlementsDto {
 
 /// Everything the plan allows the shop, with what it has used.
 struct PlanView {
+    /// Shopify confirmed that the shop has no active plan (it has not chosen one yet).
+    confirmed_no_plan: bool,
     entitlements: Entitlements,
     dto: EntitlementsDto,
 }
@@ -184,6 +196,7 @@ async fn plan_view(
         })
         .collect();
     Ok(PlanView {
+        confirmed_no_plan: matches!(state.standing, billing::reconcile::Standing::NoActivePlan),
         entitlements: granted,
         dto: EntitlementsDto {
             plan: granted.plan().handle().to_owned(),
@@ -428,6 +441,10 @@ pub(crate) struct StartedScanDto {
         (status = ACCEPTED, description = "The scan is queued", body = StartedScanDto),
         (status = CONFLICT, description = "A scan is already running",
             body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = FORBIDDEN, description = "The shop has not chosen a plan yet",
+            body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = TOO_MANY_REQUESTS, description = "The plan's manual scans for the last 24 hours are used",
+            body = http_kit::Problem, content_type = "application/problem+json"),
         (status = UNAUTHORIZED, description = "Missing or invalid session token",
             body = http_kit::Problem, content_type = "application/problem+json")
     )
@@ -438,8 +455,24 @@ pub(crate) async fn start_scan(
 ) -> Result<(StatusCode, Json<StartedScanDto>), ApiError> {
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
+    // One start at a time per shop, so the live-scan check and the plan's daily limit cannot be
+    // passed by two presses at once.
+    app_views::lock_site(&mut tx, site).await?;
+    let view = plan_view(&mut tx, session.shop_id, OffsetDateTime::now_utc()).await?;
+    if view.confirmed_no_plan {
+        return Err(ApiError::new(ProblemCode::Forbidden)
+            .detail("Choose a plan before scanning the store."));
+    }
     if app_views::has_live_scan(&mut tx, site, STALE_SCAN_SECONDS).await? {
         return Err(ApiError::new(ProblemCode::Conflict).detail("A scan is already running."));
+    }
+    let allowed = i64::from(view.entitlements.manual_scans_per_day());
+    if app_views::manual_scans_today(&mut tx, site).await? >= allowed {
+        return Err(ApiError::new(ProblemCode::RateLimited).detail(format!(
+            "The {} plan allows {allowed} scans started by hand in 24 hours. \
+             Scheduled scans are not counted.",
+            view.entitlements.plan().handle()
+        )));
     }
     let ruleset = db::repo::data_fixes::latest_ruleset(&mut tx, site)
         .await?
@@ -473,7 +506,7 @@ pub(crate) async fn start_scan(
         &mut tx,
         &audit::NewEntry {
             actor_kind: ActorKind::User,
-            actor_id: session.user_id.clone(),
+            actor_id: actor_id(&session),
             action: "scan.started".to_owned(),
             subject_type: "scan".to_owned(),
             subject_id: scan.id.as_uuid(),
@@ -1146,7 +1179,7 @@ pub(crate) async fn approve_fix(
     Query(query): Query<ApproveQuery>,
 ) -> Result<Json<FixDto>, ApiError> {
     let id = uuid_of(&fix_id)?;
-    let approver = staff(&session)?.to_owned();
+    let approver = format!("shopify:{}", staff(&session)?);
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
     let fix = app_views::fix(&mut tx, site, id)
@@ -1241,7 +1274,7 @@ pub(crate) async fn reject_fix(
         &mut tx,
         &audit::NewEntry {
             actor_kind: ActorKind::User,
-            actor_id: session.user_id.clone(),
+            actor_id: actor_id(&session),
             action: "fix.rejected".to_owned(),
             subject_type: "fix".to_owned(),
             subject_id: id,
@@ -1279,6 +1312,8 @@ pub(crate) async fn undo_fix(
     Path(fix_id): Path<String>,
 ) -> Result<(StatusCode, Json<FixDto>), ApiError> {
     let id = uuid_of(&fix_id)?;
+    // An undo writes to the merchant's store: it names who asked, or it is refused.
+    let requested_by = format!("shopify:{}", staff(&session)?);
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
     let fix = app_views::fix(&mut tx, site, id)
@@ -1313,7 +1348,7 @@ pub(crate) async fn undo_fix(
         &mut tx,
         &audit::NewEntry {
             actor_kind: ActorKind::User,
-            actor_id: session.user_id.clone(),
+            actor_id: Some(requested_by),
             action: "fix.undo_requested".to_owned(),
             subject_type: "fix".to_owned(),
             subject_id: id,
@@ -1423,7 +1458,7 @@ pub(crate) struct SettingsUpdateBody {
     ai_budget_micro_usd: Option<i64>,
     #[serde(default)]
     #[schema(value_type = Option<String>)]
-    storefront_password: Field<String>,
+    storefront_password: Field<SecretString>,
 }
 
 async fn settings_dto(
@@ -1532,7 +1567,7 @@ pub(crate) async fn update_settings(
             })?;
             let sealed = keys
                 .seal(
-                    password.as_bytes(),
+                    password.expose_secret().as_bytes(),
                     format!("sites/storefront_password/{}", site.as_uuid()).as_bytes(),
                 )
                 .map_err(|error| queue_error(&error))?;
@@ -1557,7 +1592,7 @@ pub(crate) async fn update_settings(
             &mut tx,
             &audit::NewEntry {
                 actor_kind: ActorKind::User,
-                actor_id: session.user_id.clone(),
+                actor_id: actor_id(&session),
                 action: "settings.updated".to_owned(),
                 subject_type: "site".to_owned(),
                 subject_id: site.as_uuid(),
@@ -1609,7 +1644,7 @@ fn validated_patch(
         }
     }
     if let Field::Value(password) = &body.storefront_password
-        && (password.is_empty() || password.len() > 256)
+        && (password.expose_secret().is_empty() || password.expose_secret().len() > 256)
     {
         errors.push(("storefront_password", "must be 1 to 256 characters"));
     }

@@ -290,6 +290,7 @@ pub struct Entitlements {
     alt_text_drafts: DraftAllowance,
     image_fixes: ImageFixAllowance,
     ai_budget_micro_usd: u64,
+    manual_scans_per_day: u32,
     features: FeatureSet,
 }
 
@@ -330,6 +331,15 @@ impl Entitlements {
         self.ai_budget_micro_usd
     }
 
+    /// How many scans the merchant may start by hand in any 24 hours. Scheduled scans do not
+    /// count; this keeps one shop from running the render fleet by pressing the button
+    /// (lane A audit M4, ADR-087). PLAN §20 sets no number; these follow the cost of a render
+    /// scan and rise with the plan like every other limit.
+    #[must_use]
+    pub const fn manual_scans_per_day(&self) -> u32 {
+        self.manual_scans_per_day
+    }
+
     /// The plan-gated features included.
     #[must_use]
     pub const fn features(&self) -> FeatureSet {
@@ -367,6 +377,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             alt_text_drafts: DraftAllowance::Lifetime(25),
             image_fixes: ImageFixAllowance::FirstImages(25),
             ai_budget_micro_usd: 500_000,
+            manual_scans_per_day: 2,
             features: free_features,
         },
         Plan::Starter => Entitlements {
@@ -379,6 +390,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             alt_text_drafts: DraftAllowance::Monthly(2_000),
             image_fixes: ImageFixAllowance::Unlimited,
             ai_budget_micro_usd: 5_000_000,
+            manual_scans_per_day: 6,
             features: starter_features,
         },
         Plan::Growth => Entitlements {
@@ -391,6 +403,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             alt_text_drafts: DraftAllowance::Monthly(10_000),
             image_fixes: ImageFixAllowance::Unlimited,
             ai_budget_micro_usd: 20_000_000,
+            manual_scans_per_day: 12,
             features: growth_features,
         },
         Plan::Pro => Entitlements {
@@ -403,6 +416,7 @@ pub const fn entitlements(plan: Plan) -> Entitlements {
             alt_text_drafts: DraftAllowance::Monthly(50_000),
             image_fixes: ImageFixAllowance::Unlimited,
             ai_budget_micro_usd: 60_000_000,
+            manual_scans_per_day: 24,
             features: pro_features,
         },
     }

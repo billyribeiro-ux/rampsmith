@@ -62,20 +62,28 @@ struct Answer {
 }
 
 fn id_token(domain: &str, sub: &str) -> String {
+    id_token_for(domain, Some(sub))
+}
+
+/// An ID token; `sub` is absent for a session that is not a signed-in staff member.
+fn id_token_for(domain: &str, sub: Option<&str>) -> String {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let mut claims = json!({
+        "iss": format!("https://{domain}/admin"),
+        "dest": format!("https://{domain}"),
+        "aud": CLIENT_ID,
+        "exp": now + 60,
+        "nbf": now - 1,
+        "iat": now - 1,
+        "jti": "j",
+        "sid": "s"
+    });
+    if let Some(sub) = sub {
+        claims["sub"] = json!(sub);
+    }
     encode(
         &Header::new(Algorithm::HS256),
-        &json!({
-            "iss": format!("https://{domain}/admin"),
-            "dest": format!("https://{domain}"),
-            "aud": CLIENT_ID,
-            "sub": sub,
-            "exp": now + 60,
-            "nbf": now - 1,
-            "iat": now - 1,
-            "jti": "j",
-            "sid": "s"
-        }),
+        &claims,
         &EncodingKey::from_secret(SECRET.as_bytes()),
     )
     .unwrap()
@@ -151,9 +159,20 @@ async fn harness(
 
 impl Harness {
     async fn call(&self, verb: &str, uri: &str, body: Option<Value>) -> Answer {
+        self.call_as(Some(STAFF), verb, uri, body).await
+    }
+
+    /// Like `call`, with the session of `sub`, or one with no staff member at all.
+    async fn call_as(
+        &self,
+        sub: Option<&str>,
+        verb: &str,
+        uri: &str,
+        body: Option<Value>,
+    ) -> Answer {
         let mut request = Request::builder().method(verb).uri(uri).header(
             header::AUTHORIZATION,
-            format!("Bearer {}", id_token(SHOP, STAFF)),
+            format!("Bearer {}", id_token_for(SHOP, sub)),
         );
         let body = match body {
             Some(value) => {
@@ -596,6 +615,119 @@ async fn starting_a_scan_queues_the_read_and_refuses_a_second_while_one_runs(
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
+async fn manual_scans_are_limited_per_plan_per_day_and_need_a_chosen_plan(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    // Free allows two scans started by hand in 24 hours; scheduled ones do not count.
+    h.scan("succeeded", "scheduled", 5, None).await;
+    h.scan("succeeded", "manual", 60, None).await;
+    let second = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(second.status, StatusCode::ACCEPTED, "{}", second.body);
+    sqlx::query("update scans set status = 'succeeded' where tenant_id = $1")
+        .bind(h.tenant)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let third = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(
+        third.status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "{}",
+        third.body
+    );
+    assert_eq!(third.body["code"], "rate_limited");
+    assert!(
+        third.body["detail"]
+            .as_str()
+            .unwrap()
+            .contains("free plan allows 2"),
+        "{}",
+        third.body
+    );
+
+    // A scan from 25 hours ago is out of the window; a paid plan has more.
+    sqlx::query(
+        "update scans set created_at = created_at - interval '25 hours' where trigger = 'manual'",
+    )
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    let after = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(after.status, StatusCode::ACCEPTED, "{}", after.body);
+
+    // A shop Shopify says has no plan yet is told to choose one.
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'no_active_plan')",
+    )
+    .bind(h.shop)
+    .bind(h.tenant)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    let none = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(none.status, StatusCode::FORBIDDEN, "{}", none.body);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_paid_plan_allows_more_manual_scans(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = plain(opts, conn).await;
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing, plan, plan_interval,
+                                   last_confirmed_at)
+         values ($1, $2, 'paid', 'starter', 'monthly', now())",
+    )
+    .bind(h.shop)
+    .bind(h.tenant)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    for _ in 0..5 {
+        h.scan("succeeded", "manual", 10, None).await;
+    }
+    let sixth = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(sixth.status, StatusCode::ACCEPTED, "{}", sixth.body);
+    sqlx::query("update scans set status = 'succeeded' where tenant_id = $1")
+        .bind(h.tenant)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let seventh = h.call("POST", "/v1/shopify/scans", None).await;
+    assert_eq!(seventh.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn twenty_concurrent_scan_starts_create_one_scan(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let h = std::sync::Arc::new(h);
+    let mut calls = Vec::new();
+    for _ in 0..20 {
+        let h = std::sync::Arc::clone(&h);
+        calls.push(tokio::spawn(async move {
+            h.call("POST", "/v1/shopify/scans", None).await.status
+        }));
+    }
+    let mut accepted = 0;
+    for call in calls {
+        match call.await.unwrap() {
+            StatusCode::ACCEPTED => accepted += 1,
+            StatusCode::CONFLICT => {}
+            other => panic!("unexpected {other}"),
+        }
+    }
+    assert_eq!(accepted, 1);
+    assert_eq!(
+        h.count("select count(*) from scans where tenant_id = $1")
+            .await,
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
 async fn a_stale_running_scan_does_not_block_a_new_one(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
@@ -995,7 +1127,11 @@ async fn approving_records_the_staff_member_and_queues_the_apply_in_the_same_ste
             .fetch_one(&h.owner)
             .await
             .unwrap();
-    assert_eq!(by_ref.as_deref(), Some(STAFF));
+    assert_eq!(
+        by_ref.as_deref(),
+        Some(format!("shopify:{STAFF}").as_str()),
+        "one actor format: shopify:<sub>"
+    );
     assert!(by_user.is_none());
     let (queue, payload): (String, Value) = sqlx::query_as(
         "select queue, payload from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'",
@@ -1014,7 +1150,7 @@ async fn approving_records_the_staff_member_and_queues_the_apply_in_the_same_ste
     .fetch_one(&h.owner)
     .await
     .unwrap();
-    assert_eq!(audit, ("user".to_owned(), Some(STAFF.to_owned())));
+    assert_eq!(audit, ("user".to_owned(), Some(format!("shopify:{STAFF}"))));
 
     let again = h
         .call("POST", &format!("/v1/shopify/fixes/{fix}/approve"), None)
@@ -1110,12 +1246,8 @@ async fn a_scan_the_engine_has_not_stamped_falls_back_to_the_coverage_documents_
     assert_eq!(bare.body["latest_scan"]["ruleset_version"], "axe-core");
 }
 
-#[sqlx::test(migrations = "../db/migrations")]
-async fn two_approvals_at_once_cannot_pass_the_last_image_of_the_allowance(
-    opts: PgPoolOptions,
-    conn: PgConnectOptions,
-) {
-    let h = plain(opts, conn).await;
+/// A shop at 24 of its 25 free image fixes, with `proposed` more fixes waiting for approval.
+async fn one_image_left(h: &Harness, proposed: usize) -> Vec<Uuid> {
     let scan = h.scan("succeeded", "manual", 5, None).await;
     let finding = h
         .finding(
@@ -1132,32 +1264,83 @@ async fn two_approvals_at_once_cannot_pass_the_last_image_of_the_allowance(
     for n in 0..24 {
         h.fix(finding, "applied", &format!("Done {n}"), false).await;
     }
-    let first = h.fix(finding, "proposed", "One", true).await;
-    let second = h.fix(finding, "proposed", "Two", true).await;
-    let (first_uri, second_uri) = (
-        format!("/v1/shopify/fixes/{first}/approve"),
-        format!("/v1/shopify/fixes/{second}/approve"),
+    let mut waiting = Vec::new();
+    for n in 0..proposed {
+        waiting.push(
+            h.fix(finding, "proposed", &format!("Waiting {n}"), true)
+                .await,
+        );
+    }
+    waiting
+}
+
+async fn apply_jobs(h: &Harness) -> i64 {
+    h.count("select count(*) from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'")
+        .await
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn twenty_approvals_at_once_pass_the_last_image_of_the_allowance_exactly_once(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = std::sync::Arc::new(plain(opts, conn).await);
+    let waiting = one_image_left(&h, 20).await;
+    let mut calls = Vec::new();
+    for fix in waiting {
+        let h = std::sync::Arc::clone(&h);
+        calls.push(tokio::spawn(async move {
+            h.call("POST", &format!("/v1/shopify/fixes/{fix}/approve"), None)
+                .await
+                .status
+        }));
+    }
+    let mut ok = 0;
+    let mut forbidden = 0;
+    for call in calls {
+        match call.await.unwrap() {
+            StatusCode::OK => ok += 1,
+            StatusCode::FORBIDDEN => forbidden += 1,
+            other => panic!("unexpected {other}"),
+        }
+    }
+    assert_eq!((ok, forbidden), (1, 19), "exactly one approval fits");
+    assert_eq!(apply_jobs(&h).await, 1);
+}
+
+/// The lock is what makes the count above reliable, so this test pins the lock itself: while
+/// another transaction holds the site row, an approval waits; when it lets go, the approval
+/// goes through. A version of `approve_fix` that forgot `lock_site` would answer at once.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn an_approval_waits_for_the_site_lock(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = std::sync::Arc::new(plain(opts, conn).await);
+    let waiting = one_image_left(&h, 1).await;
+    let mut holder = h.owner.begin().await.unwrap();
+    sqlx::query("select id from sites where id = $1 for update")
+        .bind(h.site)
+        .fetch_one(&mut *holder)
+        .await
+        .unwrap();
+
+    let fix = waiting[0];
+    let approving = {
+        let h = std::sync::Arc::clone(&h);
+        tokio::spawn(async move {
+            h.call("POST", &format!("/v1/shopify/fixes/{fix}/approve"), None)
+                .await
+                .status
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    assert!(
+        !approving.is_finished(),
+        "the approval did not wait for the site lock"
     );
-    let (a, b) = tokio::join!(
-        h.call("POST", &first_uri, None),
-        h.call("POST", &second_uri, None),
-    );
-    let mut statuses = [a.status, b.status];
-    statuses.sort();
-    assert_eq!(
-        statuses,
-        [StatusCode::OK, StatusCode::FORBIDDEN],
-        "{} {}",
-        a.body,
-        b.body
-    );
-    assert_eq!(
-        h.count(
-            "select count(*) from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'"
-        )
-        .await,
-        1
-    );
+    assert_eq!(apply_jobs(&h).await, 0);
+
+    holder.rollback().await.unwrap();
+    assert_eq!(approving.await.unwrap(), StatusCode::OK);
+    assert_eq!(apply_jobs(&h).await, 1);
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
@@ -1232,6 +1415,29 @@ async fn undo_queues_one_revert_for_an_applied_fix(opts: PgPoolOptions, conn: Pg
         .await;
     let applied = h.fix(finding, "applied", "A blue shoe", true).await;
     let waiting = h.fix(finding, "proposed", "Not yet", true).await;
+
+    // A session with no staff member cannot undo (audit L10): nothing is queued.
+    let anonymous = h
+        .call_as(
+            None,
+            "POST",
+            &format!("/v1/shopify/fixes/{applied}/undo"),
+            None,
+        )
+        .await;
+    assert_eq!(
+        anonymous.status,
+        StatusCode::FORBIDDEN,
+        "{}",
+        anonymous.body
+    );
+    assert_eq!(
+        h.count(
+            "select count(*) from jobs where tenant_id = $1 and queue = 'shopify.revert_data_fix'"
+        )
+        .await,
+        0
+    );
 
     let queued = h
         .call("POST", &format!("/v1/shopify/fixes/{applied}/undo"), None)
@@ -1612,6 +1818,7 @@ fn partner(server: &MockServer) -> PartnerPlans {
         billing::AppGid::parse("gid://shopify/App/1234").unwrap(),
         Some(url::Url::parse(&server.uri()).unwrap()),
     )
+    .unwrap()
 }
 
 fn growth_subscription() -> Value {
@@ -1737,6 +1944,104 @@ async fn the_plan_handle_query_parameter_is_ignored_and_grants_nothing(
             .unwrap()
             .flatten();
     assert_ne!(stored.as_deref(), Some("pro"));
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "a \"no plan\" answer is cached; the parameter is no reason to ask again"
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_shop_that_reloads_in_a_loop_gets_one_call_for_no_plan_and_three_a_minute_at_most(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"activeSubscription": null}})),
+        )
+        .mount(&server)
+        .await;
+    let h = harness(opts, conn, false, Some(partner(&server))).await;
+    record_shop_gid(&h).await;
+    for _ in 0..40 {
+        assert_eq!(h.get("/v1/shopify/overview").await.status, StatusCode::OK);
+    }
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "forty loads of a shop with no plan cost one call"
+    );
+
+    // Even when its stored answer keeps looking stale, the shop's share of the pacer is three
+    // calls a minute.
+    for _ in 0..40 {
+        sqlx::query(
+            "update shop_billing set last_confirmed_at = now() - interval '1 hour',
+                                     last_attempt_at = now() - interval '1 hour'",
+        )
+        .execute(&h.owner)
+        .await
+        .unwrap();
+        assert_eq!(h.get("/v1/shopify/overview").await.status, StatusCode::OK);
+    }
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        3,
+        "one cached answer, then the shop's share of three calls a minute"
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_downgrade_takes_the_stored_ai_budget_down_to_the_new_ceiling_in_the_same_transaction(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(growth_subscription()))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"activeSubscription": null}})),
+        )
+        .mount(&server)
+        .await;
+    let h = harness(opts, conn, false, Some(partner(&server))).await;
+    record_shop_gid(&h).await;
+    h.get("/v1/shopify/overview").await;
+    let set = h
+        .call(
+            "PUT",
+            "/v1/shopify/settings",
+            Some(json!({"ai_budget_micro_usd": 15_000_000})),
+        )
+        .await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.body);
+
+    // Shopify now says the subscription is gone; the stored plan falls to the free ceiling.
+    sqlx::query(
+        "update shop_billing set last_confirmed_at = now() - interval '1 hour',
+                                 last_attempt_at = now() - interval '1 hour'",
+    )
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    h.get("/v1/shopify/overview").await;
+    let stored: i64 = sqlx::query_scalar(
+        "select (settings ->> 'ai_budget_micro_usd')::bigint from sites where id = $1",
+    )
+    .bind(h.site)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap();
+    assert_eq!(
+        stored, 500_000,
+        "the stored budget no longer exceeds the ceiling"
+    );
 }
 
 #[sqlx::test(migrations = "../db/migrations")]

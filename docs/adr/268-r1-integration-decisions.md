@@ -32,12 +32,13 @@ integration pass closed the gaps between them. Four small decisions belong on re
   compares it with the list the suite exercises, so a new tenant table cannot be added without
   being added to the suite. It found `shop_billing` missing; it is covered now.
 - **The approval lock is proven necessary.** Removing `lock_site` from `approve_fix` makes
-  `two_approvals_at_once_apply_exactly_one` fail 5 runs of 5; with the lock it passes 5 of 5
+  `twenty_approvals_at_once_pass_the_last_image_of_the_allowance_exactly_once` and
+  `an_approval_waits_for_the_site_lock` fail 3 runs of 3; with the lock they pass 3 of 3
   (`docs/evidence/r1-integration.md`).
 
 ## Consequences
 
-- A migration (`20261105000004`) adds `shopify_shops.name`; `20261105000005` adds the sealed
-  scan password columns (ADR-266); `20261105000006` adds the free scanner's table and functions
+- A migration (`20261105000006`) adds `shopify_shops.name`; `20261105000007` adds the sealed
+  scan password columns (ADR-266); `20261105000008` adds the free scanner's table and functions
   (ADR-267).
 - The `.sqlx` cache and the generated contracts are regenerated in the same change.

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select redact_ai_calls() as \"n!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "50e4098134be700fe8385669b2ccd1d08eaeb4ba313a7704eb27d1eaab44088a"
+}

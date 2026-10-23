@@ -145,7 +145,11 @@ if [ ${#pre[@]} -gt 0 ]; then
   echo "pre-deploy: ${pre[*]}"
   if docker run --rm --entrypoint /bin/sh "$image" -c \
     'test -x /usr/local/bin/sqlx && test -d /usr/local/share/rampsmith/migrations'; then
-    with_command --rm -- "${pre[@]}" || fail "the pre-deploy command failed"
+    with_command --rm -- "${pre[@]}" >"$work/pre.log" 2>&1 || {
+      tail -20 "$work/pre.log"
+      container=none
+      fail "the pre-deploy command failed: $(tail -4 "$work/pre.log" | tr '\n' '|' | cut -c1-600)"
+    }
   else
     gap "the image has no /usr/local/bin/sqlx or /usr/local/share/rampsmith/migrations, so" \
       "Railway's pre-deploy step cannot migrate; migrating from the runner instead"

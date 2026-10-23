@@ -100,10 +100,20 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
             .execute(tx.conn())
             .await?
             .rows_affected()
-        + sqlx::query!("delete from ai_calls where tenant_id = $1", tenant)
-            .execute(tx.conn())
-            .await?
-            .rows_affected();
+        // Only `ctl`'s role may delete call records, and only through this function (audit L7).
+        + u64::try_from(
+            sqlx::query_scalar!(r#"select redact_ai_calls() as "n!""#)
+                .fetch_one(tx.conn())
+                .await?,
+        )
+        .unwrap_or(0);
+    // Payloads can carry store content; the rows stay as the queue's own history.
+    sqlx::query!(
+        "update jobs set payload = '{}'::jsonb where tenant_id = $1 and payload <> '{}'::jsonb",
+        tenant
+    )
+    .execute(tx.conn())
+    .await?;
     // Other events' bodies can hold store content; their digests stay for replay detection.
     let webhooks = sqlx::query!(
         "update webhook_events set body = null where tenant_id = $1 and body is not null",
@@ -140,7 +150,7 @@ async fn close_shop(tx: &mut TenantTx, tenant: uuid::Uuid, shop: ShopId) -> Resu
     sqlx::query!(
         r#"update shopify_shops
               set status = 'redacted', scopes = '{}', name = null, primary_domain = null,
-                  locales = '{}',
+                  locales = '{}', shop_gid = null,
                   synced_at = null, uninstalled_at = coalesce(uninstalled_at, now())
             where tenant_id = $1 and id = $2"#,
         tenant,

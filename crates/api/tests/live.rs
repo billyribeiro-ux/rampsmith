@@ -36,7 +36,8 @@ async fn live_the_partner_api_answers_the_active_subscription_query() {
         },
         AppGid::parse(&app).unwrap(),
         None,
-    );
+    )
+    .unwrap();
     let subscription = plans
         .active_subscription(ShopGid::parse(&shop).unwrap())
         .await
