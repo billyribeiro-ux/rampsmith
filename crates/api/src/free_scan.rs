@@ -338,20 +338,24 @@ pub(crate) struct Service;
 impl FromRequestParts<AppState> for Service {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+    // Nothing here awaits, so the future is ready at once (Clippy's unused async trait impl).
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> impl Future<Output = Result<Self, ApiError>> + Send {
         let Some(free) = state.free_scans() else {
-            return Err(ApiError::new(ProblemCode::Unavailable)
-                .detail("The free scanner is not configured."));
+            return std::future::ready(Err(ApiError::new(ProblemCode::Unavailable)
+                .detail("The free scanner is not configured.")));
         };
         let presented = parts
             .headers
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "));
-        match presented {
+        std::future::ready(match presented {
             Some(token) if free.authenticates(token) => Ok(Self),
             _ => Err(ApiError::new(ProblemCode::Unauthenticated)),
-        }
+        })
     }
 }
 
