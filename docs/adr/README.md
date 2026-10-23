@@ -230,3 +230,8 @@ What becomes easier, what becomes harder, what must now be true.
 ## Rejected alternatives
 - Option: why not.
 ```
+| [310](310-regression-detection.md) | Regression detection compares each scheduled scan with the one before it | Accepted |
+| [311](311-regressions-in-app-home.md) | Regressions in App Home are shown on every plan, locked below Growth | Accepted |
+| [312](312-plan-cadence-scheduler.md) | Scheduled rescans run at the plan's cadence, spread and shared fairly | Accepted |
+| [313](313-agency-links-authorization.md) | Agencies read stores through merchant-approved links, never through the tenant tables | Accepted |
+| [314](314-store-link-codes.md) | Linking a store: the agency makes a code, the merchant approves it in App Home | Accepted |
