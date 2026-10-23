@@ -263,9 +263,14 @@ async function occurrences(page: Page, rules: readonly AxeRule[]): Promise<Occur
               attributes[a.name.toLowerCase()] = a.value.slice(0, maxChars);
             }
             ancestors.push({ tag: p.tagName.toLowerCase(), attributes });
-            if (p.id.startsWith('shopify-section-') || ancestors.length >= maxAncestors) break;
+            // `getAttribute`: a form with a field named `id` has an `id` property that is that field.
+            const id = p.getAttribute('id') ?? '';
+            if (id.startsWith('shopify-section-') || ancestors.length >= maxAncestors) break;
           }
-          return { section: el.closest('[id^="shopify-section-"]')?.id ?? null, ancestors };
+          return {
+            section: el.closest('[id^="shopify-section-"]')?.getAttribute('id') ?? null,
+            ancestors,
+          };
         } catch {
           return none;
         }
@@ -311,7 +316,7 @@ async function describeTargets(
           if (!(node instanceof Element)) return { html: '', section: undefined };
           return {
             html: node.outerHTML.slice(0, 4096),
-            section: node.closest('[id^="shopify-section-"]')?.id,
+            section: node.closest('[id^="shopify-section-"]')?.getAttribute('id') ?? undefined,
           };
         } catch {
           return { html: '', section: undefined };

@@ -148,6 +148,11 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [292](292-github-webhook-intake.md) | GitHub deliveries are stored once, and state is read from the API | Accepted |
 | [293](293-github-tables-and-lifecycle.md) | The GitHub tables, their isolation and their lifecycle | Accepted |
 | [294](294-github-client-hardening.md) | The GitHub client's guards for the audit findings | Accepted |
+| [295](295-recipes-core-and-every.md) | Core recipes for every plan with the channel, every recipe on the higher plan | Accepted |
+| [296](296-code-fix-batch-flow.md) | A batch moves through fixed states, split between ctl and the engine | Accepted |
+| [297](297-scanner-captures-section-ancestors-evidence.md) | The scanner records where an element sits, so a patch can find its source | Accepted |
+| [298](298-theme-file-retention-and-read-set.md) | Which theme files are read, and how long they are kept | Accepted |
+| [299](299-pull-request-resume-and-matching.md) | Resuming a batch, and matching a pull request to its row | Accepted |
 | [268](268-r1-integration-decisions.md) | R1 integration decisions | Accepted |
 | [270](270-ses-adapter-and-sigv4.md) | The Amazon SES adapter, a small SigV4 signer and the error mapping | Accepted |
 | [271](271-email-delivery-ledger.md) | The delivery ledger and retries | Accepted |

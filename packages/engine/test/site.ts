@@ -63,6 +63,17 @@ const PAGES: Record<string, { status: number; html: string }> = {
        </div>`,
     ),
   },
+  // A product form has a field named `id`, which shadows the form's own `id` property.
+  '/product-form': {
+    status: 200,
+    html: LAYOUT(
+      'Product form',
+      `<div id="shopify-section-template--1234__main">
+         <form action="/cart/add"><input type="hidden" name="id" value="42">
+           <button type="button" class="plus"></button></form>
+       </div>`,
+    ),
+  },
   '/clean': {
     status: 200,
     html: LAYOUT('Clean page', '<p>Nothing to fix here.</p>'),

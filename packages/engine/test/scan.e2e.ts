@@ -48,6 +48,13 @@ const defaultState = (scan: PageScan) => {
 };
 
 describe('scanPage', () => {
+  it('keeps the section and ancestors of an element inside a form with a field named id', async () => {
+    const scan = await scanPage(browser, { url: `${site.origin}/product-form`, userAgent: UA });
+    const button = defaultState(scan).violations.find((v) => v.ruleId === 'button-name');
+    expect(button?.section).toBe('shopify-section-template--1234__main');
+    expect(button?.ancestors?.map((a) => a.tag)).toEqual(['form', 'div']);
+  });
+
   it('finds the known failures, with criteria, section and scrubbed excerpts', async () => {
     const scan = await scanPage(browser, { url: `${site.origin}/`, userAgent: UA });
     expect(scan.blocked).toBeUndefined();

@@ -157,17 +157,31 @@ fn handle<'a>(client: &'a GitHub, ctx: &Context, scope: TokenScope) -> Repositor
     client.repository(ctx.installation, ctx.reference.clone(), scope)
 }
 
-/// A theme file worth giving the patcher: Liquid, and the locale files the recipes edit.
+/// A theme file worth giving the patcher. The mapper needs the whole picture of a page, not just
+/// the Liquid: the JSON templates and section groups say which sections a page renders, the
+/// settings say what a setting prints, and the stylesheets decide a colour. Recipes edit the
+/// Liquid, the locale files, the settings and the stylesheets; nothing else is read (no
+/// JavaScript, images, fonts or files outside the theme directories).
 fn wanted(path: &str) -> bool {
-    let liquid = path.ends_with(".liquid")
-        && ["sections/", "snippets/", "blocks/", "layout/", "templates/"]
-            .iter()
-            .any(|dir| path.starts_with(dir));
-    liquid
-        || (path.starts_with("locales/")
-            && std::path::Path::new(path)
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("json")))
+    let extension = |ext: &str| {
+        std::path::Path::new(path)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+    };
+    let top = path.split('/').next().unwrap_or_default();
+    match top {
+        "sections" | "snippets" | "blocks" | "layout" | "templates" => {
+            extension("liquid") || (extension("json") && matches!(top, "sections" | "templates"))
+        }
+        "config" | "locales" => extension("json"),
+        "assets" => {
+            let lower = path.to_ascii_lowercase();
+            [".css", ".css.liquid", ".scss.liquid"]
+                .iter()
+                .any(|suffix| lower.ends_with(suffix))
+        }
+        _ => false,
+    }
 }
 
 /// One theme file as read.

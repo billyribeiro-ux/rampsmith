@@ -551,11 +551,13 @@ async fn reading_a_batch_stores_only_theme_source_and_hands_it_to_the_engine(
     assert_eq!(
         paths,
         [
+            "config/settings_data.json",
             "layout/theme.liquid",
             "locales/en.default.json",
-            "sections/header.liquid"
+            "sections/header.liquid",
+            "templates/index.json"
         ],
-        "Liquid and locale files only: no README, no .env, no symlink"
+        "theme source only: no README, no .env, no symlink"
     );
     let head = s.fake.state().refs["main"].clone();
     let (status, base): (String, Option<String>) =
