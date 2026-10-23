@@ -41,14 +41,8 @@ const SANDBOX_ONLY_QUEUES: readonly EngineQueue[] = ['free_scan.run'];
  * handling runs first and this is the backstop for a handler that never returns.
  */
 export function deadlineMs(queue: EngineQueue): number {
-  switch (queue) {
-    case 'free_scan.run':
-      return FREE_SCAN_BUDGET_MS + 30_000;
-    case 'scan.page':
-      return 150_000;
-    default:
-      return 600_000;
-  }
+  if (queue === 'free_scan.run') return FREE_SCAN_BUDGET_MS + 30_000;
+  return queue === 'scan.page' ? 150_000 : 600_000;
 }
 
 /** The queues an engine whose Chromium has `sandbox` serves. */

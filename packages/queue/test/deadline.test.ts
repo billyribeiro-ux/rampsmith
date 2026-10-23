@@ -20,11 +20,12 @@ afterAll(async () => {
 });
 
 it('fails an attempt that outlasts the deadline as retryable, aborts its signal and stops its heartbeat', async () => {
-  const { id } = await enqueue(workers, {
+  const enqueued = await enqueue(workers, {
     queue: 'test.effect',
     payloadSchema: 'test.effect@1',
     payload: {},
   });
+  const id = enqueued.created ? enqueued.id : '';
   const stop = new AbortController();
   const events: WorkerEvent[] = [];
   let aborted = false;
@@ -43,7 +44,7 @@ it('fails an attempt that outlasts the deadline as retryable, aborts its signal 
     },
     handler: (_job, signal) => {
       attempts += 1;
-      signal?.addEventListener('abort', () => {
+      signal.addEventListener('abort', () => {
         aborted = true;
       });
       // Never returns.
