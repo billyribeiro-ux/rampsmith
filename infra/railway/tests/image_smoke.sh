@@ -39,7 +39,10 @@ cleanup() {
 trap cleanup EXIT
 
 fail() {
-  echo "::error title=$service image::$*"
+  # The last log lines go into the annotation too: CI logs are not always readable, annotations are.
+  local tail_lines
+  tail_lines=$(docker logs "$container" 2>&1 | tail -8 | tr '\n' '|' | cut -c1-1200 || true)
+  echo "::error title=$service image::$* [last log lines: ${tail_lines}]"
   docker logs "$container" 2>&1 | tail -50 || true
   exit 1
 }
@@ -159,15 +162,9 @@ with_command -d --name "$container" -- "${start[@]}" >/dev/null
 served=""
 for _ in $(seq 1 90); do
   if ! docker inspect --format '{{.State.Running}}' "$container" | grep -q true; then
-    if [ "$service" = engine ]; then
-      # Chromium's sandbox needs Playwright's seccomp profile (ADR-028); Railway runs
-      # containers with its own settings, which only the first deploy can confirm.
-      gap "the engine exited when started without a custom seccomp profile, as Railway" \
-        "will start it (ADR-028: decide the sandbox fallback at the first deploy)"
-      docker logs "$container" 2>&1 | tail -20 || true
-      echo "$service image smoke test: stopped at a gap"
-      exit 0
-    fi
+    # The engine starts Chromium with its sandbox where the host allows it and without where the
+    # host refuses it (ADR-265); a container that exits here has neither, which is a failure on
+    # a pull request as well as on main.
     fail "the container exited during start-up"
   fi
   if curl -fsS -o /dev/null "http://127.0.0.1:$port$health"; then
@@ -185,6 +182,19 @@ fi
 sleep 5
 docker inspect --format '{{.State.Running}}' "$container" | grep -q true ||
   fail "the container exited after start-up"
+
+if [ "$service" = engine ]; then
+  # Started as Railway starts it (Docker's default seccomp profile or the host's own): the
+  # engine must have chosen a sandbox mode and, if it chose "off", have said why (ADR-265).
+  logs=$(docker logs "$container" 2>&1)
+  mode=$(sed -n 's/^engine: chromium sandbox=\(on\|off\)$/\1/p' <<<"$logs" | head -n 1)
+  [ -n "$mode" ] || fail "the engine did not log its Chromium sandbox mode"
+  if [ "$mode" = off ]; then
+    grep -q '^engine: warning: this host refused Chromium.s sandbox' <<<"$logs" ||
+      fail "the engine runs Chromium without its sandbox and did not say the host refused it"
+  fi
+  echo "the engine started with Chromium sandbox=$mode"
+fi
 
 if [ "$service" = api ]; then
   curl -fsS -o /dev/null "http://127.0.0.1:$port/healthz" || fail "/healthz did not answer 200"

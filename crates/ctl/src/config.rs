@@ -1,5 +1,7 @@
 //! Configuration from the environment, parsed once at boot (PLAN §22).
 
+use std::net::SocketAddr;
+
 use crypto::KeyRing;
 use secrecy::SecretString;
 use thiserror::Error;
@@ -21,6 +23,9 @@ pub struct Config {
     pub shopify_client_secret: SecretString,
     /// Master keys for envelope encryption (ADR-021).
     pub master_keys: KeyRing,
+    /// Where the health listener binds: `BIND_ADDR`, else `[::]:$PORT`, else `[::]:8080`
+    /// (ADR-264). Railway's deploy health check calls `GET /healthz` on `PORT`.
+    pub health_bind: SocketAddr,
 }
 
 /// A configuration value is missing or malformed. Never contains the value.
@@ -75,6 +80,22 @@ impl Config {
                 reason: e.to_string(),
             }
         })?;
+        let health_bind = if let Some(addr) = get("BIND_ADDR") {
+            addr.trim()
+                .parse()
+                .map_err(|e: std::net::AddrParseError| ConfigError::Invalid {
+                    name: "BIND_ADDR",
+                    reason: e.to_string(),
+                })?
+        } else {
+            let port = get("PORT")
+                .map_or(Ok(8080), |v| v.trim().parse::<u16>())
+                .map_err(|e| ConfigError::Invalid {
+                    name: "PORT",
+                    reason: e.to_string(),
+                })?;
+            SocketAddr::from(([0_u16; 8], port))
+        };
         Ok(Self {
             database_url: SecretString::from(database_url),
             db_max_connections,
@@ -84,6 +105,7 @@ impl Config {
             shopify_client_id: require("SHOPIFY_API_KEY")?.trim().to_owned(),
             shopify_client_secret: SecretString::from(require("SHOPIFY_API_SECRET")?),
             master_keys,
+            health_bind,
         })
     }
 }
@@ -129,7 +151,16 @@ mod tests {
         assert_eq!(c.worker_id, "w-1");
         assert_eq!(c.db_max_connections, 10);
         assert_eq!(c.master_keys.active().as_str(), "k1");
+        assert_eq!(c.health_bind, "[::]:8080".parse().unwrap());
         assert!(!format!("{c:?}").contains("hunter4"));
+    }
+
+    #[test]
+    fn the_health_listener_follows_bind_addr_then_port() {
+        let c = config(&[("PORT", "9090")]).unwrap();
+        assert_eq!(c.health_bind, "[::]:9090".parse().unwrap());
+        let c = config(&[("PORT", "9090"), ("BIND_ADDR", "[::]:8081")]).unwrap();
+        assert_eq!(c.health_bind, "[::]:8081".parse().unwrap());
     }
 
     #[test]
@@ -153,6 +184,8 @@ mod tests {
             ("DATABASE_URL", "mysql://x"),
             ("DB_MAX_CONNECTIONS", "2"),
             ("DB_MAX_CONNECTIONS", "many"),
+            ("BIND_ADDR", "port 80"),
+            ("PORT", "http"),
             ("RAMPSMITH_MASTER_KEYS", "k1:short"),
         ] {
             assert!(
