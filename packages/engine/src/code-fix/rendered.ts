@@ -55,8 +55,27 @@ const VOID = new Set([
   'wbr',
 ]);
 
-/** Section wrapper ids are `shopify-section-<id>`; the wrapper is the element's only ancestor kept. */
-function wrapperOf(sectionId: string | null): RenderedNode[] {
+/**
+ * The ancestors the scanner stored, nearest first, up to the section wrapper. Occurrences stored
+ * before the scanner kept them have only the wrapper's id: one stand-in `div` with that id, which
+ * is enough to find the section but not to tell elements of one file apart by their parents.
+ */
+function ancestorsFrom(stored: unknown, sectionId: string | null): RenderedNode[] {
+  if (Array.isArray(stored)) {
+    const nodes: RenderedNode[] = [];
+    for (const item of stored as unknown[]) {
+      if (typeof item !== 'object' || item === null) continue;
+      const { tag, attributes } = item as { tag?: unknown; attributes?: unknown };
+      if (typeof tag !== 'string' || typeof attributes !== 'object' || attributes === null)
+        continue;
+      const clean: Record<string, string> = {};
+      for (const [name, value] of Object.entries(attributes)) {
+        if (typeof value === 'string') clean[name] = value;
+      }
+      nodes.push({ tag, attributes: clean });
+    }
+    if (nodes.length > 0) return nodes;
+  }
   return sectionId === null
     ? []
     : [{ tag: 'div', attributes: { id: sectionId, class: 'shopify-section' } }];
@@ -69,6 +88,7 @@ function wrapperOf(sectionId: string | null): RenderedNode[] {
 export function renderedElementOf(
   excerpt: string,
   sectionId: string | null,
+  ancestors?: unknown,
 ): RenderedElement | null {
   const match = START_TAG.exec(excerpt);
   if (match === null) return null;
@@ -89,5 +109,5 @@ export function renderedElementOf(
         .trim();
     }
   }
-  return { tag, attributes, text, ancestors: wrapperOf(sectionId) };
+  return { tag, attributes, text, ancestors: ancestorsFrom(ancestors, sectionId) };
 }

@@ -8,10 +8,14 @@
 -- are kept only until the pull request is opened (or the batch fails), then deleted.
 
 -- What the mapper needs to find a rendered element's source again later: the section wrapper's
--- id that held it (`shopify-section-*`), and, for contrast findings, what axe-core measured.
+-- id that held it (`shopify-section-*`), the element's ancestors up to that wrapper (tag and
+-- attributes, nearest first), and, for contrast findings, what axe-core measured.
 alter table finding_occurrences
   add column section_id text
     check (section_id is null or section_id ~ '^shopify-section-[A-Za-z0-9_.:-]{1,200}$'),
+  add column ancestors jsonb
+    check (ancestors is null or (jsonb_typeof(ancestors) = 'array'
+                                 and pg_column_size(ancestors) <= 6144)),
   add column evidence jsonb check (evidence is null or pg_column_size(evidence) <= 1024);
 
 create table code_fix_batches (

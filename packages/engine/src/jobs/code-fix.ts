@@ -59,6 +59,7 @@ interface OccurrenceRow {
   readonly page_type: string | null;
   readonly html_excerpt: string;
   readonly section_id: string | null;
+  readonly ancestors: unknown;
   readonly evidence: unknown;
 }
 
@@ -118,7 +119,7 @@ export function batchFindings(
     const nodes: BatchNode[] = [];
     let template = 'index';
     for (const [i, o] of (byFinding.get(f.id) ?? []).entries()) {
-      const element = renderedElementOf(o.html_excerpt, o.section_id);
+      const element = renderedElementOf(o.html_excerpt, o.section_id, o.ancestors);
       if (element === null) continue;
       if (i === 0) template = templateOf(o.page_type);
       const contrast = contrastOf(o.evidence);
@@ -229,7 +230,7 @@ async function patch(deps: CodeFixDeps, tenantId: string, batchRow: string): Pro
       findings.length === 0
         ? []
         : await tx<OccurrenceRow[]>`
-            select o.finding_id, o.page_type, o.html_excerpt, o.section_id, o.evidence
+            select o.finding_id, o.page_type, o.html_excerpt, o.section_id, o.ancestors, o.evidence
               from finding_occurrences o
               join findings f on f.id = o.finding_id and f.tenant_id = o.tenant_id
                              and f.last_seen_scan = o.scan_id

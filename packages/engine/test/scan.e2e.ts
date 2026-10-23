@@ -59,6 +59,19 @@ describe('scanPage', () => {
     expect(image?.criteria).toContain('1.1.1');
     expect(image?.impact).toBe('critical');
     expect(image?.section).toBe('shopify-section-template--1234__main');
+    // What the code-fix channel needs to find the source again (ADR-296): the ancestors up to
+    // the section wrapper, nearest first, and for contrast what axe-core measured.
+    expect(image?.ancestors?.at(-1)).toMatchObject({
+      tag: 'div',
+      attributes: { id: 'shopify-section-template--1234__main' },
+    });
+    expect(image?.ancestors?.length).toBeLessThanOrEqual(16);
+    const contrast = violations.find((v) => v.ruleId === 'color-contrast');
+    expect(contrast?.evidence).toMatchObject({
+      foreground: expect.stringMatching(/^#[0-9a-f]{6}$/u),
+      background: expect.stringMatching(/^#[0-9a-f]{6}$/u),
+    });
+    expect(contrast?.evidence?.font_size_px).toBeGreaterThan(0);
     for (const v of [...violations, ...incomplete]) {
       expect(v.html).not.toContain('shopper@example.com');
       expect(v.html.length).toBeLessThanOrEqual(512);
