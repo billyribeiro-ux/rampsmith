@@ -568,7 +568,7 @@ async fn disconnecting_ends_the_link_and_forgets_the_choice(
         .await;
     assert_eq!(gone.status, StatusCode::OK, "{}", gone.body);
     assert!(gone.body["connection"].is_null());
-    assert!(gone.body["repositories"].as_array().unwrap().is_empty());
+    assert_eq!(gone.body["repositories"], serde_json::json!([]));
     assert_eq!(
         h.count("select count(*) from github_installations where status = 'deleted'")
             .await,
