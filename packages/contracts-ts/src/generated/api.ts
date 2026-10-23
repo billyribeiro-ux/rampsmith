@@ -37,6 +37,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agency/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Ends a link from the agency's side. */
+        delete: operations["unlinkStore"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agency/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lists the signed-in user's organizations. */
+        get: operations["listOrganizations"];
+        put?: never;
+        /** Creates an organization with the signed-in user as its owner. */
+        post: operations["createOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agency/organizations/{organization_id}/link-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Makes a code a merchant can use to link a store to this organization. */
+        post: operations["createLinkCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agency/stores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The cross-store overview: only stores whose merchant approved a link, and only until it is revoked. */
+        get: operations["listLinkedStores"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/register/finish": {
         parameters: {
             query?: never;
@@ -208,6 +277,58 @@ export interface paths {
          *     has no Shopify session, and the one-time state is what binds it to a store.
          */
         post: operations["finishGithubConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/agency-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lists the agencies that can see this store. */
+        get: operations["listAgencyLinks"];
+        put?: never;
+        /** Approves the link: from now on the organization sees this store's scores and findings counts. */
+        post: operations["approveAgencyLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/agency-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revokes a link: the organization stops seeing this store at once. */
+        delete: operations["revokeAgencyLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/agency-links/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Shows which organization a code belongs to, before the merchant approves it. */
+        post: operations["previewAgencyLink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -627,6 +748,15 @@ export interface components {
             /** @description Its repositories, chosen one first. */
             repositories: components["schemas"]["GithubRepositoryDto"][];
         };
+        /** @description Who asked to link. */
+        CodePreviewDto: {
+            expires_at: string;
+            organization_name: string;
+        };
+        /** @description A link code a merchant typed. */
+        CodeRequest: {
+            code: string;
+        };
         /** @description What GitHub's redirect carried, forwarded by the web server. */
         ConnectionFinishBody: {
             /** @description The authorization `code` GitHub put on the redirect. */
@@ -943,9 +1073,56 @@ export interface components {
             /** @description The `t` of the link. */
             token: string;
         };
+        /** @description A link code, shown once. */
+        LinkCodeDto: {
+            /** @description `XXXXX-XXXXX`. The merchant types it into the app; it is not stored and cannot be shown again. */
+            code: string;
+            expires_at: string;
+        };
+        /** @description One linked store in the overview. */
+        LinkedStoreDto: {
+            granted_at: string;
+            link_id: string;
+            /** Format: int32 */
+            open_findings: number;
+            /**
+             * Format: int32
+             * @description Of those, serious or critical.
+             */
+            open_serious: number;
+            organization_id: string;
+            organization_name: string;
+            /**
+             * Format: double
+             * @description Checks passed over checks run in the latest finished scan, as a percentage.
+             */
+            pass_rate?: number | null;
+            regression_at?: string | null;
+            /**
+             * Format: int32
+             * @description New findings in the latest regression of the last 30 days that the merchant has not dismissed.
+             */
+            regression_new?: number | null;
+            /** Format: int32 */
+            regression_reappeared?: number | null;
+            scan_at?: string | null;
+            /** @description The latest scan's status, when the store has been scanned. */
+            scan_status?: string | null;
+            /** @description What started it: `manual`, `scheduled` or `webhook`. */
+            scan_trigger?: string | null;
+            shop_domain: string;
+        };
+        /** @description The stores that granted a link to one of the user's organizations. */
+        LinkedStoresDto: {
+            stores: components["schemas"]["LinkedStoreDto"][];
+        };
         LinkRequest: {
             /** @description The `t` of the link. */
             token: string;
+        };
+        /** @description What to call a new organization. */
+        NewOrganization: {
+            name: string;
         };
         OccurrenceDto: {
             /** @description A scrubbed HTML excerpt of at most 512 characters. */
@@ -954,6 +1131,17 @@ export interface components {
             page_url: string;
             /** @description A scrubbed CSS selector. */
             target: string;
+        };
+        /** @description An organization the signed-in user belongs to. */
+        OrganizationDto: {
+            id: string;
+            name: string;
+            /** @description `owner` or `member`. */
+            role: string;
+        };
+        /** @description The user's organizations. */
+        OrganizationsDto: {
+            organizations: components["schemas"]["OrganizationDto"][];
         };
         OverviewDto: {
             entitlements: components["schemas"]["EntitlementsDto"];
@@ -1164,6 +1352,16 @@ export interface components {
             /** @description The shop's name, once `shopify.read_store` has read it; null before the first scan. */
             name?: string | null;
         };
+        /** @description A live link on the shop. */
+        ShopLinkDto: {
+            granted_at: string;
+            id: string;
+            organization_name: string;
+        };
+        /** @description The shop's live agency links. */
+        ShopLinksDto: {
+            links: components["schemas"]["ShopLinkDto"][];
+        };
         StartedScanDto: {
             scan: components["schemas"]["ScanSummaryDto"];
         };
@@ -1260,6 +1458,194 @@ export interface operations {
             };
             /** @description Not ready */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    unlinkStore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The link's identifier */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link ended */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such live link in one of the user's organizations */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOrganizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationsDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewOrganization"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The user already has the most organizations allowed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createLinkCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's identifier */
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkCodeDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such organization, or the user is not a member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The organization already holds the most live codes */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listLinkedStores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedStoresDto"];
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1681,6 +2067,169 @@ export interface operations {
             };
             /** @description GitHub did not answer */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAgencyLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopLinksDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approveAgencyLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopLinkDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The code is not valid, is used or has expired */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many codes were not valid */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeAgencyLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The link's identifier */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link is revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such live link on this store */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewAgencyLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodePreviewDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The code is not valid, is used or has expired */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many codes were not valid */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

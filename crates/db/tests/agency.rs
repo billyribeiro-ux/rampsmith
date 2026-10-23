@@ -92,11 +92,22 @@ async fn only_a_member_makes_codes_and_an_organization_holds_a_few(
     )
     .await
     .unwrap();
-    assert_eq!(refused, Err(CodeRefused::NotMember), "a stranger made a code");
+    assert_eq!(
+        refused,
+        Err(CodeRefused::NotMember),
+        "a stranger made a code"
+    );
     tx.rollback().await.unwrap();
 
     for n in 0..agency::MAX_LIVE_CODES {
-        code(&db, org, ada, u8::try_from(n).unwrap() + 10, Duration::days(1)).await;
+        code(
+            &db,
+            org,
+            ada,
+            u8::try_from(n).unwrap() + 10,
+            Duration::days(1),
+        )
+        .await;
     }
     let mut tx = db.identity().await.unwrap();
     let refused = agency::create_code(
@@ -109,7 +120,11 @@ async fn only_a_member_makes_codes_and_an_organization_holds_a_few(
     )
     .await
     .unwrap();
-    assert_eq!(refused, Err(CodeRefused::TooMany), "the live-code cap did not hold");
+    assert_eq!(
+        refused,
+        Err(CodeRefused::TooMany),
+        "the live-code cap did not hold"
+    );
 }
 
 #[sqlx::test]
@@ -124,7 +139,10 @@ async fn the_overview_shows_a_store_only_after_its_merchant_approved_and_not_aft
 
     // Created codes link nothing by themselves.
     let hash = code(&db, org, ada, 1, Duration::days(1)).await;
-    assert!(overview(&db, ada).await.is_empty(), "a code alone linked a store");
+    assert!(
+        overview(&db, ada).await.is_empty(),
+        "a code alone linked a store"
+    );
 
     let link = approve(&db, a, &hash).await.expect("the code was valid");
     let stores = overview(&db, ada).await;
@@ -144,7 +162,10 @@ async fn the_overview_shows_a_store_only_after_its_merchant_approved_and_not_aft
     let mut tx = db.tenant(a.tenant).await.unwrap();
     assert!(agency::revoke(&mut tx, a.shop, link).await.unwrap());
     tx.commit().await.unwrap();
-    assert!(overview(&db, ada).await.is_empty(), "a revoked link still showed");
+    assert!(
+        overview(&db, ada).await.is_empty(),
+        "a revoked link still showed"
+    );
 
     // And a fresh code links it again, as a new link.
     let again = code(&db, org, ada, 2, Duration::days(1)).await;
@@ -175,7 +196,10 @@ async fn another_organizations_user_sees_nothing_of_a_link_and_cannot_end_it(
     let hash = code(&db, ada_org, ada, 3, Duration::days(1)).await;
     let link = approve(&db, a, &hash).await.unwrap();
 
-    assert!(overview(&db, eve).await.is_empty(), "a stranger saw the link");
+    assert!(
+        overview(&db, eve).await.is_empty(),
+        "a stranger saw the link"
+    );
     let mut tx = db.identity().await.unwrap();
     assert!(
         !agency::unlink(&mut tx, eve, link).await.unwrap(),
@@ -194,7 +218,12 @@ async fn another_organizations_user_sees_nothing_of_a_link_and_cannot_end_it(
     tx.commit().await.unwrap();
     assert!(overview(&db, ada).await.is_empty());
     let mut tx = db.tenant(a.tenant).await.unwrap();
-    assert!(agency::links_of_shop(&mut tx, a.shop).await.unwrap().is_empty());
+    assert!(
+        agency::links_of_shop(&mut tx, a.shop)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[sqlx::test]
@@ -209,13 +238,26 @@ async fn codes_work_once_before_they_expire_and_only_for_a_shop_of_the_caller(
     let org = org(&db, ada, "Ada Agency").await;
 
     // Unknown.
-    assert_eq!(approve(&db, a, &[7; 32]).await, None, "an unknown code linked");
+    assert_eq!(
+        approve(&db, a, &[7; 32]).await,
+        None,
+        "an unknown code linked"
+    );
 
     // Expired: made already past its time.
     let stale = code(&db, org, ada, 4, Duration::seconds(-5)).await;
-    assert_eq!(approve(&db, a, &stale).await, None, "an expired code linked");
+    assert_eq!(
+        approve(&db, a, &stale).await,
+        None,
+        "an expired code linked"
+    );
     let mut tx = db.tenant(a.tenant).await.unwrap();
-    assert!(agency::preview_code(&mut tx, &stale).await.unwrap().is_none());
+    assert!(
+        agency::preview_code(&mut tx, &stale)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // Single use: the second shop to present it gets nothing.
     let hash = code(&db, org, ada, 5, Duration::days(1)).await;
@@ -224,10 +266,17 @@ async fn codes_work_once_before_they_expire_and_only_for_a_shop_of_the_caller(
     assert_eq!(seen.organization_name, "Ada Agency");
     tx.rollback().await.unwrap();
     assert!(approve(&db, a, &hash).await.is_some());
-    assert_eq!(approve(&db, b, &hash).await, None, "a used code linked twice");
+    assert_eq!(
+        approve(&db, b, &hash).await,
+        None,
+        "a used code linked twice"
+    );
     let mut tx = db.tenant(b.tenant).await.unwrap();
     assert!(
-        agency::preview_code(&mut tx, &hash).await.unwrap().is_none(),
+        agency::preview_code(&mut tx, &hash)
+            .await
+            .unwrap()
+            .is_none(),
         "a used code still previewed"
     );
     tx.rollback().await.unwrap();
@@ -277,12 +326,21 @@ async fn the_dashboard_connection_cannot_read_links_or_other_tenants_tables(
     // With no tenant set, the app role's raw reads of every tenant table fail closed: this is
     // the identity transaction's view, and the only way the agency's reads reach a tenant is
     // through `agency_linked_stores`, which starts from live links.
-    for table in ["store_links", "findings", "scans", "regressions", "shopify_shops"] {
+    for table in [
+        "store_links",
+        "findings",
+        "scans",
+        "regressions",
+        "shopify_shops",
+    ] {
         let result: Result<i64, _> =
             sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
                 .fetch_one(&pool)
                 .await;
-        assert!(result.is_err(), "{table} answered a read with no tenant set");
+        assert!(
+            result.is_err(),
+            "{table} answered a read with no tenant set"
+        );
     }
 
     // The overview function returns nothing for an id that is in no organization.
@@ -303,7 +361,12 @@ async fn one_tenant_cannot_list_or_revoke_another_tenants_links(
         .unwrap();
 
     let mut tx = db.tenant(b.tenant).await.unwrap();
-    assert!(agency::links_of_shop(&mut tx, b.shop).await.unwrap().is_empty());
+    assert!(
+        agency::links_of_shop(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(
         !agency::revoke(&mut tx, b.shop, link).await.unwrap(),
         "tenant B revoked tenant A's link"
@@ -313,5 +376,9 @@ async fn one_tenant_cannot_list_or_revoke_another_tenants_links(
         "tenant B revoked it by naming A's shop"
     );
     tx.commit().await.unwrap();
-    assert_eq!(overview(&db, ada).await.len(), 1, "the link did not survive");
+    assert_eq!(
+        overview(&db, ada).await.len(),
+        1,
+        "the link did not survive"
+    );
 }

@@ -64,7 +64,7 @@ pub(crate) struct RegressionDto {
     dismissed: bool,
 }
 
-pub(crate) fn dto(row: RegressionRow) -> RegressionDto {
+pub(crate) fn dto(row: &RegressionRow) -> RegressionDto {
     let text = |item: &Value, key: &str| {
         item.get(key)
             .and_then(Value::as_str)
@@ -151,7 +151,9 @@ pub(crate) async fn banner(
     if locked_by(tx, shop, now).await?.is_some() {
         return Ok(None);
     }
-    Ok(regressions::banner(tx, site, BANNER_DAYS).await?.map(dto))
+    Ok(regressions::banner(tx, site, BANNER_DAYS)
+        .await?
+        .map(|row| dto(&row)))
 }
 
 /// The scheduled scans that found new or returning failures.
@@ -181,7 +183,7 @@ pub(crate) async fn list_regressions(
         regressions::list(&mut tx, site, LIST_LIMIT)
             .await?
             .into_iter()
-            .map(dto)
+            .map(|row| dto(&row))
             .collect()
     };
     Ok(Json(RegressionListDto {

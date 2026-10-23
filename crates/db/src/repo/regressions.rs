@@ -40,10 +40,10 @@ pub struct RegressionRow {
     pub dismissed_at: Option<OffsetDateTime>,
 }
 
-const SELECT: &str = r#"select id, scan_id, previous_scan_id, new_count, reappeared_count,
+const SELECT: &str = "select id, scan_id, previous_scan_id, new_count, reappeared_count,
        findings_seen, previous_findings_seen, pass_rate::float8 as pass_rate,
        previous_pass_rate::float8 as previous_pass_rate, items, detected_at, dismissed_at
-  from regressions"#;
+  from regressions";
 
 type Row = (
     Uuid,

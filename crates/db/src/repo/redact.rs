@@ -101,14 +101,7 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
     sqlx::query!("delete from scan_pages where tenant_id = $1", tenant)
         .execute(tx.conn())
         .await?;
-    // An agency's access ends with the shop (ADR-313); the organization keeps no copy.
-    sqlx::query!("delete from store_links where tenant_id = $1", tenant)
-        .execute(tx.conn())
-        .await?;
-    // Regression records name the scans they compare (ADR-310).
-    sqlx::query!("delete from regressions where tenant_id = $1", tenant)
-        .execute(tx.conn())
-        .await?;
+    delete_links_and_comparisons(tx, tenant).await?;
     let scans = sqlx::query!("delete from scans where tenant_id = $1", tenant)
         .execute(tx.conn())
         .await?
@@ -369,4 +362,19 @@ pub async fn complete_by_operator(
         ended,
         removed,
     })
+}
+
+/// An agency's access ends with the shop (ADR-313), and regression records name the scans they
+/// compare (ADR-310): both go before the scans and the shop.
+async fn delete_links_and_comparisons(
+    tx: &mut TenantTx,
+    tenant: uuid::Uuid,
+) -> Result<(), DbError> {
+    sqlx::query!("delete from store_links where tenant_id = $1", tenant)
+        .execute(tx.conn())
+        .await?;
+    sqlx::query!("delete from regressions where tenant_id = $1", tenant)
+        .execute(tx.conn())
+        .await?;
+    Ok(())
 }
