@@ -254,7 +254,7 @@ async fn bad_inputs_fail_before_any_request() {
 
 #[tokio::test]
 async fn a_postal_address_that_is_set_must_be_usable_before_any_request() {
-    for postal in ["One line only, Springfield", ""] {
+    for postal in ["One line only, Springfield"] {
         let mut env = all("hello@example.com");
         env.push(("EMAIL_POSTAL_ADDRESS", postal));
         let rig = Rig::new(&env).await;

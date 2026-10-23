@@ -6,8 +6,8 @@
  */
 import {
   LINK_TTL_SECONDS,
-  LinkKeyRing,
   mintLinkToken,
+  type LinkKeyRing,
   type OptOutCategory,
 } from '@rampsmith/email';
 

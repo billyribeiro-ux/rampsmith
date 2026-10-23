@@ -189,7 +189,7 @@ describe('LinkKeyRing', () => {
   });
 
   it('shows ids and never key bytes when logged', () => {
-    const text = JSON.stringify(ring) + String(JSON.stringify({ ring }));
+    const text = JSON.stringify(ring) + JSON.stringify({ ring });
     expect(text).toContain('k2');
     expect(text).not.toContain(FIXTURE.keys.split(',')[0]?.split(':')[1] ?? 'x');
   });

@@ -426,12 +426,13 @@ describe('mail a recipient can switch off', () => {
 
   it('retries, naming the setting, while the link keys are unset', async () => {
     const t = await tenant();
-    const { EMAIL_LINK_KEYS: _omit, ...rest } = ENV;
+    const rest: Record<string, string> = { ...ENV };
+    delete rest['EMAIL_LINK_KEYS'];
     const bare = createEmailRuntime(rest, { endpoint: ses.endpoint });
     const failure = await outcome(handler({ email: bare })(welcomeJob(t)));
     expect(failure).toBeInstanceOf(JobFailure);
-    expect(String((failure as JobFailure).message)).toContain('EMAIL_LINK_KEYS');
-    expect(String((failure as JobFailure).message)).not.toContain(OWNER_ADDRESS);
+    expect((failure as JobFailure).message).toContain('EMAIL_LINK_KEYS');
+    expect((failure as JobFailure).message).not.toContain(OWNER_ADDRESS);
   });
 });
 

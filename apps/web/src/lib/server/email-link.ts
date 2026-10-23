@@ -8,7 +8,7 @@ import type { ApiClient } from '@rampsmith/contracts-ts';
 
 export type EmailCategory = 'notification' | 'marketing';
 
-export interface CategoryState {
+interface CategoryState {
   readonly category: EmailCategory;
   readonly enabled: boolean;
 }

@@ -224,7 +224,7 @@ export interface SettingsUpdate {
 }
 
 /** One category of the shop's notification mail and whether it is on. */
-export interface EmailCategoryState {
+interface EmailCategoryState {
   readonly category: 'notification';
   readonly enabled: boolean;
 }
