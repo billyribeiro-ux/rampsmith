@@ -4,7 +4,7 @@
 //! | Topic | Action |
 //! | --- | --- |
 //! | `app/uninstalled` | Ask Shopify whether the grant is really gone (the delivery headers are not signed, so a captured delivery can be replayed), then mark the shop uninstalled, cancel its jobs, delete its tokens and start the retention clock |
-//! | `shop/redact` | Delete all of the shop's data (PLAN §19), keeping the audit log and the webhook digests |
+//! | `shop/redact` | A shop still `installed` is redacted only after the same grant check as an uninstall (a token Shopify still accepts: audit `compliance.shop_redact_ignored`, nothing deleted); then delete all of the shop's data (PLAN §19), keeping the audit log and the webhook digests |
 //! | `customers/data_request`, `customers/redact` | R1 stores no data about a shop's customers, so the answer is "none held", recorded in the audit log without the customer's details |
 //! | `shop/update` | Read the shop again: primary domain and locales |
 //!
@@ -57,7 +57,9 @@ pub async fn handle(jobs: &Jobs, job: ClaimedJob) -> Result<(), Failure> {
     };
     // The shop header is not covered by the signature, but the body is: refuse an event whose
     // body names another shop than the one it was filed under (the api checks this too).
-    if webhooks::body_shop_domain(body) != Some(shop_row.shop_domain.as_str()) {
+    if !webhooks::body_shop_domain(body)
+        .is_some_and(|named| named.eq_ignore_ascii_case(&shop_row.shop_domain))
+    {
         warn!(topic = %event.topic, "webhook body names another shop than its header");
         return Err(failure(
             false,
@@ -68,7 +70,10 @@ pub async fn handle(jobs: &Jobs, job: ClaimedJob) -> Result<(), Failure> {
 
     match event.topic.as_str() {
         "app/uninstalled" => uninstalled(jobs, tenant, event_id, event.shop_id).await,
-        "shop/redact" => redact_shop(jobs, tenant, event_id, event.shop_id).await,
+        "shop/redact" => {
+            let installed = shop_row.status == domain::ShopStatus::Installed;
+            redact_shop(jobs, tenant, event_id, event.shop_id, installed).await
+        }
         "customers/data_request" => {
             customer(jobs, tenant, event_id, event.shop_id, "data_request", body).await
         }
@@ -125,43 +130,57 @@ async fn record(
     Ok(())
 }
 
+/// Whether Shopify has really revoked the shop's grant. `Ok(true)`: it is gone (no token to
+/// try, or Shopify answers 401). `Ok(false)`: a token Shopify still accepts, so the delivery
+/// that asked is a replay for a shop that installed the app again (integration audit M1, lane
+/// A audit H1). Any other answer is an error to retry, never a decision.
+async fn grant_is_gone(jobs: &Jobs, tenant: TenantId, shop: ShopId) -> Result<bool, Failure> {
+    // `client` is `None` when the shop is not installed or Shopify revoked the refresh token.
+    let Some(client) = jobs.client(tenant, shop).await? else {
+        return Ok(true);
+    };
+    match client.grant_check().await {
+        Ok(()) => Ok(false),
+        Err(e) if e.is_token_dead() => Ok(true),
+        Err(e) => Err(admin(&e)),
+    }
+}
+
+/// Marks the shop uninstalled and removes what an uninstall removes. Returns how many queued
+/// jobs were cancelled and whether the status changed.
+async fn end_installation(tx: &mut db::TenantTx, shop: ShopId) -> Result<(bool, u64), Failure> {
+    let changed = shops::mark_uninstalled(tx, shop)
+        .await
+        .map_err(|e| database(&e))?;
+    shops::delete_tokens(tx, shop)
+        .await
+        .map_err(|e| database(&e))?;
+    let cancelled = db::repo::jobs::cancel_pending(tx, WebhookProcess::QUEUE)
+        .await
+        .map_err(|e| database(&e))?;
+    Ok((changed, cancelled))
+}
+
 async fn uninstalled(
     jobs: &Jobs,
     tenant: TenantId,
     event_id: Uuid,
     shop: ShopId,
 ) -> Result<(), Failure> {
-    // Is the grant really gone? `client` is `None` when the shop is not installed or Shopify
-    // revoked the refresh token; a token Shopify still accepts means a replayed delivery for a
-    // shop that installed the app again (integration audit M1).
-    if let Some(client) = jobs.client(tenant, shop).await? {
-        match client.shop().await {
-            Err(e) if e.is_token_dead() => {}
-            Ok(_) => {
-                info!(%shop, "app/uninstalled ignored: the shop's token still works");
-                return finish(
-                    jobs,
-                    tenant,
-                    event_id,
-                    "webhook.uninstall_ignored",
-                    shop,
-                    json!({"reason": "grant_still_valid"}),
-                )
-                .await;
-            }
-            Err(e) => return Err(admin(&e)),
-        }
+    if !grant_is_gone(jobs, tenant, shop).await? {
+        info!(%shop, "app/uninstalled ignored: the shop's token still works");
+        return finish(
+            jobs,
+            tenant,
+            event_id,
+            "webhook.uninstall_ignored",
+            shop,
+            json!({"reason": "grant_still_valid"}),
+        )
+        .await;
     }
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
-    let changed = shops::mark_uninstalled(&mut tx, shop)
-        .await
-        .map_err(|e| database(&e))?;
-    shops::delete_tokens(&mut tx, shop)
-        .await
-        .map_err(|e| database(&e))?;
-    let cancelled = db::repo::jobs::cancel_pending(&mut tx, WebhookProcess::QUEUE)
-        .await
-        .map_err(|e| database(&e))?;
+    let (changed, cancelled) = end_installation(&mut tx, shop).await?;
     record(
         &mut tx,
         event_id,
@@ -175,16 +194,37 @@ async fn uninstalled(
     Ok(())
 }
 
+/// `shop/redact`. Shopify sends it 48 hours after an uninstall, but the topic header and the
+/// delivery id are not signed, so a captured signed body can be replayed against a shop that
+/// installed the app again. An `installed` shop is therefore redacted only when Shopify
+/// confirms the grant is gone, exactly as for `app/uninstalled` (lane A audit H1, ADR-085).
 async fn redact_shop(
     jobs: &Jobs,
     tenant: TenantId,
     event_id: Uuid,
     shop: ShopId,
+    installed: bool,
 ) -> Result<(), Failure> {
+    if installed && !grant_is_gone(jobs, tenant, shop).await? {
+        warn!(%shop, "shop/redact ignored: the shop's token still works");
+        return finish(
+            jobs,
+            tenant,
+            event_id,
+            "compliance.shop_redact_ignored",
+            shop,
+            json!({"reason": "grant_still_valid"}),
+        )
+        .await;
+    }
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
-    let cancelled = db::repo::jobs::cancel_pending(&mut tx, WebhookProcess::QUEUE)
-        .await
-        .map_err(|e| database(&e))?;
+    let cancelled = if installed {
+        end_installation(&mut tx, shop).await?.1
+    } else {
+        db::repo::jobs::cancel_pending(&mut tx, WebhookProcess::QUEUE)
+            .await
+            .map_err(|e| database(&e))?
+    };
     let report = redact::shop(&mut tx, shop)
         .await
         .map_err(|e| database(&e))?

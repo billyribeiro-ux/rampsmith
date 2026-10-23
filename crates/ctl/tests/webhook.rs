@@ -270,6 +270,12 @@ async fn shop_redact_deletes_the_shops_data_and_only_the_shops_data(
     let before = w.count("select count(*) from scans").await;
     assert!(before >= 2, "both tenants have scans");
 
+    // Shopify no longer accepts the shop's token: the uninstall is real.
+    w.admin_answers(
+        401,
+        json!({"errors": "[API] Invalid API key or access token"}),
+    )
+    .await;
     let event = store(
         &w,
         "shop/redact",
@@ -352,6 +358,161 @@ async fn shop_redact_deletes_the_shops_data_and_only_the_shops_data(
     .await;
     process(&w, again).await.unwrap();
     assert_eq!(status(&w).await, "redacted");
+}
+
+fn genuine_redact() -> Value {
+    json!({"shop_id": 954_889, "shop_domain": SHOP})
+}
+
+async fn counts(w: &World) -> (i64, i64, i64) {
+    (
+        w.count("select count(*) from scans").await,
+        w.count("select count(*) from findings").await,
+        w.count("select count(*) from shopify_tokens").await,
+    )
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_relabelled_customer_request_sent_as_shop_redact_deletes_nothing_while_the_token_works(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    w.admin_answers(200, shop_response()).await;
+    let before = counts(&w).await;
+    assert!(before.0 >= 1 && before.1 >= 1 && before.2 == 1);
+
+    // A signed customers/data_request body, filed under shop/redact (the topic header is not
+    // signed). The listener refuses it; this is the backstop if one ever got through.
+    let event = store(
+        &w,
+        "shop/redact",
+        json!({"shop_id": 954_889, "shop_domain": SHOP,
+               "customer": {"id": 191_167, "email": "jane@example.com"},
+               "data_request": {"id": 9999}}),
+    )
+    .await;
+    process(&w, event).await.unwrap();
+
+    assert_eq!(counts(&w).await, before, "nothing was deleted");
+    assert_eq!(status(&w).await, "installed");
+    assert_eq!(
+        w.count("select count(*) from audit_log where action = 'compliance.shop_redact_ignored'")
+            .await,
+        1
+    );
+    assert_eq!(
+        w.count("select count(*) from audit_log where action = 'compliance.shop_redacted'")
+            .await,
+        0
+    );
+    assert_eq!(processed(&w, event).await, (true, true));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_genuine_shop_redact_replayed_after_a_reinstall_deletes_nothing(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    // The real redact: Shopify rejects the token, the shop is redacted.
+    sqlx::query("create table token_copy as select * from shopify_tokens")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    w.admin_answers(
+        401,
+        json!({"errors": "[API] Invalid API key or access token"}),
+    )
+    .await;
+    let first = store(&w, "shop/redact", genuine_redact()).await;
+    process(&w, first).await.unwrap();
+    assert_eq!(status(&w).await, "redacted");
+    assert_eq!(counts(&w).await, (0, 0, 0));
+
+    // The merchant installs the app again and gets new data and a working token.
+    sqlx::query(
+        "update shopify_shops set status = 'installed', uninstalled_at = null,
+                installed_at = now(), scopes = '{read_products}'",
+    )
+    .execute(&w.owner)
+    .await
+    .unwrap();
+    seed_shop_data(&w).await;
+    sqlx::query("insert into shopify_tokens select * from token_copy")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    w.admin.reset().await;
+    w.admin_answers(200, shop_response()).await;
+    let before = counts(&w).await;
+    assert!(before.0 >= 1 && before.1 >= 1);
+
+    // The captured, signed redact comes back more than a day later with a new delivery id.
+    let replay = store(&w, "shop/redact", genuine_redact()).await;
+    process(&w, replay).await.unwrap();
+    assert_eq!(counts(&w).await, before, "the live shop kept its data");
+    assert_eq!(status(&w).await, "installed");
+    assert_eq!(
+        w.count("select count(*) from audit_log where action = 'compliance.shop_redact_ignored'")
+            .await,
+        1
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_unreachable_shopify_retries_a_shop_redact_instead_of_deciding(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    w.admin_answers(503, json!({})).await;
+    let before = counts(&w).await;
+    let event = store(&w, "shop/redact", genuine_redact()).await;
+    let Err(Failure::Retryable(error)) = process(&w, event).await else {
+        panic!("expected a retryable failure");
+    };
+    assert_eq!(error.code, "shopify_unavailable");
+    assert_eq!(counts(&w).await, before);
+    assert_eq!(status(&w).await, "installed");
+    assert_eq!(processed(&w, event).await, (false, false));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_shop_that_is_already_uninstalled_is_redacted_without_asking_shopify(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    sqlx::query("update shopify_shops set status = 'uninstalled', uninstalled_at = now()")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    let event = store(&w, "shop/redact", genuine_redact()).await;
+    process(&w, event).await.unwrap();
+    assert_eq!(status(&w).await, "redacted");
+    assert!(w.admin.received_requests().await.unwrap().is_empty());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_shop_domain_in_a_body_is_compared_without_regard_to_case(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    w.admin_answers(200, shop_response()).await;
+    let event = store(
+        &w,
+        "shop/update",
+        json!({"id": 1, "myshopify_domain": SHOP.to_uppercase()}),
+    )
+    .await;
+    process(&w, event).await.unwrap();
+    assert_eq!(processed(&w, event).await, (true, true));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

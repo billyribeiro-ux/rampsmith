@@ -8,13 +8,29 @@ use uuid::Uuid;
 
 use crate::{DbError, TenantTx};
 
-/// How long a repeat of the same body for the same topic counts as a replay (ADR-080).
+/// How long a repeat of the same body, under any topic, counts as a replay (ADR-080, ADR-085).
 ///
-/// A captured delivery can come back under a new event id, because the id headers are not
-/// covered by the HMAC (integration audit M1). Shopify itself resends a body only on a
-/// retry (same webhook id, minutes to 4 hours) or, for `shop/redact`, once per uninstall,
-/// which is at least 48 hours after the app was installed again.
+/// A captured delivery can come back under a new event id and another topic, because neither
+/// header is covered by the HMAC (integration audit M1, lane A audit H1). Shopify itself
+/// resends a body only on a retry (same webhook id, minutes to 4 hours).
 pub const REPLAY_WINDOW_HOURS: i32 = 24;
+
+/// The window for the `*/redact` topics. A genuine `shop/redact` for a shop that installed
+/// the app again follows its uninstall by 48 hours, so the earliest a genuine repeat of the
+/// same body can arrive is 48 hours after the first one; 40 hours stays under that and well
+/// over [`REPLAY_WINDOW_HOURS`]. The worker's grant check, not this window, is what protects
+/// an installed shop (ADR-085).
+pub const REDACT_REPLAY_WINDOW_HOURS: i32 = 40;
+
+/// The replay window for `topic`, in hours.
+#[must_use]
+pub fn replay_window_hours(topic: &str) -> i32 {
+    if topic.ends_with("/redact") {
+        REDACT_REPLAY_WINDOW_HOURS
+    } else {
+        REPLAY_WINDOW_HOURS
+    }
+}
 
 /// The shop domain a webhook body names: `shop_domain` in the compliance payloads,
 /// `myshopify_domain` in the shop object that `app/uninstalled` and `shop/update` carry.
@@ -50,8 +66,8 @@ pub enum Recorded {
     Stored(Uuid),
     /// The same delivery (event id) was stored before.
     DuplicateDelivery,
-    /// The same body for this topic was stored within [`REPLAY_WINDOW_HOURS`] under another
-    /// id: a replay.
+    /// The same body, under any topic, was claimed within its replay window under another id:
+    /// a replay.
     DuplicateBody,
 }
 
@@ -77,20 +93,24 @@ pub struct WebhookEvent {
 pub async fn record(tx: &mut TenantTx, new: &NewWebhook) -> Result<Recorded, DbError> {
     let tenant = tx.tenant_uuid();
     let digest = new.body_sha256.as_slice();
-    let replay = sqlx::query_scalar!(
-        r#"select exists (
-             select 1 from webhook_events
-              where tenant_id = $1 and topic = $2 and body_sha256 = $3
-                and received_at > now() - make_interval(hours => $4)
-           ) as "replay!""#,
+    // One statement claims the digest: it inserts, or takes over a digest whose window has
+    // passed, and returns nothing when a live claim exists. The primary key serialises two
+    // concurrent replays (the second waits for the first to commit, then finds the claim).
+    let claimed = sqlx::query_scalar!(
+        r#"insert into webhook_digests (tenant_id, body_sha256, topic, expires_at)
+           values ($1, $2, $3, now() + make_interval(hours => $4))
+           on conflict (tenant_id, body_sha256) do update
+              set topic = excluded.topic, claimed_at = now(), expires_at = excluded.expires_at
+            where webhook_digests.expires_at <= now()
+        returning 1 as "claimed!""#,
         tenant,
-        new.topic,
         digest,
-        REPLAY_WINDOW_HOURS,
+        new.topic,
+        replay_window_hours(&new.topic),
     )
-    .fetch_one(tx.conn())
+    .fetch_optional(tx.conn())
     .await?;
-    if replay {
+    if claimed.is_none() {
         return Ok(Recorded::DuplicateBody);
     }
     let id = Uuid::now_v7();
