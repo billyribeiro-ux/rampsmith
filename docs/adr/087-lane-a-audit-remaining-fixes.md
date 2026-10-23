@@ -14,7 +14,8 @@ fixes (ADR-097).
 ## Decision
 
 1. **M3, Partner API fairness** (`crates/api/src/plan.rs`, `crates/billing/src/sweep.rs`). A
-   "no active plan" answer is cached for five minutes, like any confirmed plan. The redirect
+   "no active plan" answer is cached for two minutes (`NO_PLAN_CACHE`; a confirmed plan stays
+   fresh for five, `APP_LOAD_FRESHNESS`). The redirect
    parameter `plan_handle` is only a reason to check sooner and no route reads it; it never grants a
    plan. Each shop takes at most three Partner API calls a minute from the shared pacer, so one
    shop that reloads in a loop cannot starve the others.
@@ -34,11 +35,12 @@ fixes (ADR-097).
 7. **L5** (ADR-085): a primary key on the digest dedup key and `on conflict`.
 8. **L6**. `shop_billing` is in `TENANT_TABLES` with a seeded row per tenant.
 9. **L7**. Redaction also clears `jobs.payload` for the tenant and `shopify_shops.shop_gid`.
-   `rampsmith_worker` no longer has DELETE on `ai_calls`. `ctl`'s login joins the new group
-   `rampsmith_ctl` (itself a member of `rampsmith_worker`), the only role that may execute the
-   security-definer function `redact_ai_calls()`, which deletes only the transaction's own tenant
-   and refuses a transaction with no tenant. The engine's login (a plain worker member) can neither
-   delete nor call it.
+   `rampsmith_worker` no longer has DELETE on `ai_calls`. The only role that may execute the
+   security-definer function `redact_ai_calls()` is a group, which deletes only the transaction's
+   own tenant and refuses a transaction with no tenant. The engine's login (a plain worker member)
+   can neither delete nor call it. *Corrected by ADR-089:* the group was first called
+   `rampsmith_ctl`, the name of ctl's own login in production, and is now `rampsmith_redactor`, which
+   `bootstrap.sql` grants to that login.
 10. **L8**. No mail transport or send job exists (`packages/email` renders and validates only; SES is
     LAUNCH.md C row 7). The uninstall transaction therefore cannot queue `uninstallExport`; it records
     `export_email: not_queued_no_sender` in its audit entry, and LAUNCH.md section E has a row
@@ -52,8 +54,10 @@ fixes (ADR-097).
 
 ## Consequences
 
-- `ctl` needs a login `IN ROLE rampsmith_ctl`; without it redaction fails with a permission error
-  and retries. LAUNCH.md section E carries the row.
+- *Corrected by ADR-089.* ctl's existing login, `rampsmith_ctl`, is a member of
+  `rampsmith_redactor` (`infra/railway/bootstrap.sql`); no second login is created, and a ctl
+  without the privilege refuses to start. The first version of this item told the founder to create
+  a login `IN ROLE rampsmith_ctl`.
 - Migration `20261105000005_r1_c_audit_limits.sql` was renamed from `...000001`, which two merged
   branches used; sqlx refused to apply both.
 - `approved_by_ref` values written before this change are bare `sub`s; nothing reads the format.

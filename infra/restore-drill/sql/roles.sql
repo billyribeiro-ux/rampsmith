@@ -29,6 +29,14 @@ $$;
 
 do $$
 begin
+  create role rampsmith_redactor nologin;
+exception
+  when duplicate_object or unique_violation then null;
+end
+$$;
+
+do $$
+begin
   create role rampsmith_migrator login createrole nosuperuser nocreatedb noreplication nobypassrls;
 exception
   when duplicate_object or unique_violation then null;
@@ -61,6 +69,9 @@ exception
   when duplicate_object or unique_violation then null;
 end
 $$;
+
+-- ctl's login redacts a shop's AI call records through redact_ai_calls() (ADR-089).
+grant rampsmith_redactor to rampsmith_ctl;
 
 select format('grant connect, create, temporary on database %I to rampsmith_migrator',
               current_database())

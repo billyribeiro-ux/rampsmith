@@ -15,9 +15,9 @@
 | The queue, retries with backoff, the lease reaper, `queue::retry_dead` | Built (`crates/queue`) |
 | The warning `job is dead` with the queue and the job id in the worker's log | Built |
 | `docs/runbooks/sql/jobs-depth.sql`, `jobs-dead.sql`, `jobs-retry-dead.sql`, `jobs-token-state.sql` | Built and tested |
-| `rsctl jobs list`, `rsctl jobs retry`, `rsctl jobs depth` | **Not built.** `rsctl` has `doctor` and `keys` only. The `queue::retry_dead` comment says retries belong to `rsctl jobs retry`; `jobs-retry-dead.sql` stands in and adds the audit row |
+| `rsctl jobs list`, `rsctl jobs retry`, `rsctl jobs depth` | **Not built.** `rsctl` has `doctor`, `keys` and `shops redact` (a redaction that cannot finish: [webhook backlog](webhook-backlog.md), section 6). The `queue::retry_dead` comment says retries belong to `rsctl jobs retry`; `jobs-retry-dead.sql` stands in and adds the audit row |
 | A metric that counts dead jobs, and the queue depth and age gauge | **Not built.** The exported instruments are `rampsmith.queue.attempts` (outcomes `succeeded`, `retryable`, `permanent`, `lease_lost`) and `rampsmith.queue.claim.duration`. A job that used up retryable attempts is counted `retryable` and still dies, so only the log line and the database see a dead job. The page in PLAN §21 needs a log-based rule on `job is dead` until a metric exists (ADR-179) |
-| Queues that exist today | `shopify.token_refresh` (in `ctl`); `scan.page` jobs appear in the seed. `webhook.process`, `github.*`, `ai.*` and the rest are named in PLAN §10 and are **not built** |
+| Queues that exist today | `shopify.token_refresh`, `shopify.read_store`, `shopify.apply_data_fix`, `shopify.revert_data_fix` and `webhook.process` (all in `ctl`); `scan.page` jobs appear in the seed. `github.*` and the rest are named in PLAN §10 and are **not built** |
 
 ## How a job dies
 
@@ -52,6 +52,8 @@ railway connect postgres --environment production --ssh      # psql 15 or newer 
 | `shopify_rejected` | Shopify refused a refresh in a way that is not "revoked" | Do **not** retry blindly. Read the message. Check the app's credentials with `rsctl doctor --row 1`. A rotated client secret not yet deployed is the likeliest cause |
 | `crypto` | A stored value does not open with the ring | Stop. A key was dropped or the ring is wrong: [rotate the master key](rotate-token-master-key.md), "A wrong drop". Retry only after the ring is right |
 | `payload_schema_unknown`, `payload_invalid`, `tenant_missing` | Version skew or a bug in whatever enqueued the job | Find the enqueuer (`jobs.created_at`, `jobs.traceparent`, the deploy around it). Fix forward; retry after the fixed build is live |
+| `shop_unavailable`, `access_denied`, `shop_not_found`, `shop_changed` on `webhook.process` | The grant check got an answer that is not 401: 402 or 423 (the store is frozen or closed), 403, 404 on an `app/uninstalled`, or the shop was installed again meanwhile. The job retries on purpose and the sweep requeues `*/redact` events for 45 days | Do not retry by hand. A closed store is waiting for Shopify: if a `shop/redact` is still unfinished near day 30, confirm the uninstall in the Partner Dashboard and run `rsctl shops redact` ([webhook backlog](webhook-backlog.md), section 6) |
+| `shop_mismatch`, `event_unreadable`, `topic_unsupported` on `webhook.process` | The body names another shop than the event was filed under, the event has no body or shop, or the topic has no handler | Permanent. Never retry. Find the delivery in the logs; a `shop_mismatch` is a forged or relabelled delivery (ADR-085): keep the ticket for the security review |
 | `lease_expired` | The worker died or stalled | Check `ctl` for restarts and memory (`railway deployment list --service ctl --environment production`, the logs). Safe to retry |
 | `(none)`, or a code not listed | Unknown | Escalate. Do not retry |
 

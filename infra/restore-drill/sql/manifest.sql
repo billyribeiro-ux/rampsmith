@@ -129,7 +129,7 @@ select 'role', r.rolname, 'attributes',
                  'createdb=' || r.rolcreatedb, 'replication=' || r.rolreplication)
 from pg_roles r
 where r.rolname in ('rampsmith_app', 'rampsmith_worker', 'rampsmith_migrator', 'rampsmith_api',
-                    'rampsmith_ctl', 'rampsmith_engine');
+                    'rampsmith_ctl', 'rampsmith_engine', 'rampsmith_redactor');
 
 select 'role', m.rolname, 'member_of',
        coalesce((select string_agg(g.rolname, ',' order by g.rolname)
@@ -137,6 +137,6 @@ select 'role', m.rolname, 'member_of',
                   where am.member = m.oid), '')
 from pg_roles m
 where m.rolname in ('rampsmith_app', 'rampsmith_worker', 'rampsmith_migrator', 'rampsmith_api',
-                    'rampsmith_ctl', 'rampsmith_engine');
+                    'rampsmith_ctl', 'rampsmith_engine', 'rampsmith_redactor');
 
 commit;

@@ -100,7 +100,7 @@ check_target() {
   elif [ "$who" != "$owner_role" ]; then
     rd_die "connected as ${who}: restore as ${owner_role}, the role that owns the schema (ADR-257)"
   fi
-  for role in rampsmith_app rampsmith_worker "$owner_role"; do
+  for role in rampsmith_app rampsmith_worker rampsmith_redactor "$owner_role"; do
     if [ "$(psql_admin -d postgres -c "select count(*) from pg_roles where rolname = '${role}'")" != "1" ]; then
       missing="${missing} ${role}"
     fi

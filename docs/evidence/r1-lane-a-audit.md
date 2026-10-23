@@ -37,7 +37,7 @@ Decisions: ADR-087. Local gate output is in the PR description and the CI run li
 
 | Finding | Change | Test |
 | --- | --- | --- |
-| M3 | `crates/api/src/plan.rs` (no-plan cached 5 min, per-shop share of the pacer), `crates/billing/src/sweep.rs` | `a_shop_that_reloads_in_a_loop_gets_one_call_for_no_plan_and_three_a_minute_at_most`, `one_shop_has_one_call_in_flight` |
+| M3 | `crates/api/src/plan.rs` (no-plan cached 2 min, per-shop share of the pacer), `crates/billing/src/sweep.rs` | `a_shop_that_reloads_in_a_loop_gets_one_call_for_no_plan_and_three_a_minute_at_most`, `one_shop_has_one_call_in_flight` |
 | M4 | `PartnerPlans::refresh` lowers the stored AI budget; `start_scan` per-plan limits (`crates/api/src/r1.rs`) | `a_downgrade_takes_the_stored_ai_budget_down_to_the_new_ceiling_in_the_same_transaction`, `manual_scans_are_limited_per_plan_per_day_and_need_a_chosen_plan` |
 | L1 | `crates/api/tests/app.rs` | `an_approval_waits_for_the_site_lock` |
 | L2 | `crates/ctl/src/jobs/apply_data_fix.rs`, `data_fixes::fail_in_flight` | `crates/ctl/tests/data_fix.rs`, `crates/ctl/tests/webhook.rs` |

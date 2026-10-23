@@ -59,6 +59,54 @@ async fn a_login_member_of_rampsmith_worker_may_run_ctl(
     drop_role(&owner, "rs_guard_worker_ok").await;
 }
 
+/// `ctl` redacts through `redact_ai_calls()`, by membership of `rampsmith_redactor`; nobody
+/// else may (ADR-089). In production ctl's login is `rampsmith_ctl`, a member of both groups.
+#[sqlx::test(migrations = "./migrations")]
+async fn only_ctls_login_may_execute_the_redaction_function(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    create_login_role(
+        &owner,
+        "rs_guard_ctl_ok",
+        "in role rampsmith_worker, rampsmith_redactor",
+    )
+    .await;
+    create_login_role(&owner, "rs_guard_ctl_plain", "in role rampsmith_worker").await;
+    create_login_role(
+        &owner,
+        "rs_guard_app_redacts",
+        "in role rampsmith_app, rampsmith_redactor",
+    )
+    .await;
+    let ctl = pool_as(&opts, &conn, "rs_guard_ctl_ok").await;
+    let plain = pool_as(&opts, &conn, "rs_guard_ctl_plain").await;
+    let app = pool_as(&opts, &conn, "rs_guard_app_redacts").await;
+
+    verify(ctl.clone(), RuntimeRole::Ctl).await.unwrap();
+    // The engine's profile: a worker that can also redact is refused.
+    assert_eq!(
+        violations(verify(ctl, RuntimeRole::Worker).await),
+        [RoleViolation::CanRedact]
+    );
+    // A plain worker login is fine for the engine and unfit for ctl, which could never redact.
+    verify(plain.clone(), RuntimeRole::Worker).await.unwrap();
+    assert_eq!(
+        violations(verify(plain, RuntimeRole::Ctl).await),
+        [RoleViolation::CannotRedact]
+    );
+    // The api never redacts.
+    assert!(violations(verify(app, RuntimeRole::App).await).contains(&RoleViolation::CanRedact));
+    for name in [
+        "rs_guard_ctl_ok",
+        "rs_guard_ctl_plain",
+        "rs_guard_app_redacts",
+    ] {
+        drop_role(&owner, name).await;
+    }
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn the_two_application_roles_are_not_interchangeable(
     opts: PgPoolOptions,
