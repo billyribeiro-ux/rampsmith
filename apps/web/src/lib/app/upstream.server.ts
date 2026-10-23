@@ -43,6 +43,11 @@ export function bearer(request: Request): string | undefined {
   return value !== undefined && /^bearer\s+\S+$/iu.test(value) ? value : undefined;
 }
 
+/** Whether `text` is longer than `maxBytes` once encoded: bytes, not UTF-16 code units. */
+export function tooLarge(text: string, maxBytes: number): boolean {
+  return new TextEncoder().encode(text).byteLength > maxBytes;
+}
+
 export function unauthenticated(): Response {
   return problem(401, 'unauthenticated', 'Authentication required', { retry: true });
 }

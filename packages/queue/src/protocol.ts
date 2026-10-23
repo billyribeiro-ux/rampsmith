@@ -58,7 +58,13 @@ export interface ClaimedJob {
 
 export type Failure =
   | { readonly kind: 'retryable'; readonly error: JobError }
-  | { readonly kind: 'permanent'; readonly error: JobError };
+  | { readonly kind: 'permanent'; readonly error: JobError }
+  /**
+   * The job cannot run yet for a reason outside it (the provider is down, a key is missing, an
+   * allowance renews later). It becomes ready again after `delayMs` and the attempt is not
+   * spent (r1 lane C audit L5, ADR-097).
+   */
+  | { readonly kind: 'defer'; readonly error: JobError; readonly delayMs: number };
 
 export type FailOutcome =
   { readonly state: 'retrying'; readonly runAt: Date } | { readonly state: 'dead' };
@@ -172,9 +178,15 @@ export async function complete(sql: Executor, lease: Lease): Promise<void> {
   if (result.count !== 1) throw new LeaseLostError(lease);
 }
 
+/** The longest a job can be deferred: a deferral is never a way to park a job for good. */
+const MAX_DEFER_MS = 35 * 24 * 3_600_000;
+/** The shortest deferral, so a deferred job cannot spin. */
+const MIN_DEFER_MS = 5_000;
+
 /**
  * Records a failed attempt: a retryable failure with attempts left becomes ready after
- * `retryDelayMs`; anything else is dead. Throws `LeaseLostError` when the lease is lost.
+ * `retryDelayMs`; anything else is dead. A deferral becomes ready after its own delay and
+ * gives the attempt back. Throws `LeaseLostError` when the lease is lost.
  */
 export async function fail(
   sql: Executor,
@@ -182,10 +194,15 @@ export async function fail(
   failure: Failure,
   jitter: number = Math.random(),
 ): Promise<FailOutcome> {
-  const delaySeconds = retryDelayMs(lease.attempt, jitter) / 1000;
+  const deferred = failure.kind === 'defer';
+  const delaySeconds =
+    (failure.kind === 'defer'
+      ? Math.min(Math.max(failure.delayMs, MIN_DEFER_MS), MAX_DEFER_MS)
+      : retryDelayMs(lease.attempt, jitter)) / 1000;
   const rows = await sql<{ state: string; run_at: Date }[]>`
     with decision as (
-      select id, (${failure.kind === 'retryable'}::bool and attempts < max_attempts) as retry
+      select id, (${deferred}::bool
+                  or (${failure.kind === 'retryable'}::bool and attempts < max_attempts)) as retry
         from jobs
        where id = ${lease.jobId} and locked_by = ${lease.worker} and attempts = ${lease.attempt}
          and state = 'running'
@@ -193,6 +210,7 @@ export async function fail(
     )
     update jobs j set
       state = case when d.retry then 'ready' else 'dead' end,
+      attempts = case when ${deferred}::bool then j.attempts - 1 else j.attempts end,
       run_at = case when d.retry then now() + make_interval(secs => ${delaySeconds}) else j.run_at end,
       finished_at = case when d.retry then null else now() end,
       last_error = jsonb_set(${sql.json({ ...failure.error })}::jsonb, '{retryable}', to_jsonb(d.retry)),

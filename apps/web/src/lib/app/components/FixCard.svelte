@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { m } from '#lib/paraglide/messages.js';
-  import { on, press, valueOf } from '../dom.ts';
+  import { checkedOf, on, press, valueOf } from '../dom.ts';
   import { formatDateTime } from '../format.ts';
   import type { FixSummary } from '../types.ts';
   import FixStatusBadge from './FixStatusBadge.svelte';
@@ -18,7 +18,8 @@
     busy: boolean;
     error: string;
     maxCharacters: number;
-    onapprove: () => void;
+    /** `confirmed` is true when the merchant ticked the check for a flagged draft. */
+    onapprove: (confirmed: boolean) => void;
     onreject: () => void;
     onundo: () => void;
     /** Saves an edit; resolves true when it was saved. */
@@ -29,6 +30,7 @@
     $props();
 
   let editing = $state(false);
+  let confirmed = $state(false);
   let text = $state('');
   let editButton = $state<HTMLElement | undefined>(undefined);
   let approveButton = $state<HTMLElement | undefined>(undefined);
@@ -41,6 +43,17 @@
     empty ? m.app_edit_empty() : tooLong ? m.app_edit_too_long({ max: maxCharacters }) : '',
   );
   const pending = $derived(fix.status === 'approved' || fix.status === 'applying');
+  /** Why the draft was flagged, as sentences; unknown flags are dropped. */
+  const flagTexts = $derived(
+    fix.change.flags.flatMap((flag) =>
+      flag === 'instruction_like_text_seen'
+        ? [m.app_fix_flag_instruction_like_text_seen()]
+        : flag === 'suspected_prompt_injection'
+          ? [m.app_fix_flag_suspected_prompt_injection()]
+          : [],
+    ),
+  );
+  const flagged = $derived(mode === 'queue' && flagTexts.length > 0);
 
   async function startEdit(): Promise<void> {
     text = fix.change.after;
@@ -133,6 +146,23 @@
       </s-text>
     {/if}
 
+    {#if flagged}
+      <s-banner tone="warning" heading={m.app_fix_flag_heading()}>
+        <s-stack gap="small">
+          {#each flagTexts as sentence (sentence)}
+            <s-paragraph>{sentence}</s-paragraph>
+          {/each}
+          <s-checkbox
+            label={m.app_fix_flag_confirm()}
+            checked={confirmed}
+            disabled={busy || pending}
+            onchange={(e: Event) => {
+              confirmed = checkedOf(e);
+            }}
+          ></s-checkbox>
+        </s-stack>
+      </s-banner>
+    {/if}
     {#if error !== ''}
       <s-banner tone="critical"><s-paragraph>{error}</s-paragraph></s-banner>
     {/if}
@@ -146,9 +176,11 @@
           bind:this={approveButton}
           variant="primary"
           loading={busy}
-          disabled={busy || pending}
+          disabled={busy || pending || (flagged && !confirmed)}
           accessibilityLabel={m.app_fix_approve_for({ product: fix.product_title })}
-          {@attach press(onapprove)}
+          {@attach press(() => {
+            onapprove(confirmed);
+          })}
         >
           {m.app_fix_approve()}
         </s-button>

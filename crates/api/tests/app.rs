@@ -1765,3 +1765,98 @@ async fn draft_usage_counts_successful_draft_calls_only(
     let overview = h.get("/v1/shopify/overview").await;
     assert_eq!(overview.body["entitlements"]["alt_text_drafts"]["used"], 3);
 }
+
+/// Security audit M1 (ADR-213, ADR-096): a draft the engine flagged shows its flags on the card
+/// and is approved only with an explicit `confirm_flagged`; an unflagged draft is unaffected.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_flagged_draft_is_approved_only_with_an_explicit_confirmation(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let scan = h.scan("succeeded", "manual", 5, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            Some(90.0),
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    let fix = h.fix(finding, "proposed", "A blue shoe", true).await;
+    sqlx::query(
+        "update fixes set diff = jsonb_set(diff, '{flags}',
+                 '[\"suspected_prompt_injection\", \"unknown_flag\", \"instruction_like_text_seen\"]')
+          where id = $1",
+    )
+    .bind(fix)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+
+    let queue = h.get("/v1/shopify/fixes").await;
+    assert_eq!(
+        queue.body["items"][0]["change"]["flags"],
+        json!(["instruction_like_text_seen", "suspected_prompt_injection"]),
+        "known flags only, sorted"
+    );
+
+    let uri = format!("/v1/shopify/fixes/{fix}/approve");
+    for refused in [uri.clone(), format!("{uri}?confirm_flagged=false")] {
+        let answer = h.call("POST", &refused, None).await;
+        assert_eq!(
+            answer.status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{}",
+            answer.body
+        );
+        assert_eq!(answer.body["errors"][0]["field"], "confirm_flagged");
+    }
+    assert_eq!(
+        h.count(
+            "select count(*) from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'"
+        )
+        .await,
+        0,
+        "nothing was queued"
+    );
+    let status: String = sqlx::query_scalar("select status from fixes where id = $1")
+        .bind(fix)
+        .fetch_one(&h.owner)
+        .await
+        .unwrap();
+    assert_eq!(status, "proposed");
+
+    let confirmed = h
+        .call("POST", &format!("{uri}?confirm_flagged=true"), None)
+        .await;
+    assert_eq!(confirmed.status, StatusCode::OK, "{}", confirmed.body);
+    assert_eq!(confirmed.body["status"], "approved");
+
+    // An unflagged draft needs no confirmation.
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            Some(80.0),
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    let plain_fix = h.fix(finding, "proposed", "A red shoe", true).await;
+    let ok = h
+        .call(
+            "POST",
+            &format!("/v1/shopify/fixes/{plain_fix}/approve"),
+            None,
+        )
+        .await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+}
