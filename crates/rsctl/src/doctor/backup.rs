@@ -1,5 +1,5 @@
 //! C row 16: the inputs of the nightly backup service and the weekly restore drill that no
-//! vendor can confirm, checked for shape (ADR-091, ADR-093). No network: the backup service runs
+//! vendor can confirm, checked for shape (ADR-252, ADR-254). No network: the backup service runs
 //! on Railway's private network, so only the service itself can try the database password, and
 //! only the first nightly run (LAUNCH.md section E) proves the recipients and the drill's key
 //! fit together.
@@ -21,6 +21,7 @@ pub(super) const READS: &[Var] = &[
     Var::BackupDbPassword,
     Var::BackupAgeRecipients,
     Var::BackupDrillAgeKey,
+    Var::BackupSigningKey,
 ];
 
 /// The shortest database password accepted: `openssl rand -base64 24` makes 32 characters.
@@ -73,6 +74,17 @@ fn identity_ok(text: &str) -> bool {
     })
 }
 
+/// The signing key `generate.sh` writes: base64 of the 48-byte PKCS#8 DER of an Ed25519 key, on
+/// one line of 64 characters that begins with the fixed header of that encoding.
+fn signing_key_ok(text: &str) -> bool {
+    let line = text.trim();
+    line.len() == 64
+        && line.starts_with("MC4CAQAwBQYDK2VwBCIEI")
+        && line
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/')
+}
+
 fn probe(ctx: &Ctx) -> Step<Outcome> {
     let inputs = gather(ctx, 16, &[Var::BackupDbPassword, Var::BackupAgeRecipients])?;
 
@@ -112,12 +124,23 @@ fn probe(ctx: &Ctx) -> Step<Outcome> {
         ));
     }
 
-    let drill_key = ctx.vars.get(Var::BackupDrillAgeKey);
+    // Both are optional here (the drill key is staging only; the signing key belongs to the
+    // backup service of the environment being checked), but whatever is set is held as a
+    // `Secret` like every other input, never as a plain string (finding LOW-4).
+    let drill_key = ctx.vars.gather(16, &[Var::BackupDrillAgeKey]).ok();
     if let Some(key) = &drill_key
-        && !identity_ok(key)
+        && !identity_ok(key.text(Var::BackupDrillAgeKey))
     {
         return Ok(Outcome::fail(
             "BACKUP_DRILL_AGE_KEY is not an age private key (AGE-SECRET-KEY-1 and 58 characters)",
+        ));
+    }
+    let signing_key = ctx.vars.gather(16, &[Var::BackupSigningKey]).ok();
+    if let Some(key) = &signing_key
+        && !signing_key_ok(key.text(Var::BackupSigningKey))
+    {
+        return Ok(Outcome::fail(
+            "BACKUP_SIGNING_KEY is not an Ed25519 private key as infra/backup/signing/generate.sh writes it (one line of 64 base64 characters); generate it again, do not retype it (ADR-256)",
         ));
     }
     let drill = if drill_key.is_some() {
@@ -125,8 +148,13 @@ fn probe(ctx: &Ctx) -> Step<Outcome> {
     } else {
         "no drill key (staging only)"
     };
+    let signing = if signing_key.is_some() {
+        "a signing key"
+    } else {
+        "no signing key (the backup service of this environment refuses to run without one)"
+    };
     Ok(Outcome::pass(format!(
-        "{} age recipients and a database password, {drill}, all well formed (the first nightly run and the live restore drill prove they fit)",
+        "{} age recipients and a database password, {drill}, {signing}, all well formed (the first nightly run and the live restore drill prove they fit)",
         distinct.len()
     )))
 }
@@ -146,6 +174,17 @@ mod tests {
         assert_eq!(list.len(), 2);
         assert_eq!(list[0], PUBLIC);
         assert!(list.iter().all(|entry| recipient_ok(entry)));
+    }
+
+    #[test]
+    fn signing_key_shape() {
+        let key = format!("MC4CAQAwBQYDK2VwBCIEI{}", "A".repeat(43));
+        assert!(signing_key_ok(&key));
+        assert!(signing_key_ok(&format!("{key}\n")));
+        assert!(!signing_key_ok(&key[..63]));
+        assert!(!signing_key_ok(&format!("X{}", &key[1..])));
+        assert!(!signing_key_ok(&format!("{}=", &key[..63])));
+        assert!(!signing_key_ok("-----BEGIN PRIVATE KEY-----"));
     }
 
     #[test]

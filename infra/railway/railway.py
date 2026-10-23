@@ -93,7 +93,7 @@ PUBLIC = (
 )
 SERVICES = ("web", "api", "ctl", "engine", "egress", "collector", "backup", "postgres")
 
-# The nightly logical backup is a cron service inside the project (ADR-090): Railway starts the
+# The nightly logical backup is a cron service inside the project (ADR-251): Railway starts the
 # image's entrypoint on this schedule (UTC, at least five minutes apart), and the process exits
 # when the backup is done. It has no port, health check or domain, and no preview copy: a pull
 # request's environment holds throwaway data and must not hold the backup credentials.
@@ -472,10 +472,10 @@ def _collector(env: str, inputs: Inputs) -> Any:
 
 
 def _backup(env: str, inputs: Inputs) -> Any:
-    """The nightly backup (ADR-090): cron, private network, its own R2 token (ADR-091).
+    """The nightly backup (ADR-251): cron, private network, its own R2 token (ADR-252).
 
     It holds exactly what it uses and nothing else: no Railway token, no SSH key, no master key,
-    no engine R2 token, no telemetry token. `BACKUP_R2_*` and `BACKUP_DB_PASSWORD` are read by no
+    no engine R2 token, no telemetry token. `BACKUP_R2_*`, `BACKUP_DB_PASSWORD` and `BACKUP_SIGNING_KEY` are read by no
     other service and by no repository workflow. Unset inputs make the entrypoint warn and exit 0
     (infra/backup/entrypoint.sh), so an unconfigured service never looks like a crashing one.
     """
@@ -488,7 +488,12 @@ def _backup(env: str, inputs: Inputs) -> Any:
         "BACKUP_DB_PASSWORD": shared("BACKUP_DB_PASSWORD"),
         # Public keys only; the private halves stay offline (ADR-173).
         "BACKUP_AGE_RECIPIENTS": shared("BACKUP_AGE_RECIPIENTS"),
+        # Signs each backup's metadata; the public half is committed (ADR-256). Sealed, like the
+        # other secrets of this service, in every environment (ADR-253).
+        "BACKUP_SIGNING_KEY": shared("BACKUP_SIGNING_KEY"),
         "R2_ACCOUNT_ID": shared("R2_ACCOUNT_ID"),
+        # One bucket per environment, `rampsmith-backups-<environment>` (ADR-252): the shared
+        # variable is per environment, and backup.sh refuses a bucket of another name.
         "R2_BUCKET_BACKUPS": shared("R2_BUCKET_BACKUPS"),
         "BACKUP_R2_ACCESS_KEY_ID": shared("BACKUP_R2_ACCESS_KEY_ID"),
         "BACKUP_R2_SECRET_ACCESS_KEY": shared("BACKUP_R2_SECRET_ACCESS_KEY"),

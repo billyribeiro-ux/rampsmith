@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies a restored database against a manifest (ADR-175).
 #
-#   PGHOST=... PGPORT=... PGUSER=<owner or superuser> PGDATABASE=... \
+#   PGHOST=... PGPORT=... PGUSER=rampsmith_migrator PGDATABASE=... \
 #     verify.sh --expected manifest.tsv [--partial] [--out DIR] [--min-tenants N] \
 #                [--expect-schema-version V] [--app-user rampsmith_api]
 #
@@ -16,6 +16,9 @@
 #      tenant's row;
 #   4. optionally the migration version equals the repository's newest migration.
 #
+# The queries run as the schema owner, never as a superuser: a restored database is not yet trusted,
+# and its functions, policies and triggers must not run with superuser power (ADR-257).
+# VERIFY_ALLOW_SUPERUSER=1 overrides the refusal (the drill's fault injection does not need it).
 # Passwords come from PGPASSWORD (the owner) and VERIFY_APP_PASSWORD (the application login);
 # neither is printed.
 set -euo pipefail
@@ -43,6 +46,9 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$expected" ] && [ -f "$expected" ] || rd_die "--expected needs a manifest file"
 [ -n "${PGDATABASE:-}" ] || rd_die "PGDATABASE is not set"
+if [ "${VERIFY_ALLOW_SUPERUSER:-0}" != "1" ] && rd_current_role_is_superuser "$PGDATABASE"; then
+  rd_die "connected as a superuser: verify as rampsmith_migrator, which owns the schema and needs no more (ADR-257)"
+fi
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out"
 

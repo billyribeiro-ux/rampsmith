@@ -140,3 +140,56 @@ rd_repo_newest_migration() {
   base=$(basename "$file" .sql)
   printf '%s' "${base%%_*}"
 }
+
+# --- what an archive may contain (ADR-257) ------------------------------------------------------
+# rd_toc_violations TOC: reads the output of `pg_restore --list` and prints every entry that is not
+# an object of the Rampsmith application schema, one line each, nothing when the archive is clean.
+# A dump is code that the restore runs: besides data it carries SQL for every object, and the
+# bucket's writer is not trusted. So only the object types the migrations create are accepted, and
+# only in schema public: no extension, event trigger, rule, language, cast, operator, aggregate,
+# publication, subscription, foreign server, text-search object or default privilege, and nothing
+# in another schema. (A schema-changing migration that adds a new kind of object must add it
+# here, with a test, in the same change.)
+rd_toc_violations() {
+  LC_ALL=C awk '
+    /^;/ || /^[[:space:]]*$/ { next }
+    {
+      line = $0
+      if (line !~ /^[0-9]+; [0-9]+ [0-9]+ /) { print line; next }
+      sub(/^[0-9]+; [0-9]+ [0-9]+ /, "", line)
+      if (line ~ /^SCHEMA - public /) next
+      if (line ~ /^TABLE (DATA |ATTACH )?public [A-Za-z0-9_]+ /) next
+      if (line ~ /^(FK |CHECK )?CONSTRAINT public [A-Za-z0-9_]+ [A-Za-z0-9_]+ /) next
+      if (line ~ /^INDEX (ATTACH )?public [A-Za-z0-9_]+ /) next
+      if (line ~ /^(TRIGGER|POLICY) public [A-Za-z0-9_]+ [^ ]+ /) next
+      if (line ~ /^ROW SECURITY public [A-Za-z0-9_]+ /) next
+      if (line ~ /^FUNCTION public [A-Za-z0-9_]+\(/) next
+      if (line ~ /^(SEQUENCE|VIEW|TYPE|DOMAIN) public [A-Za-z0-9_]+ /) next
+      if (line ~ /^SEQUENCE (OWNED BY|SET) public [A-Za-z0-9_]+ /) next
+      if (line ~ /^DEFAULT public [A-Za-z0-9_]+ [A-Za-z0-9_]+ /) next
+      if (line ~ /^ACL - SCHEMA public /) next
+      if (line ~ /^ACL public (TABLE|FUNCTION|SEQUENCE|TYPE|DOMAIN) /) next
+      if (line ~ /^COMMENT public /) next
+      print $0
+    }' "$1"
+}
+
+# rd_current_role_is_superuser: succeeds when the libpq environment connects as a superuser.
+rd_current_role_is_superuser() {
+  [ "$("$PGBIN/psql" -X -q -At -d "${1:-postgres}" -c "select rolsuper from pg_roles where rolname = current_user")" = "t" ]
+}
+
+# rd_scrub: stdin to stdout with what a public log must not hold removed (ADR-255). The repository is
+# public, so the job log is too, and a restore touches customer data:
+#   - tenant and other identifiers in UUID form become <id>;
+#   - any line that can carry a database message (pg_restore, psql, a failing row, a statement) is
+#     replaced by a notice: those messages quote data;
+#   - only the lines the drill itself writes are kept.
+rd_scrub() {
+  LC_ALL=C sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g' |
+    LC_ALL=C awk '
+      /pg_restore|psql:|DETAIL|Failing row|CONTEXT|STATEMENT|COPY |violates|duplicate key/ {
+        print "(a database message was withheld: it may quote customer data; it is on the runner only)"; next
+      }
+      { print substr($0, 1, 300) }'
+}

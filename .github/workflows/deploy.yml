@@ -400,12 +400,12 @@ jobs:
           wait_for egress "$EGRESS_IMAGE" "$started"
           wait_for engine "$ENGINE_IMAGE" "$started"
           wait_for web "$WEB_IMAGE" "$started"
-          # The backup is a cron service (ADR-090): it runs at 02:17 UTC and exits, so Railway may
+          # The backup is a cron service (ADR-251): it runs at 02:17 UTC and exits, so Railway may
           # never report a SUCCESS deployment of its image until the first run. A miss here is
           # therefore a visible warning, not a stop; the first nightly run is checked by the
           # founder (LAUNCH.md section E, "Nightly backup service").
           wait_for backup "$BACKUP_IMAGE" "$started" 300 ||
-            echo "::warning title=backup service::Railway did not report the backup image as a successful deployment within 5 minutes. It runs on its cron schedule (ADR-090); check its first run (LAUNCH.md section E)."
+            echo "::warning title=backup service::Railway did not report the backup image as a successful deployment within 5 minutes. It runs on its cron schedule (ADR-251); check its first run (LAUNCH.md section E)."
           collector=$(python3 -c 'import importlib.util as u, sys; s = u.spec_from_file_location("r", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.COLLECTOR_IMAGE)' "$file")
           wait_for collector "$collector" "$started"
           rm -f ./*.plan ./*.json

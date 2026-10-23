@@ -15,7 +15,7 @@ service=${1:?service}
 image=${2:?image}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 # The backup is a cron service with no port, health check or start command in railway.py: its
-# own smoke test starts it as the cron schedule does (ADR-090).
+# own smoke test starts it as the cron schedule does (ADR-251).
 if [ "$service" = backup ]; then
   exec bash "$root/infra/backup/tests/image_smoke.sh" "$image"
 fi

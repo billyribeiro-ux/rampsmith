@@ -20,7 +20,7 @@ top, so a job that forgot its own `permissions:` block would read every scope.
   variable. The value 0, a sign, a leading zero and any other text are refused. `tests/run.sh` covers
   each case.
 - `restore-drill.yml` declares `permissions: {}` at the top; every job already states the scopes it
-  needs (`contents: read`, or none). The nightly `backup.yml` no longer exists (ADR-090: the backup is a
+  needs (`contents: read`, or none). The nightly `backup.yml` no longer exists (ADR-251: the backup is a
   Railway cron service), so its half of L10 has nothing left to fix.
 
 ## Consequences

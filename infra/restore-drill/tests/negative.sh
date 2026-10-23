@@ -32,11 +32,16 @@ cases=(
   "truncate-table|DRILL_FAULT=truncate-table|FAIL\tchanged\ttable\tpublic\.audit_log\trows"
   "drop-grant|DRILL_FAULT=drop-grant|FAIL\tchanged\ttable\tpublic\.sites\tprivileges"
   "stale-backup|DRILL_FAULT=stale-backup|FAIL\tschema-version"
-  "corrupt-ciphertext|DRILL_FAULT=corrupt-ciphertext|archive sha256 differs from the one recorded at backup time"
+  "corrupt-ciphertext|DRILL_FAULT=corrupt-ciphertext|archive sha256 differs from the signed one"
   "wrong-key|DRILL_FAULT=wrong-key|age could not decrypt the archive"
-  "skip-bootstrap|DRILL_FAULT=skip-bootstrap|the server lacks the role"
+  "skip-bootstrap|DRILL_FAULT=skip-bootstrap|cannot connect to the server as rampsmith_migrator"
   "nonempty-target|DRILL_FAULT=nonempty-target|already holds [0-9]+ objects"
   "no-bypassrls|DRILL_FAULT=no-bypassrls|pg_dump failed"
+  "tampered-signature|DRILL_FAULT=tampered-signature|signature does not verify"
+  "wrong-signing-key|DRILL_FAULT=wrong-signing-key|signature does not verify"
+  "future-backup|DRILL_FAULT=future-backup|in the future"
+  "foreign-schema|DRILL_FAULT=foreign-schema|not objects of the application schema"
+  "superuser-restore|DRILL_FAULT=superuser-restore|restore as rampsmith_migrator"
   "rto-exceeded|RTO_TARGET_SECONDS=0|FAIL\trto\tthe restore took"
 )
 

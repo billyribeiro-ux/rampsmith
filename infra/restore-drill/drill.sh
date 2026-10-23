@@ -7,10 +7,13 @@
 #   1. bootstraps the roles and applies every migration of crates/db/migrations to the first;
 #   2. seeds two tenants through the application login (so row-level security applies), plus
 #      identity rows and a system job, and writes a manifest of the result;
-#   3. runs the real backup (infra/backup/backup.sh: pg_dump -Fc, age to a throwaway key,
-#      upload to a bucket served from a directory), as the least-privilege backup role;
-#   4. bootstraps the second cluster and restores the archive with infra/restore-drill/restore.sh;
-#   5. verifies the restored database against the manifest, checks that row-level security still
+#   3. runs the real backup (infra/backup/backup.sh: pg_dump -Fc, age to a throwaway key, signed
+#      metadata with a throwaway Ed25519 key, upload to a bucket served from a directory), as the
+#      least-privilege backup role;
+#   4. bootstraps the second cluster and restores the archive with infra/restore-drill/restore.sh,
+#      which verifies the signature, reads the archive's table of contents and restores as
+#      rampsmith_migrator, not as a superuser;
+#   5. verifies the restored database (as rampsmith_migrator too) against the manifest, checks that row-level security still
 #      isolates the two tenants through the application login, and compares the elapsed restore
 #      time with the recovery target of 4 hours (RTO_TARGET_SECONDS).
 # It exits 0 when everything held and 1 otherwise. DRILL_FAULT injects one failure so the tests
@@ -42,7 +45,8 @@ fault="${DRILL_FAULT:-}"
 case $fault in
   '' | tamper-manifest-checksum | tamper-data | drop-policy | disable-rls | drop-table | \
     truncate-table | drop-grant | corrupt-ciphertext | wrong-key | skip-bootstrap | \
-    nonempty-target | stale-backup | no-bypassrls) ;;
+    nonempty-target | stale-backup | no-bypassrls | tampered-signature | wrong-signing-key | \
+    foreign-schema | future-backup | superuser-restore) ;;
   *) rd_die "unknown DRILL_FAULT: ${fault}" ;;
 esac
 
@@ -74,6 +78,7 @@ case $pg_version in
 esac
 command -v "$AGE" >/dev/null || rd_die "age is not installed (AGE=${AGE})"
 command -v "$AGE_KEYGEN" >/dev/null || rd_die "age-keygen is not installed (AGE_KEYGEN=${AGE_KEYGEN})"
+command -v openssl >/dev/null || rd_die "openssl is not installed (it signs and verifies the backup metadata)"
 
 port_base="${DRILL_PORT_BASE:-54700}"
 db=rampsmith
@@ -93,6 +98,11 @@ provision_source() {
 migrate_source() {
   rd_bootstrap src "$db"
   rd_migrate src "$db" rampsmith_migrator
+  if [ "$fault" = "foreign-schema" ]; then
+    # Something that is not the application schema, in the dump a maker controls.
+    cl_psql src "$db" postgres -c "create schema evil; create table evil.payload (x int)"
+    rd_log "fault: the source database holds a schema that is not the application's"
+  fi
 }
 
 # --- 2. seed and manifest ----------------------------------------------------------------------------
@@ -129,6 +139,7 @@ backup_env() {
   export BACKUP_R2_ACCESS_KEY_ID=drill-backup BACKUP_R2_SECRET_ACCESS_KEY=drill-backup
   export DRILL_R2_ACCESS_KEY_ID=drill-read DRILL_R2_SECRET_ACCESS_KEY=drill-read
   export R2_BUCKET_BACKUPS="$bucket"
+  verify_key="$work/signing.pub.pem"
 }
 
 backup_source() {
@@ -138,6 +149,12 @@ backup_source() {
   "$AGE_KEYGEN" -o "$work/other.key" 2>/dev/null
   local recipient
   recipient=$("$AGE_KEYGEN" -y "$work/drill.key")
+  # The signing key pair of this run: the private half reaches only backup.sh, the public half only
+  # the restore (infra/backup/signing/generate.sh does the same for the real environments).
+  openssl genpkey -algorithm ed25519 -outform DER -out "$work/signing.der" 2>/dev/null
+  openssl pkey -inform DER -in "$work/signing.der" -pubout -out "$work/signing.pub.pem" 2>/dev/null
+  openssl genpkey -algorithm ed25519 -out "$work/other-signing.pem" 2>/dev/null
+  openssl pkey -in "$work/other-signing.pem" -pubout -out "$work/other-signing.pub.pem" 2>/dev/null
   # The least-privilege login. The fixture password is a throwaway: the cluster trusts local
   # connections, the script exercises the same \getenv path production uses.
   BACKUP_DB_PASSWORD=drill-fixture "$PGBIN/psql" -X -q -v ON_ERROR_STOP=1 \
@@ -149,12 +166,18 @@ backup_source() {
   BACKUP_ENVIRONMENT=drill BACKUP_DB_HOST="${CL_DIR[src]}/sock" \
     BACKUP_DB_PORT="${CL_PORT[src]}" BACKUP_DB_USER=rampsmith_backup BACKUP_DB_NAME="$db" \
     BACKUP_DB_PASSWORD=drill-fixture BACKUP_AGE_RECIPIENTS="$recipient" \
-    BACKUP_NOW="${DRILL_BACKUP_NOW:-20261019T010203Z}" \
+    BACKUP_SIGNING_KEY="$(base64 -w0 <"$work/signing.der")" \
+    BACKUP_NOW="${DRILL_BACKUP_NOW:-$([ "$fault" = future-backup ] && echo 20991231T000000Z || echo 20261019T010203Z)}" \
     "$BACKUP_DIR/backup.sh" 2>&1 | tee "$out/backup.log" >&2
   archive_key=$(cd "$s3_root/$bucket" && find drill/daily -name '*.dump.age' | LC_ALL=C sort | tail -n 1)
   [ -n "$archive_key" ] || rd_die "the backup stored no archive"
   archive_bytes=$(wc -c <"$s3_root/$bucket/$archive_key" | tr -d ' ')
   rd_log "backup: ${archive_key} (${archive_bytes} bytes)"
+  if [ "$fault" = "tampered-signature" ]; then
+    # The metadata object is changed after it was signed (the size, as if another archive were meant).
+    sed -i 's/"size_bytes": [0-9]*/"size_bytes": 1/' "$s3_root/$bucket/${archive_key%.dump.age}.meta.json"
+    rd_log "fault: the metadata object was changed after it was signed"
+  fi
   if [ "$fault" = "corrupt-ciphertext" ]; then
     printf 'X' | dd of="$s3_root/$bucket/$archive_key" bs=1 seek=200 conv=notrunc 2>/dev/null
     rd_log "fault: one byte of the stored archive replaced"
@@ -182,8 +205,17 @@ restore_target() {
     rd_log "fault: restoring with a different age key"
   fi
   backup_env
-  PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=postgres \
-    "$RD_ROOT/restore.sh" --target "$db" --object "$archive_key" --identity "$identity" \
+  local restore_user=rampsmith_migrator
+  if [ "$fault" = "wrong-signing-key" ]; then
+    verify_key="$work/other-signing.pub.pem"
+    rd_log "fault: verifying with a public key that did not sign the backup"
+  fi
+  if [ "$fault" = "superuser-restore" ]; then
+    restore_user=postgres
+    rd_log "fault: restoring as the superuser"
+  fi
+  PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=$restore_user \
+    "$RD_ROOT/restore.sh" --target "$db" --object "$archive_key" --verify-key "$verify_key" --identity "$identity" \
     --jobs 4 --manifest-out "$out/derived.tsv" --work "$work/restore" 2>&1 | tee "$out/restore.log" >&2
 }
 
@@ -222,14 +254,14 @@ verify_target() {
   fi
   export PGBIN
   {
-    PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=postgres PGDATABASE="$db" \
+    PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=rampsmith_migrator PGDATABASE="$db" \
       "$RD_ROOT/verify.sh" --expected "$out/manifest.tsv" --min-tenants 2 \
       --expect-schema-version "$expect_version" --out "$out/verify-full"
   } >"$out/verify-full.txt" 2>&1 || drill_status=1
   cat "$out/verify-full.txt"
   # What a restore of a real backup can check: only the keys the archive itself lists.
   {
-    PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=postgres PGDATABASE="$db" \
+    PGHOST="${CL_DIR[dst]}/sock" PGPORT="${CL_PORT[dst]}" PGUSER=rampsmith_migrator PGDATABASE="$db" \
       "$RD_ROOT/verify.sh" --partial --expected "$out/derived.tsv" --min-tenants 2 \
       --out "$out/verify-derived"
   } >"$out/verify-derived.txt" 2>&1 || drill_status=1
