@@ -240,8 +240,8 @@ describe('the free_scan.run job', () => {
   async function ask(origin: string, domain: string): Promise<string> {
     const id = uuidv7();
     await db.owner`
-      insert into free_scans (id, domain, origin, ip_hash, status)
-      values (${id}, ${domain}, ${origin}, ${Buffer.alloc(32, 1)}, 'queued')`;
+      insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status)
+      values (${id}, ${domain}, ${domain}, ${origin}, ${Buffer.alloc(32, 1)}, 'queued')`;
     return id;
   }
 

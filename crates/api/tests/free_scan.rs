@@ -204,6 +204,9 @@ async fn an_address_that_is_not_a_public_site_never_reaches_cloudflare_or_the_qu
         "intranet",
         "shop.com:8443",
         "ftp://shop.com",
+        // A whole public suffix is not a site (audit L1).
+        "co.uk",
+        "https://myshopify.com/",
         "",
     ] {
         let (status, _, body) = call(&h.state, post(Some(TOKEN), &ask(url, "203.0.113.5"))).await;
@@ -379,7 +382,7 @@ async fn a_finished_scan_answers_the_next_visitor_for_a_day_at_no_cost(
     assert_eq!(count(&h.owner, "jobs").await, 1);
 
     // The cache cost the second visitor nothing: the same address can still use all three.
-    for domain in ["a.example.com", "b.example.com", "c.example.com"] {
+    for domain in ["a-shop.com", "b-shop.com", "c-shop.com"] {
         let (status, _, body) =
             call(&h.state, post(Some(TOKEN), &ask(domain, "198.51.100.9"))).await;
         assert_eq!(status, StatusCode::ACCEPTED, "{domain}: {body}");
@@ -393,7 +396,7 @@ async fn an_address_gets_three_scans_a_day_and_then_neither_cloudflare_nor_the_q
 ) {
     let h = harness(opts, conn, true).await;
     solved(&h).await;
-    for domain in ["a.example.com", "b.example.com", "c.example.com"] {
+    for domain in ["a-shop.com", "b-shop.com", "c-shop.com"] {
         let (status, _, body) =
             call(&h.state, post(Some(TOKEN), &ask(domain, "203.0.113.5"))).await;
         assert_eq!(status, StatusCode::ACCEPTED, "{domain}: {body}");
@@ -401,7 +404,7 @@ async fn an_address_gets_three_scans_a_day_and_then_neither_cloudflare_nor_the_q
     let spent = h.turnstile.received_requests().await.unwrap().len();
     let (status, headers, body) = call(
         &h.state,
-        post(Some(TOKEN), &ask("d.example.com", "203.0.113.5")),
+        post(Some(TOKEN), &ask("d-shop.com", "203.0.113.5")),
     )
     .await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
@@ -421,7 +424,7 @@ async fn an_address_gets_three_scans_a_day_and_then_neither_cloudflare_nor_the_q
     // Another visitor is not held back by this one.
     let (status, _, _) = call(
         &h.state,
-        post(Some(TOKEN), &ask("e.example.com", "198.51.100.9")),
+        post(Some(TOKEN), &ask("e-shop.com", "198.51.100.9")),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED);
@@ -497,6 +500,43 @@ async fn a_result_that_breaks_the_limits_is_not_served(
     .await;
     assert_eq!(got["status"], "failed", "{got}");
     assert_eq!(got["result"], Value::Null);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_daily_limit_covers_every_subdomain_of_a_registrable_domain(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true).await;
+    solved(&h).await;
+    let (status, _, first) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("a.shop.co.uk", "203.0.113.5")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    finish(
+        &h.owner,
+        first["id"].as_str().unwrap(),
+        "refused",
+        "a.shop.co.uk",
+    )
+    .await;
+    // Another host under the same registrable domain, from another address: the day is spent.
+    let (status, _, body) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("b.shop.co.uk", "198.51.100.9")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(body["errors"][0]["message"], "domain");
+    // A different registrable domain under the same suffix is a different site.
+    let (status, _, body) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("other.co.uk", "198.51.100.9")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
@@ -582,14 +622,14 @@ async fn a_cached_result_is_served_before_the_budget_and_before_cloudflare(
         "shop.com",
     )
     .await;
-    for domain in ["a.example.com", "b.example.com"] {
+    for domain in ["a-shop.com", "b-shop.com"] {
         let (status, _, _) = call(&h.state, post(Some(TOKEN), &ask(domain, "203.0.113.5"))).await;
         assert_eq!(status, StatusCode::ACCEPTED);
     }
     // The address has now used its 3 scans.
     let (status, _, _) = call(
         &h.state,
-        post(Some(TOKEN), &ask("c.example.com", "203.0.113.5")),
+        post(Some(TOKEN), &ask("c-shop.com", "203.0.113.5")),
     )
     .await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);

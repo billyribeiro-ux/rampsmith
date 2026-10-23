@@ -219,6 +219,8 @@ pub enum UrlRefusal {
     Address,
     /// A name that cannot be on the public internet.
     Private,
+    /// A public suffix itself (`co.uk`, `myshopify.com`): no one site, so nothing to scan.
+    Suffix,
 }
 
 impl UrlRefusal {
@@ -231,6 +233,7 @@ impl UrlRefusal {
             Self::Port => "port",
             Self::Address => "address",
             Self::Private => "private",
+            Self::Suffix => "suffix",
         }
     }
 }
@@ -240,8 +243,11 @@ impl UrlRefusal {
 pub struct PublicSite {
     /// `scheme://host/`.
     pub origin: String,
-    /// The host without a leading `www.`: the key for the per-domain limit and the cache.
+    /// The host without a leading `www.`: the key for the cache and the join of a running scan.
     pub domain: String,
+    /// The registrable domain of `domain` by the Public Suffix List: the key for the per-domain
+    /// daily limit, so subdomains of one shop share a day (audit L1).
+    pub registrable: String,
 }
 
 const RESERVED_SUFFIXES: [&str; 13] = [
@@ -322,9 +328,16 @@ pub fn parse_public_url(input: &str) -> Result<PublicSite, UrlRefusal> {
     if labels.len() < 2 || RESERVED_SUFFIXES.contains(&tld) {
         return Err(UrlRefusal::Private);
     }
+    let domain = host.strip_prefix("www.").unwrap_or(&host).to_owned();
+    // A public suffix (`co.uk`, `github.io`) has no registrable domain: it is not one site, and
+    // it is refused here, before a Turnstile token is spent on it.
+    let Some(registrable) = psl::domain_str(&domain) else {
+        return Err(UrlRefusal::Suffix);
+    };
     Ok(PublicSite {
         origin: format!("{}://{host}/", url.scheme()),
-        domain: host.strip_prefix("www.").unwrap_or(&host).to_owned(),
+        registrable: registrable.to_owned(),
+        domain,
     })
 }
 
@@ -579,7 +592,7 @@ pub(crate) async fn create_free_scan(
     }
 
     let mut tx = state.db.public().await?;
-    free_scans::lock(&mut tx, &ip_hash, &site.domain).await?;
+    free_scans::lock(&mut tx, &ip_hash, &site.registrable).await?;
     // A complete scan of the domain from the last day answers, and costs the visitor nothing.
     if let Some(cached) = free_scans::cached(&mut tx, &site.domain).await? {
         tx.rollback().await?;
@@ -597,7 +610,7 @@ pub(crate) async fn create_free_scan(
             seconds: by_address.frees_in_seconds,
         }));
     }
-    let by_domain = free_scans::used_by_domain(&mut tx, &site.domain).await?;
+    let by_domain = free_scans::used_by_domain(&mut tx, &site.registrable).await?;
     if by_domain.count >= PER_DOMAIN {
         return Err(Refused::Limited(Limited {
             scope: "domain",
@@ -608,7 +621,15 @@ pub(crate) async fn create_free_scan(
         return Err(Refused::Busy);
     }
     let id = Uuid::now_v7();
-    free_scans::create(&mut tx, id, &site.domain, &site.origin, &ip_hash).await?;
+    free_scans::create(
+        &mut tx,
+        id,
+        &site.domain,
+        &site.registrable,
+        &site.origin,
+        &ip_hash,
+    )
+    .await?;
     free_scans::enqueue(&mut tx, id).await?;
     let created = free_scans::get(&mut tx, id).await?;
     tx.commit().await?;
@@ -688,6 +709,39 @@ mod tests {
         ];
         for (input, reason) in cases {
             assert_eq!(parse_public_url(input), Err(reason), "{input}");
+        }
+    }
+
+    #[test]
+    fn the_daily_limit_is_keyed_on_the_registrable_domain() {
+        let cases = [
+            ("shop.com", "shop.com"),
+            ("www.shop.com", "shop.com"),
+            ("a.b.shop.com", "shop.com"),
+            ("shop.co.uk", "shop.co.uk"),
+            ("blog.shop.co.uk", "shop.co.uk"),
+            // A private-section suffix: every `*.myshopify.com` store is its own site.
+            ("store.myshopify.com", "store.myshopify.com"),
+            ("deep.store.myshopify.com", "store.myshopify.com"),
+            ("me.github.io", "me.github.io"),
+        ];
+        for (input, registrable) in cases {
+            assert_eq!(ok(input).registrable, registrable, "{input}");
+        }
+        assert_eq!(ok("blog.shop.co.uk").domain, "blog.shop.co.uk");
+    }
+
+    #[test]
+    fn a_public_suffix_is_refused_before_anything_is_spent() {
+        for input in [
+            "co.uk",
+            "www.co.uk",
+            "https://myshopify.com/",
+            "github.io",
+            "com.au",
+            "blogspot.com",
+        ] {
+            assert_eq!(parse_public_url(input), Err(UrlRefusal::Suffix), "{input}");
         }
     }
 

@@ -160,6 +160,11 @@ describe('the api delegate', () => {
         { kind: 'invalid-url', reason: 'private' },
       ],
       [
+        // A public suffix the api refuses (audit L1): the page says only that it is not valid.
+        problem(422, [{ field: 'url', message: 'suffix' }]),
+        { kind: 'invalid-url', reason: 'invalid' },
+      ],
+      [
         problem(422, [{ field: 'url', message: 'something new' }]),
         { kind: 'invalid-url', reason: 'invalid' },
       ],

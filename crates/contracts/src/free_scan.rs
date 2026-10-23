@@ -193,6 +193,9 @@ mod tests {
         assert!(!page.within_limits(), "a page address of 2049 characters");
         let mut example = ok;
         example.failures[0].examples[0].page = too_long;
-        assert!(!example.within_limits(), "an example address of 2049 characters");
+        assert!(
+            !example.within_limits(),
+            "an example address of 2049 characters"
+        );
     }
 }
