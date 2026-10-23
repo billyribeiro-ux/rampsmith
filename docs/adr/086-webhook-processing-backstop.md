@@ -16,12 +16,17 @@ and for `shop/redact` and `customers/*` that is a legal deadline (PLAN §19).
 
 1. `WebhookProcess::MAX_ATTEMPTS` is 96 and the listener sets it on the job. The backoff is
    capped at one hour with equal jitter (a delay is between a half and the whole of the capped
-   value), so 96 attempts span at least two days and on average over three.
-2. `webhook_events_sweep()` (migration `20261105000003`, security definer, executable by the
+   value). Ninety-six attempts leave 95 delays: ten of 5 s doubling to 2,560 s, then 85 at the
+   one hour cap, at most 311,115 s in all. With equal jitter that is at least 1.8 days, on average
+   2.7 and at most 3.6 days. (The first version of this ADR said "at least two days and on
+   average over three".)
+2. `webhook_events_sweep()` (migration `20261105000002`, security definer, executable by the
    worker role only, ages fixed in the function) gives a new job to every event unprocessed for
    30 minutes that has no `ready` or `running` job, at most once per hour per event and for 14
-   days after arrival. It returns how many it queued, how many events have waited 24 hours or
-   more, and the age of the oldest.
+   days after arrival (45 days for `customers/data_request`, `customers/redact` and `shop/redact`,
+   migration `20261107000002`, ADR-269). It returns how many it queued, how many events have
+   waited 24 hours or more, and the age of the oldest; an unreadable event of a redacted shop is
+   neither queued nor counted.
 3. ctl's leader runs the sweep every 5 minutes (`Cadence::webhook_sweep_every`). While any event
    has waited 24 hours it logs an error with the field `webhook_event_stuck` on every run. That
    log line, and any dead `webhook.process` job, page (`docs/runbooks/README.md`).

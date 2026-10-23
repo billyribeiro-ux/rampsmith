@@ -10,9 +10,10 @@ use db::{Db, RoleError, RuntimeRole};
 use tracing::warn;
 
 /// Waits until the database confirms the pool is connected as a plain `LOGIN` member of
-/// `rampsmith_worker`. Returns `Ok(true)` then, `Ok(false)` if `shutdown` resolved first, and
-/// an error as soon as the database answers that the role is unfit: that is a configuration
-/// mistake no retry fixes. An unreachable database is retried every `retry_every`, so a
+/// `rampsmith_worker` that may also execute `redact_ai_calls()` (membership of
+/// `rampsmith_redactor`, ADR-089). Returns `Ok(true)` then, `Ok(false)` if `shutdown` resolved
+/// first, and an error as soon as the database answers that the role is unfit: that is a
+/// configuration mistake no retry fixes. An unreachable database is retried every `retry_every`, so a
 /// deploy that starts before the database does not crash-loop.
 pub async fn require_worker_role(
     db: &Db,
@@ -21,7 +22,7 @@ pub async fn require_worker_role(
 ) -> Result<bool, RoleError> {
     tokio::pin!(shutdown);
     loop {
-        match db.verify_runtime_role(RuntimeRole::Worker).await {
+        match db.verify_runtime_role(RuntimeRole::Ctl).await {
             Ok(()) => return Ok(true),
             Err(refused @ RoleError::Refused { .. }) => return Err(refused),
             Err(RoleError::Unreachable(error)) => {

@@ -833,3 +833,246 @@ async fn the_sweep_brings_back_stored_events_whose_job_is_gone_and_reports_the_o
     w.jobs.dispatch(job).await.unwrap();
     assert_eq!(processed(&w, lost).await, (true, true));
 }
+
+// ---------------------------------------------------------------------------------------------
+// Re-audit M-1, M-2, L-2 (ADR-269).
+// ---------------------------------------------------------------------------------------------
+
+/// Answers of the grant check that are neither "the token works" nor 401: a frozen, locked,
+/// forbidden or unreachable store. None of them may end the installation or redact the shop.
+fn undecided_answers() -> Vec<(&'static str, u16, Value)> {
+    vec![
+        ("402", 402, json!({"errors": "Payment Required"})),
+        ("403", 403, json!({"errors": "Forbidden"})),
+        ("423", 423, json!({"errors": "Locked"})),
+        (
+            "SHOP_INACTIVE",
+            200,
+            json!({"errors": [{"message": "The shop is inactive",
+                               "extensions": {"code": "SHOP_INACTIVE"}}]}),
+        ),
+    ]
+}
+
+fn retryable(result: Result<(), Failure>) -> String {
+    match result {
+        Err(Failure::Retryable(e)) => e.code,
+        other => panic!("expected a retryable failure, got {other:?}"),
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_frozen_locked_or_forbidden_shop_retries_the_uninstall_instead_of_deciding(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let event = store(&w, "app/uninstalled", shop_object()).await;
+    let mut answers = undecided_answers();
+    // A deleted store has no grant to check, but only shop/redact may settle it.
+    answers.push(("404", 404, json!({"errors": "Not Found"})));
+    for (name, status_code, body) in answers {
+        w.admin.reset().await;
+        w.admin_answers(status_code, body).await;
+        let code = retryable(process(&w, event).await);
+        assert!(!code.is_empty(), "{name}");
+        assert_eq!(status(&w).await, "installed", "{name}");
+        assert_eq!(
+            w.count("select count(*) from shopify_tokens").await,
+            1,
+            "{name}"
+        );
+        assert_eq!(processed(&w, event).await, (false, false), "{name}");
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_frozen_locked_or_forbidden_shop_retries_shop_redact_and_a_deleted_one_is_redacted(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    let before = counts(&w).await;
+    let event = store(&w, "shop/redact", genuine_redact()).await;
+    for (name, status_code, body) in undecided_answers() {
+        w.admin.reset().await;
+        w.admin_answers(status_code, body).await;
+        let code = retryable(process(&w, event).await);
+        assert!(!code.is_empty(), "{name}");
+        assert_eq!(counts(&w).await, before, "{name}: nothing was deleted");
+        assert_eq!(status(&w).await, "installed", "{name}");
+        assert_eq!(processed(&w, event).await, (false, false), "{name}");
+    }
+    // Shopify does not know the store any more: there is no grant left, so it is redacted.
+    w.admin.reset().await;
+    w.admin_answers(404, json!({"errors": "Not Found"})).await;
+    process(&w, event).await.unwrap();
+    assert_eq!(status(&w).await, "redacted");
+    assert_eq!(counts(&w).await, (0, 0, 0));
+    assert_eq!(
+        w.count("select count(*) from audit_log where action = 'compliance.shop_redacted'")
+            .await,
+        1
+    );
+}
+
+async fn queue_job(w: &World, event: Uuid) {
+    sqlx::query(
+        "insert into jobs (id, queue, payload_schema, payload, tenant_id, state, max_attempts)
+         values ($1, 'webhook.process', 'webhook.process@1', $2, $3, 'ready', 96)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(json!({"event_id": event}))
+    .bind(w.session.tenant.as_uuid())
+    .execute(&w.owner)
+    .await
+    .unwrap();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn shop_redact_with_a_pending_customer_redact_leaves_no_dead_job_and_no_alert(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    w.admin_answers(
+        401,
+        json!({"errors": "[API] Invalid API key or access token"}),
+    )
+    .await;
+    let redact = store(&w, "shop/redact", genuine_redact()).await;
+    let customer = store(
+        &w,
+        "customers/redact",
+        json!({"shop_id": 954_889, "shop_domain": SHOP,
+               "customer": {"id": 191_167, "email": "jane@example.com"},
+               "orders_to_redact": [299_938]}),
+    )
+    .await;
+    let request = store(
+        &w,
+        "customers/data_request",
+        json!({"shop_id": 954_889, "shop_domain": SHOP, "orders_requested": [1],
+               "customer": {"id": 191_167}, "data_request": {"id": 9999}}),
+    )
+    .await;
+    for event in [redact, customer, request] {
+        queue_job(&w, event).await;
+    }
+    // The events are older than the sweep's grace period and the alert's 24 hours.
+    sqlx::query("update webhook_events set received_at = now() - interval '3 days'")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+
+    process(&w, redact).await.unwrap();
+
+    // The other two events are closed, their bodies are gone and their jobs cancelled.
+    assert_eq!(processed(&w, customer).await, (true, true));
+    assert_eq!(processed(&w, request).await, (true, true));
+    assert_eq!(
+        w.count("select count(*) from jobs where queue = 'webhook.process' and state = 'dead'")
+            .await,
+        0
+    );
+    assert_eq!(
+        w.count("select count(*) from jobs where queue = 'webhook.process' and state = 'ready'")
+            .await,
+        0,
+        "no job is left to fail on a cleared payload"
+    );
+    let found = ctl::leader::sweep_webhooks(&w.pool).await.unwrap();
+    assert_eq!((found.requeued, found.stuck), (0, 0));
+    let audit: Value =
+        sqlx::query_scalar("select data from audit_log where action = 'compliance.shop_redacted'")
+            .fetch_one(&w.owner)
+            .await
+            .unwrap();
+    assert_eq!(audit["removed"]["events_closed"], 3);
+
+    // A job that was already running for one of them finishes quietly, with an audit entry.
+    process(&w, customer).await.unwrap();
+    // Even if its body is gone and the event was not closed (an older build's leftovers).
+    sqlx::query("update webhook_events set processed_at = null where id = $1")
+        .bind(request)
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    process(&w, request).await.unwrap();
+    assert_eq!(processed(&w, request).await, (true, true));
+    assert_eq!(
+        w.count("select count(*) from audit_log where action = 'webhook.skipped_shop_redacted'")
+            .await,
+        1
+    );
+    assert_eq!(
+        w.count("select count(*) from webhook_events where body::text like '%jane@%'")
+            .await,
+        0
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_event_without_a_body_for_a_live_shop_is_still_unreadable(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let event = store(&w, "shop/update", shop_object()).await;
+    sqlx::query("update webhook_events set body = null")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    assert_eq!(permanent(process(&w, event).await), "event_unreadable");
+}
+
+/// The shop was not installed when the event was read and is installed when the deleting
+/// transaction takes its lock: nothing has checked the new grant, so the redaction starts over.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_shop_installed_again_while_shop_redact_waits_is_not_redacted(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    seed_shop_data(&w).await;
+    sqlx::query("update shopify_shops set status = 'uninstalled', uninstalled_at = now()")
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    let before = counts(&w).await;
+    let event = store(&w, "shop/redact", genuine_redact()).await;
+
+    // A reinstall holds the row while the worker reads it, and commits after the worker waits.
+    let mut reinstall = w.owner.begin().await.unwrap();
+    sqlx::query("select 1 from shopify_shops for update")
+        .execute(&mut *reinstall)
+        .await
+        .unwrap();
+    let worker = {
+        let jobs = w.jobs.clone();
+        let job = w.job(
+            WebhookProcess::QUEUE,
+            WebhookProcess::SCHEMA,
+            json!({"event_id": event}),
+        );
+        tokio::spawn(async move { jobs.dispatch(job).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    sqlx::query("update shopify_shops set status = 'installed', uninstalled_at = null")
+        .execute(&mut *reinstall)
+        .await
+        .unwrap();
+    reinstall.commit().await.unwrap();
+
+    let result = worker.await.unwrap();
+    assert_eq!(retryable(result), "shop_changed");
+    assert_eq!(
+        counts(&w).await,
+        before,
+        "the reinstalled shop kept its data"
+    );
+    assert_eq!(status(&w).await, "installed");
+    assert_eq!(processed(&w, event).await, (false, false));
+}

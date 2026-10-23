@@ -21,7 +21,24 @@ redirect_urls = ["https://rampsmith.invalid/auth/callback"]
 
 [webhooks]
 api_version = "2026-10"
-# Subscriptions arrive with the webhook intake (R1) and the compliance topics (R2).
+
+# App-specific subscriptions (ADR-088). Shopify delivers to the webhook host, which reaches the
+# api's webhook listener and nothing else of the api (ADR-182), and that listener serves only
+# `/webhooks/shopify`. `hooks.rampsmith.invalid` is a placeholder like `application_url`: the
+# founder replaces it with the value of RAMPSMITH_WEBHOOK_HOST (LAUNCH.md C row 10) before the
+# first `shopify app deploy`, and `infra/railway/tests/test_shopify_app_config.py` fails the
+# deploy when the two differ. A relative URI would resolve against `application_url`, which is the
+# `web` host and not the webhook host, so the URI is absolute.
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled", "shop/update"]
+uri = "https://hooks.rampsmith.invalid/webhooks/shopify"
+
+# The mandatory privacy topics, as `compliance_topics` (the legacy `[webhooks.privacy_compliance]`
+# table cannot be combined with them). Shopify requires these three of every public app, and the
+# handler for each is `crates/ctl/src/jobs/webhook.rs`.
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "https://hooks.rampsmith.invalid/webhooks/shopify"
 
 [pos]
 embedded = false

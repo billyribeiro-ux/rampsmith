@@ -134,6 +134,24 @@ pub async fn get(tx: &mut TenantTx, id: ShopId) -> Result<Option<Shop>, DbError>
     row.map(Shop::try_from).transpose()
 }
 
+/// Locks the shop's row until the transaction ends and returns its status as it is now. A
+/// handler that is about to delete the shop's data calls it inside the deleting transaction, so
+/// a reinstall that committed after the handler's first read is seen, and a later reinstall
+/// waits for the deletion (re-audit L-2). `None` when the shop is not this tenant's.
+pub async fn lock_status(tx: &mut TenantTx, id: ShopId) -> Result<Option<ShopStatus>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let status = sqlx::query_scalar!(
+        "select status from shopify_shops where tenant_id = $1 and id = $2 for update",
+        tenant,
+        id.as_uuid(),
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    status
+        .map(|status| parse(&status, "shopify_shops.status"))
+        .transpose()
+}
+
 /// Sealed tokens and their expiry, as stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SealedTokens {

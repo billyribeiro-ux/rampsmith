@@ -188,6 +188,9 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [082](082-data-fix-lifecycle.md) | The data-fix lifecycle: approve, apply, verify, undo | Accepted |
 | [083](083-embedded-app-api-operations.md) | The embedded app's api operations | Accepted |
 | [084](084-plan-state-and-partner-api-fairness.md) | Plan state in the api, and Partner API fairness (audit M3) | Accepted |
+| [088](088-webhook-subscriptions-in-the-app-config.md) | Webhook subscriptions are declared in `shopify.app.toml` | Accepted |
+| [089](089-redaction-privilege-group.md) | Deleting AI call records belongs to a group of its own, `rampsmith_redactor` | Accepted |
+| [269](269-webhook-redaction-reaudit-fixes.md) | The re-audit's fixes to webhook handling and redaction | Accepted |
 
 ## Template
 

@@ -6,7 +6,7 @@
 | Severity | SEV2: webhooks failing or processing far behind. SEV1 if a compliance topic (`customers/data_request`, `customers/redact`, `shop/redact`) or `app/uninstalled` is being lost |
 | Use it when | Webhook intake errors or slows; the `webhook.process` queue grows; signature failures rise; a store's changes do not show in the app; Shopify or GitHub reports failed deliveries |
 | Decisions behind it | ADR-178 (this runbook and what it assumes), ADR-177 (the GitHub secret), ADR-182 (the webhook host serves only `/webhooks/*`) |
-| Verified | 2026-10-19 against Shopify's and GitHub's documentation (cited in ADR-178) and the queue code. **Most of the webhook system is not built**, so most steps below cannot run yet. The table says which; nothing here was run against a live webhook |
+| Verified | 2026-10-19 against Shopify's and GitHub's documentation (cited in ADR-178) and the queue code; updated 2026-10-22 for the built intake, worker, subscriptions (ADR-088) and the redaction path (ADR-269). **Nothing here was run against a live webhook** (LAUNCH.md section E); the GitHub half and the counters are still not built |
 
 ## What exists, and what does not
 
@@ -14,13 +14,13 @@
 | --- | --- |
 | The queue, `jobs-depth.sql`, `jobs-dead.sql`, dead-letter triage | Built and tested ([dead-letter triage](dead-letter-triage.md)) |
 | Shopify webhook HMAC code (`crates/shopify`), GitHub `WebhookVerifier` (`ws/github-app`) | Library code only |
-| The `/webhooks/shopify` and `/webhooks/github` routes, the second listener on `WEBHOOK_BIND_ADDR`, the `webhook_events` table with its unique event id, the `webhook.process` handler | **Not built** (PLAN §10, §14). No branch has them (checked 19 Oct 2026) |
-| Webhook subscriptions | **Not built**: `shopify.app.toml` says "Subscriptions arrive with the webhook intake (R1)" |
+| The `/webhooks/shopify` route, the second listener on `WEBHOOK_BIND_ADDR`, the `webhook_events` table with its unique event id, the `webhook.process` handler, the sweep that requeues lost events (ADR-080, ADR-085, ADR-086) | Built and tested (`crates/api`, `crates/ctl`, `crates/db`). `/webhooks/github` is **not built** |
+| Webhook subscriptions | Built: `shopify.app.toml` subscribes `app/uninstalled`, `shop/update` and the three compliance topics to `https://<webhook host>/webhooks/shopify`; `deploy.yml` checks the file it deploys (ADR-088). Delivery to a store is a LAUNCH.md section E check |
 | Counters for received, acknowledged, signature-failed webhooks (the signals behind the SLO and the page) | **Not built** |
 | A reconciliation job that fetches what webhooks missed | **Not built**; Shopify tells apps to build one |
-| `rsctl webhooks …` (list, replay) | **Not built**; nothing replays a stored event |
+| `rsctl webhooks …` (list, replay) | **Not built**; nothing replays a stored event. `rsctl shops redact` exists (section 6) |
 
-This runbook is the plan for operating the intake once it exists. Steps that need an unbuilt piece say so. What is built today is the queue half (steps 3 and 5).
+Steps that need an unbuilt piece say so. The intake and the queue half are built (steps 2, 3 and 6); the counters and the reconciliation job are not.
 
 ## What the providers do (so you know how long a gap can be)
 
@@ -40,9 +40,7 @@ Open the ticket with the time and the symptom. Then:
 | `webhook.process` jobs arrive but `ready` grows and its oldest age rises | Processing is behind | Step 3 |
 | The app misses changes after an outage; Shopify's delivery report shows failures or a missing subscription | Events were lost | Step 5 |
 
-## 2. Intake is not answering (not built)
-
-When the listener exists:
+## 2. Intake is not answering
 
 1. From any machine: `curl -sS -o /dev/null -w '%{http_code}\n' -X POST https://<webhook host>/webhooks/shopify` with **no body and no signature**. A healthy intake answers `401` (an invalid signature returns 401, PLAN §14), not `5xx`, a timeout, or a Cloudflare error page. Never send a real payload.
 2. If it does not: Cloudflare (DNS and proxy for the webhook host), then Railway: `railway deployment list --service api --environment production`, `railway logs --service api --environment production --since 30m --filter "@level:error"`.
@@ -81,10 +79,31 @@ Because the stored copy of each event is what is processed (PLAN §18), draining
 
 1. Decide the gap: from the first failed delivery to the first success, from the ticket's outage times and the providers' own reports (Shopify's webhook delivery metrics report for apps built through the Partner Dashboard or CLI; GitHub's Recent deliveries under the App's Advanced settings).
 2. **Shopify, gap under 4 hours:** nothing to do once intake answers; retries land by themselves. Check `jobs-depth.sql` drains.
-3. **Shopify, longer, or the subscription was removed:** the events are gone. Reconcile by hand through the Admin API for the topics Rampsmith subscribes to (`products/create`, `products/update`, `themes/publish`, `themes/create`, `shop/update`, `app/uninstalled`; PLAN §14): read what changed since the start of the gap and enqueue the same work a webhook would have. No tool does this yet; write the findings in the ticket and ask the founder before running any bulk change. A missed `app/uninstalled` shows itself when that shop's token calls are rejected (`RefreshOutcome::Revoked`, `shopify.token_revoked` in `audit_log`).
+3. **Shopify, longer, or the subscription was removed:** the events are gone. Reconcile by hand through the Admin API for the topics Rampsmith subscribes to (today `shop/update` and `app/uninstalled`, plus the three compliance topics, all in `shopify.app.toml`; PLAN §14 plans product and theme topics for later): read what changed since the start of the gap and enqueue the same work a webhook would have. No tool does this yet; write the findings in the ticket and ask the founder before running any bulk change. A missed `app/uninstalled` shows itself when that shop's token calls are rejected (`RefreshOutcome::Revoked`, `shopify.token_revoked` in `audit_log`).
 4. **Re-create a removed subscription:** subscriptions are declared in `shopify.app.toml`, and `shopify app deploy` (the `shopify` job of `deploy.yml`, with a second approval on production) pushes them. Confirm in Shopify's delivery report that the subscription is back.
 5. **Compliance topics** (`customers/data_request`, `customers/redact`, `shop/redact`): a missed one is a deadline problem (30 days, PLAN §19), not just a freshness problem. Ask Shopify support whether it can resend, say which shops and dates in the ticket, and have the attorney review the position before anything is promised to a merchant. Whether Shopify resends mandatory webhooks after the retries are exhausted is not stated on the pages read.
 6. **GitHub:** web interface: Settings > Developer settings > GitHub Apps > the App > Edit > Advanced > Recent deliveries; open each failed delivery in the gap and click Redeliver. Only the past 3 days are available: beyond that the events are gone and the affected repositories re-sync when the next event arrives (not built).
+
+## 6. A redaction that cannot finish
+
+`shop/redact` redacts an installed shop only when Shopify says the grant is gone (401), or the store no longer exists (404). A frozen or closed store answers 402 or 423, a forbidden one 403: the job retries for about 2.7 days (96 attempts, ADR-086) and the sweep gives the event a new job every hour for 45 days. The data stays until then. The 30 days of PLAN §19 end first, so:
+
+1. Find the events: the log line `webhook events have been unprocessed for over 24 hours` (field `webhook_event_stuck`), or dead `webhook.process` jobs with `shop_unavailable`, `access_denied` or `shop_not_found` ([dead-letter triage](dead-letter-triage.md)).
+2. Do nothing before day 14 unless the merchant asks: stores reopen. Never retry by hand or mark the event processed.
+3. Near day 14, and surely before day 25 after the `shop/redact` arrived, a person confirms in the Partner Dashboard (Apps, the app, the shop, or the merchant's own confirmation) that the app is uninstalled or the store is closed. Write who and what in the ticket.
+4. Look first (changes nothing). From a checkout, inside ctl's service so `DATABASE_URL` is ctl's own login and reaches the private database:
+
+```sh
+railway ssh --service ctl --environment production
+rsctl shops redact --shop <name>.myshopify.com --confirmed-by <your handle> \
+  --evidence "<what you checked>, ticket <n>"
+```
+
+   It prints the shop's status and what it would do. It refuses any other database login.
+5. Do it: the same command with `--execute`. It ends the installation if needed, deletes the shop's data (the audit log and the webhook digests stay), closes the shop's pending events and writes `compliance.shop_redacted_by_operator` with your handle and evidence. It never asks Shopify.
+6. Verify: `select status from shopify_shops where shop_domain = '<shop>'` is `redacted`; no `webhook.process` job for the shop is `ready` or `dead` any more; `webhook_event_stuck` stops.
+
+Rollback: none. Redaction deletes data; only run `--execute` after step 3.
 
 ## Verify (done means)
 

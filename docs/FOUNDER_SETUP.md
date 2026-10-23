@@ -207,7 +207,7 @@ Wait until builders commit `shopify.app.toml`. Shopify says App Store apps shoul
    - Create a new app under your cleared name.
    - Name the configuration `production`.
    - Not verified: the exact prompt wording.
-5. Give builders the new `shopify.app.production.toml`, or just its `client_id`. Shopify calls it "the app's public identifier".
+5. Give builders the new `shopify.app.production.toml`, or just its `client_id`. Shopify calls it "the app's public identifier". The file `config link` writes has no webhook subscriptions: builders copy the `[[webhooks.subscriptions]]` tables of `shopify.app.toml` into it and set their host to your `RAMPSMITH_WEBHOOK_HOST` (ADR-088); `deploy.yml` refuses to push a file that lacks them.
 6. Get the credentials: Dev Dashboard (https://dev.shopify.com/dashboard) > Apps > your app > Settings > Credentials. Copy the Client ID and Client secret.
 7. Choose distribution: app Home > Distribution card > Select distribution method > public (Shopify App Store) > confirm. This can't be undone. Do it on this production app only.
 
