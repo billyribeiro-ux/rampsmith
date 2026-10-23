@@ -32,6 +32,36 @@ impl SuppressionReason {
     }
 }
 
+/// A category of mail a recipient can switch off (ADR-191, ADR-275). Security and transactional
+/// mail has no category here: nobody can opt out of a sign-in link or a deletion notice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OptOutCategory {
+    /// Product notifications: scan results, fix updates, store activity.
+    Notification,
+    /// Anything promotional.
+    Marketing,
+}
+
+impl OptOutCategory {
+    /// Every category, in the order the screens list them.
+    pub const ALL: [Self; 2] = [Self::Notification, Self::Marketing];
+
+    /// The value stored and sent over the wire.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Notification => "notification",
+            Self::Marketing => "marketing",
+        }
+    }
+
+    /// The category named by `text`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.as_str() == text)
+    }
+}
+
 /// What the email needs to know about a shop's owner besides the address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShopContact {
@@ -156,9 +186,101 @@ pub async fn is_suppressed(tx: &mut TenantTx, address: &str) -> Result<bool, DbE
     .await?)
 }
 
+/// Switches `category` off for the address with this hash (`email_address_hash`). A second call
+/// changes nothing.
+pub async fn opt_out(
+    tx: &mut TenantTx,
+    address_hash: &[u8],
+    category: OptOutCategory,
+) -> Result<(), DbError> {
+    let tenant = tx.tenant_uuid();
+    sqlx::query!(
+        r#"insert into email_opt_outs (tenant_id, address_hash, category)
+           values ($1, $2, $3) on conflict do nothing"#,
+        tenant,
+        address_hash,
+        category.as_str(),
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(())
+}
+
+/// Switches `category` back on for the address with this hash. Returns whether it was off.
+pub async fn opt_in(
+    tx: &mut TenantTx,
+    address_hash: &[u8],
+    category: OptOutCategory,
+) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        "delete from email_opt_outs where tenant_id = $1 and address_hash = $2 and category = $3",
+        tenant,
+        address_hash,
+        category.as_str(),
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// The categories the address with this hash has switched off.
+pub async fn opted_out(
+    tx: &mut TenantTx,
+    address_hash: &[u8],
+) -> Result<Vec<OptOutCategory>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let rows = sqlx::query_scalar!(
+        "select category from email_opt_outs where tenant_id = $1 and address_hash = $2",
+        tenant,
+        address_hash,
+    )
+    .fetch_all(tx.conn())
+    .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|text| OptOutCategory::parse(text))
+        .collect())
+}
+
+/// The hash of the address the shop's notification mail goes to: the settings' notification
+/// address when the merchant gave one, else the owner's (ADR-275). `None` while neither is
+/// known. The address itself stays in the database.
+pub async fn notification_address_hash(
+    tx: &mut TenantTx,
+    shop: ShopId,
+) -> Result<Option<Vec<u8>>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let row = sqlx::query_scalar!(
+        r#"select email_address_hash(
+                    c.tenant_id,
+                    coalesce(nullif(btrim(st.settings ->> 'notification_email'), ''), c.email)
+                  ) as "hash!"
+             from shop_contacts c
+             join shopify_shops sh on sh.id = c.shop_id and sh.tenant_id = c.tenant_id
+             join sites st on st.id = sh.site_id and st.tenant_id = sh.tenant_id
+            where c.tenant_id = $1 and c.shop_id = $2"#,
+        tenant,
+        shop.as_uuid(),
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    Ok(row)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::plausible;
+    use super::{OptOutCategory, plausible};
+
+    #[test]
+    fn categories_round_trip_through_their_wire_names() {
+        for category in OptOutCategory::ALL {
+            assert_eq!(OptOutCategory::parse(category.as_str()), Some(category));
+        }
+        for other in ["security", "transactional", "", "Notification"] {
+            assert_eq!(OptOutCategory::parse(other), None, "{other}");
+        }
+    }
 
     #[test]
     fn plausible_addresses_match_the_tables_check() {

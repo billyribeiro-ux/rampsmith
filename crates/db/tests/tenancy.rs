@@ -1615,7 +1615,12 @@ async fn the_embedded_apps_queries_scope_themselves_without_row_level_security(
 
 // --- Email: contacts, suppressions and the sender's ledger (ADR-270 to ADR-272) ----------------
 
-const EMAIL_TABLES: [&str; 3] = ["shop_contacts", "email_suppressions", "email_deliveries"];
+const EMAIL_TABLES: [&str; 4] = [
+    "shop_contacts",
+    "email_suppressions",
+    "email_deliveries",
+    "email_opt_outs",
+];
 
 /// One row of each email table for the graph's tenant, written through the role that owns the
 /// write in production: `ctl` for the contact, the application for the suppression, a worker for
@@ -1645,6 +1650,9 @@ async fn seed_email(opts: &PgPoolOptions, conn: &PgConnectOptions, graph: Graph)
     )
     .await
     .unwrap();
+    email::opt_out(&mut tx, &[7u8; 32], email::OptOutCategory::Notification)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     let worker = worker_pool(opts.clone(), conn.clone()).await;
@@ -1686,7 +1694,10 @@ async fn each_tenant_sees_exactly_its_own_row_of_every_email_table(
     let app = app_pool(opts, conn).await;
     for (pool, tables) in [
         (&worker, EMAIL_TABLES.as_slice()),
-        (&app, &["email_suppressions", "email_deliveries"][..]),
+        (
+            &app,
+            &["email_suppressions", "email_deliveries", "email_opt_outs"][..],
+        ),
     ] {
         for me in [a, b] {
             let mut tx = pool.begin().await.unwrap();
@@ -1716,10 +1727,18 @@ async fn email_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
 ) {
     let (_, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
     let ctl = ctl_pool(opts.clone(), conn.clone()).await;
-    let worker = worker_pool(opts, conn).await;
+    let worker = worker_pool(opts.clone(), conn.clone()).await;
+    let app = app_pool(opts, conn).await;
     let b_tenant = b.tenant.as_uuid();
     // A write for tenant B inside tenant A's transaction is a row-level-security violation.
-    let writes: [(&PgPool, String); 3] = [
+    let writes: [(&PgPool, String); 4] = [
+        (
+            &app,
+            format!(
+                "insert into email_opt_outs (tenant_id, address_hash, category)
+                 values ('{b_tenant}', sha256('x'), 'marketing')"
+            ),
+        ),
         (
             &ctl,
             format!(
@@ -1797,6 +1816,11 @@ async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
         (&worker, "delete from shop_contacts"),
         (&worker, "delete from email_deliveries"),
         (&worker, "delete from email_suppressions"),
+        (&worker, "delete from email_opt_outs"),
+        (
+            &worker,
+            "insert into email_opt_outs (tenant_id, address_hash, category) values (gen_random_uuid(), sha256('x'), 'marketing')",
+        ),
         (&app, "update shop_contacts set store_name = 'x'"),
         (&app, "delete from shop_contacts"),
         (
@@ -1959,4 +1983,41 @@ async fn the_delivery_record_holds_no_address_subject_or_body(
             "updated_at"
         ]
     );
+}
+
+#[sqlx::test]
+async fn an_opt_out_is_idempotent_per_category_and_can_be_taken_back(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, _) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let app = Db::from_pool(app_pool(opts, conn).await);
+    let hash = [9u8; 32];
+    let mut tx = app.tenant(a.tenant).await.unwrap();
+    for _ in 0..2 {
+        email::opt_out(&mut tx, &hash, email::OptOutCategory::Marketing)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        email::opted_out(&mut tx, &hash).await.unwrap(),
+        vec![email::OptOutCategory::Marketing]
+    );
+    assert!(
+        email::opt_in(&mut tx, &hash, email::OptOutCategory::Marketing)
+            .await
+            .unwrap(),
+        "the first opt-in removes the row"
+    );
+    assert!(
+        !email::opt_in(&mut tx, &hash, email::OptOutCategory::Marketing)
+            .await
+            .unwrap(),
+        "the second finds nothing to remove"
+    );
+    assert!(
+        email::opted_out(&mut tx, &hash).await.unwrap().is_empty(),
+        "nothing left opted out"
+    );
+    tx.commit().await.unwrap();
 }

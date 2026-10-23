@@ -6,7 +6,7 @@
 import type { IdempotencyLedger, LedgerClaim } from '@rampsmith/email';
 import type postgres from 'postgres';
 import { withTenant } from '../store.ts';
-import type { SuppressionReason } from './suppression.ts';
+import type { OPTED_OUT, SuppressionReason } from './suppression.ts';
 
 export class PgLedger implements IdempotencyLedger {
   readonly #sql: postgres.Sql;
@@ -59,8 +59,8 @@ export class PgLedger implements IdempotencyLedger {
     });
   }
 
-  /** Records that the message was not sent because the recipient is on the suppression list. */
-  async suppressed(key: string, reason: SuppressionReason): Promise<void> {
+  /** Records that the message was not sent because the recipient is on the suppression list or switched the category off. */
+  async suppressed(key: string, reason: SuppressionReason | typeof OPTED_OUT): Promise<void> {
     await withTenant(this.#sql, this.#tenantId, async (tx) => {
       await tx`
         insert into email_deliveries (tenant_id, message_key, template, state, error_code)

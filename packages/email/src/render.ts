@@ -180,7 +180,8 @@ export function createEmailRenderer(
     const headers: Record<string, string> = {};
     const problems: SendProblem[] = [];
     if (content.subscription !== undefined) {
-      const { unsubscribe, preferences } = content.subscription;
+      const { unsubscribe, preferences, oneClick } = content.subscription;
+      const postTo = oneClick ?? unsubscribe;
       if (preferences !== undefined) {
         links.push({ label: t.text('footer_preferences'), href: preferences });
       }
@@ -192,9 +193,9 @@ export function createEmailRenderer(
         ),
         href: unsubscribe,
       });
-      headers['List-Unsubscribe'] = `<${unsubscribe}>`;
+      headers['List-Unsubscribe'] = `<${postTo}>`;
       headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
-      if (!unsubscribe.startsWith('https://')) {
+      if (!postTo.startsWith('https://') || !unsubscribe.startsWith('https://')) {
         problems.push('unsubscribe-not-https');
       }
     }

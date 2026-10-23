@@ -8,6 +8,7 @@
  * await guardSender(sesSender).send({ to, idempotencyKey, email });
  * ```
  */
+export { isEmailAddress, parseOrigin } from './links.ts';
 export { categoryOf, EMAIL_KINDS, isEmailKind, type EmailInput, type EmailKind } from './kinds.ts';
 export {
   createEmailRenderer,
@@ -42,6 +43,19 @@ export {
   type SendReceipt,
 } from './sender.ts';
 export { SettingsError, type EmailSettings } from './settings.ts';
-export { CATEGORIES, type Category } from './template.ts';
+export {
+  LINK_TTL_SECONDS,
+  LinkKeyError,
+  LinkKeyRing,
+  mintLinkToken,
+  OPT_OUT_CATEGORIES,
+  verifyLinkToken,
+  type LinkClaims,
+  type LinkPurpose,
+  type LinkRefusal,
+  type LinkVerdict,
+  type OptOutCategory,
+} from './link-token.ts';
+export { CATEGORIES, isSubscribed as isSubscribedCategory, type Category } from './template.ts';
 export { BASE_LOCALE, SHIPPED_CATALOGS } from './translator.ts';
 export { CatalogError } from './i18n.ts';

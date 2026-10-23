@@ -3,7 +3,7 @@
  * stand-in for the Amazon SES endpoint that checks the SigV4 signature (ADR-270 to ADR-273).
  */
 import { readFileSync } from 'node:fs';
-import { EMAIL_KINDS } from '@rampsmith/email';
+import { EMAIL_KINDS, LinkKeyRing, verifyLinkToken } from '@rampsmith/email';
 import { startFakeSes, type FakeSes } from '@rampsmith/email/testing';
 import { JobFailure, uuidv7 } from '@rampsmith/queue';
 import type postgres from 'postgres';
@@ -21,6 +21,8 @@ const APP = 'https://app.rampsmith.example';
 
 const ENV = {
   APP_ORIGIN: APP,
+  EMAIL_LINK_KEYS: `k1:${Buffer.alloc(32, 7).toString('base64')}`,
+  EMAIL_ONE_CLICK_ORIGIN: 'https://hooks.rampsmith.example',
   EMAIL_FROM: 'Rampsmith <hello@rampsmith.example>',
   EMAIL_POSTAL_ADDRESS: '100 Example Street\nSpringfield, EX 00000\nUnited States (test fixture)',
   SES_REGION: 'eu-west-1',
@@ -342,6 +344,94 @@ describe('the recipient', () => {
         expect(blocks(reason, category)).toBe(true);
       }
     }
+  });
+});
+
+const WELCOME_INPUT = {
+  storeName: 'Demo Outfitters',
+  appUrl: 'https://admin.shopify.com/store/demo/apps/rampsmith',
+};
+
+function welcomeJob(t: Tenant): JobInput {
+  return job(t, { template: 'welcome', input: WELCOME_INPUT, message_key: `welcome:${uuidv7()}` });
+}
+
+function headerOf(request: FakeSes['requests'][number] | undefined, name: string): string {
+  return request?.body.Content.Simple.Headers?.find((h) => h.Name === name)?.Value ?? '';
+}
+
+describe('mail a recipient can switch off', () => {
+  const ring = LinkKeyRing.parse(`k1:${Buffer.alloc(32, 7).toString('base64')}`);
+  const now = () => Math.floor(Date.now() / 1000);
+
+  it('carries signed, single-purpose links and the one-click headers', async () => {
+    const t = await tenant();
+    const before = ses.requests.length;
+    expect(await outcome(handler()(welcomeJob(t)))).toBe('done');
+    const request = ses.requests[before];
+    const listUnsub = headerOf(request, 'List-Unsubscribe');
+    const oneClick =
+      /^<(https:\/\/hooks\.rampsmith\.example\/webhooks\/email\/unsubscribe\?t=([\w-]+))>$/u.exec(
+        listUnsub,
+      );
+    expect(oneClick, 'List-Unsubscribe points at the webhook host').not.toBeNull();
+    expect(headerOf(request, 'List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
+
+    const verdict = verifyLinkToken(ring, oneClick?.[2] ?? '', now());
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) {
+      expect(verdict.claims.purpose).toBe('unsubscribe');
+      expect(verdict.claims.category).toBe('notification');
+      expect(verdict.claims.tenantId).toBe(t.tenantId);
+      expect(verdict.claims.shopId).toBe(t.shopId);
+      const [row] = await db.owner<{ same: boolean }[]>`
+        select email_address_hash(${t.tenantId}, ${OWNER_ADDRESS}) = ${Buffer.from(verdict.claims.addressHash)} as same`;
+      expect(row?.same).toBe(true);
+    }
+    const html = request?.body.Content.Simple.Body.Html?.Data ?? '';
+    expect(html).toContain(`${APP}/email/unsubscribe?t=`);
+    expect(html).toContain(`${APP}/email/preferences?t=`);
+  });
+
+  it('is not sent once the recipient has opted out of the category', async () => {
+    const t = await tenant();
+    await db.owner`
+      insert into email_opt_outs (tenant_id, address_hash, category)
+      values (${t.tenantId}, email_address_hash(${t.tenantId}, ${OWNER_ADDRESS}), 'notification')`;
+    const before = ses.requests.length;
+    const j = welcomeJob(t);
+    expect(await outcome(handler()(j))).toBe('done');
+    expect(ses.requests.length).toBe(before);
+    expect((await delivery(t, keyOf(j)))?.error_code).toBe('suppressed_opted_out');
+    // The export link is transactional and unaffected.
+    expect(await outcome(handler()(job(t)))).toBe('done');
+    expect(ses.requests.length).toBe(before + 1);
+  });
+
+  it('goes to the notification address the merchant chose, and an opt-out follows that address', async () => {
+    const t = await tenant();
+    const chosen = 'alerts@demo-store.example';
+    await db.owner`
+      update sites set settings = settings || ${db.owner.json({ notification_email: chosen })}
+       where tenant_id = ${t.tenantId}`;
+    const before = ses.requests.length;
+    expect(await outcome(handler()(welcomeJob(t)))).toBe('done');
+    expect(ses.requests[before]?.body.Destination.ToAddresses).toEqual([chosen]);
+    await db.owner`
+      insert into email_opt_outs (tenant_id, address_hash, category)
+      values (${t.tenantId}, email_address_hash(${t.tenantId}, ${chosen}), 'notification')`;
+    expect(await outcome(handler()(welcomeJob(t)))).toBe('done');
+    expect(ses.requests.length).toBe(before + 1);
+  });
+
+  it('retries, naming the setting, while the link keys are unset', async () => {
+    const t = await tenant();
+    const { EMAIL_LINK_KEYS: _omit, ...rest } = ENV;
+    const bare = createEmailRuntime(rest, { endpoint: ses.endpoint });
+    const failure = await outcome(handler({ email: bare })(welcomeJob(t)));
+    expect(failure).toBeInstanceOf(JobFailure);
+    expect(String((failure as JobFailure).message)).toContain('EMAIL_LINK_KEYS');
+    expect(String((failure as JobFailure).message)).not.toContain(OWNER_ADDRESS);
   });
 });
 

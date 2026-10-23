@@ -123,6 +123,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/email/links/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads an email link: what it is for and where each category it covers stands. */
+        post: operations["inspectEmailLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/email/links/preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switches one category on or off for the address the link was made for. */
+        post: operations["changeEmailLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/free-scans": {
         parameters: {
             query?: never;
@@ -153,6 +187,24 @@ export interface paths {
          */
         get: operations["getFreeScan"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/email-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The shop's email preferences. */
+        get: operations["getEmailPreferences"];
+        /** Switches a category of the shop's notification mail on or off. */
+        put: operations["updateEmailPreferences"];
         post?: never;
         delete?: never;
         options?: never;
@@ -484,6 +536,35 @@ export interface components {
             /** @description The new alt text. */
             alt: string;
         };
+        /** @description One category and whether its mail is on. */
+        EmailCategoryDto: {
+            /** @description `notification` or `marketing`. */
+            category: string;
+            /** @description Whether the address receives this category. */
+            enabled: boolean;
+        };
+        /** @description What a link allows and where each category stands. */
+        EmailLinkDto: {
+            /** @description The categories this link may change; empty unless `ok`. */
+            categories: components["schemas"]["EmailCategoryDto"][];
+            /** @description `unsubscribe` or `preferences`; null unless `ok`. */
+            purpose?: string | null;
+            /** @description `ok`, `expired` (past its 180 days) or `invalid` (not one of ours). */
+            status: string;
+        };
+        /** @description Where the shop's notification mail stands. */
+        EmailPreferencesDto: {
+            /** @description Whether an address is on file for the shop. Without one nothing is sent. */
+            address_known: boolean;
+            /** @description The categories the merchant can switch, with their state. */
+            categories: components["schemas"]["EmailCategoryDto"][];
+        };
+        EmailPreferencesUpdate: {
+            /** @description `notification`. */
+            category: string;
+            /** @description `false` switches the category off. */
+            enabled: boolean;
+        };
         EntitlementsDto: {
             alt_text_drafts: components["schemas"]["DraftsDto"];
             features: components["schemas"]["FeatureGateDto"][];
@@ -658,6 +739,18 @@ export interface components {
             moderate: number;
             /** Format: int64 */
             serious: number;
+        };
+        LinkChange: {
+            /** @description `notification` or `marketing`. */
+            category: string;
+            /** @description `false` switches the category off, `true` back on. */
+            enabled: boolean;
+            /** @description The `t` of the link. */
+            token: string;
+        };
+        LinkRequest: {
+            /** @description The `t` of the link. */
+            token: string;
         };
         OccurrenceDto: {
             /** @description A scrubbed HTML excerpt of at most 512 characters. */
@@ -1100,6 +1193,81 @@ export interface operations {
             };
         };
     };
+    inspectEmailLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link, or why it is not usable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailLinkDto"];
+                };
+            };
+            /** @description Email links are not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeEmailLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkChange"];
+            };
+        };
+        responses: {
+            /** @description The link after the change, or why it is not usable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailLinkDto"];
+                };
+            };
+            /** @description The link does not cover that category */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Email links are not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     createFreeScan: {
         parameters: {
             query?: never;
@@ -1183,6 +1351,86 @@ export interface operations {
             };
             /** @description No such scan, or it expired */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEmailPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preferences */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPreferencesDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateEmailPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailPreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description The preferences after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPreferencesDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No address is on file for the shop yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a category a merchant can change */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -73,10 +73,16 @@ async fn serve(config: Config) -> anyhow::Result<()> {
                 .await
                 .with_context(|| format!("bind {address}"))?;
             info!(%address, "webhook listener ready");
-            let router = webhooks::router(WebhookState::new(
+            let mut router = webhooks::router(WebhookState::new(
                 db.clone(),
                 config.shopify_client_secret.clone(),
             ));
+            // RFC 8058 one-click unsubscribe (ADR-274), when the link keys are set.
+            if let Some(links) = config.email_links.clone() {
+                router = router.merge(api::email_link::one_click_router(
+                    api::email_link::OneClickState::new(db.clone(), links),
+                ));
+            }
             let stop = stop.clone();
             Some(tokio::spawn(async move {
                 axum::serve(listener, router)
@@ -106,6 +112,11 @@ async fn serve(config: Config) -> anyhow::Result<()> {
             )
             .context("the Partner API client could not be built")?,
         );
+    }
+    if let Some(links) = config.email_links {
+        state = state.with_email_links(links);
+    } else {
+        warn!("EMAIL_LINK_KEYS is not set; the unsubscribe and preferences routes answer 503");
     }
     state = with_free_scan(state, config.free_scan)?;
     axum::serve(listener, api::app(state))

@@ -1,0 +1,67 @@
+{
+  "note": "Test-only keys (bytes 0..31 and 32..63). TypeScript mints these tokens, the Rust api verifies the same bytes (crates/api/src/email_link.rs). Never a credential.",
+  "keys": "k2:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=,k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "oldKeys": "k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "now": 1790000000,
+  "vectors": [
+    {
+      "name": "unsubscribe-notification",
+      "claims": {
+        "expiresAt": 1800000000,
+        "tenantId": "0192f3a4-5b6c-7d8e-9f01-23456789abcd",
+        "shopId": "0192f3a4-5b6c-7d8e-9f01-23456789ef01",
+        "addressHash": [
+          255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240, 239, 238,
+          237, 236, 235, 234, 233, 232, 231, 230, 229, 228, 227, 226, 225, 224
+        ],
+        "purpose": "unsubscribe",
+        "category": "notification"
+      },
+      "token": "AQEBa0nSAAGS86RbbH2OnwEjRWeJq80BkvOkW2x9jp8BI0Vnie8B__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eACazIdb6vMhtS3PozR56hReRwLL3ZdGCio4xjQXy7ArI5HrA"
+    },
+    {
+      "name": "unsubscribe-marketing",
+      "claims": {
+        "expiresAt": 1800000000,
+        "tenantId": "0192f3a4-5b6c-7d8e-9f01-23456789abcd",
+        "shopId": "0192f3a4-5b6c-7d8e-9f01-23456789ef01",
+        "addressHash": [
+          255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240, 239, 238,
+          237, 236, 235, 234, 233, 232, 231, 230, 229, 228, 227, 226, 225, 224
+        ],
+        "purpose": "unsubscribe",
+        "category": "marketing"
+      },
+      "token": "AQECa0nSAAGS86RbbH2OnwEjRWeJq80BkvOkW2x9jp8BI0Vnie8B__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eACazLqsH6CTKFLkcr63PVen8xnBMzpjCblbqTT5PN3ucMrRQ"
+    },
+    {
+      "name": "preferences",
+      "claims": {
+        "expiresAt": 1800000000,
+        "tenantId": "0192f3a4-5b6c-7d8e-9f01-23456789abcd",
+        "shopId": "0192f3a4-5b6c-7d8e-9f01-23456789ef01",
+        "addressHash": [
+          255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240, 239, 238,
+          237, 236, 235, 234, 233, 232, 231, 230, 229, 228, 227, 226, 225, 224
+        ],
+        "purpose": "preferences"
+      },
+      "token": "AQIAa0nSAAGS86RbbH2OnwEjRWeJq80BkvOkW2x9jp8BI0Vnie8B__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eACazLKAkqbQe99VxEReDgefX87GUWN098vdoHEjPRWOxocqQ"
+    },
+    {
+      "name": "unsubscribe-notification-old-key",
+      "claims": {
+        "expiresAt": 1800000000,
+        "tenantId": "0192f3a4-5b6c-7d8e-9f01-23456789abcd",
+        "shopId": "0192f3a4-5b6c-7d8e-9f01-23456789ef01",
+        "addressHash": [
+          255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240, 239, 238,
+          237, 236, 235, 234, 233, 232, 231, 230, 229, 228, 227, 226, 225, 224
+        ],
+        "purpose": "unsubscribe",
+        "category": "notification"
+      },
+      "token": "AQEBa0nSAAGS86RbbH2OnwEjRWeJq80BkvOkW2x9jp8BI0Vnie8B__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eACazE8IGGnhZFQv7R01iTVMSXX-Rg9B6Vgf8VsuQkQ1xLiOA"
+    }
+  ]
+}

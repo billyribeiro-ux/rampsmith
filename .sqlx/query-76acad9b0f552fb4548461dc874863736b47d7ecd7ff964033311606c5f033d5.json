@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into email_opt_outs (tenant_id, address_hash, category)\n           values ($1, $2, $3) on conflict do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "76acad9b0f552fb4548461dc874863736b47d7ecd7ff964033311606c5f033d5"
+}

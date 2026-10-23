@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select email_address_hash(\n                    c.tenant_id,\n                    coalesce(nullif(btrim(st.settings ->> 'notification_email'), ''), c.email)\n                  ) as \"hash!\"\n             from shop_contacts c\n             join shopify_shops sh on sh.id = c.shop_id and sh.tenant_id = c.tenant_id\n             join sites st on st.id = sh.site_id and st.tenant_id = sh.tenant_id\n            where c.tenant_id = $1 and c.shop_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "hash!",
+        "type_info": "Bytea",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "cd0d115e0822fb7eca325da5842e0562dcc669c6c5adcafbb1adb10ab45545ea"
+}

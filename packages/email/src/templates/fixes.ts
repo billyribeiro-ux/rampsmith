@@ -93,7 +93,11 @@ export const fixApproved = defineTemplate({
       title: t.text('fix_approved_title', { count: total }),
       blocks,
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });
@@ -160,7 +164,11 @@ export const fixVerified = defineTemplate({
       title: t.text('fix_verified_title'),
       blocks,
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });
