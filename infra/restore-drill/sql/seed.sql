@@ -124,4 +124,20 @@ values (md5(:'label' || ':regression')::uuid, :'tenant', md5(:'label' || ':site'
                                              'kind', 'new')),
         'queued');
 
+-- An agency link (ADR-313): the organization and its member belong to no tenant and are written
+-- here only because the link needs them; the link is the tenant-owned row.
+insert into users (id, email, display_name)
+values (md5(:'label' || ':agency-user')::uuid, :'label' || '-agency@example.test', 'Seed agency');
+insert into organizations (id, name, created_by)
+values (md5(:'label' || ':org')::uuid, 'Seed agency', md5(:'label' || ':agency-user')::uuid);
+insert into organization_members (organization_id, user_id, role)
+values (md5(:'label' || ':org')::uuid, md5(:'label' || ':agency-user')::uuid, 'owner');
+insert into agency_link_codes (id, organization_id, code_hash, created_by, expires_at, used_at)
+values (md5(:'label' || ':code')::uuid, md5(:'label' || ':org')::uuid,
+        decode(md5(:'label' || ':code') || md5(:'label' || ':code2'), 'hex'),
+        md5(:'label' || ':agency-user')::uuid, now() + interval '1 day', now());
+insert into store_links (id, tenant_id, shop_id, organization_id, code_id)
+values (md5(:'label' || ':link')::uuid, :'tenant', md5(:'label' || ':shop')::uuid,
+        md5(:'label' || ':org')::uuid, md5(:'label' || ':code')::uuid);
+
 commit;

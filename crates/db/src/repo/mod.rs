@@ -4,6 +4,7 @@
 //! [`identity`], whose rows belong to people rather than tenants (ADR-024), [`free_scans`], whose
 //! rows belong to no one (ADR-267), and [`retention`], the sweeps that delete expired data.
 
+pub mod agency;
 pub mod app_views;
 pub mod audit;
 pub mod data_fixes;

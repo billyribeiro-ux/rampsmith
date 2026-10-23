@@ -163,6 +163,36 @@ async fn seed_regressions(owner: &PgPool, graph: Graph) {
     .unwrap();
 }
 
+/// One live agency link on the graph's shop (ADR-313), with its own organization and member. The
+/// organization tables hold no tenant column, so the owner writes them.
+async fn seed_store_links(owner: &PgPool, graph: Graph) {
+    let user = uuid::Uuid::now_v7();
+    let org = uuid::Uuid::now_v7();
+    let email = format!("agency-{user}@example.com");
+    sqlx::query("insert into users (id, email, display_name) values ($1, $2, 'Agency')")
+        .bind(user)
+        .bind(email)
+        .execute(owner)
+        .await
+        .unwrap();
+    sqlx::query("insert into organizations (id, name, created_by) values ($1, 'Agency', $2)")
+        .bind(org)
+        .bind(user)
+        .execute(owner)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into store_links (id, tenant_id, shop_id, organization_id)
+         values (gen_random_uuid(), $1, $2, $3)",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.shop.as_uuid())
+    .bind(org)
+    .execute(owner)
+    .await
+    .unwrap();
+}
+
 /// One row of each GitHub channel table (ADR-290 to ADR-294).
 async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
     let install = uuid::Uuid::now_v7();
@@ -282,6 +312,8 @@ async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool
     seed_r1(&pool, b).await;
     seed_regressions(&owner, a).await;
     seed_regressions(&owner, b).await;
+    seed_store_links(&owner, a).await;
+    seed_store_links(&owner, b).await;
     (db, pool, a, b)
 }
 
@@ -536,7 +568,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 30] = [
+const TENANT_TABLES: [&str; 31] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -572,10 +604,12 @@ const TENANT_TABLES: [&str; 30] = [
     "github_events",
     // Regression records of scheduled scans (ADR-310).
     "regressions",
+    // An agency's access granted by a merchant (ADR-313).
+    "store_links",
 ];
 
 /// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 18] = [
+const R1_TABLES: [&str; 19] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -594,6 +628,7 @@ const R1_TABLES: [&str; 18] = [
     "github_pr_fixes",
     "github_events",
     "regressions",
+    "store_links",
 ];
 
 #[sqlx::test]

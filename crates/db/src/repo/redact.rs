@@ -101,6 +101,10 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
     sqlx::query!("delete from scan_pages where tenant_id = $1", tenant)
         .execute(tx.conn())
         .await?;
+    // An agency's access ends with the shop (ADR-313); the organization keeps no copy.
+    sqlx::query!("delete from store_links where tenant_id = $1", tenant)
+        .execute(tx.conn())
+        .await?;
     // Regression records name the scans they compare (ADR-310).
     sqlx::query!("delete from regressions where tenant_id = $1", tenant)
         .execute(tx.conn())
