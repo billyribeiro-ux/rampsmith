@@ -31,6 +31,10 @@ use url::Url;
 use crate::app::AppCredentials;
 use crate::clock::Clock;
 use crate::error::{DecodeError, GitHubError, RateLimitKind, TransportKind};
+use crate::install::{
+    InstallationInfo, InstalledRepository, Listing, MAX_PAGES, OAuthApp, OAuthError,
+    RepositoriesPage, TokenAnswer, UserInstallations, UserLogin, UserToken,
+};
 use crate::markdown::{one_line, truncate};
 use crate::token::{InstallationToken, TokenResponse, TokenScope};
 use crate::types::InstallationId;
@@ -58,6 +62,9 @@ pub struct ClientConfig {
     pub timeout: Duration,
     /// Largest response body read, in bytes. Theme files and API responses are far smaller.
     pub max_response_bytes: usize,
+    /// Where the user authorization code is exchanged: `https://github.com`, or a loopback
+    /// `http` URL in tests.
+    pub oauth_base_url: String,
 }
 
 impl Default for ClientConfig {
@@ -67,6 +74,7 @@ impl Default for ClientConfig {
             user_agent: "rampsmith".to_owned(),
             timeout: Duration::from_secs(30),
             max_response_bytes: 16 * 1024 * 1024,
+            oauth_base_url: "https://github.com".to_owned(),
         }
     }
 }
@@ -97,6 +105,14 @@ fn validate_base_url(raw: &str) -> Result<String, GitHubError> {
     Ok(url.as_str().trim_end_matches('/').to_owned())
 }
 
+/// The body of the code exchange. Borrowed, so the secret is not copied into another string.
+#[derive(Serialize)]
+struct Exchange<'a> {
+    client_id: &'a str,
+    client_secret: &'a str,
+    code: &'a str,
+}
+
 /// The operations, named for spans and metrics. `template` is the documented path with its
 /// placeholders, never the concrete path, so spans carry no repository or file names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +133,13 @@ pub(crate) enum Op {
     UpdatePull,
     CreateCheckRun,
     UpdateCheckRun,
+    GetInstallation,
+    ListInstallationRepositories,
+    ListUserInstallations,
+    ListUserInstallationRepositories,
+    GetUser,
+    GetPull,
+    ExchangeOAuthCode,
 }
 
 impl Op {
@@ -138,6 +161,15 @@ impl Op {
             Self::UpdatePull => "github.pulls.update",
             Self::CreateCheckRun => "github.checks.create",
             Self::UpdateCheckRun => "github.checks.update",
+            Self::GetInstallation => "github.app.get_installation",
+            Self::ListInstallationRepositories => "github.apps.list_installation_repositories",
+            Self::ListUserInstallations => "github.apps.list_user_installations",
+            Self::ListUserInstallationRepositories => {
+                "github.apps.list_user_installation_repositories"
+            }
+            Self::GetUser => "github.users.get_authenticated",
+            Self::GetPull => "github.pulls.get",
+            Self::ExchangeOAuthCode => "github.oauth.exchange_code",
         }
     }
 
@@ -155,9 +187,17 @@ impl Op {
             Self::CreateRef => "/repos/{owner}/{repo}/git/refs",
             Self::UpdateRef => "/repos/{owner}/{repo}/git/refs/{ref}",
             Self::ListPulls | Self::CreatePull => "/repos/{owner}/{repo}/pulls",
-            Self::UpdatePull => "/repos/{owner}/{repo}/pulls/{pull_number}",
+            Self::UpdatePull | Self::GetPull => "/repos/{owner}/{repo}/pulls/{pull_number}",
             Self::CreateCheckRun => "/repos/{owner}/{repo}/check-runs",
             Self::UpdateCheckRun => "/repos/{owner}/{repo}/check-runs/{check_run_id}",
+            Self::GetInstallation => "/app/installations/{installation_id}",
+            Self::ListInstallationRepositories => "/installation/repositories",
+            Self::ListUserInstallations => "/user/installations",
+            Self::ListUserInstallationRepositories => {
+                "/user/installations/{installation_id}/repositories"
+            }
+            Self::GetUser => "/user",
+            Self::ExchangeOAuthCode => "/login/oauth/access_token",
         }
     }
 }
@@ -169,6 +209,8 @@ pub(crate) enum Auth<'a> {
     App,
     /// As an installation, with a cached installation token for this scope.
     Installation(InstallationId, &'a TokenScope),
+    /// As a person who authorised the App, with their user access token.
+    User(&'a UserToken),
 }
 
 /// One request. `path` is built only from validated identifiers. No `Debug`: the body can
@@ -326,15 +368,20 @@ fn error_message(body: &[u8]) -> String {
 
 type TokenKey = (InstallationId, TokenScope);
 
+/// One cache slot: its own lock, so a slow mint for one installation never delays another
+/// installation's token (integration audit L2).
+type TokenSlot = Arc<Mutex<Option<Arc<InstallationToken>>>>;
+
 /// The GitHub App client. Cheap to share behind an `Arc`; installation tokens are cached per
 /// installation and scope, in memory only.
 pub struct GitHub {
     http: reqwest::Client,
     base_url: String,
+    oauth_base_url: String,
     max_response_bytes: usize,
     credentials: AppCredentials,
     clock: Arc<dyn Clock>,
-    tokens: Mutex<HashMap<TokenKey, Arc<InstallationToken>>>,
+    tokens: Mutex<HashMap<TokenKey, TokenSlot>>,
 }
 
 impl fmt::Debug for GitHub {
@@ -366,6 +413,7 @@ impl GitHub {
         clock: Arc<dyn Clock>,
     ) -> Result<Self, GitHubError> {
         let base_url = validate_base_url(&config.base_url)?;
+        let oauth_base_url = validate_base_url(&config.oauth_base_url)?;
         let http = reqwest::Client::builder()
             .user_agent(config.user_agent)
             .timeout(config.timeout)
@@ -376,6 +424,7 @@ impl GitHub {
         Ok(Self {
             http,
             base_url,
+            oauth_base_url,
             max_response_bytes: config.max_response_bytes,
             credentials,
             clock,
@@ -395,9 +444,206 @@ impl GitHub {
         .decode()
     }
 
+    /// `GET /app/installations/{id}` as the App: the installation's current state, or `None`
+    /// once it is uninstalled. This, not the webhook that announced a change, is what the
+    /// pipeline believes (integration audit M1).
+    pub async fn installation(
+        &self,
+        id: InstallationId,
+    ) -> Result<Option<InstallationInfo>, GitHubError> {
+        let request = Request::new(
+            Op::GetInstallation,
+            Method::GET,
+            format!("/app/installations/{id}"),
+            Auth::App,
+        );
+        match self.send_as_app(request).await {
+            Ok(response) => Ok(Some(response.decode()?)),
+            Err(GitHubError::NotFound) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// `GET /installation/repositories`: the repositories the installation can reach, read with
+    /// a metadata-read token.
+    pub async fn installation_repositories(
+        &self,
+        id: InstallationId,
+    ) -> Result<Listing<InstalledRepository>, GitHubError> {
+        let scope = TokenScope::installation_metadata();
+        self.list_repositories(|| {
+            Request::new(
+                Op::ListInstallationRepositories,
+                Method::GET,
+                "/installation/repositories".to_owned(),
+                Auth::Installation(id, &scope),
+            )
+        })
+        .await
+    }
+
+    /// `GET /user/installations`: the App's installations the user can reach.
+    pub async fn user_installations(
+        &self,
+        token: &UserToken,
+    ) -> Result<Listing<InstallationInfo>, GitHubError> {
+        let mut items = Vec::new();
+        for page in 1..=MAX_PAGES {
+            let request = Request::new(
+                Op::ListUserInstallations,
+                Method::GET,
+                "/user/installations".to_owned(),
+                Auth::User(token),
+            )
+            .query("per_page", "100")
+            .query("page", page.to_string());
+            let batch = self.send(request).await?.decode::<UserInstallations>()?;
+            let full = batch.installations.len() >= 100;
+            items.extend(batch.installations);
+            if !full {
+                return Ok(Listing {
+                    items,
+                    truncated: false,
+                });
+            }
+        }
+        Ok(Listing {
+            items,
+            truncated: true,
+        })
+    }
+
+    /// `GET /user/installations/{id}/repositories`: the installation's repositories the user can
+    /// reach, each with the user's own permissions.
+    pub async fn user_installation_repositories(
+        &self,
+        token: &UserToken,
+        id: InstallationId,
+    ) -> Result<Listing<InstalledRepository>, GitHubError> {
+        self.list_repositories(|| {
+            Request::new(
+                Op::ListUserInstallationRepositories,
+                Method::GET,
+                format!("/user/installations/{id}/repositories"),
+                Auth::User(token),
+            )
+        })
+        .await
+    }
+
+    /// `GET /user`: the login of the person who authorised, recorded as who connected.
+    pub async fn user_login(&self, token: &UserToken) -> Result<String, GitHubError> {
+        let request = Request::new(
+            Op::GetUser,
+            Method::GET,
+            "/user".to_owned(),
+            Auth::User(token),
+        );
+        Ok(self.send(request).await?.decode::<UserLogin>()?.login)
+    }
+
+    async fn list_repositories<'a>(
+        &self,
+        build: impl Fn() -> Request<'a>,
+    ) -> Result<Listing<InstalledRepository>, GitHubError> {
+        let mut items = Vec::new();
+        for page in 1..=MAX_PAGES {
+            let request = build()
+                .query("per_page", "100")
+                .query("page", page.to_string());
+            let batch = self.send(request).await?.decode::<RepositoriesPage>()?;
+            let full = batch.repositories.len() >= 100;
+            items.extend(batch.repositories);
+            if !full {
+                return Ok(Listing {
+                    items,
+                    truncated: false,
+                });
+            }
+        }
+        Ok(Listing {
+            items,
+            truncated: true,
+        })
+    }
+
+    /// Exchanges the `code` GitHub put on the callback URL for a user access token. The code is
+    /// single-use and short-lived; the token is returned to the caller to use once and drop.
+    pub async fn exchange_oauth_code(
+        &self,
+        app: &OAuthApp,
+        code: &str,
+    ) -> Result<UserToken, OAuthError> {
+        let code_ok = (1..=128).contains(&code.len())
+            && code
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+        if !code_ok {
+            return Err(OAuthError::Refused("bad_verification_code".to_owned()));
+        }
+        // The buffer moves into the request, so there is no second copy of the secret to wipe;
+        // the HTTP stack drops it when the request completes.
+        let body = serde_json::to_vec(&Exchange {
+            client_id: &app.client_id,
+            client_secret: app.client_secret.expose_secret(),
+            code,
+        })
+        .map_err(|_| GitHubError::InvalidRequest("the request body cannot be encoded"))?;
+        let url = format!("{}/login/oauth/access_token", self.oauth_base_url);
+        let span = tracing::info_span!(
+            "github.request",
+            otel.kind = "client",
+            github.operation = Op::ExchangeOAuthCode.name(),
+            http.request.method = "POST",
+            url.template = Op::ExchangeOAuthCode.template(),
+        );
+        async {
+            let started = Instant::now();
+            let mut response = match self
+                .http
+                .post(url)
+                .header(header::ACCEPT, "application/json")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(body)
+                .send()
+                .await
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    record(Op::ExchangeOAuthCode, "transport_error", started);
+                    return Err(GitHubError::Transport(TransportKind::from(&error)).into());
+                }
+            };
+            let status = response.status();
+            let headers = response.headers().clone();
+            let answer = self.read_body(&mut response).await?;
+            let outcome = self.map_status(status, &headers, &answer);
+            record(
+                Op::ExchangeOAuthCode,
+                outcome_label(status, outcome.as_ref().err()),
+                started,
+            );
+            outcome?;
+            let parsed: TokenAnswer = serde_json::from_slice(&answer)
+                .map_err(|e| GitHubError::Decode(DecodeError::from(&e)))?;
+            if let Some(error) = parsed.error {
+                return Err(OAuthError::Refused(crate::install::error_name(&error)));
+            }
+            match parsed.access_token {
+                Some(token) if !token.is_empty() => {
+                    Ok(UserToken::new(secrecy::SecretString::from(token)))
+                }
+                _ => Err(OAuthError::Refused("no_access_token".to_owned())),
+            }
+        }
+        .instrument(span)
+        .await
+    }
+
     /// An installation token for `scope`, from the cache while it has more than
-    /// [`crate::TOKEN_REFRESH_SKEW`] left, otherwise newly minted. Concurrent callers wait for
-    /// one refresh instead of minting several.
+    /// [`crate::TOKEN_REFRESH_SKEW`] left, otherwise newly minted. Concurrent callers for the
+    /// same installation and scope wait for one refresh instead of minting several; callers for
+    /// other installations or scopes are never held up by it.
     pub async fn installation_token(
         &self,
         installation: InstallationId,
@@ -405,9 +651,22 @@ impl GitHub {
     ) -> Result<Arc<InstallationToken>, GitHubError> {
         scope.validate()?;
         let key = (installation, scope.clone());
-        let mut cache = self.tokens.lock().await;
+        let slot = {
+            let mut cache = self.tokens.lock().await;
+            // Forget slots that hold only an expired token and that nobody is waiting on.
+            let now = self.clock.now();
+            cache.retain(|k, slot| {
+                *k == key
+                    || Arc::strong_count(slot) > 1
+                    || slot
+                        .try_lock()
+                        .map_or(true, |t| t.as_ref().is_some_and(|t| t.is_fresh(now)))
+            });
+            Arc::clone(cache.entry(key).or_default())
+        };
+        let mut held = slot.lock().await;
         let now = self.clock.now();
-        if let Some(token) = cache.get(&key).filter(|t| t.is_fresh(now)) {
+        if let Some(token) = held.as_ref().filter(|t| t.is_fresh(now)) {
             return Ok(Arc::clone(token));
         }
         let request = Request::new(
@@ -419,17 +678,21 @@ impl GitHub {
         .json(scope)?;
         let response = self.send_as_app(request).await?;
         let token = Arc::new(response.decode::<TokenResponse>()?.into_token()?);
-        cache.retain(|_, t| t.is_fresh(now));
-        cache.insert(key, Arc::clone(&token));
+        *held = Some(Arc::clone(&token));
         Ok(token)
     }
 
     /// Drops a cached token, after GitHub rejected it.
     async fn evict(&self, installation: InstallationId, scope: &TokenScope) {
-        self.tokens
+        let slot = self
+            .tokens
             .lock()
             .await
-            .remove(&(installation, scope.clone()));
+            .get(&(installation, scope.clone()))
+            .cloned();
+        if let Some(slot) = slot {
+            *slot.lock().await = None;
+        }
     }
 
     fn url(&self, request: &Request<'_>) -> Result<Url, GitHubError> {
@@ -454,6 +717,7 @@ impl GitHub {
                     let token = self.installation_token(id, scope).await?;
                     Zeroizing::new(format!("Bearer {}", token.bearer()))
                 }
+                Auth::User(token) => Zeroizing::new(format!("Bearer {}", token.bearer())),
             };
             self.execute(request, &bearer).await
         }
@@ -592,7 +856,7 @@ impl GitHub {
 fn request_span(request: &Request<'_>) -> tracing::Span {
     let installation = match request.auth {
         Auth::Installation(id, _) => Some(id.get()),
-        Auth::App => None,
+        Auth::App | Auth::User(_) => None,
     };
     tracing::info_span!(
         "github.request",
@@ -643,6 +907,7 @@ const fn error_type(error: &GitHubError) -> &'static str {
         GitHubError::Branch(_) => "branch_guard",
         GitHubError::Path(_) => "path_guard",
         GitHubError::Structure(_) => "theme_structure",
+        GitHubError::BranchMoved => "branch_moved",
     }
 }
 
@@ -783,6 +1048,13 @@ mod tests {
             Op::UpdatePull,
             Op::CreateCheckRun,
             Op::UpdateCheckRun,
+            Op::GetInstallation,
+            Op::ListInstallationRepositories,
+            Op::ListUserInstallations,
+            Op::ListUserInstallationRepositories,
+            Op::GetUser,
+            Op::GetPull,
+            Op::ExchangeOAuthCode,
         ] {
             assert!(op.name().starts_with("github."));
             assert!(op.template().starts_with('/'));

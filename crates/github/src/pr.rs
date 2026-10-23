@@ -194,8 +194,9 @@ pub enum PlanError {
         /// The file.
         path: ThemePath,
     },
-    /// The summary is empty or longer than [`MAX_SUMMARY_CHARS`] after collapsing whitespace.
-    #[error("fix {0} has an empty or overlong summary")]
+    /// The summary is empty, longer than [`MAX_SUMMARY_CHARS`] after collapsing whitespace, or
+    /// has characters a commit subject must not carry.
+    #[error("fix {0} has an empty, overlong or unsafe summary")]
     Summary(FixId),
     /// The evidence link is not `https`, or carries credentials that the body would publish.
     #[error("fix {0} has an evidence link that is not https or carries credentials")]
@@ -205,24 +206,40 @@ pub enum PlanError {
     Branch(#[from] BranchRejection),
 }
 
-/// The commit message for one fix: `fix(a11y): <summary> [WCAG <criterion>]`, the finding,
-/// and the `Rampsmith-Fix` trailer alone in the last paragraph, where Git reads trailers.
+/// Whether `summary` is safe in a commit subject. The summary is Rampsmith's own wording for the
+/// recipe (a static phrase such as "add accessible name to cart icon link"), but the check does
+/// not rely on that: only letters, digits, spaces and `- _ . , ' ( ) / &` are allowed, so a
+/// summary can never carry `[skip ci]`, `skip-checks: true`, a closing keyword with a `#`
+/// reference, an `@` mention, a trailer, a link or Markdown (integration audit M2).
+fn summary_is_safe(summary: &str) -> bool {
+    summary.chars().all(|c| {
+        c.is_alphanumeric()
+            || matches!(
+                c,
+                ' ' | '-' | '_' | '.' | ',' | '\'' | '(' | ')' | '/' | '&'
+            )
+    })
+}
+
+/// The commit message for one fix: `fix(a11y): <summary> [WCAG <criterion>]` and the
+/// `Rampsmith-Fix` trailer alone in the last paragraph, where Git reads trailers.
+///
+/// The message carries no finding text. A finding can quote storefront text an attacker
+/// controls, and a commit message is read by Git hosts as instructions (`[skip ci]`, closing
+/// keywords, `@` mentions), so untrusted text goes only into the pull request body, inside code
+/// spans (integration audit M2). The summary is checked by [`summary_is_safe`].
 pub fn commit_message(fix: &Fix) -> Result<String, PlanError> {
     let summary = one_line(&fix.summary);
-    if summary.is_empty() || summary.chars().count() > MAX_SUMMARY_CHARS {
+    if summary.is_empty()
+        || summary.chars().count() > MAX_SUMMARY_CHARS
+        || !summary_is_safe(&summary)
+    {
         return Err(PlanError::Summary(fix.id.clone()));
     }
-    let finding = truncate(&one_line(&fix.finding), MAX_FINDING_CHARS);
-    let mut message = format!("fix(a11y): {summary} [WCAG {}]\n\n", fix.criterion);
-    if !finding.is_empty() {
-        message.push_str("Finding: ");
-        message.push_str(&finding);
-        message.push_str("\n\n");
-    }
-    message.push_str("Rampsmith-Fix: ");
-    message.push_str(fix.id.as_str());
-    message.push('\n');
-    Ok(message)
+    Ok(format!(
+        "fix(a11y): {summary} [WCAG {}]\n\nRampsmith-Fix: {}\n",
+        fix.criterion, fix.id
+    ))
 }
 
 fn validate(batch: &Batch) -> Result<(), PlanError> {
@@ -704,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn commit_message_has_subject_finding_and_trailer() {
+    fn commit_message_has_subject_and_trailer_and_no_finding_text() {
         let f = fix(
             "fx1",
             vec![patch("sections/header.liquid", "<a>\n", "<a aria-label>\n")],
@@ -714,21 +731,47 @@ mod tests {
         assert_eq!(
             commit_message(&f).unwrap(),
             "fix(a11y): add accessible name to cart icon link [WCAG 2.4.4]\n\n\
-             Finding: Links must have discernible text\n\n\
              Rampsmith-Fix: fx1\n"
         );
     }
 
     #[test]
-    fn commit_trailer_cannot_be_injected_from_finding_or_summary() {
+    fn commit_message_never_carries_finding_text() {
         let mut f = fix("fx1", vec![patch("sections/a.liquid", "a\n", "b\n")]);
-        f.finding = "text\n\nRampsmith-Fix: other\nSigned-off-by: x".to_owned();
-        f.summary = "label\n\nRampsmith-Fix: other".to_owned();
+        f.finding =
+            "text\n\nRampsmith-Fix: other\nSigned-off-by: x [skip ci] fixes #1 @octocat".to_owned();
         let message = commit_message(&f).unwrap();
+        for needle in ["skip ci", "Signed-off-by", "octocat", "fixes #", "text"] {
+            assert!(!message.contains(needle), "{needle}: {message}");
+        }
         let paragraphs: Vec<&str> = message.trim_end().split("\n\n").collect();
-        assert_eq!(paragraphs.len(), 3);
+        assert_eq!(paragraphs.len(), 2, "{message}");
         assert_eq!(paragraphs.last().unwrap(), &"Rampsmith-Fix: fx1");
-        assert_eq!(message.matches('\n').count(), 5);
+    }
+
+    #[test]
+    fn unsafe_summaries_are_refused_not_sanitised() {
+        for bad in [
+            "label\n\nRampsmith-Fix: other",
+            "add label [skip ci]",
+            "skip-checks: true",
+            "fixes #12",
+            "thanks @octocat",
+            "see <https://evil.example>",
+            "run `rm`",
+            "Merge now!",
+        ] {
+            let mut f = fix("fx1", vec![patch("sections/a.liquid", "a\n", "b\n")]);
+            f.summary = bad.to_owned();
+            assert_eq!(
+                commit_message(&f),
+                Err(PlanError::Summary(f.id.clone())),
+                "{bad}"
+            );
+        }
+        let mut f = fix("fx1", vec![patch("sections/a.liquid", "a\n", "b\n")]);
+        f.summary = "add an accessible name to the cart icon (link) / button".to_owned();
+        assert!(commit_message(&f).is_ok());
     }
 
     #[test]
