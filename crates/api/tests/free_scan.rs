@@ -52,11 +52,28 @@ async fn harness(opts: PgPoolOptions, conn: PgConnectOptions, configured: bool) 
             .unwrap(),
         );
     }
+    if configured {
+        // An engine with a sandboxed Chromium is serving free scans (ADR-280).
+        beat(&owner, "engine-test", "0 seconds").await;
+    }
     Harness {
         state,
         owner,
         turnstile,
     }
+}
+
+/// Records an engine's heartbeat `age` ago.
+async fn beat(owner: &PgPool, worker: &str, age: &str) {
+    sqlx::query(
+        "insert into free_scan_engines (worker_id, beat_at) values ($1, now() - $2::interval)
+         on conflict (worker_id) do update set beat_at = excluded.beat_at",
+    )
+    .bind(worker)
+    .bind(age)
+    .execute(owner)
+    .await
+    .unwrap();
 }
 
 async fn solved(h: &Harness) {
@@ -496,4 +513,54 @@ async fn an_unknown_or_malformed_id_is_not_found(opts: PgPoolOptions, conn: PgCo
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn without_a_sandboxed_engine_nothing_is_spent_and_the_answer_is_503(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true).await;
+    // The challenge would pass, so a call to Cloudflare would show up as a received request.
+    solved(&h).await;
+    for stale in [None, Some("46 seconds"), Some("1 hour")] {
+        sqlx::query("delete from free_scan_engines")
+            .execute(&h.owner)
+            .await
+            .unwrap();
+        if let Some(age) = stale {
+            beat(&h.owner, "engine-without-sandbox", age).await;
+        }
+        let (status, _, body) =
+            call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{stale:?}: {body}");
+        assert_eq!(body["errors"][0]["field"], "scanner");
+        assert_eq!(count(&h.owner, "free_scans").await, 0);
+        assert_eq!(count(&h.owner, "jobs").await, 0);
+    }
+    let received = h.turnstile.received_requests().await.unwrap_or_default();
+    assert!(
+        received.is_empty(),
+        "Cloudflare was called {} times",
+        received.len()
+    );
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_fresh_heartbeat_from_any_one_engine_is_enough(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true).await;
+    solved(&h).await;
+    // One engine fell silent; another beat 44 seconds ago.
+    sqlx::query("delete from free_scan_engines")
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    beat(&h.owner, "engine-gone", "10 minutes").await;
+    beat(&h.owner, "engine-live", "44 seconds").await;
+    let (status, _, body) =
+        call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
 }

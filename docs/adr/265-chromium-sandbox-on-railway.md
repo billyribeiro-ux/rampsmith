@@ -61,7 +61,7 @@ on some Railway hosts; always disabling it gives up a layer on hosts that allow 
 3. **`ENGINE_CHROMIUM_SANDBOX=required`** turns the fallback off for a host where the sandbox is
    known to work; any other value than `auto` or `required` stops the engine, so a typo never
    loosens it. The default is `auto`. The Railway spec does not set it: the first staging deploy
-   shows which mode Railway's host gives (LAUNCH.md E, live check 9), and the founder can pin
+   shows which mode Railway's host gives (LAUNCH.md E, "Chromium's sandbox on Railway's hosts"), and the founder can pin
    `required` in Railway variables afterwards if it is `on`.
 4. The Docker-side path is unchanged: `infra/smoke/engine.sh` still runs `self-check.ts`
    (`launchBrowser`, sandbox required) under `infra/engine.seccomp.json`, so "sandbox on works
@@ -98,6 +98,16 @@ accepted residual risk for launch, recorded in LAUNCH.md E and the threat model 
   launch is thrown.
 - The signature list is Chromium's wording and can drift with a Chromium update; the failure
   mode is safe (an unrecognised refusal fails the launch loudly, it does not start unsandboxed).
+
+## Amendment (audit H1, ADR-280): the fallback never serves the free scanner
+
+The trade-off above was accepted for merchants' own stores. The free scanner (ADR-267) loads sites
+chosen by anyone, so an engine whose Chromium runs without the sandbox does **not** register the
+`free_scan.run` queue, and the api refuses free scans (503, "free scanner unavailable") while no
+sandboxed engine is serving them. The residual risk recorded here therefore no longer includes
+anonymous pages. The recommendation to give the scanning service no Claude or storage credentials
+is now stronger still and is restated, for the free scanner, in ADR-280: a separate low-privilege
+service from the same image (not built; it costs money).
 
 ## Plan correction
 
