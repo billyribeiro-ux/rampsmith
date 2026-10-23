@@ -1,5 +1,6 @@
 /** Every email Rampsmith sends, by kind. */
 import type { InputOf } from './schema.ts';
+import type { Category } from './template.ts';
 import { deliveryTest, emailVerification, signInLink } from './templates/account.ts';
 import { agencyInvitation, storeLinkCode, storeLinked } from './templates/agency.ts';
 import { planChanged, usageLimit } from './templates/billing.ts';
@@ -52,4 +53,9 @@ export const EMAIL_KINDS = Object.keys(TEMPLATES) as EmailKind[];
 
 export function isEmailKind(value: string): value is EmailKind {
   return Object.hasOwn(TEMPLATES, value);
+}
+
+/** The category of `kind` (ADR-191), known before anything is rendered. */
+export function categoryOf(kind: EmailKind): Category {
+  return TEMPLATES[kind].category;
 }

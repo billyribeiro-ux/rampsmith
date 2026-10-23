@@ -8,7 +8,8 @@
     "node": ">=26.12.0 <27"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/fake-ses.ts"
   },
   "scripts": {
     "test": "vitest run",

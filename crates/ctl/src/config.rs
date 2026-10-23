@@ -30,6 +30,9 @@ pub struct Config {
     /// Where the health listener binds: `BIND_ADDR`, else `[::]:$PORT`, else `[::]:8080`
     /// (ADR-264). Railway's deploy health check calls `GET /healthz` on `PORT`.
     pub health_bind: SocketAddr,
+    /// The app's public origin (`APP_ORIGIN`), such as `https://app.rampsmith.com`: the links in
+    /// emails point at it. Optional: without it `ctl` queues no email that carries a link.
+    pub app_origin: Option<String>,
 }
 
 /// A configuration value is missing or malformed. Never contains the value.
@@ -107,6 +110,7 @@ impl Config {
                 })?;
             SocketAddr::from(([0_u16; 8], port))
         };
+        let app_origin = get("APP_ORIGIN").map(|v| origin(&v)).transpose()?;
         Ok(Self {
             database_url: SecretString::from(database_url),
             db_max_connections,
@@ -118,7 +122,40 @@ impl Config {
             master_keys,
             scan_secret_keys,
             health_bind,
+            app_origin,
         })
+    }
+}
+
+/// `value` as an origin: `https://host[:port]`, or `http://` on a loopback host for development,
+/// with no path, query or credentials. Returned lower-case and without a trailing slash.
+fn origin(value: &str) -> Result<String, ConfigError> {
+    let invalid = |reason: &str| ConfigError::Invalid {
+        name: "APP_ORIGIN",
+        reason: reason.to_owned(),
+    };
+    let text = value.trim().trim_end_matches('/').to_ascii_lowercase();
+    let (scheme, authority) = text
+        .split_once("://")
+        .ok_or_else(|| invalid("must look like https://app.example.com"))?;
+    let host = authority
+        .rsplit_once(':')
+        .filter(|(_, port)| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()))
+        .map_or(authority, |(name, _)| name);
+    let plain = !host.is_empty()
+        && authority
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']'));
+    if !plain {
+        return Err(invalid(
+            "must be a scheme and host only, with no path or credentials",
+        ));
+    }
+    let loopback = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
+    match scheme {
+        "https" => Ok(text),
+        "http" if loopback => Ok(text),
+        _ => Err(invalid("must be https (http only on a loopback host)")),
     }
 }
 
@@ -165,6 +202,37 @@ mod tests {
         assert_eq!(c.master_keys.active().as_str(), "k1");
         assert_eq!(c.health_bind, "[::]:8080".parse().unwrap());
         assert!(!format!("{c:?}").contains("hunter4"));
+    }
+
+    #[test]
+    fn the_app_origin_is_an_origin_or_absent() {
+        assert_eq!(config(&[]).unwrap().app_origin, None);
+        let c = config(&[("APP_ORIGIN", "https://App.Rampsmith.example/")]).unwrap();
+        assert_eq!(
+            c.app_origin.as_deref(),
+            Some("https://app.rampsmith.example")
+        );
+        let c = config(&[("APP_ORIGIN", "http://localhost:5173")]).unwrap();
+        assert_eq!(c.app_origin.as_deref(), Some("http://localhost:5173"));
+        for bad in [
+            "app.rampsmith.example",
+            "http://app.rampsmith.example",
+            "https://app.rampsmith.example/path",
+            "https://user:pw@app.rampsmith.example",
+            "https://app.rampsmith.example?x=1",
+            "ftp://app.rampsmith.example",
+        ] {
+            assert!(
+                matches!(
+                    config(&[("APP_ORIGIN", bad)]),
+                    Err(ConfigError::Invalid {
+                        name: "APP_ORIGIN",
+                        ..
+                    })
+                ),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

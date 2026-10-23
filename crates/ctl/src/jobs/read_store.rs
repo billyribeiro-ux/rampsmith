@@ -234,6 +234,9 @@ async fn persist(
     )
     .await
     .map_err(|e| database(&e))?;
+    // The owner's address, for the transactional email (ADR-272). A shop that reports none, or
+    // one the table would refuse, simply gets no email.
+    super::webhook::store_contact(&mut tx, shop, info).await?;
     // Shopify's own id for the shop, which the Partner API names it by (ADR-084).
     shops::set_shop_gid(&mut tx, shop, &info.gid)
         .await

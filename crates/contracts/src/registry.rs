@@ -2,6 +2,7 @@
 
 use schemars::{Schema, schema_for};
 
+use crate::email::EmailSend;
 use crate::free_scan::{FreeScanResult, FreeScanRun};
 use crate::job::{JobError, ShopifyTokenRefresh};
 use crate::pipeline::{
@@ -30,6 +31,10 @@ pub fn schemas() -> Vec<NamedSchema> {
         NamedSchema {
             name: "audit-data",
             schema: schema_for!(AuditData),
+        },
+        NamedSchema {
+            name: "email-send",
+            schema: schema_for!(EmailSend),
         },
         NamedSchema {
             name: "free-scan-result",

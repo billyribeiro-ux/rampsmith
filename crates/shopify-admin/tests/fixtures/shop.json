@@ -3,6 +3,7 @@
     "shop": {
       "id": "gid://shopify/Shop/548380009",
       "name": "Super Toys",
+      "email": "Owner@SuperToys.example",
       "myshopifyDomain": "super-toys.myshopify.com",
       "primaryDomain": { "host": "supertoys.example", "url": "https://supertoys.example" }
     },

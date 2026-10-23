@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select store_name, locale from shop_contacts where tenant_id = $1 and shop_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "store_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shop_contacts",
+            "name": "store_name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "locale",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "shop_contacts",
+            "name": "locale"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "59a545be6eda0e3c966cecb4b06c2e3af6b1d26c8fafdc84e8611786bcd4b24a"
+}
