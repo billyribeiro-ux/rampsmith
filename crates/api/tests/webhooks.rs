@@ -30,6 +30,7 @@ const SECRET: &str = "shpss_webhook_test";
 const SHOP: &str = "demo-store.myshopify.com";
 
 struct Fixture {
+    state: WebhookState,
     router: Router,
     owner: PgPool,
     tenant: TenantId,
@@ -66,8 +67,10 @@ async fn fixture(opts: PgPoolOptions, conn: PgConnectOptions) -> Fixture {
     .await
     .unwrap();
     tx.commit().await.unwrap();
-    let router = webhooks::router(WebhookState::new(db, SecretString::from(SECRET)));
+    let state = WebhookState::new(db, SecretString::from(SECRET));
+    let router = webhooks::router(state.clone());
     Fixture {
+        state,
         router,
         owner,
         tenant,
@@ -574,7 +577,7 @@ async fn only_webhook_paths_exist_on_this_listener(opts: PgPoolOptions, conn: Pg
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
-async fn a_full_listener_answers_503_without_reading_the_body(
+async fn a_full_database_pool_answers_503_to_verified_deliveries_only(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
@@ -585,6 +588,102 @@ async fn a_full_listener_answers_503_without_reading_the_body(
     let delivery = Delivery::signed("shop/update", "w-1", &named(1));
     let (status, _) = send(&router, delivery.request("/webhooks/shopify")).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    // An unsigned delivery never competes for it: it is refused for what it is.
+    let mut unsigned = Delivery::signed("shop/update", "w-2", &named(1));
+    unsigned.signature = None;
+    let (status, _) = send(&router, unsigned.request("/webhooks/shopify")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_full_unverified_pool_answers_503_without_reading_the_body(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let pool = app_login_pool(opts, conn).await;
+    let state =
+        WebhookState::new(Db::from_pool(pool), SecretString::from(SECRET)).with_max_unverified(0);
+    let router = webhooks::router(state);
+    let delivery = Delivery::signed("shop/update", "w-1", &named(1));
+    let (status, _) = send(&router, delivery.request("/webhooks/shopify")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+/// Serves `router` on a local port and returns its address.
+async fn serve(router: Router) -> std::net::SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    addr
+}
+
+/// Opens a connection that announces `length` body bytes, sends only `sent` of them, and
+/// stops. Returns the open stream.
+async fn stalled(addr: std::net::SocketAddr, length: usize, sent: &[u8]) -> tokio::net::TcpStream {
+    use tokio::io::AsyncWriteExt;
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let signature = webhooks::sign(SECRET, b"whatever").unwrap();
+    let head = format!(
+        "POST /webhooks/shopify HTTP/1.1\r\nHost: x\r\nX-Shopify-Hmac-SHA256: {signature}\r\n\
+         X-Shopify-Topic: shop/update\r\nX-Shopify-Shop-Domain: {SHOP}\r\n\
+         X-Shopify-Webhook-Id: slow\r\nContent-Type: application/json\r\n\
+         Content-Length: {length}\r\n\r\n"
+    );
+    stream.write_all(head.as_bytes()).await.unwrap();
+    stream.write_all(sent).await.unwrap();
+    stream
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_stalled_body_is_cut_off_and_never_holds_a_database_permit(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    use tokio::io::AsyncReadExt;
+    let f = fixture(opts, conn).await;
+    // One database permit, three unverified slots: three stalled readers fill the unverified
+    // pool; the database pool is untouched by them.
+    let state = f.state.clone().with_max_in_flight(1).with_max_unverified(3);
+    let router = webhooks::router(state);
+    let addr = serve(router.clone()).await;
+
+    let started = std::time::Instant::now();
+    let mut slow = Vec::new();
+    for _ in 0..3 {
+        slow.push(stalled(addr, 100, b"{").await);
+    }
+    // While they stall the unverified pool is full: another connection is told to retry.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let mut late = stalled(addr, 0, b"").await;
+    let mut text = String::new();
+    let mut buf = [0_u8; 512];
+    let n = tokio::time::timeout(std::time::Duration::from_secs(3), late.read(&mut buf))
+        .await
+        .expect("the full listener answered")
+        .unwrap();
+    text.push_str(&String::from_utf8_lossy(&buf[..n]));
+    assert!(text.starts_with("HTTP/1.1 503"), "{text}");
+
+    // Each stalled connection is answered 503 once the deadline passes, not left open.
+    for stream in &mut slow {
+        let mut buf = [0_u8; 512];
+        let n = tokio::time::timeout(std::time::Duration::from_secs(4), stream.read(&mut buf))
+            .await
+            .expect("the stalled body was cut off")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+        assert!(text.starts_with("HTTP/1.1 503"), "{text}");
+    }
+    assert!(started.elapsed() < std::time::Duration::from_secs(4));
+
+    // The slots are free again, and the one database permit was never taken: a real delivery
+    // is stored.
+    let delivery = Delivery::signed("shop/update", "w-ok", &named(5));
+    let (status, _) = send(&router, delivery.request("/webhooks/shopify")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(events(&f.owner).await, 1);
 }
 
 #[tokio::test]

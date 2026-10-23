@@ -14,3 +14,19 @@ Branch `r1-a-audit-fixes`. Each finding: change, test, command output.
   the changed `shop_redact_deletes_the_shops_data...` now answers 401 first), `crates/api/tests/webhooks.rs`
   (shape refusal, redact window, 12 concurrent replays store one event, wrong `shop_id`).
 - ADR-085; ADR-080 corrected.
+
+## M1 slow-body DoS (PR 2)
+
+- `crates/api/src/webhooks.rs`: a pool of 512 unverified reads, a 1 s body deadline (503 on timeout), the
+  64 database permits taken only after the HMAC verifies. Tests in `crates/api/tests/webhooks.rs`:
+  `a_stalled_body_is_cut_off_and_never_holds_a_database_permit` (real TCP, three stalled connections fill the
+  unverified pool, each is answered 503 after the deadline, a late connection is told 503 at once, then a real
+  delivery is stored), `a_full_database_pool_answers_503_to_verified_deliveries_only`,
+  `a_full_unverified_pool_answers_503_without_reading_the_body`.
+
+## M2 processing backstop (PR 2)
+
+- `WebhookProcess::MAX_ATTEMPTS = 96` set by the listener; `webhook_events_sweep()` (migration
+  `20261105000002`); `ctl::leader::sweep_webhooks` every 5 minutes; runbook alert rows updated. ADR-086.
+  Test: `the_sweep_brings_back_stored_events_whose_job_is_gone_and_reports_the_old_ones`
+  (`crates/ctl/tests/webhook.rs`).

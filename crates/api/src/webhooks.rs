@@ -7,14 +7,17 @@
 //!
 //! A Shopify delivery is handled in this order, cheapest and least trusting first:
 //!
-//! 1. a permit from a fixed pool (no permit: 503, and the body is never read);
+//! 1. a permit from a large pool for connections that have not proved anything yet (no permit:
+//!    503, and the body is never read). It protects memory and sockets, never the database;
 //! 2. the `X-Shopify-Hmac-SHA256` header must be present and base64 (401 otherwise);
-//! 3. the body is read up to a size limit (413 above it);
+//! 3. the body is read up to a size limit (413 above it) and under a one second deadline (503
+//!    above it, so a client that stalls cannot hold a permit: lane A audit M1);
 //! 4. HMAC-SHA256 of the raw body under the app's client secret, compared in constant time
 //!    (401 on mismatch);
-//! 5. only then are the topic and shop headers looked at, the shop found, the event stored
-//!    once (deduplicated on the delivery id and on the body's SHA-256, integration audit M1)
-//!    and `webhook.process@1` enqueued in the same transaction;
+//! 5. only a verified delivery takes a permit of the small pool that protects the database (no
+//!    permit: 503). Then the topic and shop headers are looked at, the shop found, the event
+//!    stored once (deduplicated on the delivery id and on the body's SHA-256, integration
+//!    audit M1) and `webhook.process@1` enqueued in the same transaction;
 //! 6. 200 with no body. Everything slow happens later, in `ctl`.
 //!
 //! Sources, read on shopify.dev on 22 Oct 2026: "Verify webhook deliveries" (the signature is
@@ -64,8 +67,16 @@ pub const ACCEPTED_TOPICS: [&str; 5] = [
 
 /// Largest body read. App Store webhooks of the accepted topics are a few kilobytes.
 pub const MAX_BODY_BYTES: usize = 256 * 1024;
-/// Deliveries handled at the same time; more are answered 503 and retried by Shopify.
+/// Verified deliveries stored at the same time; more are answered 503 and retried by Shopify.
+/// This pool protects the database, so only a delivery whose signature checked out takes a permit.
 pub const MAX_IN_FLIGHT: usize = 64;
+/// Connections whose body is being read or verified at the same time. Larger than
+/// [`MAX_IN_FLIGHT`] and held for at most [`BODY_DEADLINE`] plus the HMAC, so unsigned traffic
+/// cannot starve verified deliveries.
+pub const MAX_UNVERIFIED: usize = 512;
+/// The longest the listener waits for a delivery's whole body. Shopify's own total timeout is
+/// five seconds and its bodies are a few kilobytes.
+pub const BODY_DEADLINE: Duration = Duration::from_secs(1);
 /// Shopify gives up on a delivery after five seconds in total.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -75,6 +86,7 @@ pub struct WebhookState {
     db: Db,
     secret: Arc<SecretString>,
     permits: Arc<Semaphore>,
+    unverified: Arc<Semaphore>,
 }
 
 impl std::fmt::Debug for WebhookState {
@@ -91,13 +103,21 @@ impl WebhookState {
             db,
             secret: Arc::new(client_secret),
             permits: Arc::new(Semaphore::new(MAX_IN_FLIGHT)),
+            unverified: Arc::new(Semaphore::new(MAX_UNVERIFIED)),
         }
     }
 
-    /// Replaces the number of deliveries handled at once, for tests.
+    /// Replaces the number of verified deliveries stored at once, for tests.
     #[must_use]
     pub fn with_max_in_flight(mut self, permits: usize) -> Self {
         self.permits = Arc::new(Semaphore::new(permits));
+        self
+    }
+
+    /// Replaces the number of unverified connections read at once, for tests.
+    #[must_use]
+    pub fn with_max_unverified(mut self, permits: usize) -> Self {
+        self.unverified = Arc::new(Semaphore::new(permits));
         self
     }
 }
@@ -202,11 +222,11 @@ async fn shopify(
 ) -> Result<StatusCode, ApiError> {
     let (parts, request_body) = request.into_parts();
 
-    // 1. Concurrency, before anything is read.
-    let Ok(_permit) = state.permits.try_acquire() else {
-        warn!("webhook listener is full");
+    // 1. Concurrency of unverified reads, before anything is read.
+    let Ok(unverified) = state.unverified.try_acquire() else {
+        warn!("webhook listener is full of unverified reads");
         return Err(ApiError::new(ProblemCode::Unavailable)
-            .detail("Too many webhooks are being handled; Shopify will retry."));
+            .detail("Too many webhooks are being read; Shopify will retry."));
     };
 
     // 2. The signature header must be there before the body is read.
@@ -217,17 +237,35 @@ async fn shopify(
             unauthorized()
         })?;
 
-    // 3. The body, up to the limit.
-    let body = body::to_bytes(Body::new(request_body), MAX_BODY_BYTES)
-        .await
-        .map_err(|_| ApiError::new(ProblemCode::PayloadTooLarge))?;
+    // 3. The body, up to the limit and the deadline.
+    let read = tokio::time::timeout(
+        BODY_DEADLINE,
+        body::to_bytes(Body::new(request_body), MAX_BODY_BYTES),
+    )
+    .await;
+    let body = match read {
+        Ok(Ok(body)) => body,
+        Ok(Err(_)) => return Err(ApiError::new(ProblemCode::PayloadTooLarge)),
+        Err(_) => {
+            warn!(reason = "slow_body", "webhook body not delivered in time");
+            return Err(ApiError::new(ProblemCode::Unavailable)
+                .detail("The body did not arrive in time; Shopify will retry."));
+        }
+    };
 
     // 4. Verify over the raw bytes.
     if !signature_matches(&state.secret, &body, &presented) {
         warn!(reason = "mismatch", "webhook signature refused");
         return Err(unauthorized());
     }
+    drop(unverified);
 
+    // 5. Trusted from here on: now a permit of the pool that protects the database.
+    let Ok(_permit) = state.permits.try_acquire() else {
+        warn!("webhook listener is full");
+        return Err(ApiError::new(ProblemCode::Unavailable)
+            .detail("Too many webhooks are being handled; Shopify will retry."));
+    };
     store_verified(&state, &parts.headers, &body).await
 }
 
@@ -340,7 +378,8 @@ async fn store_verified(
             db::repo::jobs::enqueue(
                 &mut tx,
                 NewJob::new(WebhookProcess::QUEUE, WebhookProcess::SCHEMA, payload)
-                    .idempotency_key(format!("{}:{event_id}", WebhookProcess::QUEUE)),
+                    .idempotency_key(format!("{}:{event_id}", WebhookProcess::QUEUE))
+                    .max_attempts(WebhookProcess::MAX_ATTEMPTS),
             )
             .await?;
             tx.commit().await?;

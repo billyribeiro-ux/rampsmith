@@ -326,6 +326,10 @@ impl WebhookProcess {
     pub const QUEUE: &'static str = "webhook.process";
     /// The payload schema and version.
     pub const SCHEMA: &'static str = "webhook.process@1";
+    /// Attempts a `webhook.process` job gets. Shopify never retries a stored event (the
+    /// listener already answered 200), so the job carries the retries: with the one hour cap
+    /// on the backoff, 96 attempts span at least two days (lane A audit M2).
+    pub const MAX_ATTEMPTS: i32 = 96;
 }
 
 #[cfg(test)]
