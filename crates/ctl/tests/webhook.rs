@@ -693,3 +693,107 @@ async fn seed_shop_data(w: &World) {
             .unwrap();
     }
 }
+
+/// Files an event received `minutes` ago, unprocessed, with a job in `job_state` (if any).
+async fn aged_event(w: &World, minutes: i32, job_state: Option<&str>) -> Uuid {
+    let event = store(w, "shop/update", shop_object()).await;
+    sqlx::query(
+        "update webhook_events set received_at = now() - make_interval(mins => $2) where id = $1",
+    )
+    .bind(event)
+    .bind(minutes)
+    .execute(&w.owner)
+    .await
+    .unwrap();
+    sqlx::query("delete from jobs where queue = 'webhook.process' and payload ->> 'event_id' = $1")
+        .bind(event.to_string())
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    if let Some(state) = job_state {
+        let finished = if matches!(state, "dead" | "succeeded" | "failed" | "cancelled") {
+            "now()"
+        } else {
+            "null"
+        };
+        let lease = if state == "running" {
+            "'x', now() + interval '1 hour'"
+        } else {
+            "null, null"
+        };
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "insert into jobs (id, queue, payload_schema, payload, tenant_id, state, locked_by,
+                               locked_until, finished_at)
+             values ($1, 'webhook.process', 'webhook.process@1', $2, $3, '{state}', {lease}, {finished})"
+        )))
+        .bind(Uuid::now_v7())
+        .bind(json!({"event_id": event}))
+        .bind(w.session.tenant.as_uuid())
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    }
+    event
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_sweep_brings_back_stored_events_whose_job_is_gone_and_reports_the_old_ones(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let fresh = aged_event(&w, 5, None).await;
+    let lost = aged_event(&w, 45, None).await;
+    let dead = aged_event(&w, 90, Some("dead")).await;
+    let waiting = aged_event(&w, 90, Some("ready")).await;
+    let running = aged_event(&w, 90, Some("running")).await;
+    let ancient = aged_event(&w, 60 * 24 * 15, None).await;
+    let done = aged_event(&w, 90, None).await;
+    sqlx::query("update webhook_events set processed_at = now(), body = null where id = $1")
+        .bind(done)
+        .execute(&w.owner)
+        .await
+        .unwrap();
+    let ready_for = |event: Uuid| {
+        let owner = w.owner.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "select count(*) from jobs where queue = 'webhook.process' and state = 'ready'
+                    and payload ->> 'event_id' = $1",
+            )
+            .bind(event.to_string())
+            .fetch_one(&owner)
+            .await
+            .unwrap()
+        }
+    };
+
+    let found = ctl::leader::sweep_webhooks(&w.pool).await.unwrap();
+
+    assert_eq!(
+        found.requeued, 2,
+        "the lost event and the one whose job died"
+    );
+    assert_eq!(ready_for(lost).await, 1);
+    assert_eq!(ready_for(dead).await, 1);
+    assert_eq!(ready_for(fresh).await, 0, "too young");
+    assert_eq!(ready_for(waiting).await, 1, "its own job, not a second");
+    assert_eq!(ready_for(running).await, 0);
+    assert_eq!(ready_for(ancient).await, 0, "past the 14 day window");
+    assert_eq!(ready_for(done).await, 0);
+    // The ancient event is the 24 hour alert; the oldest age is reported.
+    assert_eq!(found.stuck, 1);
+    let again = ctl::leader::sweep_webhooks(&w.pool).await.unwrap();
+    assert_eq!(again.requeued, 0, "live jobs exist now");
+    assert!(again.stuck >= 1 && again.oldest_seconds >= 15 * 24 * 3600 - 60);
+
+    // The re-enqueued job processes the event.
+    let job = w.job(
+        WebhookProcess::QUEUE,
+        WebhookProcess::SCHEMA,
+        json!({"event_id": lost}),
+    );
+    w.admin_answers(200, shop_response()).await;
+    w.jobs.dispatch(job).await.unwrap();
+    assert_eq!(processed(&w, lost).await, (true, true));
+}

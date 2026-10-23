@@ -333,7 +333,7 @@ Values:
 - Never in GitHub: no workflow uses it.
 - Sealed values are not copied into PR environments, so builders need a non-sealed test value there.
 
-Two more secrets belong to this input (ADR-266, ADR-267). Generate `RAMPSMITH_SCAN_SECRET_KEYS` with `rsctl keys generate` too, a ring of its own that is never the master ring, and set it, sealed, on `ctl` and `engine` only: ctl re-seals a store's storefront password under it for the length of one scan, and the engine, which never holds the master keys, opens it. Generate `FREE_SCAN_SERVICE_TOKEN` as 32 or more random characters (`openssl rand -base64 36`) and set the same sealed value on `api` and `web`. `rsctl doctor` does not check these two yet; the free scanner stays closed, and a password-protected store is reported as blocked, until they are set.
+Two more secrets belong to this input (ADR-266, ADR-267). Generate `RAMPSMITH_SCAN_SECRET_KEYS` with `rsctl keys generate` too, a ring of its own that is never the master ring, and set it, sealed, on `ctl` and `engine` only: ctl re-seals a store's storefront password under it for the length of one scan, and the engine, which never holds the master keys, opens it. Generate `FREE_SCAN_SERVICE_TOKEN` as 32 or more random characters (`openssl rand -base64 36`) and set the same sealed value on `api` and `web`. `rsctl doctor --row 12` checks both when they are set (the ring parses and round-trips and shares no key with the master ring; the token has 32 or more characters). Until they are set the free scanner stays closed, and a password-protected store is reported as blocked.
 
 Check: `rsctl doctor --row 12`. It parses the ring and checks that every key seals and opens a test value. It needs no network.
 

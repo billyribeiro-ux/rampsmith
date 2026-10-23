@@ -43,7 +43,7 @@ exists.
 
 | Alert (PLAN §21) | Runbook | Signal today |
 | --- | --- | --- |
-| Page: any dead job in `shopify.*`, `github.*` or token-refresh queues | [Dead-letter triage](dead-letter-triage.md) | The worker logs the warning `job is dead` with the queue. A log rule can be written now. No metric counts dead jobs, because a job that used up retryable attempts is counted `retryable` and still dies. Only `shopify.token_refresh` exists as a queue |
+| Page: any dead job in `shopify.*`, `github.*`, `webhook.process` or token-refresh queues, and any `webhook_event_stuck` error from ctl | [Dead-letter triage](dead-letter-triage.md) | The worker logs the warning `job is dead` with the queue. A log rule can be written now; the same rule pages on the error `webhook events have been unprocessed for over 24 hours` (field `webhook_event_stuck`), which ctl's webhook sweep logs every 5 minutes while an event waits (ADR-086). No metric counts dead jobs, because a job that used up retryable attempts is counted `retryable` and still dies. Only `shopify.token_refresh` exists as a queue |
 | Page: webhook signature failures above baseline | [Webhook backlog](webhook-backlog.md), step 4 | **Not built**: no webhook intake and no counter |
 | Page: token refresh failures for any shop | [Dead-letter triage](dead-letter-triage.md), step 3 | The metric `rampsmith.queue.attempts` (queue, outcome `retryable` or `permanent`) exists; no rule uses it |
 | Page: PostgreSQL WAL archiving failing | [Restore from PITR](restore-from-pitr.md), step 2 | By hand: `railway postgres pitr status`. Nothing exports it to Grafana |

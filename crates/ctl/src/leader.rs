@@ -10,7 +10,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::postgres::Postgres;
 use sqlx::{Connection, PgPool};
 use tokio::time::{Instant, MissedTickBehavior, interval, sleep, timeout};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// The advisory lock key, fixed forever. Other advisory locks use `hashtextextended` keys.
 pub const LEADER_KEY: i64 = 0x7261_6d70_6c65_6164; // ASCII "ramplead"
@@ -24,6 +24,8 @@ pub struct Cadence {
     pub partitions_every: Duration,
     /// Between sweeps of expired passkey ceremonies and sessions (audit M6, ADR-042).
     pub sweep_every: Duration,
+    /// Between sweeps for webhook events nobody processed (lane A audit M2).
+    pub webhook_sweep_every: Duration,
     /// Between attempts to become leader.
     pub retry_every: Duration,
 }
@@ -34,6 +36,7 @@ impl Default for Cadence {
             reap_every: Duration::from_secs(10),
             partitions_every: Duration::from_hours(1),
             sweep_every: Duration::from_mins(10),
+            webhook_sweep_every: Duration::from_mins(5),
             retry_every: Duration::from_secs(15),
         }
     }
@@ -117,6 +120,48 @@ pub async fn sweep_retention(db: &Db) -> Result<(i64, i64), DbError> {
     Ok((inputs, free))
 }
 
+/// What [`sweep_webhooks`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WebhookSweep {
+    /// Events given a new `webhook.process` job.
+    pub requeued: u64,
+    /// Events still unprocessed after 24 hours or more.
+    pub stuck: u64,
+    /// Age in seconds of the oldest unprocessed event.
+    pub oldest_seconds: u64,
+}
+
+/// Brings back stored webhook events whose job died or vanished, and raises the alert when
+/// any event has waited 24 hours (lane A audit M2, ADR-086). The `webhook_event_stuck` field
+/// on the error log is what the log rule pages on.
+pub async fn sweep_webhooks(pool: &PgPool) -> Result<WebhookSweep, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"select requeued as "requeued!", stuck_24h as "stuck!", oldest_seconds as "oldest!"
+             from webhook_events_sweep()"#
+    )
+    .fetch_one(pool)
+    .await?;
+    let found = WebhookSweep {
+        requeued: u64::try_from(row.requeued).unwrap_or(0),
+        stuck: u64::try_from(row.stuck).unwrap_or(0),
+        oldest_seconds: u64::try_from(row.oldest).unwrap_or(0),
+    };
+    if found.requeued > 0 {
+        warn!(
+            requeued = found.requeued,
+            "re-enqueued unprocessed webhook events"
+        );
+    }
+    if found.stuck > 0 {
+        error!(
+            webhook_event_stuck = found.stuck,
+            oldest_seconds = found.oldest_seconds,
+            "webhook events have been unprocessed for over 24 hours"
+        );
+    }
+    Ok(found)
+}
+
 /// Competes for leadership and, while leader, performs its duties, until `shutdown`.
 pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = ()>) {
     tokio::pin!(shutdown);
@@ -133,6 +178,7 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                 tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
                 let mut partitions_due = Instant::now();
                 let mut sweep_due = Instant::now();
+                let mut webhook_sweep_due = Instant::now();
                 loop {
                     tokio::select! {
                         () = &mut shutdown => {
@@ -156,6 +202,14 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                         }
                         Ok(_) => {}
                         Err(error) => warn!(%error, "leader duties failed; retrying next tick"),
+                    }
+                    if Instant::now() >= webhook_sweep_due {
+                        match sweep_webhooks(&pool).await {
+                            Ok(_) => {
+                                webhook_sweep_due = Instant::now() + cadence.webhook_sweep_every;
+                            }
+                            Err(error) => warn!(%error, "webhook sweep failed; retrying next tick"),
+                        }
                     }
                     if Instant::now() >= sweep_due {
                         let identity = sweep_identity(&db).await;

@@ -525,6 +525,7 @@ async fn the_leader_sweeps_on_its_own_cadence(opts: PgPoolOptions, conn: PgConne
         reap_every: StdDuration::from_millis(50),
         partitions_every: StdDuration::from_hours(1),
         sweep_every: StdDuration::from_millis(100),
+        webhook_sweep_every: StdDuration::from_hours(1),
         retry_every: StdDuration::from_millis(50),
     };
     let leading = tokio::spawn(leader::run(pool, cadence, async move {

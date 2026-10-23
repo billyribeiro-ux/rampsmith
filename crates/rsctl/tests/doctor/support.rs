@@ -339,6 +339,11 @@ pub fn other_test_key() -> &'static TestKey {
 }
 
 /// A real master key ring for row 12 and for the tests that need a valid one.
+/// A scan ring (ADR-266): the same format as the master ring, with keys of its own.
+pub fn scan_ring() -> String {
+    format!("s1:{}", crypto::KeyRing::generate_master_key().unwrap())
+}
+
 pub fn master_ring() -> String {
     format!("k1:{}", crypto::KeyRing::generate_master_key().unwrap())
 }
