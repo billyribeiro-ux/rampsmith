@@ -153,6 +153,7 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [276](276-mailer-service.md) | A mailer service separate from the browser engine | Accepted |
 | [277](277-uninstall-export-attachment-and-email-data-lifecycle.md) | The uninstall record travels as an attachment, and how long email data lives | Accepted |
 | [278](278-bounces-and-complaints-arrive-through-a-verified-sns-endpoint.md) | Bounces and complaints arrive through a verified SNS endpoint | Accepted |
+| [279](279-pipeline-events-queue-the-merchants-emails-and-ctl-schedules-the-weekly-rescan.md) | Pipeline events queue the merchant's emails, and ctl schedules the weekly rescan | Accepted |
 | [040](040-runtime-database-roles.md) | Runtime database roles and the startup guard | Accepted |
 | [041](041-per-shop-token-lock.md) | The per-shop token lock holds one connection and waits a bounded time | Accepted |
 | [042](042-passkey-start-limits-and-sweep.md) | Rate limits on the passkey start endpoints, and the sweep of expired sign-in state | Accepted |

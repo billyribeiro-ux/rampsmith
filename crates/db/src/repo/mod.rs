@@ -15,6 +15,7 @@ pub mod identity;
 pub mod jobs;
 pub mod occurrences;
 pub mod redact;
+pub mod rescans;
 pub mod retention;
 pub mod scan_inputs;
 pub mod scan_secrets;

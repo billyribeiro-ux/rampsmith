@@ -9,6 +9,7 @@ pub mod config;
 pub mod health;
 pub mod jobs;
 pub mod leader;
+pub mod rescan;
 pub mod rewrap;
 pub mod startup;
 pub mod token_refresh;

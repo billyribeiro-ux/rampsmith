@@ -200,6 +200,7 @@ Values:
 - `SES_CONFIGURATION_SET`, `rampsmith` (the set from step 10) → RW, on `mailer`. Without it mail is sent and no bounce is ever reported.
 - `SES_SNS_TOPIC_ARN`, the topic's ARN from step 9 → RW, on `api`. Without it `/webhooks/ses` does not exist and SNS cannot confirm.
 - `EMAIL_POSTAL_ADDRESS`, Rampsmith's physical postal address on two or more lines (street, then city, region, postal code and country) → RW. Marketing email must carry it (CAN-SPAM, ADR-191), and the sender refuses to send marketing without it. R1 sends no marketing email, so this can wait; a P.O. box or a registered-agent address is acceptable under CAN-SPAM if it can receive mail. Decide with your attorney which address to publish.
+- `SHOPIFY_APP_HANDLE` (optional, on the `mailer`): the handle of your Shopify app, the `handle` line of `shopify.app.toml`. The emails' buttons open `https://admin.shopify.com/store/<store>/apps/<handle>/...`; the default, `rampsmith`, is right for the production app, so set it only on a staging environment whose app has another handle (ADR-279).
 
 These four reach only the `mailer` service (ADR-276). It is a separate Railway service so the SES key never sits in the process that runs Chromium. It adds one small always-on Railway service to the bill; you accept that at deploy time, or tell builders to fold it into `ctl` instead (which keeps SES next to the Shopify and GitHub credentials, and is the weaker choice).
 
