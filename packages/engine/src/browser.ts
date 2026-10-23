@@ -46,7 +46,7 @@ export function assertLoopbackProxied(env: NodeJS.ProcessEnv = process.env): voi
 export type SandboxPolicy = 'auto' | 'required';
 
 /** Whether a started browser has Chromium's own sandbox. */
-type SandboxMode = 'on' | 'off';
+export type SandboxMode = 'on' | 'off';
 
 /** The variable that selects a {@link SandboxPolicy}. */
 export const SANDBOX_POLICY_ENV = 'ENGINE_CHROMIUM_SANDBOX';

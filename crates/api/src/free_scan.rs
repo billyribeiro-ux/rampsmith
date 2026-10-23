@@ -424,6 +424,17 @@ fn invalid(field: &str, message: &str) -> ApiError {
     }])
 }
 
+/// The 503 answer when no sandboxed engine serves free scans. The `scanner` field tells the web
+/// server to show the page's "not connected" state rather than "busy".
+fn scanner_unavailable() -> ApiError {
+    ApiError::new(ProblemCode::Unavailable)
+        .detail("The free scanner is unavailable.")
+        .errors(vec![FieldError {
+            field: "scanner".to_owned(),
+            message: "unavailable".to_owned(),
+        }])
+}
+
 /// The 429 answer: which budget ran out, and when a place frees up.
 pub(crate) struct Limited {
     scope: &'static str,
@@ -509,6 +520,16 @@ pub(crate) async fn create_free_scan(
     let Some(free) = state.free_scans() else {
         return Err(ApiError::new(ProblemCode::Unavailable).into());
     };
+    // Nothing is spent on a request while no engine with a sandboxed Chromium is serving free
+    // scans (ADR-280): not a Turnstile call, not a place in anyone's budget, not a row.
+    {
+        let mut tx = state.db.public().await?;
+        let available = free_scans::engine_available(&mut tx).await?;
+        tx.rollback().await?;
+        if !available {
+            return Err(Refused::Api(scanner_unavailable()));
+        }
+    }
     let site = parse_public_url(&body.url).map_err(|reason| invalid("url", reason.code()))?;
     let address: IpAddr = body
         .client_ip

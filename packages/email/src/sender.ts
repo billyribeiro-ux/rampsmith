@@ -48,6 +48,33 @@ export type RefusalReason =
   | 'postal-address-missing'
   | 'unsubscribe-not-https';
 
+/**
+ * A provider could not send the message. It carries no provider message text, because that can
+ * quote the recipient (ADR-194); `code` is a stable `snake_case` reason that is safe to log.
+ */
+export class SendFailure extends Error {
+  /** `defer`: try again later, nothing is wrong with the message. `permanent`: never retry. */
+  readonly disposition: 'defer' | 'permanent';
+  readonly code: string;
+  /** How long the provider asked callers to wait, when it said. */
+  readonly retryAfterMs: number | undefined;
+  /** How many sends of this message have been tried, once a ledger counted them. */
+  tries: number | undefined;
+
+  constructor(
+    disposition: 'defer' | 'permanent',
+    code: string,
+    message: string,
+    retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = 'SendFailure';
+    this.disposition = disposition;
+    this.code = code;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 export class SendRefusedError extends Error {
   readonly reasons: readonly RefusalReason[];
 

@@ -35,7 +35,7 @@ pub struct Redacted {
     pub scans: u64,
     /// Evidence crops.
     pub evidence: u64,
-    /// Statements, AI call records and budgets.
+    /// Statements, AI call records and budgets, and the owner's contact for email.
     pub other: u64,
     /// Stored webhook bodies of other events.
     pub webhooks: u64,
@@ -123,6 +123,11 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
                 .await?,
         )
         .unwrap_or(0);
+    // The owner's address and the store's name, which only email needed (ADR-272).
+    let contacts = sqlx::query!("delete from shop_contacts where tenant_id = $1", tenant)
+        .execute(tx.conn())
+        .await?
+        .rows_affected();
     let (jobs_cancelled, events_closed, webhooks) = clear_webhooks(tx, tenant).await?;
     close_shop(tx, tenant, shop).await?;
     Ok(Some(Redacted {
@@ -131,7 +136,7 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
         findings,
         scans,
         evidence,
-        other,
+        other: other + contacts,
         webhooks,
         events_closed,
         jobs_cancelled,

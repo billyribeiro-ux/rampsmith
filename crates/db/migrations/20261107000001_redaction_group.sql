@@ -8,7 +8,7 @@
 -- have been a second, over-privileged login. The name stops carrying two meanings:
 --
 -- - `rampsmith_redactor` is a NOLOGIN group that may execute the function and can do nothing
---   else. bootstrap.sql creates it and makes ctl's login a member; the engine's and the api's
+--   else (since the email sender, the writes to `shop_contacts` too). bootstrap.sql creates it and makes ctl's login a member; the engine's and the api's
 --   logins are not (the startup guards of `ctl`, the api and the engine check it);
 -- - the function privilege is taken from the role called `rampsmith_ctl`, whichever it is.
 --
@@ -25,3 +25,9 @@ $$;
 
 grant execute on function redact_ai_calls() to rampsmith_redactor;
 revoke execute on function redact_ai_calls() from rampsmith_ctl;
+
+-- Migration 20261106000001 granted the writes to `shop_contacts` to the same ambiguous name.
+-- Only ctl writes the owner's address (and `shop/redact` deletes it), so the group that holds
+-- ctl's extra privileges holds them too; the worker group keeps `select` for the engine.
+grant insert, update, delete on shop_contacts to rampsmith_redactor;
+revoke insert, update, delete on shop_contacts from rampsmith_ctl;

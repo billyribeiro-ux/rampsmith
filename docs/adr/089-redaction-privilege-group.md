@@ -18,9 +18,10 @@ production, would have made a second login with the same privilege.
 
 ## Decision
 
-1. A NOLOGIN group `rampsmith_redactor` holds the one privilege, `execute` on
-   `redact_ai_calls()` (migration `20261107000001_redaction_group.sql`, which also revokes it from
-   the role named `rampsmith_ctl`). It is not a member of anything.
+1. A NOLOGIN group `rampsmith_redactor` holds the privileges only ctl needs beyond the worker
+   group: `execute` on `redact_ai_calls()` and, since the email sender (migration
+   `20261106000001`), the writes to `shop_contacts` (migration `20261107000001_redaction_group.sql`,
+   which revokes both from the role named `rampsmith_ctl`). It is not a member of anything.
 2. `bootstrap.sql` creates the group (before the migrations may have) and grants it to the
    `rampsmith_ctl` login, next to `rampsmith_worker`. The engine and api logins are not members.
    There is no second login for ctl, and the instruction to create one is deleted.

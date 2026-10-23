@@ -215,6 +215,9 @@ export function apiDelegate(options: DelegateOptions): FreeScanDelegate {
           };
         }
         case 503:
+          // No engine with a sandboxed browser is serving free scans (ADR-280): the page's
+          // "not connected" state, and nothing was spent on the visitor's budget.
+          if (fields.some((f) => f.field === 'scanner')) return { kind: 'not-connected' };
           return fields.some((f) => f.field === 'turnstile_token')
             ? { kind: 'challenge-unavailable' }
             : { kind: 'busy' };

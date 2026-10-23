@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into shop_contacts (shop_id, tenant_id, email, store_name, locale)\n           select id, tenant_id, $3, $4, $5 from shopify_shops\n            where tenant_id = $1 and id = $2 and status = 'installed'\n           on conflict (shop_id) do update\n              set email = excluded.email, store_name = excluded.store_name,\n                  locale = excluded.locale, updated_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bd22dedb844d38aa5d76a97cdb9653b87534c2a1e46fc71c19eea4654bb6edc1"
+}
