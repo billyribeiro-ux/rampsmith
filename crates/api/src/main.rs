@@ -112,7 +112,8 @@ async fn serve(config: Config) -> anyhow::Result<()> {
 }
 
 /// The public webhook listener: Shopify's webhooks and, when the link keys are set, the RFC 8058
-/// one-click unsubscribe route (ADR-274). It serves nothing else (ADR-182).
+/// one-click unsubscribe route (ADR-274) and, when the SNS topic is set, SES's
+/// bounce and complaint events (ADR-278). It serves nothing else (ADR-182).
 async fn spawn_webhook_listener(
     address: std::net::SocketAddr,
     db: &Db,
@@ -131,6 +132,12 @@ async fn spawn_webhook_listener(
     if let Some(links) = config.email_links.clone() {
         router = router.merge(api::email_link::one_click_router(
             api::email_link::OneClickState::new(db.clone(), links),
+        ));
+    }
+    if let Some(topic) = config.ses_sns_topic.clone() {
+        let fetch = api::ses_events::HttpsFetch::new().context("sns client")?;
+        router = router.merge(api::ses_events::ses_events_router(
+            api::ses_events::SesEventsState::new(db.clone(), topic, std::sync::Arc::new(fetch)),
         ));
     }
     let mut stop = stop.clone();

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select email_delivery_tenant($1) as \"tenant\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tenant",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "331f1ab628c87833e9c2dfa3fc8aeb5a822ae9ff4c4c624ccb0a3bb2849f208b"
+}

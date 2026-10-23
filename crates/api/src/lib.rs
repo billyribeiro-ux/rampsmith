@@ -15,6 +15,7 @@ mod r1;
 pub mod rate_limit;
 mod rules;
 pub mod serve;
+pub mod ses_events;
 pub mod shopify;
 pub mod webhooks;
 

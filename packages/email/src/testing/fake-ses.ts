@@ -25,6 +25,8 @@ export interface FakeSesRequest {
   readonly body: {
     readonly FromEmailAddress: string;
     readonly Destination: { readonly ToAddresses: readonly string[] };
+    /** `SendEmailRequest.ConfigurationSetName` (botocore `sesv2` 2019-09-27). */
+    readonly ConfigurationSetName?: string;
     readonly Content: {
       readonly Simple: {
         readonly Subject: { readonly Data: string; readonly Charset?: string };
@@ -164,6 +166,12 @@ function checkBody(value: unknown): string | null {
   const to = body.Destination?.ToAddresses;
   if (typeof body.FromEmailAddress !== 'string' || body.FromEmailAddress === '') return 'no From';
   if (!Array.isArray(to) || to.length !== 1 || typeof to[0] !== 'string') return 'one To';
+  if (
+    body.ConfigurationSetName !== undefined &&
+    !/^[A-Za-z0-9_-]{1,64}$/u.test(body.ConfigurationSetName)
+  ) {
+    return 'ConfigurationSetName';
+  }
   const simple = body.Content?.Simple;
   if (simple === undefined) return 'no Content.Simple';
   if (typeof simple.Subject?.Data !== 'string' || !PRINTABLE.test(simple.Subject.Data)) {

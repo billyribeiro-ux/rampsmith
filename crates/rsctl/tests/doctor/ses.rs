@@ -268,6 +268,27 @@ async fn a_postal_address_that_is_set_must_be_usable_before_any_request() {
 }
 
 #[tokio::test]
+async fn a_configuration_set_or_topic_that_is_set_must_have_the_right_shape_before_any_request() {
+    for (name, value) in [
+        ("SES_CONFIGURATION_SET", "two words"),
+        ("SES_SNS_TOPIC_ARN", "arn:aws:sqs:eu-west-1:123456789012:q"),
+        ("SES_SNS_TOPIC_ARN", "arn:aws:sns:eu-west-1:1234:rampsmith"),
+        // A topic in another region than SES's.
+        (
+            "SES_SNS_TOPIC_ARN",
+            "arn:aws:sns:us-east-1:123456789012:rampsmith-ses-events",
+        ),
+    ] {
+        let mut env = all("hello@example.com");
+        env.push((name, value));
+        let rig = Rig::new(&env).await;
+        let outcome = rig.run("ses.identity").await;
+        assert!(fail(&outcome).contains(name), "{name}: {outcome:?}");
+        assert!(rig.server.received_requests().await.unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
 async fn partial_inputs_and_unset() {
     let rig = Rig::new(&[("SES_REGION", REGION), ("EMAIL_FROM", "hello@example.com")]).await;
     let outcome = rig.run("ses.identity").await;
