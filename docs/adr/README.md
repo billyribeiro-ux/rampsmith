@@ -143,6 +143,11 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [287](287-visitor-addresses-are-hashed-under-a-key-only-the-api-holds.md) | Visitor addresses are hashed under a key only the api holds | Accepted |
 | [288](288-free-scan-results-are-bounded-and-validated-before-they-are-stored.md) | Free-scan results are bounded and validated before they are stored | Accepted |
 | [289](289-scan-ring-rotation-gives-the-engine-the-new-key-first.md) | Scan ring rotation gives the engine the new key first | Accepted |
+| [290](290-code-fix-channel-flag.md) | The pull-request channel is behind a server-side flag, off in the App Store build | Accepted |
+| [291](291-github-install-flow.md) | Connecting GitHub binds the installation to the signed-in store | Accepted |
+| [292](292-github-webhook-intake.md) | GitHub deliveries are stored once, and state is read from the API | Accepted |
+| [293](293-github-tables-and-lifecycle.md) | The GitHub tables, their isolation and their lifecycle | Accepted |
+| [294](294-github-client-hardening.md) | The GitHub client's guards for the audit findings | Accepted |
 | [268](268-r1-integration-decisions.md) | R1 integration decisions | Accepted |
 | [270](270-ses-adapter-and-sigv4.md) | The Amazon SES adapter, a small SigV4 signer and the error mapping | Accepted |
 | [271](271-email-delivery-ledger.md) | The delivery ledger and retries | Accepted |

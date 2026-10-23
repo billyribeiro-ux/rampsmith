@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select tenant_id as \"tenant_id!\", id as \"id!\" from app_github_installation($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tenant_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "8e33d18a4c9a401b630c79cc9ea188f8712bade03c2c180173524edd7e63509c"
+}

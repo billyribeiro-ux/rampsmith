@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into github_install_states\n           (state_sha256, tenant_id, site_id, created_by_ref, expires_at)\n         values ($1, $2, $3, $4, now() + make_interval(secs => $5))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8f2c7b8216b8b50137aa2a477e5026c71614326d222bb686f1360c2240548b0"
+}

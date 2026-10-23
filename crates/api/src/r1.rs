@@ -65,14 +65,14 @@ impl<T: DeserializeOwned> FromRequest<AppState> for Body<T> {
     }
 }
 
-fn invalid(field: &str, message: &str) -> ApiError {
+pub(crate) fn invalid(field: &str, message: &str) -> ApiError {
     ApiError::new(ProblemCode::ValidationFailed).errors(vec![FieldError {
         field: field.to_owned(),
         message: message.to_owned(),
     }])
 }
 
-fn not_found() -> ApiError {
+pub(crate) fn not_found() -> ApiError {
     ApiError::new(ProblemCode::NotFound)
 }
 
@@ -80,12 +80,12 @@ fn uuid_of(text: &str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(text).map_err(|_| not_found())
 }
 
-fn ts(at: OffsetDateTime) -> String {
+pub(crate) fn ts(at: OffsetDateTime) -> String {
     at.format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default()
 }
 
-fn ts_opt(at: Option<OffsetDateTime>) -> Option<String> {
+pub(crate) fn ts_opt(at: Option<OffsetDateTime>) -> Option<String> {
     at.map(ts)
 }
 
@@ -94,20 +94,20 @@ fn job_error(error: &serde_json::Error) -> ApiError {
     ApiError::new(ProblemCode::Internal)
 }
 
-fn queue_error(error: &impl std::fmt::Display) -> ApiError {
+pub(crate) fn queue_error(error: &impl std::fmt::Display) -> ApiError {
     tracing::error!(%error, "could not enqueue");
     ApiError::new(ProblemCode::Internal)
 }
 
 /// The shop's site: a shop without one is not installed.
-async fn site_of(tx: &mut TenantTx, shop: ShopId) -> Result<SiteId, ApiError> {
+pub(crate) async fn site_of(tx: &mut TenantTx, shop: ShopId) -> Result<SiteId, ApiError> {
     app_views::site_of_shop(tx, shop)
         .await?
         .ok_or_else(not_found)
 }
 
 /// The staff member's `sub`, or a refusal for a token without one.
-fn staff(session: &shopify_auth::ShopSession) -> Result<&str, ApiError> {
+pub(crate) fn staff(session: &shopify_auth::ShopSession) -> Result<&str, ApiError> {
     session.user_id.as_deref().ok_or_else(|| {
         ApiError::new(ProblemCode::Forbidden)
             .detail("This action needs a signed-in Shopify staff member.")
@@ -116,7 +116,7 @@ fn staff(session: &shopify_auth::ShopSession) -> Result<&str, ApiError> {
 
 /// The audit actor for a signed-in staff member: the one format `shopify:<sub>`, the same the
 /// install writes (lane A audit L10, ADR-087).
-fn actor_id(session: &shopify_auth::ShopSession) -> Option<String> {
+pub(crate) fn actor_id(session: &shopify_auth::ShopSession) -> Option<String> {
     session
         .user_id
         .as_deref()
