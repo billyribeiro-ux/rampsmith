@@ -17,6 +17,7 @@ pub mod apply_data_fix;
 pub(crate) mod data_fix;
 pub mod read_store;
 pub mod revert_data_fix;
+pub mod scan_secret;
 pub mod webhook;
 
 /// The queues this registry serves.
@@ -37,16 +38,18 @@ pub struct Jobs {
     /// The app's public origin (`APP_ORIGIN`), which the links in emails point at. Without it no
     /// email that carries a link is queued (ADR-272).
     app_origin: Option<String>,
+    scan_secrets: Option<scan_secret::ScanSecrets>,
 }
 
 impl Jobs {
     /// Handlers over `db` (connected as `rampsmith_worker`).
     #[must_use]
-    pub const fn new(db: Db, auth: ShopifyAuth, admin: AdminFactory) -> Self {
+    pub fn new(db: Db, auth: ShopifyAuth, admin: AdminFactory) -> Self {
         Self {
             db,
             auth,
             admin,
+            scan_secrets: None,
             app_origin: None,
         }
     }
@@ -56,6 +59,14 @@ impl Jobs {
     #[must_use]
     pub fn with_app_origin(mut self, origin: Option<String>) -> Self {
         self.app_origin = origin;
+        self
+    }
+
+    /// Lets scans of a password-protected store reach the engine (ADR-266). Without it the
+    /// engine reports such a store as blocked.
+    #[must_use]
+    pub fn with_scan_secrets(mut self, secrets: scan_secret::ScanSecrets) -> Self {
+        self.scan_secrets = Some(secrets);
         self
     }
 

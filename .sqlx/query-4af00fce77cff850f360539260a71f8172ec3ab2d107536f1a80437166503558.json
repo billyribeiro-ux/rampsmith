@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select count(*) as \"count!\",\n                  coalesce(ceil(extract(epoch from (min(created_at) + interval '24 hours' - now()))), 0)::bigint\n                    as \"frees_in!\"\n             from free_scans\n            where ip_hash = $1 and status <> 'failed' and created_at > now() - interval '24 hours'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "frees_in!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "4af00fce77cff850f360539260a71f8172ec3ab2d107536f1a80437166503558"
+}

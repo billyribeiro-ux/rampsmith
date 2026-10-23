@@ -3,7 +3,8 @@
 use schemars::{Schema, schema_for};
 
 use crate::email::EmailSend;
-use crate::job::{JobError, ScanPage, ShopifyTokenRefresh};
+use crate::free_scan::{FreeScanResult, FreeScanRun};
+use crate::job::{JobError, ShopifyTokenRefresh};
 use crate::pipeline::{
     AiAltText, AuditData, ScanFinalize, ScanPageV2, ScanPlan, ShopifyApplyDataFix,
     ShopifyReadStore, ShopifyRevertDataFix, VerifyScan, WebhookProcess,
@@ -36,6 +37,14 @@ pub fn schemas() -> Vec<NamedSchema> {
             schema: schema_for!(EmailSend),
         },
         NamedSchema {
+            name: "free-scan-result",
+            schema: schema_for!(FreeScanResult),
+        },
+        NamedSchema {
+            name: "free-scan-run",
+            schema: schema_for!(FreeScanRun),
+        },
+        NamedSchema {
             name: "job-error",
             schema: schema_for!(JobError),
         },
@@ -46,10 +55,6 @@ pub fn schemas() -> Vec<NamedSchema> {
         NamedSchema {
             name: "scan-finalize",
             schema: schema_for!(ScanFinalize),
-        },
-        NamedSchema {
-            name: "scan-page",
-            schema: schema_for!(ScanPage),
         },
         NamedSchema {
             name: "scan-page-v2",

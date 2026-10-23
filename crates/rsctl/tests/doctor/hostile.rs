@@ -9,7 +9,7 @@ use rsctl::vars::Var;
 use wiremock::matchers::any;
 use wiremock::{Mock, Request, Respond, ResponseTemplate};
 
-use crate::support::{Rig, master_ring, test_key};
+use crate::support::{Rig, master_ring, scan_ring, test_key};
 
 #[derive(Clone, Copy, Debug)]
 enum Shape {
@@ -89,6 +89,7 @@ fn environment() -> Vec<(String, String)> {
         let value = match var {
             Var::GithubAppPrivateKey => key.pkcs1_pem.clone(),
             Var::RampsmithMasterKeys => master_ring(),
+            Var::RampsmithScanSecretKeys => scan_ring(),
             Var::StripeSecretKey => "sk_test_ECHOME0123456789abcdef".to_owned(),
             Var::StripeWebhookSecret => "whsec_ECHOME0123456789abcdef".to_owned(),
             Var::OtelExporterOtlpHeaders => {

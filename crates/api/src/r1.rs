@@ -51,7 +51,7 @@ const ALT_MAX_CHARACTERS: i64 = 300;
 // Request plumbing
 
 /// A JSON body whose rejection is a problem+json answer like every other error.
-pub(crate) struct Body<T>(T);
+pub(crate) struct Body<T>(pub(crate) T);
 
 impl<T: DeserializeOwned> FromRequest<AppState> for Body<T> {
     type Rejection = ApiError;
@@ -292,14 +292,24 @@ fn strings(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// What `start_scan` writes until the engine records the real ruleset on the scan.
+const PLACEHOLDER_RULESET: &str = "axe-core";
+
 fn scan_dto(row: ScanRow) -> ScanSummaryDto {
-    let ruleset_version = row
-        .coverage
-        .as_ref()
-        .and_then(|c| c.get("ruleset"))
-        .and_then(|r| r.get("axe"))
-        .and_then(Value::as_str)
-        .map_or(row.ruleset_version, |axe| format!("axe-core {axe}"));
+    // The engine records the axe-core version and the custom rules' hash on the scan when it
+    // plans and finalises it. Only a scan the engine has not reached yet, or one from before
+    // that, carries the bare placeholder `start_scan` writes; those fall back to the coverage
+    // document's axe-core version, when there is one.
+    let ruleset_version = if row.ruleset_version == PLACEHOLDER_RULESET {
+        row.coverage
+            .as_ref()
+            .and_then(|c| c.get("ruleset"))
+            .and_then(|r| r.get("axe"))
+            .and_then(Value::as_str)
+            .map_or(row.ruleset_version, |axe| format!("axe-core {axe}"))
+    } else {
+        row.ruleset_version
+    };
     let coverage = row.coverage.as_ref().map(|c| CoverageDto {
         automated: strings(c.get("criteria_tested")),
         partial: strings(c.get("criteria_partial")),
@@ -325,6 +335,7 @@ fn scan_dto(row: ScanRow) -> ScanSummaryDto {
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ShopDto {
     domain: String,
+    /// The shop's name, once `shopify.read_store` has read it; null before the first scan.
     name: Option<String>,
 }
 
@@ -381,6 +392,9 @@ pub(crate) async fn get_overview(
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
     let view = plan_view(&mut tx, session.shop_id, now).await?;
+    let shop_name = db::repo::shopify::get_info(&mut tx, session.shop_id)
+        .await?
+        .and_then(|info| info.name);
     let latest = app_views::latest_scan(&mut tx, site).await?;
     let (counts, first_fix) = app_views::counts(&mut tx, site).await?;
     let (document, _) = app_views::settings(&mut tx, site)
@@ -394,7 +408,7 @@ pub(crate) async fn get_overview(
     Ok(Json(OverviewDto {
         shop: ShopDto {
             domain: session.shop.as_str().to_owned(),
-            name: None,
+            name: shop_name,
         },
         entitlements: view.dto,
         latest_scan: latest.map(scan_dto),
@@ -462,7 +476,7 @@ pub(crate) async fn start_scan(
     }
     let ruleset = db::repo::data_fixes::latest_ruleset(&mut tx, site)
         .await?
-        .unwrap_or_else(|| "axe-core".to_owned());
+        .unwrap_or_else(|| PLACEHOLDER_RULESET.to_owned());
     let scan = scans::create(
         &mut tx,
         &scans::NewScan {

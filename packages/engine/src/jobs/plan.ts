@@ -9,6 +9,7 @@ import type postgres from 'postgres';
 import { readInputs } from '../pipeline/inputs.ts';
 import { planPages, type PlannedPage } from '../pipeline/planner.ts';
 import { AUDITED_KINDS } from '../pipeline/snapshot.ts';
+import { RULESET_VERSION } from '../ruleset.ts';
 import { withTenant } from '../store.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
@@ -78,6 +79,7 @@ export function scanPlanHandler(deps: PlanDeps): JobHandler {
           update scans
              set plan = ${tx.json(plan as unknown as postgres.JSONValue)},
                  pages_planned = ${plan.pages.length},
+                 ruleset_version = ${RULESET_VERSION},
                  data_inputs_planned = greatest(data_inputs_planned, ${audited})
            where tenant_id = ${tenantId} and id = ${payload.scan_id}`;
       }

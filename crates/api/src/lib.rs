@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod free_scan;
 mod health;
 pub mod plan;
 mod r1;
@@ -30,6 +31,7 @@ pub struct AppState {
     identity: Option<identity::Identity>,
     keys: Option<crypto::KeyRing>,
     partner: Option<plan::PartnerPlans>,
+    free_scans: Option<free_scan::FreeScans>,
     start_limiter: rate_limit::StartLimiter,
 }
 
@@ -44,6 +46,7 @@ impl AppState {
             identity: None,
             keys: None,
             partner: None,
+            free_scans: None,
             start_limiter: rate_limit::StartLimiter::default(),
         }
     }
@@ -76,6 +79,18 @@ impl AppState {
     pub fn with_partner(mut self, partner: plan::PartnerPlans) -> Self {
         self.partner = Some(partner);
         self
+    }
+
+    /// Enables the free scanner's anonymous scans (ADR-267). Without it its routes answer 503.
+    #[must_use]
+    pub fn with_free_scans(mut self, free_scans: free_scan::FreeScans) -> Self {
+        self.free_scans = Some(free_scans);
+        self
+    }
+
+    /// The free scanner, when configured.
+    pub(crate) const fn free_scans(&self) -> Option<&free_scan::FreeScans> {
+        self.free_scans.as_ref()
     }
 
     /// Replaces the limits on the unauthenticated passkey `start` endpoints (audit M6,
@@ -112,6 +127,7 @@ impl AppState {
         (name = "operations", description = "Liveness and readiness for the platform"),
         (name = "shopify", description = "The embedded Shopify app's session"),
         (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
+        (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-267)"),
         (name = "app", description = "The embedded app's scans, findings, fixes, evidence, settings and statement")
     )
 )]
@@ -134,6 +150,12 @@ impl utoipa::Modify for SecuritySchemes {
             "`Session <token>`: the dashboard session token, forwarded by the web app (ADR-024)."
                 .to_owned(),
         );
+        let mut service = Http::new(HttpAuthScheme::Bearer);
+        service.description = Some(
+            "`FREE_SCAN_SERVICE_TOKEN`: the secret the web server presents for the free scanner (ADR-267)."
+                .to_owned(),
+        );
+        components.add_security_scheme("free_scan_service", SecurityScheme::Http(service));
         components.add_security_scheme(
             "dashboard_session",
             SecurityScheme::ApiKey(utoipa::openapi::security::ApiKey::Header(session)),
@@ -151,6 +173,8 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(auth::start_sign_in))
         .routes(routes!(auth::finish_sign_in))
         .routes(routes!(auth::get_session, auth::delete_session))
+        .routes(routes!(free_scan::create_free_scan))
+        .routes(routes!(free_scan::get_free_scan))
         .routes(routes!(r1::get_overview))
         .routes(routes!(r1::start_scan))
         .routes(routes!(r1::get_scan))

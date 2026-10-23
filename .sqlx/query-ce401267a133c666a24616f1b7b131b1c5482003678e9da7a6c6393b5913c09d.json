@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select free_scans_sweep() as \"swept!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "swept!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ce401267a133c666a24616f1b7b131b1c5482003678e9da7a6c6393b5913c09d"
+}

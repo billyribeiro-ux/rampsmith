@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FreeScanRun",
+  "description": "Payload of `free_scan.run` jobs, schema `free_scan.run@1`. Runs in the engine for no tenant:\nreads the `free_scans` row, checks `robots.txt`, scans the home page and up to two linked\npages at one viewport through egress, and stores the result on the row.",
+  "type": "object",
+  "properties": {
+    "free_scan_id": {
+      "description": "The `free_scans.id` to run.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "free_scan_id"
+  ]
+}

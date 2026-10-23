@@ -17,7 +17,7 @@ and for `shop/redact` and `customers/*` that is a legal deadline (PLAN §19).
 1. `WebhookProcess::MAX_ATTEMPTS` is 96 and the listener sets it on the job. The backoff is
    capped at one hour with equal jitter (a delay is between a half and the whole of the capped
    value), so 96 attempts span at least two days and on average over three.
-2. `webhook_events_sweep()` (migration `20261105000002`, security definer, executable by the
+2. `webhook_events_sweep()` (migration `20261105000003`, security definer, executable by the
    worker role only, ages fixed in the function) gives a new job to every event unprocessed for
    30 minutes that has no `ready` or `running` job, at most once per hour per event and for 14
    days after arrival. It returns how many it queued, how many events have waited 24 hours or

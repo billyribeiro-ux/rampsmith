@@ -94,6 +94,7 @@ describe('the engine queue registry (ADR-035)', () => {
       'ai.alt_text',
       'audit.data',
       'email.send',
+      'free_scan.run',
       'scan.finalize',
       'scan.page',
       'scan.plan',

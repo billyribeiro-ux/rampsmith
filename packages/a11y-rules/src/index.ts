@@ -18,6 +18,7 @@ export {
   type SkippedRule,
 } from './data/rich-text.ts';
 export { RULES, type RuleMeta } from './rules.ts';
+export { RULES_VERSION } from './version.ts';
 export {
   GuardSetupError,
   guardCheckout,

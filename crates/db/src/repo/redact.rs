@@ -154,8 +154,9 @@ async fn close_shop(tx: &mut TenantTx, tenant: uuid::Uuid, shop: ShopId) -> Resu
     .await?;
     sqlx::query!(
         r#"update shopify_shops
-              set status = 'redacted', scopes = '{}', primary_domain = null, locales = '{}',
-                  shop_gid = null, synced_at = null, uninstalled_at = coalesce(uninstalled_at, now())
+              set status = 'redacted', scopes = '{}', name = null, primary_domain = null,
+                  locales = '{}', shop_gid = null,
+                  synced_at = null, uninstalled_at = coalesce(uninstalled_at, now())
             where tenant_id = $1 and id = $2"#,
         tenant,
         shop.as_uuid(),

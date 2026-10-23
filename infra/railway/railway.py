@@ -311,7 +311,11 @@ def _web(env: str, inputs: Inputs) -> Any:
         "API_URL": private_url("api", PORTS["api"]),
         "SHOPIFY_API_KEY": shared("SHOPIFY_API_KEY"),
         "TURNSTILE_SITE_KEY": shared("TURNSTILE_SITE_KEY"),
-        "TURNSTILE_SECRET_KEY": shared("TURNSTILE_SECRET_KEY"),
+        # The api runs the free scanner: it verifies the challenge, keeps the limits and queues
+        # the scan. This service holds the widget's public key and the secret it presents to the
+        # api, and no Turnstile secret (ADR-267).
+        "FREE_SCANNER_BACKEND": "api",
+        "FREE_SCAN_SERVICE_TOKEN": shared("FREE_SCAN_SERVICE_TOKEN"),
     }
     return service(
         "web",
@@ -335,6 +339,10 @@ def _api(env: str, inputs: Inputs) -> Any:
         "MIGRATION_DATABASE_URL": database_url(*DB_MIGRATOR),
         **SHOPIFY_APP,
         "RAMPSMITH_MASTER_KEYS": shared("RAMPSMITH_MASTER_KEYS"),
+        # The free scanner (ADR-267): the secret the web service presents, and the Turnstile
+        # secret the api verifies the challenge with.
+        "FREE_SCAN_SERVICE_TOKEN": shared("FREE_SCAN_SERVICE_TOKEN"),
+        "TURNSTILE_SECRET_KEY": shared("TURNSTILE_SECRET_KEY"),
         "WEBAUTHN_RP_ID": inputs.app_host or preserve_existing(),
         "WEBAUTHN_RP_ORIGIN": (
             f"https://{inputs.app_host}" if inputs.app_host else preserve_existing()
@@ -369,6 +377,8 @@ def _ctl(env: str, inputs: Inputs) -> Any:
         # the api's code reads it.
         **SHOPIFY_PARTNER,
         "RAMPSMITH_MASTER_KEYS": shared("RAMPSMITH_MASTER_KEYS"),
+        # Seals a protected store's password for one scan, for the engine alone (ADR-266).
+        "RAMPSMITH_SCAN_SECRET_KEYS": shared("RAMPSMITH_SCAN_SECRET_KEYS"),
         "GITHUB_APP_ID": shared("GITHUB_APP_ID"),
         "GITHUB_APP_CLIENT_ID": shared("GITHUB_APP_CLIENT_ID"),
         "GITHUB_APP_PRIVATE_KEY": shared("GITHUB_APP_PRIVATE_KEY"),
@@ -396,6 +406,8 @@ def _engine(env: str, inputs: Inputs) -> Any:
         # The only service given the proxy's address and its token key (ADR-182).
         "EGRESS_PROXY_URL": private_url("egress", PORTS["egress"]),
         "EGRESS_TOKEN_SECRET": shared("EGRESS_TOKEN_SECRET"),
+        # Opens the password ctl sealed for the scan it is running; not a master key (ADR-266).
+        "RAMPSMITH_SCAN_SECRET_KEYS": shared("RAMPSMITH_SCAN_SECRET_KEYS"),
         "ANTHROPIC_API_KEY": shared("ANTHROPIC_API_KEY"),
         # Transactional email (ADR-194, ADR-270): the engine renders and sends, so it alone holds
         # the Amazon SES keys.

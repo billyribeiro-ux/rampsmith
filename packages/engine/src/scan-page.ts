@@ -86,6 +86,8 @@ export interface PageScan {
   readonly states: readonly StateScan[];
   /** Crops of the `cropSelectors` that were found, keyed by selector. */
   readonly crops: Readonly<Record<string, Buffer>>;
+  /** Absolute `href`s of the page's links, when `collectLinks` asked for them. */
+  readonly links?: readonly string[];
   readonly durationMs: number;
 }
 
@@ -110,6 +112,8 @@ export interface ScanOptions {
   readonly maxCrops?: number;
   /** CSS selectors to crop in the default state, for the after-picture of a fix. */
   readonly cropSelectors?: readonly string[];
+  /** Return the page's link targets, for the free scanner to choose two more pages from. */
+  readonly collectLinks?: boolean;
 }
 
 const IMPACTS = new Set<string>(['minor', 'moderate', 'serious', 'critical']);
@@ -465,6 +469,19 @@ async function deepChecks(page: Page): Promise<{
   return { ...(await fromCustom(page, findings)), rulesRun, checksRun, checksPassed };
 }
 
+/** Most link targets collected from one page. */
+const MAX_LINKS = 400;
+
+async function linksOf(page: Page): Promise<string[]> {
+  return page.evaluate(
+    (max) =>
+      Array.from(document.querySelectorAll('a[href]'))
+        .slice(0, max)
+        .map((a) => (a as HTMLAnchorElement).href),
+    MAX_LINKS,
+  );
+}
+
 /** Scans one page. Throws on navigation failure, which the caller retries. */
 export async function scanPage(browser: Browser, options: ScanOptions): Promise<PageScan> {
   // Through egress, loopback is only reachable if Chromium proxies it (audit L2).
@@ -506,6 +523,7 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
     }
     const states: StateScan[] = [];
     const crops: Record<string, Buffer> = {};
+    const links = options.collectLinks === true ? await linksOf(page) : undefined;
     for (const selector of options.cropSelectors ?? []) {
       const crop = await cropOf(page, selector);
       if (crop !== undefined) crops[selector] = crop;
@@ -572,6 +590,7 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
       blocked: undefined,
       states,
       crops,
+      ...(links === undefined ? {} : { links }),
       durationMs: performance.now() - started,
     };
   } finally {

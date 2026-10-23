@@ -159,6 +159,24 @@ export default defineConfig({
       },
     },
     {
+      // The site with the scanner running through the api, which tests/mock-api.ts stands in
+      // for. This server holds no Turnstile secret: the api verifies the challenge (ADR-267).
+      command: 'node build',
+      url: 'http://127.0.0.1:3992/',
+      reuseExistingServer: false,
+      env: {
+        HOST: '127.0.0.1',
+        PORT: '3992',
+        API_URL: 'http://127.0.0.1:3998',
+        SHOPIFY_API_KEY: 'e2e-client-id',
+        TURNSTILE_SITE_KEY: 'fake-site-key',
+        TURNSTILE_ORIGIN: 'http://127.0.0.1:3990',
+        FREE_SCANNER_BACKEND: 'api',
+        FREE_SCAN_SERVICE_TOKEN: 'e2e-service-token-0123456789abcdef0123456789',
+        PROTOCOL_HEADER: 'x-forwarded-proto',
+      },
+    },
+    {
       // The site without Turnstile keys: the scanner must stay closed.
       command: 'node build',
       url: 'http://127.0.0.1:3993/',

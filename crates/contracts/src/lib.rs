@@ -6,13 +6,18 @@
 //! regenerates both and fails on any difference. Nothing in this crate is hand-mirrored.
 
 pub mod email;
+pub mod free_scan;
 pub mod job;
 pub mod pipeline;
 pub mod problem;
 mod registry;
 
 pub use email::{EmailRecipient, EmailSend, EmailTemplate, UninstallExportInput};
-pub use job::{JobError, ScanPage, ShopifyTokenRefresh};
+pub use free_scan::{
+    FreeScanExample, FreeScanFailure, FreeScanResult, FreeScanRun, MAX_EXAMPLES,
+    MAX_FAILURE_GROUPS, MAX_PAGES, MAX_SNIPPET_CHARS,
+};
+pub use job::{JobError, ShopifyTokenRefresh};
 pub use pipeline::{
     AiAltText, AuditData, PageState, PageType, ScanFinalize, ScanPageV2, ScanPlan,
     ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, VerifyScan, Viewport,

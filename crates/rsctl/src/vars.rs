@@ -61,8 +61,10 @@ pub enum Var {
     StripeSecretKey,
     StripePublishableKey,
     StripeWebhookSecret,
-    // Row 12: master keys.
+    // Row 12: generated secrets.
     RampsmithMasterKeys,
+    RampsmithScanSecretKeys,
+    FreeScanServiceToken,
     // Row 16: the nightly backup service and the weekly restore drill (ADR-251 to ADR-254).
     BackupR2AccessKeyId,
     BackupR2SecretAccessKey,
@@ -113,6 +115,8 @@ impl Var {
         Self::StripePublishableKey,
         Self::StripeWebhookSecret,
         Self::RampsmithMasterKeys,
+        Self::RampsmithScanSecretKeys,
+        Self::FreeScanServiceToken,
         Self::BackupR2AccessKeyId,
         Self::BackupR2SecretAccessKey,
         Self::BackupDbPassword,
@@ -163,6 +167,8 @@ impl Var {
             Self::StripePublishableKey => "STRIPE_PUBLISHABLE_KEY",
             Self::StripeWebhookSecret => "STRIPE_WEBHOOK_SECRET",
             Self::RampsmithMasterKeys => "RAMPSMITH_MASTER_KEYS",
+            Self::RampsmithScanSecretKeys => "RAMPSMITH_SCAN_SECRET_KEYS",
+            Self::FreeScanServiceToken => "FREE_SCAN_SERVICE_TOKEN",
             Self::BackupR2AccessKeyId => "BACKUP_R2_ACCESS_KEY_ID",
             Self::BackupR2SecretAccessKey => "BACKUP_R2_SECRET_ACCESS_KEY",
             Self::BackupDbPassword => "BACKUP_DB_PASSWORD",
@@ -208,7 +214,9 @@ impl Var {
             | Self::OtelExporterOtlpProtocol => 9,
             Self::CloudflareApiToken => 10,
             Self::StripeSecretKey | Self::StripePublishableKey | Self::StripeWebhookSecret => 11,
-            Self::RampsmithMasterKeys => 12,
+            Self::RampsmithMasterKeys
+            | Self::RampsmithScanSecretKeys
+            | Self::FreeScanServiceToken => 12,
             Self::BackupR2AccessKeyId
             | Self::BackupR2SecretAccessKey
             | Self::BackupDbPassword
@@ -246,6 +254,8 @@ impl Var {
                 | Self::StripeSecretKey
                 | Self::StripeWebhookSecret
                 | Self::RampsmithMasterKeys
+                | Self::RampsmithScanSecretKeys
+                | Self::FreeScanServiceToken
                 | Self::BackupR2AccessKeyId
                 | Self::BackupR2SecretAccessKey
                 | Self::BackupDbPassword

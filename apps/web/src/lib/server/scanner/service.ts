@@ -19,12 +19,13 @@ import {
 } from './client.ts';
 import { DAY_MS, ResultCache, WindowLimiter } from './limits.ts';
 import { parsePublicUrl, type UrlRefusal } from './url.ts';
+import type { FreeScanDelegate } from './delegate.ts';
 import type { TurnstileVerdict } from './turnstile.ts';
 
 const SCANS_PER_IP_PER_DAY = 3;
 const SCANS_PER_DOMAIN_PER_DAY = 1;
 
-export type FreeScanBackend = 'not-connected' | 'fixture';
+export type FreeScanBackend = 'not-connected' | 'fixture' | 'api';
 
 export type FreeScanOutcomeForPage =
   | { readonly kind: 'invalid-url'; readonly reason: UrlRefusal }
@@ -36,12 +37,19 @@ export type FreeScanOutcomeForPage =
       readonly retryAfterSeconds: number;
     }
   | { readonly kind: 'not-connected' }
+  | { readonly kind: 'busy' }
+  | { readonly kind: 'still-running'; readonly id: string }
   | { readonly kind: 'refused'; readonly reason: 'robots' | 'bot-challenge' | 'unreachable' }
   | { readonly kind: 'scanner-error' }
   | { readonly kind: 'result'; readonly result: FreeScanResult; readonly cached: boolean };
 
 export interface FreeScanDeps {
   readonly scanner: FreeScanner;
+  /**
+   * The api, when it runs the scan (ADR-267). It then checks the challenge, keeps the daily
+   * limits and the 24-hour cache itself, in the database, so none of the three happens here.
+   */
+  readonly delegate?: FreeScanDelegate;
   readonly verifyChallenge: (token: string, ip: string) => Promise<TurnstileVerdict>;
   readonly now: () => number;
   /** Test hook: how many results the cache may hold. */
@@ -56,6 +64,8 @@ interface FreeScanAsk {
 
 export interface FreeScanService {
   run(ask: FreeScanAsk): Promise<FreeScanOutcomeForPage>;
+  /** A scan the visitor was told is still running. Only the api path has one. */
+  status(id: string): Promise<FreeScanOutcomeForPage>;
 }
 
 export function createFreeScanService(deps: FreeScanDeps): FreeScanService {
@@ -75,9 +85,15 @@ export function createFreeScanService(deps: FreeScanDeps): FreeScanService {
   });
 
   return {
+    status: (id) =>
+      deps.delegate === undefined
+        ? Promise.resolve({ kind: 'scanner-error' })
+        : deps.delegate.status(id),
+
     async run({ url, ip, token }) {
       const parsed = parsePublicUrl(url);
       if (!parsed.ok) return { kind: 'invalid-url', reason: parsed.reason };
+      if (deps.delegate !== undefined) return deps.delegate.start({ url, ip, token });
 
       const ipGate = byIp.check(ip, deps.now());
       if (!ipGate.allowed) {

@@ -100,6 +100,14 @@ impl Db {
         })
     }
 
+    /// Opens a transaction over rows that no tenant owns: the free scanner's (ADR-267) and the
+    /// retention sweeps'. Only the functions in `repo::free_scans` and `repo::retention` accept it.
+    pub async fn public(&self) -> Result<PublicTx, DbError> {
+        Ok(PublicTx {
+            tx: self.pool.begin().await?,
+        })
+    }
+
     /// The tenant and shop for a shop domain, across tenants (ADR-022). Call it only after
     /// verifying a Shopify session token or webhook signature for that domain.
     pub async fn shop_by_domain(&self, shop_domain: &str) -> Result<Option<ShopRef>, DbError> {
@@ -364,6 +372,37 @@ impl IdentityTx {
     }
 
     /// The connection, for the identity repository only.
+    pub(crate) fn conn(&mut self) -> &mut PgConnection {
+        &mut self.tx
+    }
+}
+
+/// A transaction over rows that belong to no tenant: the free scanner's (ADR-267) and the
+/// retention sweeps'; see [`Db::public`].
+pub struct PublicTx {
+    tx: Transaction<'static, Postgres>,
+}
+
+impl fmt::Debug for PublicTx {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PublicTx").finish_non_exhaustive()
+    }
+}
+
+impl PublicTx {
+    /// Commits the transaction.
+    pub async fn commit(self) -> Result<(), DbError> {
+        self.tx.commit().await?;
+        Ok(())
+    }
+
+    /// Rolls the transaction back.
+    pub async fn rollback(self) -> Result<(), DbError> {
+        self.tx.rollback().await?;
+        Ok(())
+    }
+
+    /// The connection, for the free-scan repository only.
     pub(crate) fn conn(&mut self) -> &mut PgConnection {
         &mut self.tx
     }

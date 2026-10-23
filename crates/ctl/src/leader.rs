@@ -1,5 +1,5 @@
 //! Leadership (PLAN §10): exactly one `ctl` instance runs the lease reaper, partition
-//! maintenance and the sweep of expired sign-in state, the one holding a session-level
+//! maintenance and the sweeps of expired sign-in state, store data and free scans, the one holding a session-level
 //! advisory lock on a dedicated connection.
 //! Losing the connection loses leadership; another instance takes over on its next try.
 
@@ -106,6 +106,20 @@ pub async fn sweep_identity(db: &Db) -> Result<u64, DbError> {
     Ok(swept)
 }
 
+/// Deletes what expires on its own clock: store data read for scans after 30 days (ADR-035), and
+/// free scans after 24 hours, ending the ones the engine never finished first (ADR-267).
+/// Returns `(scan inputs, free scans)` deleted.
+pub async fn sweep_retention(db: &Db) -> Result<(i64, i64), DbError> {
+    let mut tx = db.public().await?;
+    let inputs = db::repo::retention::scan_inputs(&mut tx).await?;
+    let free = db::repo::retention::free_scans(&mut tx).await?;
+    tx.commit().await?;
+    if inputs > 0 || free > 0 {
+        info!(inputs, free, "removed expired scan data");
+    }
+    Ok((inputs, free))
+}
+
 /// What [`sweep_webhooks`] found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WebhookSweep {
@@ -198,9 +212,16 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                         }
                     }
                     if Instant::now() >= sweep_due {
-                        match sweep_identity(&db).await {
-                            Ok(_) => sweep_due = Instant::now() + cadence.sweep_every,
-                            Err(error) => warn!(%error, "sign-in sweep failed; retrying next tick"),
+                        let identity = sweep_identity(&db).await;
+                        if let Err(error) = &identity {
+                            warn!(%error, "sign-in sweep failed; retrying next tick");
+                        }
+                        let retention = sweep_retention(&db).await;
+                        if let Err(error) = &retention {
+                            warn!(%error, "retention sweep failed; retrying next tick");
+                        }
+                        if identity.is_ok() && retention.is_ok() {
+                            sweep_due = Instant::now() + cadence.sweep_every;
                         }
                     }
                 }

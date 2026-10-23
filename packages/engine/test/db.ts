@@ -108,11 +108,14 @@ export interface Fixture {
 export async function seed(
   owner: postgres.Sql,
   baseUrl: string,
-  { pages = 2, verified = true }: { pages?: number; verified?: boolean } = {},
+  {
+    pages = 2,
+    verified = true,
+    scanId = uuidv7(),
+  }: { pages?: number; verified?: boolean; scanId?: string } = {},
 ): Promise<Fixture> {
   const tenantId = uuidv7();
   const siteId = uuidv7();
-  const scanId = uuidv7();
   await owner`insert into tenants (id, kind) values (${tenantId}, 'shopify_store')`;
   await owner`
     insert into sites (id, tenant_id, platform, base_url, verified_at, verification_method)

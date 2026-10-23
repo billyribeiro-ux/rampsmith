@@ -75,16 +75,7 @@ async fn run(config: Config) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
     let refresh = TokenRefresh::new(db.clone(), auth.clone());
-    let handlers = jobs::Jobs::new(
-        db.clone(),
-        auth,
-        shopify_admin::AdminFactory::new(
-            shopify_admin::AdminEndpoint::Shopify,
-            Duration::from_secs(20),
-        )
-        .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
-    )
-    .with_app_origin(config.app_origin.clone());
+    let handlers = job_handlers(&config, &db, auth)?;
 
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {
         let _ = rx.wait_for(|stop| *stop).await;
@@ -154,4 +145,29 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
+}
+
+/// The handlers of the job queues, with the scan-secret hand-off when its ring is configured.
+fn job_handlers(
+    config: &Config,
+    db: &Db,
+    auth: shopify_auth::ShopifyAuth,
+) -> anyhow::Result<jobs::Jobs> {
+    let handlers = jobs::Jobs::new(
+        db.clone(),
+        auth,
+        shopify_admin::AdminFactory::new(
+            shopify_admin::AdminEndpoint::Shopify,
+            Duration::from_secs(20),
+        )
+        .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
+    )
+    .with_app_origin(config.app_origin.clone());
+    Ok(match config.scan_secret_keys.clone() {
+        Some(scan) => handlers.with_scan_secrets(jobs::scan_secret::ScanSecrets::new(
+            config.master_keys.clone(),
+            scan,
+        )),
+        None => handlers,
+    })
 }

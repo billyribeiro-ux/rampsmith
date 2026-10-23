@@ -2,10 +2,11 @@
 export type * from './ai-alt-text.ts';
 export type * from './audit-data.ts';
 export type * from './email-send.ts';
+export type * from './free-scan-result.ts';
+export type * from './free-scan-run.ts';
 export type * from './job-error.ts';
 export type * from './problem.ts';
 export type * from './scan-finalize.ts';
-export type * from './scan-page.ts';
 export type * from './scan-page-v2.ts';
 export type * from './scan-plan.ts';
 export type * from './shopify-apply-data-fix.ts';
