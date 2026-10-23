@@ -7,11 +7,13 @@ import {
   chooseLinks,
   freeScanHandler,
   hostsFor,
+  isPublicSuffix,
   robotsVerdict,
   summarise,
   type PageSummary,
 } from '../src/free-scan.ts';
 import type { Occurrence, PageScan, ScanOptions } from '../src/scan-page.ts';
+import { isFreeScanResult } from '../src/jobs/payload.ts';
 import { freshDatabase, type TestDatabase } from './db.ts';
 
 function occurrence(ruleId: string, html: string, criteria = ['1.1.1']): Occurrence {
@@ -56,6 +58,34 @@ describe('choosing the pages to scan beside the home page', () => {
     ]);
   });
 
+  it('drops a link whose address would not fit the result (audit L5)', () => {
+    const long = `https://shop.com/pages/${'a'.repeat(2100)}`;
+    const edge = `/pages/${'b'.repeat(2048 - 'https://shop.com/pages/'.length)}`;
+    expect(edge.length + 'https://shop.com'.length).toBe(2048);
+    expect(
+      chooseLinks(home, [long, `https://shop.com${edge}`, `https://shop.com${edge}c`]).map(
+        (u) => u.href.length,
+      ),
+    ).toEqual([2048]);
+  });
+
+  it('checks a result against its schema before it is stored (audit L5)', () => {
+    const ok = {
+      domain: 'shop.com',
+      scanned_at: '2026-10-22T10:00:00Z',
+      pages: ['https://shop.com/'],
+      checks_run: 2,
+      checks_passed: 1,
+      failures: [],
+    };
+    expect(isFreeScanResult(ok)).toBe(true);
+    expect(isFreeScanResult({ ...ok, pages: [`https://shop.com/${'a'.repeat(2048)}`] })).toBe(
+      false,
+    );
+    expect(isFreeScanResult({ ...ok, extra: 1 })).toBe(false);
+    expect(isFreeScanResult({ ...ok, failures: 'none' })).toBe(false);
+  });
+
   it('falls back to a repeated kind, and returns fewer when the page has fewer links', () => {
     expect(
       chooseLinks(home, ['https://shop.com/collections/a', 'https://shop.com/collections/b']).map(
@@ -66,6 +96,18 @@ describe('choosing the pages to scan beside the home page', () => {
       '/about',
     ]);
     expect(chooseLinks(home, [])).toEqual([]);
+  });
+
+  it('never opens a whole public suffix to a scan (audit L1)', () => {
+    for (const suffix of ['co.uk', 'myshopify.com', 'github.io', 'com', 'blogspot.com']) {
+      expect(isPublicSuffix(suffix), suffix).toBe(true);
+      expect(hostsFor(suffix), suffix).not.toContain(`.${suffix}`);
+    }
+    // A name beneath a suffix is a site: its subdomains stay reachable.
+    for (const site of ['shop.co.uk', 'store.myshopify.com', 'me.github.io', 'shop.com']) {
+      expect(isPublicSuffix(site), site).toBe(false);
+      expect(hostsFor(site), site).toContain(`.${site}`);
+    }
   });
 
   it('names the site, its www spelling and its subdomains, and no other host', () => {
