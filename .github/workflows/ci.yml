@@ -245,6 +245,40 @@ jobs:
             grep -vE '\.svelte-kit/output|│ gzip:|^\[test:e2e\] *$' |
             tail -n 40 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$RUNNER_TEMP/e2e.tail"
           echo "::error title=e2e output (last 40 lines)::$(cat "$RUNNER_TEMP/e2e.tail")"
+      - name: Performance budgets of the App Home (ADR-300)
+        # The measurement runs in the browser step above (Playwright project app-perf, which
+        # fails the job above the budgets). This prints it where a reviewer looks, and also
+        # on a failure, because the numbers are what a fix needs.
+        if: always()
+        shell: bash
+        run: |
+          f=apps/web/test-results/perf/app-home.json
+          if [ ! -f "$f" ]; then echo "no performance results at $f"; exit 0; fi
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const r = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            const rows = Object.entries(r.screens).map(([name, s]) => {
+              const p = s.p75;
+              return `| ${name} | ${Math.round(p.lcpMs)} | ${p.clsLoad.toFixed(3)} / ${p.clsVisit.toFixed(3)} | ${Math.round(p.inpMs)} | ${(p.scriptBytes / 1024).toFixed(1)} |`;
+            });
+            console.log([
+              "### App Home Core Web Vitals, p75 (mobile profile: 4x CPU, 150 ms, 1.6 Mbps)",
+              "",
+              `Budgets: LCP < ${r.budget.lcpMs} ms, CLS < ${r.budget.cls}, INP < ${r.budget.inpMs} ms, JS <= ${r.budget.scriptBytes / 1024} KB. Built for Shopify: LCP ${r.builtForShopify.lcpMs} ms, CLS ${r.builtForShopify.cls}, INP ${r.builtForShopify.inpMs} ms.`,
+              "",
+              "| Screen | LCP (ms) | CLS load / visit | INP (ms) | JS (KB) |",
+              "| --- | --- | --- | --- | --- |",
+              ...rows,
+            ].join("\n"));
+          ' "$f" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Keep the performance results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-home-performance
+          path: apps/web/test-results/perf
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Keep the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

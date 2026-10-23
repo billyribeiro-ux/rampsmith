@@ -7,7 +7,7 @@
   <title>{page.status === 404 ? m.not_found_title() : m.error_title()}</title>
 </svelte:head>
 
-<main>
+<main class="error-page">
   <h1>{page.status === 404 ? m.not_found_title() : m.error_title()}</h1>
   {#if page.status !== 404}
     <p>
@@ -17,11 +17,3 @@
     </p>
   {/if}
 </main>
-
-<style>
-  main {
-    max-width: 48rem;
-    margin: 0 auto;
-    padding: 1rem 1.5rem;
-  }
-</style>
