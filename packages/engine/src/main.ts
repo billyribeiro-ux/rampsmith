@@ -9,7 +9,8 @@ import process from 'node:process';
 import { startTelemetry } from '@rampsmith/telemetry';
 import { runWorker } from '@rampsmith/queue';
 import postgres from 'postgres';
-import { launchBrowser } from './browser.ts';
+import { launchEngineBrowser } from './browser.ts';
+import { startHealthServer } from './health.ts';
 import { assertWorkerRole } from './role-guard.ts';
 import { userAgent } from './user-agent.ts';
 import { ENGINE_QUEUES, engineHandlers } from './queues.ts';
@@ -37,10 +38,19 @@ async function run(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  // Chromium's own sandbox stays on (PLAN §22): the engine runs as a non-root user under the
-  // seccomp profile in infra/engine.seccomp.json. WebRTC is held to the proxy and loopback goes
-  // through egress (ADR-050).
-  const browser = await launchBrowser();
+  // Chromium's own sandbox is on wherever the host allows it (PLAN §22; ADR-028's profile in
+  // infra/engine.seccomp.json does it under Docker). Railway starts containers with its own
+  // settings, and some of its hosts refuse unprivileged user namespaces: there, and only there,
+  // the engine starts Chromium without the sandbox and says so (ADR-265;
+  // ENGINE_CHROMIUM_SANDBOX=required turns the fallback off). WebRTC is held to the proxy and
+  // loopback goes through egress (ADR-050).
+  const { browser, sandbox } = await launchEngineBrowser({}, undefined, undefined, (message) =>
+    process.stderr.write(`engine: warning: ${message}\n`),
+  );
+  process.stderr.write(`engine: chromium sandbox=${sandbox}\n`);
+  // Railway's deploy health check (ADR-264): up only once the database login and the browser
+  // are, so a deployment that cannot scan never goes live.
+  const health = await startHealthServer(process.env['PORT']);
   const stop = new AbortController();
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.once(signal, () => {
@@ -73,6 +83,7 @@ async function run(): Promise<void> {
       ),
     );
   } finally {
+    await health.close();
     await browser.close();
   }
 }

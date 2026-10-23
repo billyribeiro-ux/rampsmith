@@ -6,8 +6,12 @@ import {
   WEBRTC_POLICY_ARG,
   assertLoopbackProxied,
   contextProxy,
+  SANDBOX_POLICY_ENV,
+  isSandboxRefusal,
   launchBrowser,
+  launchEngineBrowser,
   launchOptions,
+  sandboxPolicy,
 } from '../src/browser.ts';
 import { scanPage } from '../src/scan-page.ts';
 
@@ -111,5 +115,88 @@ describe('contextProxy', () => {
       password: 'abc',
       bypass: '<-loopback>',
     });
+  });
+});
+
+describe('the sandbox policy (ADR-265)', () => {
+  const fakeBrowser = { close: vi.fn() } as unknown as Browser;
+  const refusal = new Error(
+    'browserType.launch: Target page, context or browser has been closed\n' +
+      '[1:1:1022/200000.000:FATAL:credentials.cc(137)] Check failed: . : Permission denied (13)',
+  );
+
+  it('reads auto by default, required on request, and refuses a typo', () => {
+    expect(sandboxPolicy({})).toBe('auto');
+    expect(sandboxPolicy({ [SANDBOX_POLICY_ENV]: ' ' })).toBe('auto');
+    expect(sandboxPolicy({ [SANDBOX_POLICY_ENV]: 'auto' })).toBe('auto');
+    expect(sandboxPolicy({ [SANDBOX_POLICY_ENV]: 'required' })).toBe('required');
+    expect(() => sandboxPolicy({ [SANDBOX_POLICY_ENV]: 'off' })).toThrow(SANDBOX_POLICY_ENV);
+    expect(() => sandboxPolicy({ [SANDBOX_POLICY_ENV]: 'requird' })).toThrow(SANDBOX_POLICY_ENV);
+  });
+
+  it.each([
+    'FATAL:credentials.cc(137)] Check failed: . : Permission denied (13)',
+    'FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox! Update your kernel',
+    'Failed to move to new namespace: PID namespaces supported, Network namespace supported, but User namespace not supported',
+    'The SUID sandbox helper binary was found, but is not configured correctly',
+  ])('recognises a sandbox refusal: %s', (message) => {
+    expect(isSandboxRefusal(new Error(message))).toBe(true);
+  });
+
+  it.each([
+    'Timeout 180000ms exceeded while launching',
+    'error while loading shared libraries: libnss3.so: cannot open shared object file',
+    "Executable doesn't exist at /ms-playwright/chromium-1/chrome",
+    'Check failed: . : Permission denied (13)',
+    'Target page, context or browser has been closed',
+  ])('does not mistake another failure for one: %s', (message) => {
+    expect(isSandboxRefusal(new Error(message))).toBe(false);
+    expect(isSandboxRefusal(message)).toBe(false);
+  });
+
+  it('starts with the sandbox when the host allows it, and never tries without', async () => {
+    const launch = vi.fn().mockResolvedValue(fakeBrowser);
+    const warn = vi.fn();
+    const started = await launchEngineBrowser({}, 'auto', launch, warn);
+    expect(started).toEqual({ browser: fakeBrowser, sandbox: 'on' });
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(launch).toHaveBeenCalledWith({ chromiumSandbox: true });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('starts without the sandbox, and warns, only when the host refused it', async () => {
+    const launch = vi.fn().mockRejectedValueOnce(refusal).mockResolvedValueOnce(fakeBrowser);
+    const warn = vi.fn();
+    const started = await launchEngineBrowser({}, 'auto', launch, warn);
+    expect(started).toEqual({ browser: fakeBrowser, sandbox: 'off' });
+    expect(launch.mock.calls).toEqual([[{ chromiumSandbox: true }], [{ chromiumSandbox: false }]]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('credentials.cc(137)');
+  });
+
+  it('keeps launchOptions in force on both attempts: proxy rule and WebRTC policy', () => {
+    for (const chromiumSandbox of [true, false]) {
+      const options = launchOptions({ chromiumSandbox });
+      expect(options.args).toEqual([WEBRTC_POLICY_ARG]);
+      expect(options.proxy).toEqual({ server: 'per-context', bypass: '<-loopback>' });
+    }
+  });
+
+  it('never drops the sandbox for another failure', async () => {
+    const launch = vi.fn().mockRejectedValue(new Error('Timeout 180000ms exceeded'));
+    await expect(launchEngineBrowser({}, 'auto', launch)).rejects.toThrow('Timeout');
+    expect(launch).toHaveBeenCalledTimes(1);
+  });
+
+  it('never drops the sandbox under "required"', async () => {
+    const launch = vi.fn().mockRejectedValue(refusal);
+    await expect(launchEngineBrowser({}, 'required', launch)).rejects.toThrow('credentials.cc');
+    expect(launch).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails when the unsandboxed launch fails too', async () => {
+    const launch = vi.fn().mockRejectedValue(refusal);
+    await expect(launchEngineBrowser({}, 'auto', launch)).rejects.toThrow('credentials.cc');
+    expect(launch).toHaveBeenCalledTimes(2);
   });
 });

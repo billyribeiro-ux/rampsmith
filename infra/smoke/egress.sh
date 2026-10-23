@@ -22,3 +22,8 @@ test "$code" = 407
 code=$(curl -s -o /dev/null -w '%{http_code}' -x http://127.0.0.1:8888 \
   --proxy-user 'rampsmith:e30.AAAA' http://example.com/)
 test "$code" = 407
+# Railway's health check: 200 on exactly GET /healthz with no token, and the path is never a
+# way through the proxy (ADR-264).
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8888/healthz)" = 200
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8888/healthz/)" = 407
+test "$(curl -s -o /dev/null -w '%{http_code}' -x http://127.0.0.1:8888 http://example.com/healthz)" = 407

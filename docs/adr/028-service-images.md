@@ -55,7 +55,8 @@ WebKit on Ubuntu 24.04.5; its Dockerfile at v1.64.1 installs Node from NodeSourc
   bumped; Renovate (founder account) keeps the digests current.
 - Whether Railway runs containers with a custom seccomp profile, which the sandbox needs, is
   checked at the first deploy (founder account). If it cannot, the fallback is the platform's
-  own isolation with the sandbox off, decided then with evidence, not assumed now.
+  own isolation with the sandbox off, decided then with evidence, not assumed now. Decided in
+  ADR-265 (22 Oct 2026): sandbox first, off only when the host refuses it, logged.
 - `engine` is the largest image (Chromium and its libraries); the removals keep only what the
   scan uses.
 
