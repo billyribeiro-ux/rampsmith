@@ -23,6 +23,11 @@ describe('resolve', () => {
     ['PUT', 'email-preferences'],
     ['GET', 'statement'],
     ['PUT', 'statement'],
+    ['GET', 'code-fixes'],
+    ['POST', 'code-fixes/connection'],
+    ['DELETE', 'code-fixes/connection'],
+    ['PUT', 'code-fixes/repository'],
+    ['POST', 'code-fixes/batches'],
   ])('lets %s %s through', (method, path) => {
     expect(resolve(method, path, q())).toEqual({ ok: true, path });
   });
@@ -36,6 +41,9 @@ describe('resolve', () => {
     `fixes/${ID}/approve/extra`,
     `findings/${ID}/..`,
     'overview/extra',
+    'code-fixes/callback',
+    'code-fixes/batches/extra',
+    'code-fixes/connection/extra',
     '',
   ])('does not know %j', (path) => {
     expect(resolve('GET', path, q())).toEqual({ ok: false, status: 404 });
@@ -45,6 +53,8 @@ describe('resolve', () => {
     expect(resolve('DELETE', 'settings', q())).toEqual({ ok: false, status: 405 });
     expect(resolve('GET', `fixes/${ID}/approve`, q())).toEqual({ ok: false, status: 405 });
     expect(resolve('POST', 'overview', q())).toEqual({ ok: false, status: 405 });
+    expect(resolve('GET', 'code-fixes/batches', q())).toEqual({ ok: false, status: 405 });
+    expect(resolve('DELETE', 'code-fixes/repository', q())).toEqual({ ok: false, status: 405 });
   });
 
   it('passes only the query parameters an operation lists, and only safe values', () => {

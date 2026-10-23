@@ -6,6 +6,7 @@
  */
 import { sessionFetch, type SessionTokenSource } from '#lib/shopify/session-fetch.ts';
 import type {
+  CodeFixes,
   FindingDetail,
   FindingList,
   FindingOrigin,
@@ -94,6 +95,12 @@ export interface AppApi {
   /** An evidence crop as a data URL. */
   evidence(id: string): Promise<string>;
   exportLog(format: 'csv' | 'json'): Promise<Download>;
+  codeFixes(): Promise<CodeFixes>;
+  /** The one-time state to carry through GitHub's installation page. */
+  startGithubConnection(): Promise<{ readonly state: string }>;
+  chooseRepository(repositoryId: string, connectedBranch: string): Promise<CodeFixes>;
+  disconnectGithub(): Promise<CodeFixes>;
+  startCodeFixBatch(): Promise<{ readonly id: string; readonly status: string }>;
 }
 
 type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -149,7 +156,7 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
       throw new ApiError(response.status, 'unexpected');
     return body as T;
   }
-  const write = (method: 'POST' | 'PUT', body?: unknown): RequestInit => ({
+  const write = (method: 'POST' | 'PUT' | 'DELETE', body?: unknown): RequestInit => ({
     method,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),
@@ -198,6 +205,17 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
       blobToDataUrl(await (await send(`/app/api/media?${new URLSearchParams({ u: url })}`)).blob()),
     evidence: async (id) =>
       blobToDataUrl(await (await send(`${BASE}/evidence/${encodeURIComponent(id)}`)).blob()),
+    codeFixes: () => json<CodeFixes>(`${BASE}/code-fixes`),
+    startGithubConnection: () =>
+      json<{ state: string }>(`${BASE}/code-fixes/connection`, write('POST')),
+    chooseRepository: (repositoryId, connectedBranch) =>
+      json<CodeFixes>(
+        `${BASE}/code-fixes/repository`,
+        write('PUT', { repository_id: repositoryId, connected_branch: connectedBranch }),
+      ),
+    disconnectGithub: () => json<CodeFixes>(`${BASE}/code-fixes/connection`, write('DELETE')),
+    startCodeFixBatch: () =>
+      json<{ id: string; status: string }>(`${BASE}/code-fixes/batches`, write('POST')),
     exportLog: async (format) => {
       const response = await send(`/app/api/log-export?format=${format}`);
       return {

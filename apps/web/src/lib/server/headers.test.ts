@@ -67,6 +67,20 @@ describe('securityHeaders', () => {
     expect(apply('http://127.0.0.1:3000/').get('strict-transport-security')).toBeNull();
   });
 
+  it('sends no referrer and keeps no cache for the GitHub hops, whose addresses carry a one-time code', () => {
+    for (const url of [
+      'https://web.example/github/connect',
+      'https://web.example/github/callback',
+    ]) {
+      const headers = apply(url);
+      expect(headers.get('referrer-policy')).toBe('no-referrer');
+      expect(headers.get('cache-control')).toBe('private, no-store');
+    }
+    expect(apply('https://web.example/githubs').get('referrer-policy')).toBe(
+      'strict-origin-when-cross-origin',
+    );
+  });
+
   it('sends no referrer to other sites from the pages behind email links, whose address is a secret', () => {
     for (const href of [
       'https://web.example/email/unsubscribe',

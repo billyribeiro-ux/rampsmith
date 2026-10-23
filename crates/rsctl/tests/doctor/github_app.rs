@@ -88,6 +88,7 @@ fn env(pem: &str) -> Vec<(&'static str, String)> {
             "GITHUB_APP_CLIENT_SECRET",
             "github-client-secret-marker".to_owned(),
         ),
+        ("GITHUB_APP_SLUG", "octoapp".to_owned()),
     ]
 }
 
@@ -220,6 +221,20 @@ async fn a_client_id_that_differs_from_the_apps_fails() {
         .mount(&rig.server)
         .await;
     assert!(fail(&rig.run("github.app").await).contains("differs from GITHUB_APP_CLIENT_ID"));
+}
+
+#[tokio::test]
+async fn a_slug_that_differs_from_the_apps_fails() {
+    let mut vars = env(&test_key().pkcs1_pem);
+    vars[5].1 = "someone-elses-app".to_owned();
+    let rig = rig_with(&vars).await;
+    let (fake, _) = FakeGithub::new(&test_key().public_der);
+    Mock::given(method("GET"))
+        .and(path("/app"))
+        .respond_with(fake)
+        .mount(&rig.server)
+        .await;
+    assert!(fail(&rig.run("github.app").await).contains("differs from GITHUB_APP_SLUG"));
 }
 
 #[tokio::test]

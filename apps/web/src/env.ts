@@ -20,6 +20,16 @@ const turnstileOrigin = (value: string | undefined) => {
   return url.origin;
 };
 
+const githubAppSlug = (value: string | undefined) => {
+  const text = value?.trim() ?? '';
+  if (text !== '' && !/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/u.test(text)) {
+    throw new Error(
+      "GITHUB_APP_SLUG must be the App's URL name: lower-case letters, digits, hyphens",
+    );
+  }
+  return text;
+};
+
 const scannerBackend = (value: string | undefined): 'not-connected' | 'fixture' | 'api' => {
   const text = value?.trim() ?? '';
   if (text === '' || text === 'not-connected') return 'not-connected';
@@ -63,6 +73,11 @@ export const variables = defineEnvVars({
     description:
       "The secret this server presents to the api for the free scanner, the same value as the api's FREE_SCAN_SERVICE_TOKEN (at least 32 characters); required when FREE_SCANNER_BACKEND is 'api' (LAUNCH.md section C, row 12)",
     schema: optional,
+  },
+  GITHUB_APP_SLUG: {
+    description:
+      "The GitHub App's URL name, as in https://github.com/apps/<slug> (LAUNCH.md section C, row 4); the Connect GitHub button cannot send the browser to GitHub while it is unset",
+    schema: githubAppSlug,
   },
   SERVICE_VERSION: {
     description: 'Reported as service.version, normally the image commit',

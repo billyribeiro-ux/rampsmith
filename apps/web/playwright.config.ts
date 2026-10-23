@@ -180,6 +180,7 @@ export default defineConfig({
         TURNSTILE_SITE_KEY: 'fake-site-key',
         TURNSTILE_ORIGIN: 'http://127.0.0.1:3990',
         FREE_SCANNER_BACKEND: 'api',
+        GITHUB_APP_SLUG: 'rampsmith-e2e',
         FREE_SCAN_SERVICE_TOKEN: 'e2e-service-token-0123456789abcdef0123456789',
         PROTOCOL_HEADER: 'x-forwarded-proto',
       },

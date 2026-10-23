@@ -34,6 +34,7 @@ pub enum Var {
     GithubAppPrivateKey,
     GithubAppWebhookSecret,
     GithubAppClientSecret,
+    GithubAppSlug,
     // Row 5: Anthropic.
     AnthropicApiKey,
     // Row 6: Cloudflare R2 and Turnstile.
@@ -99,6 +100,7 @@ impl Var {
         Self::GithubAppPrivateKey,
         Self::GithubAppWebhookSecret,
         Self::GithubAppClientSecret,
+        Self::GithubAppSlug,
         Self::AnthropicApiKey,
         Self::R2AccountId,
         Self::R2AccessKeyId,
@@ -156,6 +158,7 @@ impl Var {
             Self::GithubAppPrivateKey => "GITHUB_APP_PRIVATE_KEY",
             Self::GithubAppWebhookSecret => "GITHUB_APP_WEBHOOK_SECRET",
             Self::GithubAppClientSecret => "GITHUB_APP_CLIENT_SECRET",
+            Self::GithubAppSlug => "GITHUB_APP_SLUG",
             Self::AnthropicApiKey => "ANTHROPIC_API_KEY",
             Self::R2AccountId => "R2_ACCOUNT_ID",
             Self::R2AccessKeyId => "R2_ACCESS_KEY_ID",
@@ -212,7 +215,8 @@ impl Var {
             | Self::GithubAppClientId
             | Self::GithubAppPrivateKey
             | Self::GithubAppWebhookSecret
-            | Self::GithubAppClientSecret => 4,
+            | Self::GithubAppClientSecret
+            | Self::GithubAppSlug => 4,
             Self::AnthropicApiKey => 5,
             Self::R2AccountId
             | Self::R2AccessKeyId

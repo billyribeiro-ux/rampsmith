@@ -57,6 +57,27 @@ What the installer could push to is recorded when they connect. A repository add
 installation later is listed by the sync but cannot be chosen until the merchant connects again;
 the screen says so.
 
+## The App Home screen and the two browser hops (R2 part 3)
+
+- The "Code fixes" screen (`/app/code-fixes`) reads `GET /v1/shopify/code-fixes` through the BFF
+  allow-list and shows one of: not available (flag off), the plan gate (the locked action and the
+  plan that unlocks it, as other gated actions do), Connect GitHub, or the connected account with
+  the repository choice, the request button, recent requests and pull requests. Its navigation
+  link appears only when the channel is on.
+- Connect GitHub asks the api for the state, then shows a real link, "Continue to GitHub", that
+  opens `/github/connect?state=...` in a new tab. A link, not `window.open`: a popup opened after
+  an async call is blocked, and the embedded frame cannot navigate to github.com itself. Focus
+  moves to the link and the live region announces it.
+- `/github/connect` checks the state's shape, sets it in an `HttpOnly`, `SameSite=Lax` cookie
+  scoped to `/github` (ten minutes), and redirects to
+  `https://github.com/apps/<GITHUB_APP_SLUG>/installations/new?state=...`. An unset or malformed
+  slug is refused at boot (web env) or at the hop, never sent to GitHub.
+- `/github/callback` reads and deletes the cookie, passes `code`, `installation_id` and any echoed
+  `state` to `POST /v1/github/callback`, and redirects to `/github/connected?result=<word>`. The
+  address carries one of four words (connected, expired, refused, unavailable), never the code.
+  Both hops answer `Referrer-Policy: no-referrer` and `Cache-Control: private, no-store`.
+- `rsctl doctor --row 4` compares `GITHUB_APP_SLUG` with the `slug` that `GET /app` reports.
+
 ## Rejected alternatives
 
 - Trust `installation_id` from the redirect: the confused-deputy hole above.
