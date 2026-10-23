@@ -57,3 +57,34 @@ Each finding was checked against `origin/main` before it was fixed.
   E item that already exists).
 - The egress proxy test `spans_and_logs_never_contain_the_merchants_host` is flaky on a loaded machine
   and was not touched.
+
+## Part 3: bounces and complaints (ADR-278)
+
+| Claim | Evidence |
+| --- | --- |
+| The string to sign and the checks follow AWS's documented scheme | Read on 23 Oct 2026: AWS "Verifying the signatures of Amazon SNS messages" and the `aws-php-sns-message-validator` source (fields, `Key\nValue\n` order, `SignatureVersion` 1 = SHA-1 and 2 = SHA-256, host and `.pem` path of the certificate URL); the AWS security blog "Sign Amazon SNS messages with SHA256 hashing for HTTP subscriptions" (the attribute is `SignatureVersion`, value `2`, set with `aws sns set-topic-attributes`; console not mentioned) |
+| A message signed like SNS's verifies, and nothing else does | `crates/api/tests/ses_events.rs` (12 tests against PostgreSQL): a generated 2048-bit RSA certificate signs the documented string; the real verifier accepts a permanent bounce and a complaint in both event shapes, ignores transient/undetermined bounces, deliveries, sends and unknown message ids, refuses a changed `Message`, `Timestamp`, `MessageId` or `Subject` (401), a message signed by another key (401), another topic (403, no certificate fetched), signature version 1 and nine hostile certificate URLs (401, no fetch), a missing header, a header that disagrees, bad JSON, a missing field and 300 KiB (400/413), an unreachable certificate (503); confirmation is followed only when signed and aimed at SNS and our topic |
+| Tenants are isolated | Same file: a bounce for tenant B's message id changes only B's list; `email_delivery_tenant` returns a tenant id and nothing else |
+| A weaker reason never overwrites a stronger | Same file: an `unsubscribed` row becomes `bounced` after a bounce and stays `bounced` after `suppress(.., Unsubscribed)` |
+| Unit tests of the pure parts | `crates/api/src/ses_events.rs` (5): topic ARN shapes, certificate URL rules, the string to sign for each type, the event shapes |
+| Configuration | `crates/api/src/config.rs` test (topic optional, ARN checked); `packages/email/test/ses.test.ts` (`ConfigurationSetName` is sent when set and absent otherwise; bad names refused; env parsing); `crates/rsctl/tests/doctor/ses.rs` (shape and region checks before any request); `infra/railway/tests` (106 pass: the set reaches only the mailer, the topic only the api) |
+| Gates | `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo sqlx prepare --check` on a freshly migrated database |
+
+Open (LAUNCH.md section E): a real SNS message verifies; the SES mailbox simulator
+(`bounce@simulator.amazonses.com`, `complaint@simulator.amazonses.com`, from memory) produces the two rows;
+the v2 reference for the `configuration-set` resource of `ses:SendEmail` was not read (the SES v1 page was).
+
+## Part 4: the emails the pipeline queues, and the weekly rescan (ADR-279)
+
+| Claim | Evidence |
+| --- | --- |
+| Each trigger queues exactly one `email.send@1`, by reference, in the transaction of the work that caused it | `packages/engine/test/email-triggers.test.ts` against PostgreSQL: the first finished scan queues `first_scan_complete` with the right counts; the same job run twice queues one; a manual rescan, a failed scan and a scan with no checks queue nothing; a later scheduled scan queues `weekly_summary` with new, resolved and open counts and the previous scan's totals; a verified fix and a failed verification queue `fix_verified` with different keys; a repeated verification queues nothing; no contact or an uninstalled shop queues nothing; no payload holds an address |
+| The welcome is queued once per shop | `crates/ctl/tests/email.rs`: the first stored contact queues it with key `welcome:<shop id>` and input `{storeName, locale}`, a second and third contact write queue no second one, a shop with no address is not welcomed, a 200-character store name is cut to 100 |
+| Mail for a shop that has left is dropped, transactional mail is not | `packages/engine/test/email-triggers.test.ts` (`shop_left`), `packages/engine/test/email-send.test.ts` (existing export-after-uninstall test still passes) |
+| The admin deep link has the documented form | `packages/engine/test/app-links.test.ts` (handle validation, domain parsing, per-template member and path). The URL format itself is from memory: LAUNCH.md section E |
+| The leader starts the weekly rescans and nothing else does | `crates/ctl/tests/rescan.rs` (4 tests against PostgreSQL as the worker role): the due rules (setting, 7 days, failed scans retried after a day, verification scans ignored, uninstalled shops), one `scheduled` scan with its `shopify.read_store` job and a `system` audit entry, no second scan while one is under way, no scan on Free or without a plan and the next round starts it after an upgrade, none when the setting is off |
+| Grants and paging of the listing | `crates/db/tests/tenancy.rs` `only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_shop`: PUBLIC and the application role cannot execute the function; both tenants' shops come back, one per page, in id order. No new table, so the row-level-security inventory is unchanged |
+| Gates | `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo sqlx prepare --check`, `cargo-machete`, `vitest` (email, engine), ESLint, Prettier, `tsc`, `claims-lint`, the Railway tests |
+
+Not built, listed in ADR-279: `regression_alert` (no regression detection exists), the other templates with no
+feature behind them, daily-cadence scans, a merchant alert when a scheduled scan fails.

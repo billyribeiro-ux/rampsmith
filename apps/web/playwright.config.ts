@@ -33,6 +33,14 @@ export default defineConfig({
       use: { ...browser, baseURL: 'http://127.0.0.1:3985' },
     },
     {
+      // Core Web Vitals of every App Home screen on a throttled mobile profile (ADR-300). Runs
+      // against the same fake api and server as app-home; kept apart so its timing is read on
+      // its own and its files (perf-*) are not picked up by the functional project.
+      name: 'app-perf',
+      testMatch: 'perf-*.spec.ts',
+      use: { ...browser, baseURL: 'http://127.0.0.1:3985' },
+    },
+    {
       // The dashboard against the real api and database, with Chromium's virtual
       // authenticator. WebAuthn needs a secure context, which localhost is.
       name: 'dashboard',

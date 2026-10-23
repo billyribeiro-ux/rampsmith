@@ -15,6 +15,7 @@ import { rank, type Impact, type Rankable } from '../pipeline/rank.ts';
 import { PAGE_TYPES, type PageType } from '../pipeline/vocab.ts';
 import { scrubUrl } from '../scrub.ts';
 import { criteriaFromTags } from '../wcag.ts';
+import { queueScanEmails } from '../email/triggers.ts';
 import { withTenant } from '../store.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
@@ -138,6 +139,7 @@ export function scanFinalizeHandler(deps: FinalizeDeps): JobHandler {
       const gone = closable
         .filter((f) => f.seen.length > 0 && f.seen.every((key) => openedStates.has(key)))
         .map((f) => f.id);
+      let resolved = gone.length;
       if (gone.length > 0) {
         await tx`
           update findings set status = 'fixed'
@@ -145,10 +147,11 @@ export function scanFinalizeHandler(deps: FinalizeDeps): JobHandler {
       }
       if (progress.inputsPlanned > 0) {
         // The data audit read every resource, so a data finding it did not see again is fixed.
-        await tx`
+        const fixed = await tx`
           update findings set status = 'fixed'
            where tenant_id = ${tenantId} and site_id = ${payload.site_id} and origin = 'data'
              and status in ('open', 'needs_review') and last_seen_scan <> ${payload.scan_id}`;
+        resolved += fixed.count;
       }
 
       // Rank the open findings.
@@ -252,6 +255,18 @@ export function scanFinalizeHandler(deps: FinalizeDeps): JobHandler {
                finished_at = now(), finalized_at = now(),
                storefront_password_ct = null, storefront_password_key_id = null
          where tenant_id = ${tenantId} and id = ${payload.scan_id}`;
+      // The scan's results go to the merchant: the first scan's, and each weekly rescan's
+      // (ADR-279). Queued in this transaction, so a retried finalize cannot queue them twice.
+      await queueScanEmails(tx, {
+        tenantId,
+        siteId: payload.site_id,
+        scanId: payload.scan_id,
+        trigger: scan.trigger,
+        status,
+        pagesChecked: new Set(loaded.map((p) => scrubUrl(p.url))).size,
+        resolved,
+        now: new Date(),
+      });
     });
   };
 }

@@ -194,32 +194,38 @@
       </s-section>
     {/if}
 
-    <s-section heading={m.app_fixes_heading()}>
-      <s-stack gap="small">
-        <s-paragraph>
-          {m.app_fixes_awaiting({ count: data.fixes_awaiting_approval })}
-        </s-paragraph>
-        <s-paragraph>{m.app_fixes_applied({ count: data.fixes_applied })}</s-paragraph>
-        <p>
-          <a class="app-link" href={resolve('/app/fixes')}>{m.app_fixes_review_link()}</a>
-        </p>
-      </s-stack>
-    </s-section>
+    <!-- Nothing to review or plan to show before the first scan; adding these sections
+         above-the-fold content later would push the new scan results down (ADR-300). -->
+    {#if scan !== null}
+      <s-section heading={m.app_fixes_heading()}>
+        <s-stack gap="small">
+          <s-paragraph>
+            {m.app_fixes_awaiting({ count: data.fixes_awaiting_approval })}
+          </s-paragraph>
+          <s-paragraph>{m.app_fixes_applied({ count: data.fixes_applied })}</s-paragraph>
+          <p>
+            <a class="app-link" href={resolve('/app/fixes')}>{m.app_fixes_review_link()}</a>
+          </p>
+        </s-stack>
+      </s-section>
 
-    <s-section heading={m.app_plan_heading()}>
-      <s-stack gap="small">
-        <s-paragraph>{m.app_plan_current({ plan: planLabel(data.entitlements.plan) })}</s-paragraph>
-        <s-paragraph>
-          {m.app_plan_drafts({
-            used: formatNumber(data.entitlements.alt_text_drafts.used),
-            limit: formatNumber(data.entitlements.alt_text_drafts.limit),
-          })}
-        </s-paragraph>
-        {#if plansUrl !== undefined}
-          <s-link href={plansUrl} target="_top">{m.app_plan_compare()}</s-link>
-        {/if}
-      </s-stack>
-    </s-section>
+      <s-section heading={m.app_plan_heading()}>
+        <s-stack gap="small">
+          <s-paragraph
+            >{m.app_plan_current({ plan: planLabel(data.entitlements.plan) })}</s-paragraph
+          >
+          <s-paragraph>
+            {m.app_plan_drafts({
+              used: formatNumber(data.entitlements.alt_text_drafts.used),
+              limit: formatNumber(data.entitlements.alt_text_drafts.limit),
+            })}
+          </s-paragraph>
+          {#if plansUrl !== undefined}
+            <s-link href={plansUrl} target="_top">{m.app_plan_compare()}</s-link>
+          {/if}
+        </s-stack>
+      </s-section>
+    {/if}
   {/if}
 </s-page>
 

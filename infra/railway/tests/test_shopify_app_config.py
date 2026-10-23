@@ -114,5 +114,47 @@ class WebhookSubscriptions(unittest.TestCase):
             self.assertEqual(urlparse(sub["uri"]).hostname, wanted)
 
 
+# PLAN §14 "Access scopes": every scope the app may request, each justified there and in
+# listing/shopify-app-store/reviewer-instructions.md. App Review requirement 3.2 asks for no more.
+PLAN_14_SCOPES = {
+    "read_products",
+    "write_products",
+    "read_files",
+    "write_files",
+    "read_themes",
+    "read_content",
+    "write_content",
+    "read_online_store_navigation",
+    "write_online_store_navigation",
+    "read_locales",
+}
+
+
+class AppReviewConfiguration(unittest.TestCase):
+    """The App Review checklist items that live in `shopify.app*.toml` (PLAN §14)."""
+
+    def setUp(self) -> None:
+        self.apps = {p.name: tomllib.loads(p.read_text(encoding="utf-8")) for p in config_files()}
+        self.assertTrue(self.apps, "no shopify.app*.toml found")
+
+    def test_the_scopes_are_exactly_the_ones_the_plan_justifies(self) -> None:
+        for name, app in self.apps.items():
+            scopes = {s.strip() for s in app["access_scopes"]["scopes"].split(",")}
+            self.assertEqual(scopes, PLAN_14_SCOPES, name)
+
+    def test_no_theme_write_and_no_customer_or_order_scope(self) -> None:
+        for name, app in self.apps.items():
+            scopes = {s.strip() for s in app["access_scopes"]["scopes"].split(",")}
+            self.assertNotIn("write_themes", scopes, name)
+            self.assertFalse(
+                [s for s in scopes if "customer" in s or "order" in s], f"{name}: {scopes}"
+            )
+
+    def test_the_app_is_embedded_and_installs_through_shopify(self) -> None:
+        for name, app in self.apps.items():
+            self.assertIs(app["embedded"], True, name)
+            self.assertIs(app["access_scopes"]["use_legacy_install_flow"], False, name)
+
+
 if __name__ == "__main__":
     unittest.main()

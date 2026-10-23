@@ -21,6 +21,7 @@ import {
 } from '@rampsmith/email';
 import type postgres from 'postgres';
 import { RecordUnavailableError, remediationRecord } from '../email/export.ts';
+import { appLinkFor } from '../email/app-links.ts';
 import { PgLedger } from '../email/ledger.ts';
 import { resolveRecipient } from '../email/recipient.ts';
 import type { EmailRuntime } from '../email/runtime.ts';
@@ -82,7 +83,12 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
         throw permanent('recipient_missing', 'the recipient does not exist for this tenant');
       }
       const ledger = new PgLedger(deps.sql, tenantId, kind);
-      const refusal = refusalFor(category, recipient.suppression, recipient.optOuts);
+      const refusal = refusalFor(
+        category,
+        recipient.suppression,
+        recipient.optOuts,
+        recipient.shopInstalled,
+      );
       if (refusal !== null) {
         await ledger.suppressed(payload.message_key, refusal);
         return;
@@ -104,10 +110,13 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
               }),
             }
           : payload.input;
+      // The link into the app is built here, from the store's domain, so the job that queued the
+      // email carries none (ADR-279). A template without such a link gets nothing added.
+      const withApp = { ...input, ...appLinkFor(kind, recipient.shopDomain, runtime.appHandle) };
 
       let email;
       try {
-        email = runtime.renderer.renderUnknown(kind, input);
+        email = runtime.renderer.renderUnknown(kind, withApp);
       } catch (error) {
         if (error instanceof InputError) {
           // The path names the field; the reason says what is wrong with it. Neither holds the value.

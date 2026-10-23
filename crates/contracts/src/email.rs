@@ -175,6 +175,39 @@ impl UninstallExportInput {
     }
 }
 
+/// The longest store name an email shows (`STORE_NAME_MAX` in `packages/email`). Shopify allows
+/// longer names; the template refuses them, which would fail the job for good.
+pub const STORE_NAME_MAX: usize = 100;
+
+/// `name` cut to what the emails accept, on a character boundary.
+#[must_use]
+pub fn email_store_name(name: &str) -> String {
+    name.trim().chars().take(STORE_NAME_MAX).collect()
+}
+
+/// The input of the `welcome` template, built by `ctl` the first time a shop's contact is
+/// stored. The link into the app is added by the mailer (ADR-279).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WelcomeInput {
+    /// The store's name, as the shop reported it.
+    pub store_name: String,
+    /// The recipient's language, a BCP 47 tag; English when absent or unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
+impl WelcomeInput {
+    /// The input as the payload's `input` member.
+    #[must_use]
+    pub fn into_map(self) -> Map<String, Value> {
+        match serde_json::to_value(self) {
+            Ok(Value::Object(map)) => map,
+            _ => Map::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +272,25 @@ mod tests {
         ] {
             assert!(!EmailSend::valid_message_key(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn store_names_are_cut_to_what_the_emails_accept() {
+        assert_eq!(email_store_name("  Demo  "), "Demo");
+        let long = "é".repeat(150);
+        assert_eq!(email_store_name(&long).chars().count(), STORE_NAME_MAX);
+    }
+
+    #[test]
+    fn the_welcome_input_has_the_templates_member_names() {
+        let input = WelcomeInput {
+            store_name: "Demo".to_owned(),
+            locale: Some("fr".to_owned()),
+        };
+        assert_eq!(
+            Value::Object(input.into_map()),
+            json!({"storeName": "Demo", "locale": "fr"})
+        );
     }
 
     #[test]

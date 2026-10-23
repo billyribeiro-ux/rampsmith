@@ -174,6 +174,9 @@ pub async fn delete_shop_contact(tx: &mut TenantTx, shop: ShopId) -> Result<u64,
 
 /// Puts `address` on the tenant's suppression list, or changes its reason. The list holds a
 /// hash of the address (`email_address_hash`), not the address.
+///
+/// A reason never gets weaker: an `unsubscribed` request after a bounce or a complaint leaves
+/// the address blocked for every category, and a bounce after an unsubscribe widens the block.
 pub async fn suppress(
     tx: &mut TenantTx,
     address: &str,
@@ -183,7 +186,11 @@ pub async fn suppress(
     sqlx::query!(
         r#"insert into email_suppressions (tenant_id, address_hash, reason)
            values ($1, email_address_hash($1, $2), $3)
-           on conflict (tenant_id, address_hash) do update set reason = excluded.reason"#,
+           on conflict (tenant_id, address_hash) do update
+              set reason = case
+                    when excluded.reason = 'unsubscribed' then email_suppressions.reason
+                    else excluded.reason
+                  end"#,
         tenant,
         address,
         reason.as_str(),
@@ -191,6 +198,21 @@ pub async fn suppress(
     .execute(tx.conn())
     .await?;
     Ok(())
+}
+
+/// The tenant whose mail SES accepted under `message_id`, or `None` when no delivery record has
+/// that id (not ours, or swept). Needs no tenant: a security definer function answers (ADR-278).
+pub async fn delivery_tenant(
+    tx: &mut crate::PublicTx,
+    message_id: &str,
+) -> Result<Option<domain::TenantId>, DbError> {
+    let tenant = sqlx::query_scalar!(
+        r#"select email_delivery_tenant($1) as "tenant""#,
+        message_id,
+    )
+    .fetch_one(tx.conn())
+    .await?;
+    Ok(tenant.map(domain::TenantId::from_uuid))
 }
 
 /// Whether `address` is on the tenant's suppression list.

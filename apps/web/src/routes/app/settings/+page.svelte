@@ -5,7 +5,8 @@
   import { checkedOf, hasSaveBar, valueOf } from '#lib/app/dom.ts';
   import { asApiError, errorMessage } from '#lib/app/errors.ts';
   import { formatNumber, formatUsd } from '#lib/app/format.ts';
-  import { planPageUrl } from '#lib/app/nav.ts';
+  import { embedActivationUrl, planPageUrl } from '#lib/app/nav.ts';
+  import { SHOPIFY_API_KEY } from '$app/env/public';
   import { planLabel } from '#lib/app/plans.ts';
   import { Resource } from '#lib/app/resource.svelte.ts';
   import { ApiError } from '#lib/app/api.ts';
@@ -81,6 +82,7 @@
   const cadenceLocked = $derived(res.data?.entitlements.scan_cadence === 'monthly');
   const budgetMax = $derived((res.data?.ai_budget_max_micro_usd ?? 0) / 1_000_000);
   const plansUrl = $derived(planPageUrl(app.shop));
+  const embedUrl = $derived(embedActivationUrl(app.shop, SHOPIFY_API_KEY));
 
   function fieldError(name: string): string | undefined {
     return fieldErrors[name];
@@ -297,6 +299,16 @@
               <s-paragraph>{emailError}</s-paragraph>
             </s-banner>
           {/if}
+        </s-stack>
+      </s-section>
+    {/if}
+
+    {#if embedUrl !== undefined}
+      <s-section heading={m.app_setup_heading()}>
+        <s-stack gap="small">
+          <s-paragraph>{m.app_setup_body()}</s-paragraph>
+          <s-paragraph>{m.app_setup_steps()}</s-paragraph>
+          <s-link href={embedUrl} target="_top">{m.app_setup_link()}</s-link>
         </s-stack>
       </s-section>
     {/if}

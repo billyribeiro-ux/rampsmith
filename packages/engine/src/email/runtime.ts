@@ -17,6 +17,7 @@ import {
   type EmailSender,
   type SesConfig,
 } from '@rampsmith/email';
+import { DEFAULT_APP_HANDLE, isAppHandle } from './app-links.ts';
 import type { EmailLinkSettings } from './links.ts';
 
 export interface EmailRuntime {
@@ -29,6 +30,8 @@ export interface EmailRuntime {
    * one-click origin are set; notification and marketing mail waits for them, the rest does not.
    */
   readonly links: EmailLinkSettings | undefined;
+  /** The Shopify app's handle, which the links into the admin are built from (ADR-279). */
+  readonly appHandle: string;
   /** Why something is undefined, in fixed words that name settings and never hold a value. */
   readonly problems: readonly string[];
 }
@@ -130,5 +133,16 @@ export function createEmailRuntime(
       );
     }
   }
-  return { renderer, transport, links, problems };
+  let appHandle = DEFAULT_APP_HANDLE;
+  const handleText = present(env, 'SHOPIFY_APP_HANDLE');
+  if (handleText !== undefined) {
+    if (isAppHandle(handleText)) {
+      appHandle = handleText;
+    } else {
+      problems.push(
+        'SHOPIFY_APP_HANDLE is not a Shopify app handle (lowercase letters, digits, -)',
+      );
+    }
+  }
+  return { renderer, transport, links, appHandle, problems };
 }

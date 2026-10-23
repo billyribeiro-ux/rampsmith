@@ -6,7 +6,7 @@
 import type { IdempotencyLedger, LedgerClaim } from '@rampsmith/email';
 import type postgres from 'postgres';
 import { withTenant } from '../store.ts';
-import type { OPTED_OUT, SuppressionReason } from './suppression.ts';
+import type { OPTED_OUT, SHOP_LEFT, SuppressionReason } from './suppression.ts';
 
 /**
  * How long a `sending` row with no outcome counts as an attempt in flight: SES's request timeout
@@ -83,7 +83,10 @@ export class PgLedger implements IdempotencyLedger {
   }
 
   /** Records that the message was not sent because the recipient is on the suppression list or switched the category off. */
-  async suppressed(key: string, reason: SuppressionReason | typeof OPTED_OUT): Promise<void> {
+  async suppressed(
+    key: string,
+    reason: SuppressionReason | typeof OPTED_OUT | typeof SHOP_LEFT,
+  ): Promise<void> {
     await withTenant(this.#sql, this.#tenantId, async (tx) => {
       // A retry that was waiting (`sending` with a code, or `failed`) becomes `suppressed` too,
       // so no row is left saying a message may still go out (audit L2); `sent` is never undone.

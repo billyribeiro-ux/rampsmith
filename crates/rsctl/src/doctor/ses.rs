@@ -23,6 +23,10 @@ pub(super) const READS: &[Var] = &[
     Var::EmailFrom,
     // Read when set: the sender needs it for marketing mail only (CAN-SPAM, ADR-191).
     Var::EmailPostalAddress,
+    // Read when set: the configuration set and the SNS topic that carry bounces and complaints
+    // back to the api (ADR-278). Checked for shape only.
+    Var::SesConfigurationSet,
+    Var::SesSnsTopicArn,
 ];
 
 #[derive(Deserialize)]
@@ -231,6 +235,50 @@ fn postal_problem(text: &str) -> Option<String> {
     }
 }
 
+/// What is wrong with `SES_CONFIGURATION_SET` or `SES_SNS_TOPIC_ARN`, when either is set. Unset is
+/// not a fault for the identity check; `LAUNCH.md` section E tracks the live bounce check.
+fn bounce_problem(set: &str, topic: &str, region: &str) -> Option<String> {
+    let set = set.trim();
+    let set_ok = set.len() <= 64
+        && set
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if !set.is_empty() && !set_ok {
+        return Some(
+            "SES_CONFIGURATION_SET is not a configuration set name (letters, digits, - and _, at most 64)"
+                .to_owned(),
+        );
+    }
+    let topic = topic.trim();
+    if topic.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = topic.split(':').collect();
+    let shaped = matches!(
+        parts.as_slice(),
+        ["arn", "aws", "sns", topic_region, account, name]
+            if region_ok(topic_region)
+                && account.len() == 12
+                && account.bytes().all(|b| b.is_ascii_digit())
+                && !name.is_empty()
+                && name.len() <= 256
+                && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    );
+    if !shaped {
+        return Some(
+            "SES_SNS_TOPIC_ARN must look like arn:aws:sns:<region>:<12-digit account>:<topic name>"
+                .to_owned(),
+        );
+    }
+    // The topic must be in SES's region: SNS delivers from the topic's own region.
+    if parts.get(3).copied() != Some(region) {
+        return Some(format!(
+            "SES_SNS_TOPIC_ARN is in a different region than SES_REGION ({region}); create the topic in the SES region"
+        ));
+    }
+    None
+}
+
 async fn probe(ctx: &Ctx) -> Step<Outcome> {
     let inputs = gather(
         ctx,
@@ -256,6 +304,19 @@ async fn probe(ctx: &Ctx) -> Step<Outcome> {
     if let Ok(found) = ctx.vars.gather(7, &[Var::EmailPostalAddress])
         && let Some(problem) = postal_problem(found.text(Var::EmailPostalAddress))
     {
+        return Ok(Outcome::fail(problem));
+    }
+    // Each is optional on its own, so each is read on its own.
+    let set = ctx.vars.gather(7, &[Var::SesConfigurationSet]).ok();
+    let topic = ctx.vars.gather(7, &[Var::SesSnsTopicArn]).ok();
+    if let Some(problem) = bounce_problem(
+        set.as_ref()
+            .map_or("", |found| found.text(Var::SesConfigurationSet)),
+        topic
+            .as_ref()
+            .map_or("", |found| found.text(Var::SesSnsTopicArn)),
+        region,
+    ) {
         return Ok(Outcome::fail(problem));
     }
     let domain = address
