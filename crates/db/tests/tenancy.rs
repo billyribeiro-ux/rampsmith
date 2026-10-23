@@ -1781,8 +1781,9 @@ async fn email_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
     }
 }
 
-/// Only `ctl`'s group writes a shop's contact; the engine, a plain worker member, reads it
-/// (ADR-272). A deletion of suppressions or deliveries is nobody's job but the application's.
+/// Only `ctl`'s group writes a shop's contact; the engine, a plain worker member, and the
+/// application login read it, the latter so the restore drill's row-level-security count can see
+/// every tenant table (ADR-272). A deletion of suppressions or deliveries is nobody's job but the application's.
 #[sqlx::test]
 async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
     opts: PgPoolOptions,
@@ -1796,7 +1797,8 @@ async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
         (&worker, "delete from shop_contacts"),
         (&worker, "delete from email_deliveries"),
         (&worker, "delete from email_suppressions"),
-        (&app, "select count(*) from shop_contacts"),
+        (&app, "update shop_contacts set store_name = 'x'"),
+        (&app, "delete from shop_contacts"),
         (
             &app,
             "insert into email_deliveries (tenant_id, message_key, template, state) values (gen_random_uuid(), 'k', 't', 'sent')",

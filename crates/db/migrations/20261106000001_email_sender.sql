@@ -30,7 +30,7 @@ create policy tenant_isolation on shop_contacts
   using (tenant_id = (select app_current_tenant()))
   with check (tenant_id = (select app_current_tenant()));
 -- Workers read it (the engine); only ctl's group writes it.
-grant select on shop_contacts to rampsmith_worker;
+grant select on shop_contacts to rampsmith_app, rampsmith_worker;
 grant insert, update, delete on shop_contacts to rampsmith_ctl;
 
 -- ---------------------------------------------------------------------------------------
