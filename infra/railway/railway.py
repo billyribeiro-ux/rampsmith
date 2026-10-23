@@ -372,10 +372,8 @@ def _ctl(env: str, inputs: Inputs) -> Any:
         "GITHUB_APP_ID": shared("GITHUB_APP_ID"),
         "GITHUB_APP_CLIENT_ID": shared("GITHUB_APP_CLIENT_ID"),
         "GITHUB_APP_PRIVATE_KEY": shared("GITHUB_APP_PRIVATE_KEY"),
-        "SES_REGION": shared("SES_REGION"),
-        "SES_ACCESS_KEY_ID": shared("SES_ACCESS_KEY_ID"),
-        "SES_SECRET_ACCESS_KEY": shared("SES_SECRET_ACCESS_KEY"),
-        "EMAIL_FROM": shared("EMAIL_FROM"),
+        # Where the app's links point (the uninstall export email); the engine reads it too.
+        "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }
     return service(
@@ -399,6 +397,13 @@ def _engine(env: str, inputs: Inputs) -> Any:
         "EGRESS_PROXY_URL": private_url("egress", PORTS["egress"]),
         "EGRESS_TOKEN_SECRET": shared("EGRESS_TOKEN_SECRET"),
         "ANTHROPIC_API_KEY": shared("ANTHROPIC_API_KEY"),
+        # Transactional email (ADR-194, ADR-270): the engine renders and sends, so it alone holds
+        # the Amazon SES keys.
+        "SES_REGION": shared("SES_REGION"),
+        "SES_ACCESS_KEY_ID": shared("SES_ACCESS_KEY_ID"),
+        "SES_SECRET_ACCESS_KEY": shared("SES_SECRET_ACCESS_KEY"),
+        "EMAIL_FROM": shared("EMAIL_FROM"),
+        "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }
     return service(

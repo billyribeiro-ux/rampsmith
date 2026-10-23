@@ -103,7 +103,7 @@ SECRET_USERS = {
     "ANTHROPIC_API_KEY": {"engine"},
     "R2_SECRET_ACCESS_KEY": {"api", "ctl", "engine"},
     "TURNSTILE_SECRET_KEY": {"web"},
-    "SES_SECRET_ACCESS_KEY": {"ctl"},
+    "SES_SECRET_ACCESS_KEY": {"engine"},
     "RAMPSMITH_MASTER_KEYS": {"api", "ctl"},
     "GRAFANA_CLOUD_OTLP_TOKEN": {"collector"},
     "R2_LOGS_SECRET_ACCESS_KEY": {"collector"},
