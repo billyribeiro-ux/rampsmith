@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select fix_id from github_pr_fixes where tenant_id = $1 and pull_request_id = $2\n          order by fix_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fix_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "github_pr_fixes",
+            "name": "fix_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "02cc4ec7955c6bf6f154028902bd2d3a6153d6d5e5553a0ef55b4c761dece185"
+}

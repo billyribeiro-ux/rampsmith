@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use contracts::{
     GithubCheckRepository, GithubOpenPullRequest, GithubPlanBatch, GithubProcessEvent,
-    GithubSyncInstallation, GithubSyncPullRequest, JobError,
-    ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, WebhookProcess,
+    GithubSyncInstallation, GithubSyncPullRequest, JobError, ShopifyApplyDataFix, ShopifyReadStore,
+    ShopifyRevertDataFix, WebhookProcess,
 };
 use db::Db;
 use queue::{ClaimedJob, Failure};

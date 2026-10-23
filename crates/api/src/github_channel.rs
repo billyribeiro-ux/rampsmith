@@ -914,7 +914,10 @@ fn judgements_json(items: &[JudgementBody]) -> Result<serde_json::Value, ApiErro
             if !key_is_well_formed(&label.key) || !text_is_well_formed(&label.text) {
                 return Err(invalid("judgements", "has a label that is not valid"));
             }
-            entry.insert("label".to_owned(), json!({"key": label.key, "text": label.text}));
+            entry.insert(
+                "label".to_owned(),
+                json!({"key": label.key, "text": label.text}),
+            );
         }
         if let Some(reason) = &item.decorative_reason {
             if !text_is_well_formed(reason) {
@@ -941,7 +944,10 @@ fn judgements_json(items: &[JudgementBody]) -> Result<serde_json::Value, ApiErro
 async fn recipes_of(tx: &mut TenantTx, shop: ShopId) -> Result<&'static str, ApiError> {
     let stored = shop_billing::get(tx, shop).await?;
     let plan = entitlements_of(&state_of(stored.as_ref())).plan();
-    if !matches!(feature_gate(plan, Feature::GithubPullRequests), Gate::Allowed) {
+    if !matches!(
+        feature_gate(plan, Feature::GithubPullRequests),
+        Gate::Allowed
+    ) {
         return Err(plan_refusal());
     }
     if matches!(feature_gate(plan, Feature::EveryRecipe), Gate::Allowed) {

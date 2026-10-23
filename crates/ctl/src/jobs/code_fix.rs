@@ -163,7 +163,11 @@ fn wanted(path: &str) -> bool {
         && ["sections/", "snippets/", "blocks/", "layout/", "templates/"]
             .iter()
             .any(|dir| path.starts_with(dir));
-    liquid || (path.starts_with("locales/") && path.ends_with(".json"))
+    liquid
+        || (path.starts_with("locales/")
+            && std::path::Path::new(path)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("json")))
 }
 
 /// One theme file as read.
@@ -179,10 +183,8 @@ async fn read_sources(
     repository: &Repository<'_>,
     files: &[ThemeFile],
 ) -> Result<Vec<Source>, Failure> {
-    let mut wanted_files: Vec<&ThemeFile> = files
-        .iter()
-        .filter(|f| wanted(f.path().as_str()))
-        .collect();
+    let mut wanted_files: Vec<&ThemeFile> =
+        files.iter().filter(|f| wanted(f.path().as_str())).collect();
     wanted_files.sort_by(|a, b| a.path().as_str().cmp(b.path().as_str()));
     if wanted_files.len() > MAX_FILES {
         return Err(failure(
@@ -275,9 +277,15 @@ async fn read_batch(
 
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
     for source in &sources {
-        batches::add_source_file(&mut tx, batch_row, &source.path, &source.content, &source.blob)
-            .await
-            .map_err(|e| database(&e))?;
+        batches::add_source_file(
+            &mut tx,
+            batch_row,
+            &source.path,
+            &source.content,
+            &source.blob,
+        )
+        .await
+        .map_err(|e| database(&e))?;
     }
     let moved = batches::files_read(&mut tx, batch_row, head.as_str())
         .await
@@ -304,7 +312,10 @@ async fn read_batch(
     )
     .await?;
     tx.commit().await.map_err(|e| database(&e))?;
-    info!(files = sources.len(), "the theme files were read for a batch");
+    info!(
+        files = sources.len(),
+        "the theme files were read for a batch"
+    );
     Ok(())
 }
 
@@ -312,23 +323,23 @@ async fn read_batch(
 /// result for a file, which is how the stored files chain.
 fn build_batch(
     batch_id: &BatchId,
-    fixes: &[BatchFix],
-    files: &[BatchFile],
+    steps: &[BatchFix],
+    contents: &[BatchFile],
     modes: &HashMap<String, FileMode>,
     origin: &str,
 ) -> Result<github::Batch, Failure> {
     let broken = |what: &'static str| failure(false, "batch_invalid", what);
-    let mut current: HashMap<&str, &str> = files
+    let mut current: HashMap<&str, &str> = contents
         .iter()
         .filter(|f| f.ordinal == 0)
         .map(|f| (f.path.as_str(), f.content.as_str()))
         .collect();
     let mut by_ordinal: BTreeMap<i32, Vec<&BatchFile>> = BTreeMap::new();
-    for file in files.iter().filter(|f| f.ordinal > 0) {
+    for file in contents.iter().filter(|f| f.ordinal > 0) {
         by_ordinal.entry(file.ordinal).or_default().push(file);
     }
-    let mut out = Vec::with_capacity(fixes.len());
-    for fix in fixes {
+    let mut out = Vec::with_capacity(steps.len());
+    for fix in steps {
         let mut patches = Vec::new();
         for file in by_ordinal.get(&fix.ordinal).into_iter().flatten() {
             let before = current
@@ -336,7 +347,8 @@ fn build_batch(
                 .copied()
                 .ok_or_else(|| broken("a fixed file has no source"))?;
             patches.push(FilePatch {
-                path: ThemePath::parse(&file.path).map_err(|_| broken("a stored path is invalid"))?,
+                path: ThemePath::parse(&file.path)
+                    .map_err(|_| broken("a stored path is invalid"))?,
                 mode: modes.get(&file.path).copied().unwrap_or_default(),
                 before: before.to_owned(),
                 after: file.content.clone(),
@@ -393,9 +405,18 @@ async fn open_batch(
         "opening" => true,
         _ => return Ok(()),
     };
-    let (fixes, files, existing) = load_batch(jobs, tenant, &ctx, resumed).await?;
-    let Some(base_sha) = ctx.batch.base_sha.as_deref().and_then(|s| Sha::parse(s).ok()) else {
-        return Err(failure(false, "batch_invalid", "the batch has no base commit"));
+    let (steps, contents, existing) = load_batch(jobs, tenant, &ctx, resumed).await?;
+    let Some(base_sha) = ctx
+        .batch
+        .base_sha
+        .as_deref()
+        .and_then(|s| Sha::parse(s).ok())
+    else {
+        return Err(failure(
+            false,
+            "batch_invalid",
+            "the batch has no base commit",
+        ));
     };
     let repository = handle(client, &ctx, TokenScope::fix_pull_requests(ctx.repo_id));
     let tree = repository
@@ -409,7 +430,7 @@ async fn open_batch(
         .collect();
     let batch_id = BatchId::parse(&ctx.batch.batch_id)
         .map_err(|_| failure(false, "batch_invalid", "the batch id is invalid"))?;
-    let batch = build_batch(&batch_id, &fixes, &files, &modes, origin)?;
+    let batch = build_batch(&batch_id, &steps, &contents, &modes, origin)?;
     let plans = plan_pull_requests(&batch, ctx.base.as_str(), PrLimits::default())
         .map_err(|e| failure(false, "plan_invalid", e.to_string()))?;
     for plan in &plans {
@@ -440,7 +461,7 @@ async fn open_batch(
         &mut tx,
         "github.batch_opened",
         batch_row,
-        json!({"pull_requests": plans.len(), "fixes": fixes.len()}),
+        json!({"pull_requests": plans.len(), "fixes": steps.len()}),
     )
     .await?;
     tx.commit().await.map_err(|e| database(&e))
@@ -452,7 +473,14 @@ async fn load_batch(
     tenant: domain::TenantId,
     ctx: &Context,
     resumed: bool,
-) -> Result<(Vec<BatchFix>, Vec<BatchFile>, Vec<db::repo::code_fix::PullRequestRow>), Failure> {
+) -> Result<
+    (
+        Vec<BatchFix>,
+        Vec<BatchFile>,
+        Vec<db::repo::code_fix::PullRequestRow>,
+    ),
+    Failure,
+> {
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
     let id = ctx.batch.id;
     if !resumed {
@@ -460,20 +488,20 @@ async fn load_batch(
             .await
             .map_err(|e| database(&e))?;
     }
-    let fixes = batches::batch_fixes(&mut tx, id)
+    let steps = batches::batch_fixes(&mut tx, id)
         .await
         .map_err(|e| database(&e))?;
-    let files = batches::batch_files(&mut tx, id)
+    let contents = batches::batch_files(&mut tx, id)
         .await
         .map_err(|e| database(&e))?;
     let existing = batches::pull_requests_of_batch(&mut tx, &ctx.batch.batch_id)
         .await
         .map_err(|e| database(&e))?;
     tx.commit().await.map_err(|e| database(&e))?;
-    if fixes.is_empty() || files.is_empty() {
+    if steps.is_empty() || contents.is_empty() {
         return Err(failure(false, "files_missing", "the batch has no fixes"));
     }
-    Ok((fixes, files, existing))
+    Ok((steps, contents, existing))
 }
 
 /// What publishing one part shares with the others.
@@ -539,8 +567,13 @@ async fn publish(
     let count = |n: usize| {
         i32::try_from(n).map_err(|_| failure(false, "plan_invalid", "a count is out of range"))
     };
-    let number = i64::try_from(pull.number)
-        .map_err(|_| failure(false, "github_error", "the pull request number is out of range"))?;
+    let number = i64::try_from(pull.number).map_err(|_| {
+        failure(
+            false,
+            "github_error",
+            "the pull request number is out of range",
+        )
+    })?;
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
     let id = batches::upsert_pull_request(
         &mut tx,

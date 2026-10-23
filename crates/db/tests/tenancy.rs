@@ -152,7 +152,6 @@ async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
     let install = uuid::Uuid::now_v7();
     let repo = uuid::Uuid::now_v7();
     let pr = uuid::Uuid::now_v7();
-    let batch = uuid::Uuid::now_v7();
     let suffix = graph.tenant.to_string();
     let installation_id =
         i64::from(u32::try_from(graph.tenant.as_uuid().as_u128() & 0x7fff_ffff).unwrap()) + 1;
@@ -226,6 +225,12 @@ async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    seed_code_fix(tx, graph, repo).await;
+}
+
+/// A batch with a file and a fix (ADR-295).
+async fn seed_code_fix(tx: &mut sqlx::PgConnection, graph: &Graph, repo: uuid::Uuid) {
+    let batch = uuid::Uuid::now_v7();
     sqlx::query(
         "insert into code_fix_batches (id, tenant_id, site_id, repo_row, batch_id, status,
                                        base_branch, recipes)

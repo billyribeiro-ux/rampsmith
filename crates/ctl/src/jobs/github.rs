@@ -261,9 +261,9 @@ pub async fn process_event(jobs: &Jobs, job: ClaimedJob) -> Result<(), Failure> 
 /// Whether a push to `reference` (`refs/heads/<branch>`) can change the pull request: it moved
 /// the pull request's head or its base.
 fn touched_by(row: &code_fix::PullRequestRow, reference: &str) -> bool {
-    reference.strip_prefix("refs/heads/").is_some_and(|branch| {
-        branch == row.head_branch || branch == row.base_branch
-    })
+    reference
+        .strip_prefix("refs/heads/")
+        .is_some_and(|branch| branch == row.head_branch || branch == row.base_branch)
 }
 
 async fn enqueue_sync_installation(

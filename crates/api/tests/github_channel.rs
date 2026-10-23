@@ -671,7 +671,10 @@ async fn a_request_for_pull_requests_is_gated_by_flag_plan_and_theme_and_runs_on
         .await;
     assert_eq!(accepted.status, StatusCode::ACCEPTED, "{}", accepted.body);
     assert_eq!(accepted.body["status"], "reading");
-    assert_eq!(accepted.body["recipes"], "core", "Starter has the core recipes");
+    assert_eq!(
+        accepted.body["recipes"], "core",
+        "Starter has the core recipes"
+    );
     assert_eq!(h.count("select count(*) from code_fix_batches").await, 1);
     assert_eq!(
         h.count("select count(*) from jobs where queue = 'github.plan_batch'")
@@ -698,7 +701,14 @@ async fn a_plan_with_every_recipe_asks_for_every_recipe(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
-    let growth = harness(opts.clone(), conn.clone(), true, Some("growth"), &[INSTALLATION]).await;
+    let growth = harness(
+        opts.clone(),
+        conn.clone(),
+        true,
+        Some("growth"),
+        &[INSTALLATION],
+    )
+    .await;
     ready_theme(&growth).await;
     let accepted = growth
         .call("POST", "/v1/shopify/code-fixes/batches", Some(json!({})))

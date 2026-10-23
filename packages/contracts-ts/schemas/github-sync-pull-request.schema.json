@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GithubSyncPullRequest",
-  "description": "Payload of `github.sync_pr` jobs, schema `github.sync_pr@1`. Runs in `ctl`: reads one pull\nrequest Rampsmith opened from the GitHub API and records its state; when the connected\nbranch moved under an open one it queues a re-derive (PLAN §15, audit L3).",
+  "description": "Payload of `github.sync_pr` jobs, schema `github.sync_pr@1`. Runs in `ctl`: reads one pull\nrequest Rampsmith opened from the GitHub API and records its state and head. A branch a person\nedited is recorded, never overwritten (PLAN §15, audit L3).",
   "type": "object",
   "properties": {
     "pull_request_row": {

@@ -67,10 +67,8 @@ describe('scanPage', () => {
     });
     expect(image?.ancestors?.length).toBeLessThanOrEqual(16);
     const contrast = violations.find((v) => v.ruleId === 'color-contrast');
-    expect(contrast?.evidence).toMatchObject({
-      foreground: expect.stringMatching(/^#[0-9a-f]{6}$/u),
-      background: expect.stringMatching(/^#[0-9a-f]{6}$/u),
-    });
+    expect(String(contrast?.evidence?.foreground)).toMatch(/^#[0-9a-f]{6}$/u);
+    expect(String(contrast?.evidence?.background)).toMatch(/^#[0-9a-f]{6}$/u);
     expect(contrast?.evidence?.font_size_px).toBeGreaterThan(0);
     for (const v of [...violations, ...incomplete]) {
       expect(v.html).not.toContain('shopper@example.com');

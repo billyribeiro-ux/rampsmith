@@ -1,0 +1,185 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, site_id, repo_row, batch_id, status, base_branch, base_sha, requested_by,\n                recipes, judgements, outcome, failure_code, created_at, updated_at\n           from code_fix_batches where tenant_id = $1\n          order by created_at desc limit $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "site_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "repo_row",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "repo_row"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "batch_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "batch_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "base_branch",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "base_branch"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "base_sha",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "base_sha"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "requested_by",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "requested_by"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "recipes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "recipes"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "judgements",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "judgements"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "outcome",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "outcome"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "failure_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "failure_code"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batches",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c37a90c8e4c6c1482b712e60fa920f53bc2c0e4d4ab122191eff7eb19884c593"
+}

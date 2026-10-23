@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select path, ordinal, content from code_fix_files\n          where tenant_id = $1 and batch_row = $2\n          order by path, ordinal",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "path",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_files",
+            "name": "path"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "ordinal",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "code_fix_files",
+            "name": "ordinal"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "content",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_files",
+            "name": "content"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "82d4da16905cb1348a9d37cbf2a0b8735d35e7c6ba6802bcf6c9b9aab94da2da"
+}

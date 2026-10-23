@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_pull_requests\n            set head_sha = $3, pushed_sha = $3, fix_count = $4, files = $5, changed_lines = $6,\n                updated_at = now()\n          where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d890bb76b191b8e28e572c0261a649313b2971061eefe269f92cf781f275c85b"
+}

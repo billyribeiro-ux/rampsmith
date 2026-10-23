@@ -91,12 +91,9 @@ describe('planBatch', () => {
     ];
     const plan = await planBatch(theme(), findings, { contrast: false });
     const codes = Object.fromEntries(plan.skipped.map((s) => [s.findingId, s.code]));
-    expect(codes).toEqual({
-      'f-size': 'no-recipe',
-      'f-contrast': 'plan',
-      'f-nolabel': 'refused',
-      'f-gone': expect.stringMatching(/unmapped|needs-review/u),
-    });
+    const { 'f-gone': gone, ...others } = codes;
+    expect(others).toEqual({ 'f-size': 'no-recipe', 'f-contrast': 'plan', 'f-nolabel': 'refused' });
+    expect(gone).toMatch(/unmapped|needs-review/u);
     expect(plan.skipped.find((s) => s.findingId === 'f-nolabel')?.detail).toBe('invalid-parameter');
     expect(plan.steps.map((s) => s.fix.findingId)).toEqual(['f-lang']);
   });

@@ -425,10 +425,7 @@ macro_rules! pr_row {
 
 /// Records a pull request, or, for a batch part already recorded, its new head and counts (a
 /// re-run of the open job after a crash, or a re-derive). Returns the row.
-pub async fn upsert_pull_request(
-    tx: &mut TenantTx,
-    new: &NewPullRequest,
-) -> Result<Uuid, DbError> {
+pub async fn upsert_pull_request(tx: &mut TenantTx, new: &NewPullRequest) -> Result<Uuid, DbError> {
     let tenant = tx.tenant_uuid();
     Ok(sqlx::query_scalar!(
         "insert into github_pull_requests

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into code_fix_files (batch_row, tenant_id, path, ordinal, content, blob_sha)\n         values ($1, $2, $3, 0, $4, $5)\n         on conflict (batch_row, path, ordinal) do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "15b4eed5f81ddc2a0cb4de9c566ceebc0dd42e15f2d390adb63d3a4d4ade8b30"
+}

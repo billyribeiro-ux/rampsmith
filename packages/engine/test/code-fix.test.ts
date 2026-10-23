@@ -167,7 +167,9 @@ describe('code_fix.patch', () => {
     );
     // The link needs a name the person chooses: without one only the language is fixed.
     await run(r);
-    const [batch] = await db.owner<{ status: string; outcome: any }[]>`
+    const [batch] = await db.owner<
+      { status: string; outcome: { fixed: number; skipped: unknown[] } }[]
+    >`
       select status, outcome from code_fix_batches where id = ${r.batch}`;
     expect(batch?.status).toBe('ready');
     expect(batch?.outcome.fixed).toBe(1);
@@ -184,11 +186,13 @@ describe('code_fix.patch', () => {
     expect(files).toHaveLength(1);
     expect(files[0]?.path).toBe('layout/theme.liquid');
     expect(files[0]?.content).toMatch(/<html lang="/u);
-    const [fix] = await db.owner<{ kind: string; channel: string; status: string; diff: any }[]>`
+    const [fix] = await db.owner<
+      { kind: string; channel: string; status: string; diff: { files: { diff: string }[] } }[]
+    >`
       select f.kind, f.channel, f.status, f.diff from fixes f
         join code_fix_batch_fixes b on b.fix_id = f.id where b.batch_row = ${r.batch}`;
     expect(fix).toMatchObject({ kind: 'code', channel: 'github_pr', status: 'proposed' });
-    expect(fix?.diff.files[0].diff).toContain('+<html lang=');
+    expect(fix?.diff.files[0]?.diff).toContain('+<html lang=');
     const jobs = await db.owner<{ queue: string; payload: unknown }[]>`
       select queue, payload from jobs where queue = 'github.open_pr' and tenant_id = ${r.f.tenantId}`;
     expect(jobs).toEqual([{ queue: 'github.open_pr', payload: { batch_row: r.batch } }]);
