@@ -29,7 +29,7 @@ const IMPACT_ORDER: Readonly<Record<Impact, number>> = {
   minor: 3,
 };
 
-export interface RegressionItem {
+interface RegressionItem {
   readonly findingId: string;
   readonly ruleId: string;
   readonly impact: Impact;

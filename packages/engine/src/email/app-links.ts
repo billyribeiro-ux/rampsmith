@@ -23,6 +23,7 @@ const LINKS: Readonly<
   first_scan_complete: { member: 'findingsUrl', path: '/findings' },
   weekly_summary: { member: 'dashboardUrl', path: '' },
   fix_verified: { member: 'logUrl', path: '/log' },
+  regression_alert: { member: 'findingsUrl', path: '/regressions' },
 };
 
 /** Whether `handle` can be put in a link. */
