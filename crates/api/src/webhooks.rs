@@ -20,6 +20,16 @@
 //!    audit M1) and `webhook.process@1` enqueued in the same transaction;
 //! 6. 200 with no body. Everything slow happens later, in `ctl`.
 //!
+//! `POST /webhooks/github` follows the same order with GitHub's `X-Hub-Signature-256` (a
+//! `sha256=` HMAC of the raw body under the App's webhook secret, which the `github` crate
+//! checks in constant time against the current and, during a rotation, the previous secret). A
+//! verified delivery is stored under its delivery id *and* the SHA-256 of its body, because the
+//! delivery and event headers are not covered by the signature and a captured body can be
+//! replayed under new ones (integration audit M1); the installation it names must be linked to
+//! a store; and the job reads the installation's state from the GitHub API, never from the body
+//! (ADR-292). While `CODE_FIX_CHANNEL_ENABLED` is off the route acknowledges and drops
+//! everything without reading the body (ADR-290).
+//!
 //! Sources, read on shopify.dev on 22 Oct 2026: "Verify webhook deliveries" (the signature is
 //! the base64 HMAC-SHA256 of the raw body under the app's client secret, in
 //! `X-Shopify-Hmac-SHA256`), "Deliver webhooks through HTTPS" (one-second connect and
@@ -37,7 +47,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::post;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use contracts::WebhookProcess;
+use contracts::{GithubProcessEvent, WebhookProcess};
 use db::Db;
 use db::repo::webhooks::{self, NewWebhook, Recorded};
 use hmac::{Hmac, KeyInit, Mac};
@@ -77,6 +87,10 @@ pub const MAX_UNVERIFIED: usize = 512;
 /// The longest the listener waits for a delivery's whole body. Shopify's own total timeout is
 /// five seconds and its bodies are a few kilobytes.
 pub const BODY_DEADLINE: Duration = Duration::from_secs(1);
+/// Largest GitHub body read. GitHub allows up to 25 MB, but the events Rampsmith stores
+/// (installation changes, pull request activity, pushes) are far smaller; a push of thousands
+/// of commits that exceeds this is answered 413 and never stored.
+pub const MAX_GITHUB_BODY_BYTES: usize = 1024 * 1024;
 /// Shopify gives up on a delivery after five seconds in total.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -87,6 +101,7 @@ pub struct WebhookState {
     secret: Arc<SecretString>,
     permits: Arc<Semaphore>,
     unverified: Arc<Semaphore>,
+    github: Option<Arc<github::WebhookVerifier>>,
 }
 
 impl std::fmt::Debug for WebhookState {
@@ -104,7 +119,16 @@ impl WebhookState {
             secret: Arc::new(client_secret),
             permits: Arc::new(Semaphore::new(MAX_IN_FLIGHT)),
             unverified: Arc::new(Semaphore::new(MAX_UNVERIFIED)),
+            github: None,
         }
+    }
+
+    /// Accepts GitHub deliveries signed with this verifier (the channel is switched on). Without
+    /// it `/webhooks/github` acknowledges and drops.
+    #[must_use]
+    pub fn with_github(mut self, verifier: github::WebhookVerifier) -> Self {
+        self.github = Some(Arc::new(verifier));
+        self
     }
 
     /// Replaces the number of verified deliveries stored at once, for tests.
@@ -122,16 +146,19 @@ impl WebhookState {
     }
 }
 
-/// The listener's router: `POST /webhooks/shopify` and a 404 for everything else.
+/// The listener's router: `POST /webhooks/shopify`, `POST /webhooks/github` and a 404 for
+/// everything else.
 pub fn router(state: WebhookState) -> Router {
     let router = Router::new()
         .route("/webhooks/shopify", post(shopify))
+        .route("/webhooks/github", post(github_hook))
         .with_state(state);
     with_middleware(
         router,
         Limits {
             request_timeout: REQUEST_TIMEOUT,
-            body_bytes: MAX_BODY_BYTES,
+            // The Shopify handler enforces its own, smaller limit while reading.
+            body_bytes: MAX_GITHUB_BODY_BYTES,
         },
     )
 }
@@ -407,6 +434,188 @@ async fn store_verified(
         Recorded::DuplicateDelivery | Recorded::DuplicateBody => {
             tx.rollback().await?;
             info!(topic, shop = %shop_ref.shop, ?recorded, "webhook repeated; acknowledged");
+        }
+    }
+    Ok(StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------------------------
+// GitHub
+
+const GITHUB_SIGNATURE: &str = "x-hub-signature-256";
+const GITHUB_DELIVERY: &str = "x-github-delivery";
+const GITHUB_EVENT: &str = "x-github-event";
+
+/// The events Rampsmith stores and processes (the App's manifest subscribes to the first
+/// two of the pull request and push events, and GitHub sends installation events always).
+/// Any other event, `ping` included, is acknowledged and dropped.
+pub const ACCEPTED_GITHUB_EVENTS: [&str; 4] = [
+    "installation",
+    "installation_repositories",
+    "pull_request",
+    "push",
+];
+
+async fn github_hook(
+    State(state): State<WebhookState>,
+    request: Request,
+) -> Result<StatusCode, ApiError> {
+    let Some(verifier) = state.github.clone() else {
+        debug!("GitHub webhook while the channel is off; acknowledged");
+        return Ok(StatusCode::OK);
+    };
+    let (parts, request_body) = request.into_parts();
+    let Ok(unverified) = state.unverified.try_acquire() else {
+        warn!("webhook listener is full of unverified reads");
+        return Err(ApiError::new(ProblemCode::Unavailable)
+            .detail("Too many webhooks are being read; GitHub will retry."));
+    };
+    // The header must look like a signature before the body is read.
+    let signature = parts
+        .headers
+        .get(GITHUB_SIGNATURE)
+        .filter(|v| github::signature_header_is_well_formed(v.as_bytes()))
+        .ok_or_else(|| {
+            warn!(
+                reason = "missing_or_malformed",
+                "GitHub webhook signature refused"
+            );
+            unauthorized()
+        })?;
+    let read = tokio::time::timeout(
+        BODY_DEADLINE,
+        body::to_bytes(Body::new(request_body), MAX_GITHUB_BODY_BYTES),
+    )
+    .await;
+    let body = match read {
+        Ok(Ok(body)) => body,
+        Ok(Err(_)) => return Err(ApiError::new(ProblemCode::PayloadTooLarge)),
+        Err(_) => {
+            warn!(
+                reason = "slow_body",
+                "GitHub webhook body not delivered in time"
+            );
+            return Err(ApiError::new(ProblemCode::Unavailable)
+                .detail("The body did not arrive in time; GitHub will retry."));
+        }
+    };
+    if verifier.verify(signature.as_bytes(), &body).is_err() {
+        warn!(reason = "mismatch", "GitHub webhook signature refused");
+        return Err(unauthorized());
+    }
+    drop(unverified);
+    let Ok(_permit) = state.permits.try_acquire() else {
+        warn!("webhook listener is full");
+        return Err(ApiError::new(ProblemCode::Unavailable)
+            .detail("Too many webhooks are being handled; GitHub will retry."));
+    };
+    store_github(&state, &parts.headers, &body).await
+}
+
+fn github_id_is_well_formed(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
+/// After the signature checked out: parse, find the store, store once, enqueue.
+async fn store_github(
+    state: &WebhookState,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<StatusCode, ApiError> {
+    let name = header(headers, GITHUB_EVENT)
+        .filter(|n| {
+            (1..=64).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        })
+        .ok_or_else(|| {
+            ApiError::new(ProblemCode::BadRequest).detail("X-GitHub-Event is missing or malformed.")
+        })?;
+    let delivery = header(headers, GITHUB_DELIVERY)
+        .map(str::trim)
+        .filter(|id| github_id_is_well_formed(id))
+        .ok_or_else(|| {
+            ApiError::new(ProblemCode::BadRequest)
+                .detail("X-GitHub-Delivery is missing or malformed.")
+        })?;
+    if !ACCEPTED_GITHUB_EVENTS.contains(&name) {
+        debug!(event = name, "GitHub event not handled; acknowledged");
+        return Ok(StatusCode::OK);
+    }
+    if let Some(content_type) = header(headers, "content-type") {
+        let media = content_type.split(';').next().unwrap_or("").trim();
+        if !media.eq_ignore_ascii_case("application/json") {
+            return Err(ApiError::new(ProblemCode::BadRequest)
+                .detail("GitHub deliveries must be application/json."));
+        }
+    }
+    // The payload must be the documented shape for its event: the event header is not signed.
+    let parsed = github::Event::parse(name, body).map_err(|_| {
+        ApiError::new(ProblemCode::BadRequest).detail("The body does not match the X-GitHub-Event.")
+    })?;
+    let json: serde_json::Value = serde_json::from_slice(body)
+        .map_err(|_| ApiError::new(ProblemCode::BadRequest).detail("The body is not JSON."))?;
+    let Some(installation) = parsed
+        .installation_id()
+        .and_then(|i| i64::try_from(i.get()).ok())
+    else {
+        debug!(
+            event = name,
+            "GitHub event names no installation; acknowledged"
+        );
+        return Ok(StatusCode::OK);
+    };
+    let Some(owner) = state.db.github_installation(installation).await? else {
+        // Not linked to a store (yet): the callback reads the API itself. Acknowledging stops
+        // GitHub's failure counter.
+        info!(
+            event = name,
+            "GitHub event for an unlinked installation acknowledged"
+        );
+        return Ok(StatusCode::OK);
+    };
+    let digest: [u8; 32] = Sha256::digest(body).into();
+    let mut tx = state.db.tenant(owner.tenant).await?;
+    let recorded = db::repo::github::record_event(
+        &mut tx,
+        &db::repo::github::NewEvent {
+            delivery_id: delivery.to_owned(),
+            event: name.to_owned(),
+            installation_id: installation,
+            repository_id: parsed
+                .repository_id()
+                .and_then(|r| i64::try_from(r.get()).ok()),
+            body: json,
+            body_sha256: digest,
+        },
+    )
+    .await?;
+    match recorded {
+        db::repo::github::Recorded::Stored(event_id) => {
+            let payload = serde_json::to_value(GithubProcessEvent { event_id }).map_err(|e| {
+                error!(error = %e, "could not encode the GitHub event job");
+                ApiError::new(ProblemCode::Internal)
+            })?;
+            db::repo::jobs::enqueue(
+                &mut tx,
+                NewJob::new(
+                    GithubProcessEvent::QUEUE,
+                    GithubProcessEvent::SCHEMA,
+                    payload,
+                )
+                .idempotency_key(format!("{}:{event_id}", GithubProcessEvent::QUEUE))
+                .max_attempts(GithubProcessEvent::MAX_ATTEMPTS),
+            )
+            .await?;
+            tx.commit().await?;
+            info!(event = name, %event_id, "GitHub event stored");
+        }
+        db::repo::github::Recorded::DuplicateDelivery
+        | db::repo::github::Recorded::DuplicateBody => {
+            tx.rollback().await?;
+            info!(
+                event = name,
+                ?recorded,
+                "GitHub event repeated; acknowledged"
+            );
         }
     }
     Ok(StatusCode::OK)

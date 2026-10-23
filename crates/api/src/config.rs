@@ -36,6 +36,11 @@ pub struct Config {
     /// `TURNSTILE_ORIGIN` and `TURNSTILE_HOSTNAMES`; ADR-267). Both secrets or neither: without them the free scanner's
     /// routes answer 503 and the marketing site's form stays closed.
     pub free_scan: Option<crate::free_scan::FreeScanSettings>,
+    /// The GitHub pull-request channel (`CODE_FIX_CHANNEL_ENABLED=true` plus the App's
+    /// `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `GITHUB_APP_WEBHOOK_SECRET`;
+    /// ADR-290). `None` while the flag is off, which is the App Store build's setting: the
+    /// channel's routes answer 404 and `/webhooks/github` acknowledges and drops deliveries.
+    pub github: Option<GithubSettings>,
     /// The keys of the links in email and the app's origin (`EMAIL_LINK_KEYS`, `APP_ORIGIN`;
     /// ADR-274). Both or neither: without them the unsubscribe and preferences routes answer 503.
     pub email_links: Option<crate::email_link::EmailLinks>,
@@ -46,6 +51,21 @@ pub struct Config {
     pub webauthn_rp_id: String,
     /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
     pub webauthn_rp_origin: String,
+}
+
+/// The GitHub App's settings the api needs. The api never holds the App's private key: it only
+/// verifies webhooks and exchanges the installer's authorization code (ADR-291); `ctl` signs
+/// for installations.
+#[derive(Debug)]
+pub struct GithubSettings {
+    /// The App's client id (`GITHUB_APP_CLIENT_ID`).
+    pub client_id: String,
+    /// The App's client secret (`GITHUB_APP_CLIENT_SECRET`, LAUNCH.md section C). Secret.
+    pub client_secret: SecretString,
+    /// The webhook secret (`GITHUB_APP_WEBHOOK_SECRET`). Secret.
+    pub webhook_secret: SecretString,
+    /// The previous webhook secret during a rotation (`GITHUB_APP_WEBHOOK_SECRET_PREVIOUS`).
+    pub webhook_secret_previous: Option<SecretString>,
 }
 
 /// The Partner API settings for plan confirmation.
@@ -156,18 +176,12 @@ impl Config {
             })?;
         let partner = partner_config(&get)?;
         let free_scan = free_scan_config(&get)?;
+        let github = github_config(&get)?;
         let email_links = email_links_config(&get)?;
-        let ses_sns_topic = match get("SES_SNS_TOPIC_ARN") {
-            None => None,
-            Some(arn) => Some(crate::ses_events::SnsTopic::parse(arn.trim()).map_err(|e| {
-                ConfigError::Invalid {
-                    name: "SES_SNS_TOPIC_ARN",
-                    reason: e.to_string(),
-                }
-            })?),
-        };
+        let ses_sns_topic = ses_sns_topic_config(&get)?;
         Ok(Self {
             ses_sns_topic,
+            github,
             partner,
             free_scan,
             email_links,
@@ -211,6 +225,53 @@ fn partner_config(
             name: "SHOPIFY_APP_GID",
             reason: e.to_string(),
         })?,
+    }))
+}
+
+/// Whether a feature flag variable is on. Only `true` and `false` are accepted: a typo must not
+/// silently leave the channel off (or on).
+pub fn flag(
+    get: &impl Fn(&str) -> Option<String>,
+    name: &'static str,
+) -> Result<bool, ConfigError> {
+    match get(name).as_deref().map(str::trim) {
+        None | Some("false") => Ok(false),
+        Some("true") => Ok(true),
+        Some(_) => Err(ConfigError::Invalid {
+            name,
+            reason: "must be `true` or `false`".to_owned(),
+        }),
+    }
+}
+
+/// The GitHub channel: nothing while `CODE_FIX_CHANNEL_ENABLED` is off; the three secrets
+/// when it is on.
+fn github_config(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<GithubSettings>, ConfigError> {
+    if !flag(get, "CODE_FIX_CHANNEL_ENABLED")? {
+        return Ok(None);
+    }
+    let client_id =
+        get("GITHUB_APP_CLIENT_ID").ok_or(ConfigError::Missing("GITHUB_APP_CLIENT_ID"))?;
+    let client_secret =
+        get("GITHUB_APP_CLIENT_SECRET").ok_or(ConfigError::Missing("GITHUB_APP_CLIENT_SECRET"))?;
+    let webhook_secret = get("GITHUB_APP_WEBHOOK_SECRET")
+        .ok_or(ConfigError::Missing("GITHUB_APP_WEBHOOK_SECRET"))?;
+    let client_id = client_id.trim();
+    if !(1..=64).contains(&client_id.len()) || !client_id.bytes().all(|b| b.is_ascii_alphanumeric())
+    {
+        return Err(ConfigError::Invalid {
+            name: "GITHUB_APP_CLIENT_ID",
+            reason: "must be the App's client id (letters and digits)".to_owned(),
+        });
+    }
+    Ok(Some(GithubSettings {
+        client_id: client_id.to_owned(),
+        client_secret: SecretString::from(client_secret.trim().to_owned()),
+        webhook_secret: SecretString::from(webhook_secret.trim().to_owned()),
+        webhook_secret_previous: get("GITHUB_APP_WEBHOOK_SECRET_PREVIOUS")
+            .map(|v| SecretString::from(v.trim().to_owned())),
     }))
 }
 
@@ -265,6 +326,20 @@ fn free_scan_config(
         turnstile_origin: origin,
         turnstile_hostnames: hostnames,
     }))
+}
+
+/// The SNS topic whose bounce and complaint events the webhook listener accepts (ADR-278).
+fn ses_sns_topic_config(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<crate::ses_events::SnsTopic>, ConfigError> {
+    get("SES_SNS_TOPIC_ARN")
+        .map(|arn| {
+            crate::ses_events::SnsTopic::parse(arn.trim()).map_err(|e| ConfigError::Invalid {
+                name: "SES_SNS_TOPIC_ARN",
+                reason: e.to_string(),
+            })
+        })
+        .transpose()
 }
 
 /// The email links' settings: the key ring and the app's origin, both or neither.
@@ -860,5 +935,72 @@ mod tests {
             !debug.contains("prtnr_secret_value"),
             "the token must not appear in Debug"
         );
+    }
+
+    const GITHUB: [(&str, &str); 4] = [
+        ("CODE_FIX_CHANNEL_ENABLED", "true"),
+        ("GITHUB_APP_CLIENT_ID", "Iv23liAbCdEf0123"),
+        ("GITHUB_APP_CLIENT_SECRET", "gh_client_secret_value"),
+        ("GITHUB_APP_WEBHOOK_SECRET", "gh_webhook_secret_value"),
+    ];
+
+    #[test]
+    fn the_github_channel_is_off_unless_its_flag_is_true() {
+        let base = [("DATABASE_URL", "postgres://x@localhost/db")];
+        assert!(config(&base).unwrap().github.is_none());
+        // The secrets alone do not switch it on (the App Store build has them set).
+        let secrets: Vec<(&str, &str)> = base.iter().chain(GITHUB[1..].iter()).copied().collect();
+        assert!(config(&secrets).unwrap().github.is_none());
+        let mut off = secrets.clone();
+        off.push(("CODE_FIX_CHANNEL_ENABLED", "false"));
+        assert!(config(&off).unwrap().github.is_none());
+        let on: Vec<(&str, &str)> = base.iter().chain(GITHUB.iter()).copied().collect();
+        let github = config(&on).unwrap().github.unwrap();
+        assert_eq!(github.client_id, "Iv23liAbCdEf0123");
+        assert_eq!(
+            github.client_secret.expose_secret(),
+            "gh_client_secret_value"
+        );
+        assert!(github.webhook_secret_previous.is_none());
+    }
+
+    #[test]
+    fn the_github_channel_needs_every_secret_once_on_and_a_clear_flag() {
+        let base = [("DATABASE_URL", "postgres://x@localhost/db")];
+        for missing in [
+            "GITHUB_APP_CLIENT_ID",
+            "GITHUB_APP_CLIENT_SECRET",
+            "GITHUB_APP_WEBHOOK_SECRET",
+        ] {
+            let vars: Vec<(&str, &str)> = base
+                .iter()
+                .chain(GITHUB.iter())
+                .copied()
+                .filter(|(name, _)| *name != missing)
+                .collect();
+            assert_eq!(config(&vars).unwrap_err(), ConfigError::Missing(missing));
+        }
+        for typo in ["TRUE", "1", "yes", "ture"] {
+            let vars = [base[0], ("CODE_FIX_CHANNEL_ENABLED", typo)];
+            assert!(
+                matches!(
+                    config(&vars).unwrap_err(),
+                    ConfigError::Invalid {
+                        name: "CODE_FIX_CHANNEL_ENABLED",
+                        ..
+                    }
+                ),
+                "{typo}"
+            );
+        }
+    }
+
+    #[test]
+    fn github_secrets_never_appear_in_debug() {
+        let base = [("DATABASE_URL", "postgres://x@localhost/db")];
+        let on: Vec<(&str, &str)> = base.iter().chain(GITHUB.iter()).copied().collect();
+        let debug = format!("{:?}", config(&on).unwrap());
+        assert!(!debug.contains("gh_client_secret_value"));
+        assert!(!debug.contains("gh_webhook_secret_value"));
     }
 }

@@ -8,11 +8,13 @@
 
 mod error;
 mod flights;
+mod github;
 pub mod repo;
 mod roles;
 mod tx;
 
 pub use error::DbError;
+pub use github::{InstallationOwner, StateOwner};
 pub use roles::{RoleError, RoleViolation, RuntimeRole};
 pub use tx::{
     Db, IdentityTx, KeyCount, PasswordCandidate, PublicTx, RewrapCandidate, SHOP_LOCK_TIMEOUT,

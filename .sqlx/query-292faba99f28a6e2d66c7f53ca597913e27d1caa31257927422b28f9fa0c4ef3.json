@@ -1,0 +1,125 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, installation_id, account_login, account_type, repository_selection, status,\n                connected_by_github, linked_at, state_read_at\n           from github_installations\n          where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "installation_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "installation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "account_login",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "account_login"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "account_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "account_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "repository_selection",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "repository_selection"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "connected_by_github",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "connected_by_github"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "linked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "linked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "state_read_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "github_installations",
+            "name": "state_read_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "292faba99f28a6e2d66c7f53ca597913e27d1caa31257927422b28f9fa0c4ef3"
+}

@@ -33,6 +33,11 @@ pub struct Config {
     /// The app's public origin (`APP_ORIGIN`), such as `https://app.rampsmith.com`: the links in
     /// emails point at it. Optional: without it `ctl` queues no email that carries a link.
     pub app_origin: Option<String>,
+    /// The GitHub App's credentials while the pull-request channel is on
+    /// (`CODE_FIX_CHANNEL_ENABLED=true`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_PRIVATE_KEY`;
+    /// ADR-290). The key is parsed here and the PEM text is not kept; `main` moves the parsed
+    /// credentials into the GitHub client (audit L9).
+    pub github: Option<github::AppCredentials>,
 }
 
 /// A configuration value is missing or malformed. Never contains the value.
@@ -111,7 +116,9 @@ impl Config {
             SocketAddr::from(([0_u16; 8], port))
         };
         let app_origin = get("APP_ORIGIN").map(|v| origin(&v)).transpose()?;
+        let github = github_credentials(&get)?;
         Ok(Self {
+            github,
             database_url: SecretString::from(database_url),
             db_max_connections,
             worker_id: get("WORKER_ID").unwrap_or_else(default_worker_id),
@@ -125,6 +132,40 @@ impl Config {
             app_origin,
         })
     }
+}
+
+/// The GitHub App's credentials: nothing while `CODE_FIX_CHANNEL_ENABLED` is off, the client id
+/// and the parsed private key when it is on. A key that does not parse stops the process before
+/// it serves a job. The PEM text is wiped when its `SecretString` drops, and the decoded key
+/// bytes inside `github` are wiped after parsing.
+fn github_credentials(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<github::AppCredentials>, ConfigError> {
+    match get("CODE_FIX_CHANNEL_ENABLED").as_deref().map(str::trim) {
+        None | Some("false") => return Ok(None),
+        Some("true") => {}
+        Some(_) => {
+            return Err(ConfigError::Invalid {
+                name: "CODE_FIX_CHANNEL_ENABLED",
+                reason: "must be `true` or `false`".to_owned(),
+            });
+        }
+    }
+    let client_id =
+        get("GITHUB_APP_CLIENT_ID").ok_or(ConfigError::Missing("GITHUB_APP_CLIENT_ID"))?;
+    let pem = SecretString::from(
+        get("GITHUB_APP_PRIVATE_KEY").ok_or(ConfigError::Missing("GITHUB_APP_PRIVATE_KEY"))?,
+    );
+    let issuer =
+        github::AppIssuer::client_id(client_id.trim()).map_err(|e| ConfigError::Invalid {
+            name: "GITHUB_APP_CLIENT_ID",
+            reason: e.to_string(),
+        })?;
+    let key = github::AppPrivateKey::from_pem(&pem).map_err(|e| ConfigError::Invalid {
+        name: "GITHUB_APP_PRIVATE_KEY",
+        reason: e.to_string(),
+    })?;
+    Ok(Some(github::AppCredentials::new(issuer, key)))
 }
 
 /// `value` as an origin: `https://host[:port]`, or `http://` on a loopback host for development,
@@ -290,6 +331,49 @@ mod tests {
                 name: "RAMPSMITH_SCAN_SECRET_KEYS",
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn the_github_channel_is_off_by_default_and_a_bad_key_stops_the_boot_without_echoing_it() {
+        assert!(config(&[]).unwrap().github.is_none());
+        // The key alone does not switch the channel on.
+        assert!(
+            config(&[("GITHUB_APP_PRIVATE_KEY", "-----BEGIN PRIVATE KEY-----")])
+                .unwrap()
+                .github
+                .is_none()
+        );
+        let on = [("CODE_FIX_CHANNEL_ENABLED", "true")];
+        assert_eq!(
+            config(&on).unwrap_err(),
+            ConfigError::Missing("GITHUB_APP_CLIENT_ID")
+        );
+        let with_id = [on[0], ("GITHUB_APP_CLIENT_ID", "Iv23liTest")];
+        assert_eq!(
+            config(&with_id).unwrap_err(),
+            ConfigError::Missing("GITHUB_APP_PRIVATE_KEY")
+        );
+        let bad = [
+            with_id[0],
+            with_id[1],
+            ("GITHUB_APP_PRIVATE_KEY", "not-a-key-SECRETMARK"),
+        ];
+        let error = config(&bad).unwrap_err();
+        assert!(matches!(
+            error,
+            ConfigError::Invalid {
+                name: "GITHUB_APP_PRIVATE_KEY",
+                ..
+            }
+        ));
+        assert!(!error.to_string().contains("SECRETMARK"));
+        assert!(matches!(
+            config(&[("CODE_FIX_CHANNEL_ENABLED", "yes")]).unwrap_err(),
+            ConfigError::Invalid {
+                name: "CODE_FIX_CHANNEL_ENABLED",
+                ..
+            }
         ));
     }
 }

@@ -495,6 +495,299 @@
         ]
       }
     },
+    "/v1/github/callback": {
+      "post": {
+        "tags": [
+          "code-fixes"
+        ],
+        "summary": "Finishes connecting GitHub. Called by the web server with what GitHub's redirect carried; it\nhas no Shopify session, and the one-time state is what binds it to a store.",
+        "operationId": "finishGithubConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionFinishBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The installation is linked to the store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionFinishDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The state or the code is not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The GitHub user cannot reach this installation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The channel is not switched on",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation or the store is already linked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub did not answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/shopify/code-fixes": {
+      "get": {
+        "tags": [
+          "code-fixes"
+        ],
+        "summary": "What the \"Code fixes\" screen shows: the plan's gate, the connected GitHub account and its\nrepositories.",
+        "operationId": "getCodeFixes",
+        "responses": {
+          "200": {
+            "description": "The screen's state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeFixesDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/code-fixes/connection": {
+      "post": {
+        "tags": [
+          "code-fixes"
+        ],
+        "summary": "Starts connecting GitHub: stores a one-time state for this store.",
+        "operationId": "startGithubConnection",
+        "responses": {
+          "200": {
+            "description": "The state to carry through GitHub's installation page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStartDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The plan does not include pull requests, or no signed-in staff member",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The channel is not switched on",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "code-fixes"
+        ],
+        "summary": "Disconnects GitHub: ends the link and forgets the repository choice. Pull requests already\nopened stay on GitHub; the App stays installed there until the merchant removes it.",
+        "operationId": "disconnectGithub",
+        "responses": {
+          "200": {
+            "description": "The screen's state after disconnecting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeFixesDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The channel is not switched on",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/code-fixes/repository": {
+      "put": {
+        "tags": [
+          "code-fixes"
+        ],
+        "summary": "Chooses the store's theme repository and the branch connected to the live theme.",
+        "operationId": "chooseGithubRepository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChooseRepositoryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The screen's state after the choice",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeFixesDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The plan does not include pull requests, or the person who connected could not push to that repository",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such repository, or the channel is not switched on",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The branch name is not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
     "/v1/shopify/email-preferences": {
       "get": {
         "tags": [
@@ -1748,6 +2041,121 @@
           }
         }
       },
+      "ChooseRepositoryBody": {
+        "type": "object",
+        "description": "The repository to use for code fixes.",
+        "required": [
+          "repository_id",
+          "connected_branch"
+        ],
+        "properties": {
+          "connected_branch": {
+            "type": "string",
+            "description": "The branch Shopify syncs to the live theme. Rampsmith never pushes to it."
+          },
+          "repository_id": {
+            "type": "string",
+            "description": "A repository's `id` from the screen's state."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CodeFixesDto": {
+        "type": "object",
+        "description": "The \"Code fixes\" screen's state.",
+        "required": [
+          "enabled",
+          "plan",
+          "repositories"
+        ],
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GithubConnectionDto",
+                "description": "The connected GitHub account, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the channel is switched on in this deployment (`CODE_FIX_CHANNEL_ENABLED`)."
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PlanGateDto",
+            "description": "What the plan allows."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubRepositoryDto"
+            },
+            "description": "Its repositories, chosen one first."
+          }
+        }
+      },
+      "ConnectionFinishBody": {
+        "type": "object",
+        "description": "What GitHub's redirect carried, forwarded by the web server.",
+        "required": [
+          "state",
+          "code",
+          "installation_id"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The authorization `code` GitHub put on the redirect."
+          },
+          "echoed_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `state` GitHub put on the redirect, when it did. It must equal the cookie's."
+          },
+          "installation_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The installation GitHub put on the redirect.",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "description": "The state from the browser's cookie."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectionFinishDto": {
+        "type": "object",
+        "description": "The result of connecting.",
+        "required": [
+          "connected"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "Always true; failures are problems."
+          }
+        }
+      },
+      "ConnectionStartDto": {
+        "type": "object",
+        "description": "The one-time state of an install flow.",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "A random value, valid for ten minutes and for one callback. The web server puts it in\nthe installation URL and in a cookie."
+          }
+        }
+      },
       "CoverageDto": {
         "type": "object",
         "required": [
@@ -2511,6 +2919,101 @@
         },
         "additionalProperties": false
       },
+      "GithubConnectionDto": {
+        "type": "object",
+        "description": "The GitHub account connected to the store.",
+        "required": [
+          "account",
+          "account_type",
+          "status",
+          "repository_selection",
+          "linked_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The account the App is installed on."
+          },
+          "account_type": {
+            "type": "string",
+            "description": "`User`, `Organization` or `Enterprise`."
+          },
+          "connected_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The GitHub login that connected it."
+          },
+          "linked_at": {
+            "type": "string",
+            "description": "When it was connected."
+          },
+          "repository_selection": {
+            "type": "string",
+            "description": "`all` or `selected` repositories."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active` or `suspended`."
+          }
+        }
+      },
+      "GithubRepositoryDto": {
+        "type": "object",
+        "description": "A repository the installation can reach.",
+        "required": [
+          "id",
+          "full_name",
+          "default_branch",
+          "visibility",
+          "archived",
+          "can_push",
+          "selected",
+          "theme_state"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Whether it is archived (read only)."
+          },
+          "can_push": {
+            "type": "boolean",
+            "description": "Whether the person who connected could push to it. Only such a repository can be chosen."
+          },
+          "connected_branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch connected to the live theme, for the chosen repository."
+          },
+          "default_branch": {
+            "type": "string",
+            "description": "The repository's default branch."
+          },
+          "full_name": {
+            "type": "string",
+            "description": "`owner/name`."
+          },
+          "id": {
+            "type": "string",
+            "description": "Rampsmith's id for it, which the choose-repository call takes."
+          },
+          "selected": {
+            "type": "boolean",
+            "description": "Whether it is the store's theme repository."
+          },
+          "theme_state": {
+            "type": "string",
+            "description": "`unchecked`, `ok`, `not_a_theme` or `unreachable`."
+          },
+          "visibility": {
+            "type": "string",
+            "description": "`private` or `public`."
+          }
+        }
+      },
       "Health": {
         "type": "object",
         "description": "The process is up.",
@@ -2663,6 +3166,26 @@
           },
           "shop": {
             "$ref": "#/components/schemas/ShopDto"
+          }
+        }
+      },
+      "PlanGateDto": {
+        "type": "object",
+        "description": "Whether the plan includes pull requests.",
+        "required": [
+          "gate"
+        ],
+        "properties": {
+          "gate": {
+            "type": "string",
+            "description": "`allowed`, `locked` or `unavailable`."
+          },
+          "unlocked_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The lowest plan that includes pull requests, when locked."
           }
         }
       },
@@ -3211,6 +3734,10 @@
     {
       "name": "free-scanner",
       "description": "The marketing site's anonymous single-page scan (ADR-267)"
+    },
+    {
+      "name": "code-fixes",
+      "description": "The GitHub pull-request channel: connecting GitHub, choosing the theme repository (ADR-290)"
     },
     {
       "name": "email",

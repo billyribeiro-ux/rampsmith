@@ -322,19 +322,28 @@ impl fmt::Display for WritableBranch {
 
 /// How a `rampsmith/` branch ref moves. Force is a separate, named variant so it is only ever
 /// used deliberately: PLAN §15 "Re-derive, never rebase".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// A re-derive replaces the branch only while it still points at the commit Rampsmith last
+/// pushed to it (`expected_head`, stored with the pull request). If anyone else has pushed
+/// since, for example a developer fixing up a commit, the update is refused instead of
+/// discarding their work (integration audit L3).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefUpdate {
     /// The new commit must descend from the current one.
     FastForward,
-    /// The fix branch was rebuilt from a new base by re-running the recipes; replace it.
-    Rederive,
+    /// The fix branch was rebuilt from a new base by re-running the recipes; replace it, but only
+    /// while it still points at `expected_head`.
+    Rederive {
+        /// The head commit of Rampsmith's last push to this branch.
+        expected_head: crate::types::Sha,
+    },
 }
 
 impl RefUpdate {
     /// The `force` flag GitHub's update-a-reference endpoint takes.
     #[must_use]
-    pub const fn force(self) -> bool {
-        matches!(self, Self::Rederive)
+    pub const fn force(&self) -> bool {
+        matches!(self, Self::Rederive { .. })
     }
 }
 
@@ -620,6 +629,11 @@ mod tests {
     #[test]
     fn only_rederive_forces_a_ref_update() {
         assert!(!RefUpdate::FastForward.force());
-        assert!(RefUpdate::Rederive.force());
+        assert!(
+            RefUpdate::Rederive {
+                expected_head: crate::types::Sha::parse(&"a".repeat(40)).unwrap()
+            }
+            .force()
+        );
     }
 }

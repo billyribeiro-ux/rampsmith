@@ -16,8 +16,10 @@
 //! - The client pins the REST API version, never follows redirects, refuses plain `http`
 //!   outside loopback, bounds response sizes, and maps 401, 403, 404, 409, 422 and rate limits
 //!   to typed errors.
-//! - Untrusted finding text reaches commits and pull-request bodies only through escaping
-//!   that blocks trailer injection, HTML, links, mentions and references.
+//! - Untrusted finding text never reaches a commit message (the subject is a checked summary
+//!   plus a `Rampsmith-Fix` trailer, so `[skip ci]`, closing keywords and mentions cannot be
+//!   smuggled in; integration audit M2). It reaches a pull-request body only inside Markdown code
+//!   spans, which block HTML, links, mentions and references.
 
 mod app;
 mod client;
@@ -25,6 +27,7 @@ mod clock;
 mod diff;
 mod error;
 mod guard;
+mod install;
 mod markdown;
 mod pr;
 mod repo;
@@ -44,12 +47,16 @@ pub use guard::{
     RefUpdate, StructureError, TEMPLATE_SUBDIRECTORIES, THEME_DIRECTORIES, ThemePath,
     ThemeRequirement, WritableBranch, check_theme_structure,
 };
+pub use install::{
+    InstallationInfo, InstalledRepository, Listing, MAX_PAGES, OAuthApp, OAuthError,
+    UserPermissions, UserToken,
+};
 pub use pr::{
     Batch, CHECK_RUN_NAME, CheckOutput, CheckRun, CommitPlan, Conclusion, FileChange, FileMode,
     FilePatch, Fix, MAX_FINDING_CHARS, MAX_SUMMARY_CHARS, PlanError, PrLimits, PullRequestPlan,
     Verification, commit_message, plan_pull_requests, verification_check_run,
 };
-pub use repo::{PullRequest, Repository, RepositoryTree, ThemeFile, TreeEntry};
+pub use repo::{PullRequest, PullState, Repository, RepositoryTree, ThemeFile, TreeEntry};
 pub use token::{
     Access, InstallationToken, MAX_TOKEN_REPOSITORIES, Permission, TOKEN_REFRESH_SKEW, TokenScope,
 };
@@ -61,5 +68,5 @@ pub use webhook::{
     InstallationAction, InstallationEvent, InstallationRef, InstallationRepositoriesAction,
     InstallationRepositoriesEvent, MAX_WEBHOOK_BYTES, PullRequestAction, PullRequestEvent,
     PullRequestInfo, PushCommit, PushEvent, RepositoryInfo, RepositorySelection, RepositorySummary,
-    SIGNATURE_HEADER, WebhookError, WebhookVerifier,
+    SIGNATURE_HEADER, WebhookError, WebhookVerifier, signature_header_is_well_formed,
 };
