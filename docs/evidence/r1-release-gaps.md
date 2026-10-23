@@ -28,4 +28,15 @@ green, with no "integration gap" annotation on any `image <service> (dry run)` j
 no longer has a gap path: an engine that exits, logs no sandbox mode, or runs unsandboxed without
 the refusal warning fails the job, on pull requests as on `main`.
 
-The strict run on `main` after the merge is recorded below.
+## After the merge (31ab96f)
+
+The strict `release` run on main 31ab96f
+([39879712364](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39879712364)) passed
+`verify egress`, `verify web` and `verify backup`, but `verify api` and `verify engine` stopped
+in the pre-deploy step for a reason outside this change: two parallel merges (lane A
+`20261105000001_webhook_digests.sql`, lane C `20261105000001_r1_c_audit_limits.sql`) used the same
+sqlx migration version, so `sqlx migrate run` refused the directory (`ci` failed on the same
+tree). The lane agents renumbered the lane C file on main in the meantime
+(`20261105000005_r1_c_audit_limits.sql`); this change adds `infra/railway/tests/test_migrations.py`,
+which fails the `config` job on a duplicate version, and puts the pre-deploy output in the smoke
+test's annotation. The strict run that follows is recorded below.
