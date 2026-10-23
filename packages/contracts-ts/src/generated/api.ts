@@ -443,6 +443,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/shopify/regressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The scheduled scans that found new or returning failures. */
+        get: operations["listRegressions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/regressions/{regression_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hides the overview banner for a record. */
+        post: operations["dismissRegression"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/shopify/scans": {
         parameters: {
             query?: never;
@@ -934,6 +968,7 @@ export interface components {
             next_scan_at?: string | null;
             /** @description Open findings by impact; best practices are not counted. */
             open_by_impact: components["schemas"]["ImpactCountsDto"];
+            regression_banner?: components["schemas"]["RegressionDto"] | null;
             shop: components["schemas"]["ShopDto"];
         };
         /** @description Whether the plan includes pull requests. */
@@ -997,6 +1032,64 @@ export interface components {
             display_name: string;
             /** @description The account's email address. */
             email: string;
+        };
+        /** @description A scheduled scan compared with the one before it. */
+        RegressionDto: {
+            detected_at: string;
+            dismissed: boolean;
+            /**
+             * Format: int32
+             * @description Findings this scan recorded (best practices left out).
+             */
+            findings_seen: number;
+            id: string;
+            /** @description The most severe findings; the counts above are the totals. */
+            items: components["schemas"]["RegressionItemDto"][];
+            /**
+             * Format: int32
+             * @description Open findings never seen before this scan.
+             */
+            new_count: number;
+            /**
+             * Format: double
+             * @description Checks passed over checks run, as a percentage.
+             */
+            pass_rate?: number | null;
+            /** Format: int32 */
+            previous_findings_seen?: number | null;
+            /** Format: double */
+            previous_pass_rate?: number | null;
+            previous_scan_id?: string | null;
+            /**
+             * Format: int32
+             * @description Findings seen earlier, absent from the previous scan, open again.
+             */
+            reappeared_count: number;
+            scan_id: string;
+        };
+        /** @description One finding on a regression record. */
+        RegressionItemDto: {
+            /** @description WCAG success criteria. */
+            criteria: string[];
+            /** @description The finding's id; its page is `/app/findings/<id>`. */
+            finding_id: string;
+            /** @description `minor`, `moderate`, `serious` or `critical`. */
+            impact: string;
+            /** @description `new` or `reappeared`. */
+            kind: string;
+            /** @description The rule that failed. */
+            rule_id: string;
+            /** @description One plain-language sentence naming the problem. */
+            title: string;
+        };
+        /** @description The regressions list and whether the plan includes it. */
+        RegressionListDto: {
+            /** @description `allowed`, or `locked` when the plan has no regression alerts. */
+            gate: string;
+            /** @description Records that found something, newest first; empty when locked. */
+            items: components["schemas"]["RegressionDto"][];
+            /** @description The lowest plan that unlocks regression alerts, when locked. */
+            unlocked_by?: string | null;
         };
         ScanSummaryDto: {
             /** Format: int32 */
@@ -2291,6 +2384,74 @@ export interface operations {
             };
             /** @description Missing or invalid session token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listRegressions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The regressions, or the plan that unlocks them */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionListDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    dismissRegression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The record's identifier */
+                regression_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The banner is hidden */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such record */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

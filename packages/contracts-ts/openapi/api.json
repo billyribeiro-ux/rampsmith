@@ -1569,6 +1569,92 @@
         ]
       }
     },
+    "/v1/shopify/regressions": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The scheduled scans that found new or returning failures.",
+        "operationId": "listRegressions",
+        "responses": {
+          "200": {
+            "description": "The regressions, or the plan that unlocks them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegressionListDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/regressions/{regression_id}/dismiss": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Hides the overview banner for a record.",
+        "operationId": "dismissRegression",
+        "parameters": [
+          {
+            "name": "regression_id",
+            "in": "path",
+            "description": "The record's identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The banner is hidden"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such record",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
     "/v1/shopify/scans": {
       "post": {
         "tags": [
@@ -3164,6 +3250,17 @@
             "$ref": "#/components/schemas/ImpactCountsDto",
             "description": "Open findings by impact; best practices are not counted."
           },
+          "regression_banner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RegressionDto",
+                "description": "The newest scheduled scan that found new or returning failures, until the merchant\ndismisses it or a week passes; null on a plan without regression alerts (ADR-311)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "shop": {
             "$ref": "#/components/schemas/ShopDto"
           }
@@ -3307,6 +3404,153 @@
           }
         },
         "additionalProperties": false
+      },
+      "RegressionDto": {
+        "type": "object",
+        "description": "A scheduled scan compared with the one before it.",
+        "required": [
+          "id",
+          "scan_id",
+          "new_count",
+          "reappeared_count",
+          "findings_seen",
+          "items",
+          "detected_at",
+          "dismissed"
+        ],
+        "properties": {
+          "detected_at": {
+            "type": "string"
+          },
+          "dismissed": {
+            "type": "boolean"
+          },
+          "findings_seen": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Findings this scan recorded (best practices left out)."
+          },
+          "id": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegressionItemDto"
+            },
+            "description": "The most severe findings; the counts above are the totals."
+          },
+          "new_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Open findings never seen before this scan."
+          },
+          "pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Checks passed over checks run, as a percentage."
+          },
+          "previous_findings_seen": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "previous_pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "previous_scan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reappeared_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Findings seen earlier, absent from the previous scan, open again."
+          },
+          "scan_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RegressionItemDto": {
+        "type": "object",
+        "description": "One finding on a regression record.",
+        "required": [
+          "finding_id",
+          "rule_id",
+          "title",
+          "impact",
+          "criteria",
+          "kind"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "WCAG success criteria."
+          },
+          "finding_id": {
+            "type": "string",
+            "description": "The finding's id; its page is `/app/findings/<id>`."
+          },
+          "impact": {
+            "type": "string",
+            "description": "`minor`, `moderate`, `serious` or `critical`."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`new` or `reappeared`."
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "The rule that failed."
+          },
+          "title": {
+            "type": "string",
+            "description": "One plain-language sentence naming the problem."
+          }
+        }
+      },
+      "RegressionListDto": {
+        "type": "object",
+        "description": "The regressions list and whether the plan includes it.",
+        "required": [
+          "gate",
+          "items"
+        ],
+        "properties": {
+          "gate": {
+            "type": "string",
+            "description": "`allowed`, or `locked` when the plan has no regression alerts."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegressionDto"
+            },
+            "description": "Records that found something, newest first; empty when locked."
+          },
+          "unlocked_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The lowest plan that unlocks regression alerts, when locked."
+          }
+        }
       },
       "ScanSummaryDto": {
         "type": "object",

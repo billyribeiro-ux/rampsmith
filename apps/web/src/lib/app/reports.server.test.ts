@@ -75,6 +75,7 @@ const overview = (over: Partial<Overview> = {}): Overview => ({
   fixes_awaiting_approval: 0,
   fixes_applied: 1,
   first_fix_at: null,
+  regression_banner: null,
   ...over,
 });
 

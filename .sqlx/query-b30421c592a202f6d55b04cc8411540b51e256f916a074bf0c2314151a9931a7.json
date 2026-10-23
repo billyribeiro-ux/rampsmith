@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into shop_billing\n             (shop_id, tenant_id, standing, plan, plan_interval, cancel_at_end_of_cycle,\n              trial_ends_at, cycle_start, cycle_end, scheduled_plan, scheduled_interval,\n              unrecognized_handle, usage_anchor, last_confirmed_at, last_attempt_at,\n              consecutive_failures, effective_plan, ai_budget_max_micro_usd,\n              alt_text_draft_limit, alt_text_draft_lifetime, regression_alerts, updated_at)\n           values ($2, $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,\n                   $17, $18, $19, $20, $21, now())\n           on conflict (shop_id) do update set\n              standing = excluded.standing, plan = excluded.plan,\n              plan_interval = excluded.plan_interval,\n              cancel_at_end_of_cycle = excluded.cancel_at_end_of_cycle,\n              trial_ends_at = excluded.trial_ends_at, cycle_start = excluded.cycle_start,\n              cycle_end = excluded.cycle_end, scheduled_plan = excluded.scheduled_plan,\n              scheduled_interval = excluded.scheduled_interval,\n              unrecognized_handle = excluded.unrecognized_handle,\n              usage_anchor = excluded.usage_anchor,\n              last_confirmed_at = excluded.last_confirmed_at,\n              last_attempt_at = excluded.last_attempt_at,\n              consecutive_failures = excluded.consecutive_failures,\n              effective_plan = excluded.effective_plan,\n              ai_budget_max_micro_usd = excluded.ai_budget_max_micro_usd,\n              alt_text_draft_limit = excluded.alt_text_draft_limit,\n              alt_text_draft_lifetime = excluded.alt_text_draft_lifetime,\n              regression_alerts = excluded.regression_alerts,\n              updated_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Int4",
+        "Text",
+        "Int8",
+        "Int4",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b30421c592a202f6d55b04cc8411540b51e256f916a074bf0c2314151a9931a7"
+}

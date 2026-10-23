@@ -194,6 +194,7 @@ function route(request: IncomingMessage, response: ServerResponse): void {
         fixes_awaiting_approval: 0,
         fixes_applied: 0,
         first_fix_at: null,
+        regression_banner: null,
       }),
     );
     return;

@@ -34,6 +34,8 @@ const ROUTES: readonly Route[] = [
     query: ['confirm_flagged'],
   },
   { methods: ['POST'], path: new RegExp(`^fixes/${UUID}/(?:reject|undo)$`, 'u'), query: [] },
+  { methods: ['GET'], path: /^regressions$/u, query: [] },
+  { methods: ['POST'], path: new RegExp(`^regressions/${UUID}/dismiss$`, 'u'), query: [] },
   { methods: ['GET'], path: new RegExp(`^evidence/${UUID}$`, 'u'), query: [] },
   { methods: ['GET', 'PUT'], path: /^settings$/u, query: [] },
   { methods: ['GET', 'PUT'], path: /^email-preferences$/u, query: [] },

@@ -184,3 +184,12 @@ test('the settings form works with the keyboard alone', async ({ page }) => {
   await expect(live(page)).toHaveText('Settings saved.');
   await expect(save).toBeDisabled();
 });
+
+test('dismiss a regression with the keyboard and hear the result', async ({ page }) => {
+  await open(page, 'regressed', '/app/regressions', 'Regressions');
+  const dismiss = page.getByRole('button', { name: 'Dismiss from overview' });
+  await dismiss.focus();
+  await page.keyboard.press('Enter');
+  await expect(live(page)).toHaveText('Dismissed. The record stays on this page.');
+  await expect(dismiss).toHaveCount(0);
+});

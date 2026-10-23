@@ -111,4 +111,17 @@ insert into github_events (id, tenant_id, delivery_id, event, installation_id, b
 values (md5(:'label' || ':gh:event')::uuid, :'tenant', 'seeded-delivery', 'pull_request',
         1 + abs(hashtext(:'label')), '{}', sha256(convert_to(:'label', 'UTF8')));
 
+-- A regression record (ADR-310): the comparison of a scan with the one before it, so a restored
+-- database proves the table, its composite keys and its jsonb came back.
+insert into regressions (id, tenant_id, site_id, scan_id, previous_scan_id, new_count,
+                         reappeared_count, findings_seen, previous_findings_seen, pass_rate,
+                         previous_pass_rate, items, alert_state)
+values (md5(:'label' || ':regression')::uuid, :'tenant', md5(:'label' || ':site')::uuid,
+        md5(:'label' || ':scan:2')::uuid, md5(:'label' || ':scan:1')::uuid, 1, 1, 12, 10, 90.5, 93.25,
+        jsonb_build_array(jsonb_build_object('finding_id', md5(:'label' || ':finding:1'),
+                                             'rule_id', 'image-alt', 'impact', 'critical',
+                                             'criteria', jsonb_build_array('1.1.1'),
+                                             'kind', 'new')),
+        'queued');
+
 commit;

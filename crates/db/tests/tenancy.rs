@@ -147,6 +147,22 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     tx.commit().await.unwrap();
 }
 
+/// One regression record (ADR-310). The engine writes them, as a worker; the app role only reads
+/// and dismisses, so the fixture is written as the owner.
+async fn seed_regressions(owner: &PgPool, graph: Graph) {
+    sqlx::query(
+        "insert into regressions (id, tenant_id, site_id, scan_id, new_count, reappeared_count,
+                                  findings_seen, alert_state)
+         values (gen_random_uuid(), $1, $2, $3, 1, 0, 1, 'queued')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.site.as_uuid())
+    .bind(graph.scan.as_uuid())
+    .execute(owner)
+    .await
+    .unwrap();
+}
+
 /// One row of each GitHub channel table (ADR-290 to ADR-294).
 async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
     let install = uuid::Uuid::now_v7();
@@ -264,6 +280,8 @@ async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool
     seed_jobs(&db, &owner, [a, b]).await;
     seed_r1(&pool, a).await;
     seed_r1(&pool, b).await;
+    seed_regressions(&owner, a).await;
+    seed_regressions(&owner, b).await;
     (db, pool, a, b)
 }
 
@@ -518,7 +536,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 29] = [
+const TENANT_TABLES: [&str; 30] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -552,10 +570,12 @@ const TENANT_TABLES: [&str; 29] = [
     "github_pull_requests",
     "github_pr_fixes",
     "github_events",
+    // Regression records of scheduled scans (ADR-310).
+    "regressions",
 ];
 
 /// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 17] = [
+const R1_TABLES: [&str; 18] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -573,6 +593,7 @@ const R1_TABLES: [&str; 17] = [
     "github_pull_requests",
     "github_pr_fixes",
     "github_events",
+    "regressions",
 ];
 
 #[sqlx::test]

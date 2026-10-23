@@ -16,6 +16,8 @@ describe('resolve', () => {
     ['POST', `fixes/${ID}/approve`],
     ['POST', `fixes/${ID}/reject`],
     ['POST', `fixes/${ID}/undo`],
+    ['GET', 'regressions'],
+    ['POST', `regressions/${ID}/dismiss`],
     ['GET', `evidence/${ID}`],
     ['GET', 'settings'],
     ['PUT', 'settings'],

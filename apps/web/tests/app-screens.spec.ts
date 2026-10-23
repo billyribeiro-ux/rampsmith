@@ -85,6 +85,59 @@ test.describe('overview', () => {
   });
 });
 
+test.describe('regressions', () => {
+  test('the overview banner and the list show what the scheduled scan found', async ({ page }) => {
+    await open(page, 'regressed', '/app', 'Overview');
+    const banner = page.locator('s-banner[tone=warning]');
+    await expect(banner).toContainText('New issues found by the latest scheduled scan');
+    await expect(banner).toContainText('New issues: 1. Issues that came back: 1.');
+    await banner.getByRole('link', { name: 'View regressions' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Regressions' })).toBeVisible();
+    const record = page.locator('s-section').filter({ hasText: 'Scan of' }).first();
+    await expect(record).toContainText('Checks passed: 90.8% (was 94.2%).');
+    const rows = record.getByRole('row');
+    await expect(rows.filter({ hasText: 'New' })).toHaveCount(1);
+    await expect(rows.filter({ hasText: 'Came back' })).toHaveCount(1);
+    await expect(record.getByRole('row').nth(1).getByRole('link')).toBeVisible();
+  });
+
+  test('dismissing hides the banner and keeps the record', async ({ page }) => {
+    await open(page, 'regressed', '/app/regressions', 'Regressions');
+    await page.getByRole('button', { name: 'Dismiss from overview' }).click();
+    await expect(page.locator('.live')).toHaveText('Dismissed. The record stays on this page.');
+    await expect(page.getByRole('button', { name: 'Dismiss from overview' })).toHaveCount(0);
+    await expect(page.getByRole('table')).toHaveCount(1);
+    // The scenario is not reset: the overview now shows no banner, the list still has the record.
+    await page.goto(`/app?${SHOP}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    await expect(section(page, 'Latest scan')).toContainText('Finished');
+    await expect(page.locator('s-banner')).toHaveCount(0);
+  });
+
+  test('a plan without regression alerts sees the screen locked, naming the plan', async ({
+    page,
+  }) => {
+    for (const scenario of ['free', 'starter'] as const) {
+      await open(page, scenario, '/app/regressions', 'Regressions');
+      await expect(
+        page.getByRole('heading', { name: 'Regression alerts are part of a higher plan' }),
+      ).toBeVisible();
+      await expect(page.locator('s-badge')).toContainText('Needs the Growth plan');
+      await expect(page.getByRole('table')).toHaveCount(0);
+    }
+  });
+
+  test('a plan with alerts and no regressions says so', async ({ page }) => {
+    await open(page, 'default', '/app/regressions', 'Regressions');
+    await expect(page.getByRole('heading', { name: 'No regressions found' })).toBeVisible();
+  });
+
+  test('the overview of a plan without alerts shows no banner', async ({ page }) => {
+    await open(page, 'free', '/app', 'Overview');
+    await expect(page.locator('s-banner')).toHaveCount(0);
+  });
+});
+
 test.describe('issues', () => {
   test('lists the ranked issues with their criteria and whether they have a fix', async ({
     page,

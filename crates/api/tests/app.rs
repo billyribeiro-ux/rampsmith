@@ -2213,3 +2213,245 @@ async fn a_flagged_draft_is_approved_only_with_an_explicit_confirmation(
         .await;
     assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
 }
+
+// --- Regressions (ADR-310, ADR-311) ----------------------------------------------------
+
+async fn set_plan(h: &Harness, plan: &str) {
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing, plan, plan_interval,
+                                   last_confirmed_at)
+         values ($1, $2, 'paid', $3, 'monthly', now())
+         on conflict (shop_id) do update set plan = excluded.plan, standing = 'paid'",
+    )
+    .bind(h.shop)
+    .bind(h.tenant)
+    .bind(plan)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+}
+
+/// A regression record for `scan`, with one listed finding.
+async fn regression(h: &Harness, scan: Uuid, finding: Uuid, days_ago: i32) -> Uuid {
+    sqlx::query_scalar(
+        "insert into regressions (id, tenant_id, site_id, scan_id, new_count, reappeared_count,
+                                  findings_seen, pass_rate, previous_pass_rate, items,
+                                  alert_state, detected_at)
+         values (gen_random_uuid(), $1, $2, $3, 1, 0, 4, 90.5, 93.25,
+                 jsonb_build_array(jsonb_build_object('finding_id', $4::text,
+                     'rule_id', 'rs-media-alt-empty', 'impact', 'critical',
+                     'criteria', jsonb_build_array('1.1.1'), 'kind', 'new')),
+                 'queued', now() - make_interval(days => $5))
+         returning id",
+    )
+    .bind(h.tenant)
+    .bind(h.site)
+    .bind(scan)
+    .bind(finding)
+    .bind(days_ago)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_growth_shop_sees_its_regressions_in_a_list_and_a_banner_until_it_dismisses_it(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    set_plan(&h, "growth").await;
+    let first = h.scan("succeeded", "scheduled", 120, None).await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            Some(8.0),
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    let _ = first;
+    let record = regression(&h, scan, finding, 0).await;
+
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+    assert_eq!(list.body["gate"], "allowed");
+    assert_eq!(list.body["unlocked_by"], Value::Null);
+    let item = &list.body["items"][0];
+    assert_eq!(item["id"], record.to_string());
+    assert_eq!(item["new_count"], 1);
+    assert_eq!(item["pass_rate"], 90.5);
+    assert_eq!(item["previous_pass_rate"], 93.25);
+    assert_eq!(item["items"][0]["finding_id"], finding.to_string());
+    assert_eq!(item["items"][0]["kind"], "new");
+    // The sentence comes from the catalog, not from the stored row.
+    assert!(item["items"][0]["title"].as_str().unwrap().len() > 10);
+
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(overview.body["regression_banner"]["id"], record.to_string());
+
+    let dismissed = h
+        .call(
+            "POST",
+            &format!("/v1/shopify/regressions/{record}/dismiss"),
+            None,
+        )
+        .await;
+    assert_eq!(dismissed.status, StatusCode::NO_CONTENT);
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(overview.body["regression_banner"], Value::Null);
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.body["items"][0]["dismissed"], true, "the record stays");
+    let audited: i64 = sqlx::query_scalar(
+        "select count(*) from audit_log where tenant_id = $1 and action = 'regression.dismissed'",
+    )
+    .bind(h.tenant)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap();
+    assert_eq!(audited, 1);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_banner_ends_after_a_week(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = plain(opts, conn).await;
+    set_plan(&h, "pro").await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            None,
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    regression(&h, scan, finding, 9).await;
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(overview.body["regression_banner"], Value::Null);
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.body["items"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn plans_without_regression_alerts_see_nothing_and_are_told_which_plan_unlocks_them(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            None,
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    regression(&h, scan, finding, 0).await;
+    // Free (no plan row) and Starter are both locked, and both are told Growth unlocks it.
+    for plan in [None, Some("starter")] {
+        if let Some(plan) = plan {
+            set_plan(&h, plan).await;
+        }
+        let list = h.get("/v1/shopify/regressions").await;
+        assert_eq!(list.status, StatusCode::OK);
+        assert_eq!(list.body["gate"], "locked", "{plan:?}");
+        assert_eq!(list.body["unlocked_by"], "growth", "{plan:?}");
+        assert_eq!(list.body["items"], json!([]), "{plan:?}");
+        let overview = h.get("/v1/shopify/overview").await;
+        assert_eq!(overview.body["regression_banner"], Value::Null, "{plan:?}");
+    }
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn another_shops_regression_is_not_found_and_stays_undismissed(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    set_plan(&h, "growth").await;
+    let (their_scan, their_finding, _) = other_shop(&h).await;
+    let their_tenant: Uuid = sqlx::query_scalar("select tenant_id from scans where id = $1")
+        .bind(their_scan)
+        .fetch_one(&h.owner)
+        .await
+        .unwrap();
+    let their_site: Uuid = sqlx::query_scalar("select site_id from scans where id = $1")
+        .bind(their_scan)
+        .fetch_one(&h.owner)
+        .await
+        .unwrap();
+    let theirs: Uuid = sqlx::query_scalar(
+        "insert into regressions (id, tenant_id, site_id, scan_id, new_count, reappeared_count,
+                                  findings_seen, items, alert_state)
+         values (gen_random_uuid(), $1, $2, $3, 1, 0, 1,
+                 jsonb_build_array(jsonb_build_object('finding_id', $4::text, 'rule_id', 'x',
+                    'impact', 'minor', 'criteria', jsonb_build_array('1.1.1'), 'kind', 'new')),
+                 'queued') returning id",
+    )
+    .bind(their_tenant)
+    .bind(their_site)
+    .bind(their_scan)
+    .bind(their_finding)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap();
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.body["items"], json!([]), "nothing of theirs is listed");
+    let refused = h
+        .call(
+            "POST",
+            &format!("/v1/shopify/regressions/{theirs}/dismiss"),
+            None,
+        )
+        .await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    let bad = h
+        .call("POST", "/v1/shopify/regressions/not-an-id/dismiss", None)
+        .await;
+    assert_eq!(bad.status, StatusCode::NOT_FOUND);
+    let untouched: Option<time::OffsetDateTime> =
+        sqlx::query_scalar("select dismissed_at from regressions where id = $1")
+            .bind(theirs)
+            .fetch_one(&h.owner)
+            .await
+            .unwrap();
+    assert!(untouched.is_none());
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn regression_operations_need_a_session(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = plain(opts, conn).await;
+    for (verb, uri) in [
+        ("GET", "/v1/shopify/regressions".to_owned()),
+        (
+            "POST",
+            format!("/v1/shopify/regressions/{}/dismiss", Uuid::nil()),
+        ),
+    ] {
+        let res = api::app(h.state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(verb)
+                    .uri(&uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{verb} {uri}");
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update regressions set dismissed_at = coalesce(dismissed_at, now())\n            where tenant_id = $1 and site_id = $2 and id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b66e45e7db755e729e4ca58996a097bb675fcd401589cf6bf85453efe5c74978"
+}

@@ -13,6 +13,7 @@ mod health;
 pub mod plan;
 mod r1;
 pub mod rate_limit;
+mod regressions;
 mod rules;
 pub mod serve;
 pub mod shopify;
@@ -217,6 +218,8 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(r1::get_evidence))
         .routes(routes!(r1::get_settings, r1::update_settings))
         .routes(routes!(r1::get_statement, r1::save_statement))
+        .routes(routes!(regressions::list_regressions))
+        .routes(routes!(regressions::dismiss_regression))
         .routes(routes!(github_channel::get_code_fixes))
         .routes(routes!(
             github_channel::create_connection,

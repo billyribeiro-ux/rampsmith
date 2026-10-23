@@ -1154,6 +1154,13 @@ async fn storing_a_plan_stores_the_limits_the_engine_enforces(
         .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(limits("growth").await, (20_000_000, 10_000, false));
+    let alerts: bool =
+        sqlx::query_scalar("select regression_alerts from shop_billing where shop_id = $1")
+            .bind(g.shop.as_uuid())
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+    assert!(alerts, "Growth includes regression alerts (ADR-310)");
 
     // Back to no plan (an uninstall, a lapsed subscription): the limits fall with it.
     let mut tx = db.tenant(g.tenant).await.unwrap();
@@ -1162,4 +1169,11 @@ async fn storing_a_plan_stores_the_limits_the_engine_enforces(
         .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(limits("free").await, (500_000, 25, true));
+    let alerts: bool =
+        sqlx::query_scalar("select regression_alerts from shop_billing where shop_id = $1")
+            .bind(g.shop.as_uuid())
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+    assert!(!alerts, "no plan, no regression alerts");
 }

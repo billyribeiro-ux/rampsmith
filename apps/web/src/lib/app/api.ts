@@ -16,6 +16,7 @@ import type {
   Impact,
   Overview,
   ProblemBody,
+  RegressionList,
   ScanSummary,
   EmailPreferences,
   Settings,
@@ -82,6 +83,8 @@ export interface AppApi {
   approveFix(id: string, options?: { readonly confirmFlagged?: boolean }): Promise<FixSummary>;
   rejectFix(id: string): Promise<FixSummary>;
   undoFix(id: string): Promise<FixSummary>;
+  regressions(): Promise<RegressionList>;
+  dismissRegression(id: string): Promise<void>;
   settings(): Promise<Settings>;
   updateSettings(update: SettingsUpdate): Promise<Settings>;
   emailPreferences(): Promise<EmailPreferences>;
@@ -185,6 +188,10 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
       fixAction(id, 'approve', options?.confirmFlagged === true ? '?confirm_flagged=true' : ''),
     rejectFix: (id) => fixAction(id, 'reject'),
     undoFix: (id) => fixAction(id, 'undo'),
+    regressions: () => json<RegressionList>(`${BASE}/regressions`),
+    dismissRegression: async (id) => {
+      await send(`${BASE}/regressions/${encodeURIComponent(id)}/dismiss`, write('POST'));
+    },
     settings: () => json<Settings>(`${BASE}/settings`),
     updateSettings: (update) => json<Settings>(`${BASE}/settings`, write('PUT', update)),
     emailPreferences: () => json<EmailPreferences>(`${BASE}/email-preferences`),
