@@ -143,6 +143,9 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [287](287-visitor-addresses-are-hashed-under-a-key-only-the-api-holds.md) | Visitor addresses are hashed under a key only the api holds | Accepted |
 | [288](288-free-scan-results-are-bounded-and-validated-before-they-are-stored.md) | Free-scan results are bounded and validated before they are stored | Accepted |
 | [289](289-scan-ring-rotation-gives-the-engine-the-new-key-first.md) | Scan ring rotation gives the engine the new key first | Accepted |
+| [300](300-app-home-performance-budgets-in-ci.md) | App Home Core Web Vitals budgets are measured in CI on a throttled mobile profile | Accepted |
+| [301](301-listing-package-for-the-app-store-build.md) | The App Store listing package describes the App Store build | Accepted |
+| [302](302-app-review-checklist-method.md) | How the App Review checklist is checked, and the setup deep link | Accepted |
 | [268](268-r1-integration-decisions.md) | R1 integration decisions | Accepted |
 | [270](270-ses-adapter-and-sigv4.md) | The Amazon SES adapter, a small SigV4 signer and the error mapping | Accepted |
 | [271](271-email-delivery-ledger.md) | The delivery ledger and retries | Accepted |

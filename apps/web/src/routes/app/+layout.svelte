@@ -80,7 +80,11 @@
 <div class="live" role="status" aria-live="polite" aria-atomic="true">{app.announcement}</div>
 
 {#if session === 'ready'}
-  {@render children()}
+  <!-- Load the code of every link on screen ahead of the click, so a move between screens does
+       not wait for a download before it paints (INP, ADR-300). -->
+  <div style="display: contents" data-sveltekit-preload-code="viewport">
+    {@render children()}
+  </div>
 {:else}
   <s-page heading={m.embedded_heading()}>
     <s-section>

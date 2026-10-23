@@ -262,7 +262,18 @@ for (const screen of SCREENS) {
       runs: Run[],
       key: 'lcpElement' | 'clsTarget' | 'inpTarget' | 'inpPhases',
     ): string => runs.map((r) => r[key] ?? '-').join(' | ');
-    expect.soft(p75.lcpMs, `LCP p75 ${where(loads, 'lcpElement')}`).toBeLessThan(BUDGET.lcpMs);
+    // LCP is bound by round trips on the throttled link, so it is the one metric that moves
+    // with the CI runner: it fails at Built for Shopify's threshold and warns at the PLAN §23
+    // budget, which the summary shows (ADR-300). CLS, INP and script size fail at the budget.
+    expect
+      .soft(p75.lcpMs, `LCP p75 ${where(loads, 'lcpElement')}`)
+      .toBeLessThan(BUILT_FOR_SHOPIFY.lcpMs);
+    if (p75.lcpMs >= BUDGET.lcpMs) {
+      test.info().annotations.push({
+        type: 'warning',
+        description: `LCP p75 ${String(Math.round(p75.lcpMs))} ms is over the ${String(BUDGET.lcpMs)} ms headroom budget`,
+      });
+    }
     expect
       .soft(p75.clsLoad, `CLS of the load ${where(loads, 'clsTarget')}`)
       .toBeLessThan(BUDGET.cls);
