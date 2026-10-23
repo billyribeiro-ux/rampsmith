@@ -1,7 +1,7 @@
 /**
  * A stand-in for the api in browser tests: `POST /v1/shopify/session` accepts the bearer
  * token `good` and asks App Bridge for a fresh token on anything else, like the real api. It
- * also plays the free scanner's endpoints (ADR-265) for the web server running in `api` mode.
+ * also plays the free scanner's endpoints (ADR-267) for the web server running in `api` mode.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import process from 'node:process';

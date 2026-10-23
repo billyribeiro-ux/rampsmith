@@ -30,9 +30,10 @@ const ROUTES: readonly Route[] = [
   { methods: ['PUT'], path: new RegExp(`^fixes/${UUID}$`, 'u'), query: [] },
   {
     methods: ['POST'],
-    path: new RegExp(`^fixes/${UUID}/(?:approve|reject|undo)$`, 'u'),
-    query: [],
+    path: new RegExp(`^fixes/${UUID}/approve$`, 'u'),
+    query: ['confirm_flagged'],
   },
+  { methods: ['POST'], path: new RegExp(`^fixes/${UUID}/(?:reject|undo)$`, 'u'), query: [] },
   { methods: ['GET'], path: new RegExp(`^evidence/${UUID}$`, 'u'), query: [] },
   { methods: ['GET', 'PUT'], path: /^settings$/u, query: [] },
   { methods: ['GET', 'PUT'], path: /^statement$/u, query: [] },

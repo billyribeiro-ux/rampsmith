@@ -56,7 +56,7 @@ export const variables = defineEnvVars({
   },
   FREE_SCANNER_BACKEND: {
     description:
-      "'api' runs scans through the api and the engine (ADR-265); 'not-connected' (the default) answers that the scanner is not connected; 'fixture' serves a fixed sample result and exists for the end-to-end tests only (ADR-260)",
+      "'api' runs scans through the api and the engine (ADR-267); 'not-connected' (the default) answers that the scanner is not connected; 'fixture' serves a fixed sample result and exists for the end-to-end tests only (ADR-260)",
     schema: scannerBackend,
   },
   FREE_SCAN_SERVICE_TOKEN: {

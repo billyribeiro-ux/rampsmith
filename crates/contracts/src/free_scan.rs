@@ -1,4 +1,4 @@
-//! The free scanner's contracts (PLAN §16, ADR-265): the job the api enqueues for an anonymous
+//! The free scanner's contracts (PLAN §16, ADR-267): the job the api enqueues for an anonymous
 //! scan and the result the engine stores. No tenant owns either: a free scan belongs to the
 //! visitor who asked and lives for 24 hours.
 

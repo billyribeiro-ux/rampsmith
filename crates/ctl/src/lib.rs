@@ -6,6 +6,7 @@
 //! runs it lives in `rsctl`.
 
 pub mod config;
+pub mod health;
 pub mod jobs;
 pub mod leader;
 pub mod rewrap;

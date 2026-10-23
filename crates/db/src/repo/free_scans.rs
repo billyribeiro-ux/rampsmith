@@ -1,4 +1,4 @@
-//! The free scanner's anonymous scans (PLAN §16, ADR-265). Not tenant rows: every function
+//! The free scanner's anonymous scans (PLAN §16, ADR-267). Not tenant rows: every function
 //! takes a [`PublicTx`]. The table is the visitor's quota ledger and the 24-hour result cache;
 //! it holds a keyed hash of the visitor's address, never the address.
 

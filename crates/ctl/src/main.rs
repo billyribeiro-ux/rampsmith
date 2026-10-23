@@ -30,6 +30,19 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn run(config: Config) -> anyhow::Result<()> {
+    // The deploy health check (ADR-264) is answered from the first moment, before the database
+    // role check, which can wait for the database; it stops with everything else.
+    let health = ctl::health::bind(config.health_bind)
+        .await
+        .with_context(|| format!("bind {}", config.health_bind))?;
+    info!(address = %config.health_bind, "ctl health listener");
+    let (stop, stopped) = watch::channel(false);
+    let health = tokio::spawn(ctl::health::serve(health, {
+        let mut rx = stopped.clone();
+        async move {
+            let _ = rx.wait_for(|stop| *stop).await;
+        }
+    }));
     let pool = PgPoolOptions::new()
         .max_connections(config.db_max_connections)
         .acquire_timeout(Duration::from_secs(5))
@@ -42,6 +55,8 @@ async fn run(config: Config) -> anyhow::Result<()> {
         .context("database role")?
     {
         info!("ctl stopped before it started");
+        let _ = stop.send(true);
+        let _ = health.await;
         return Ok(());
     }
     let auth = shopify_auth::ShopifyAuth::new(
@@ -60,25 +75,8 @@ async fn run(config: Config) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
     let refresh = TokenRefresh::new(db.clone(), auth.clone());
-    let scan_secrets = config
-        .scan_secret_keys
-        .clone()
-        .map(|scan| jobs::scan_secret::ScanSecrets::new(config.master_keys.clone(), scan));
-    let handlers = jobs::Jobs::new(
-        db.clone(),
-        auth,
-        shopify_admin::AdminFactory::new(
-            shopify_admin::AdminEndpoint::Shopify,
-            Duration::from_secs(20),
-        )
-        .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
-    );
-    let handlers = match scan_secrets {
-        Some(secrets) => handlers.with_scan_secrets(secrets),
-        None => handlers,
-    };
+    let handlers = job_handlers(&config, &db, auth)?;
 
-    let (stop, stopped) = watch::channel(false);
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {
         let _ = rx.wait_for(|stop| *stop).await;
     };
@@ -122,6 +120,7 @@ async fn run(config: Config) -> anyhow::Result<()> {
     for worker in workers {
         worker.await.context("worker task")?.context("worker")?;
     }
+    let _ = health.await;
     info!("ctl stopped");
     Ok(())
 }
@@ -146,4 +145,28 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
+}
+
+/// The handlers of the job queues, with the scan-secret hand-off when its ring is configured.
+fn job_handlers(
+    config: &Config,
+    db: &Db,
+    auth: shopify_auth::ShopifyAuth,
+) -> anyhow::Result<jobs::Jobs> {
+    let handlers = jobs::Jobs::new(
+        db.clone(),
+        auth,
+        shopify_admin::AdminFactory::new(
+            shopify_admin::AdminEndpoint::Shopify,
+            Duration::from_secs(20),
+        )
+        .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
+    );
+    Ok(match config.scan_secret_keys.clone() {
+        Some(scan) => handlers.with_scan_secrets(jobs::scan_secret::ScanSecrets::new(
+            config.master_keys.clone(),
+            scan,
+        )),
+        None => handlers,
+    })
 }

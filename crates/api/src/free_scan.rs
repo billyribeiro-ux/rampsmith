@@ -1,4 +1,4 @@
-//! The free scanner's anonymous scans (PLAN §16, ADR-265).
+//! The free scanner's anonymous scans (PLAN §16, ADR-267).
 //!
 //! The web server is the only caller. It authenticates with `FREE_SCAN_SERVICE_TOKEN` (a shared
 //! secret on the private network), forwards the visitor's address and Turnstile token, and

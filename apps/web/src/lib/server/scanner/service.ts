@@ -46,7 +46,7 @@ export type FreeScanOutcomeForPage =
 export interface FreeScanDeps {
   readonly scanner: FreeScanner;
   /**
-   * The api, when it runs the scan (ADR-265). It then checks the challenge, keeps the daily
+   * The api, when it runs the scan (ADR-267). It then checks the challenge, keeps the daily
    * limits and the 24-hour cache itself, in the database, so none of the three happens here.
    */
   readonly delegate?: FreeScanDelegate;

@@ -834,6 +834,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "confirm_flagged",
+            "in": "query",
+            "description": "Must be true to approve a draft flagged `instruction_like_text_seen` or\n`suspected_prompt_injection`; ignored for an unflagged draft.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -879,6 +888,16 @@
           },
           "409": {
             "description": "The fix was already decided",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The draft was flagged for review and `confirm_flagged` is not true",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1436,7 +1455,8 @@
           "after",
           "language",
           "contains_text",
-          "escalated"
+          "escalated",
+          "flags"
         ],
         "properties": {
           "after": {
@@ -1457,6 +1477,13 @@
           "field": {
             "type": "string",
             "description": "Always `alt`."
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why the draft needs a closer look before it is approved: `instruction_like_text_seen`\n(the model said the image or the store data held instructions) or\n`suspected_prompt_injection` (the product title or type read like instructions). A flagged\ndraft is approved only with `confirm_flagged` (ADR-213)."
           },
           "language": {
             "type": "string"
@@ -2815,7 +2842,7 @@
       "free_scan_service": {
         "type": "http",
         "scheme": "bearer",
-        "description": "`FREE_SCAN_SERVICE_TOKEN`: the secret the web server presents for the free scanner (ADR-265)."
+        "description": "`FREE_SCAN_SERVICE_TOKEN`: the secret the web server presents for the free scanner (ADR-267)."
       },
       "shopify_session": {
         "type": "http",
@@ -2840,7 +2867,7 @@
     },
     {
       "name": "free-scanner",
-      "description": "The marketing site's anonymous single-page scan (ADR-265)"
+      "description": "The marketing site's anonymous single-page scan (ADR-267)"
     },
     {
       "name": "app",

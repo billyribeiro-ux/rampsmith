@@ -33,23 +33,29 @@ HMAC over the raw bytes with `verify_slice` (401), then topic, shop domain and w
 by the signature; the body is, so a delivery whose header and body name different shops is refused
 (401). Unknown shops and unaccepted topics are acknowledged with 200 and not stored.
 
-**Dedup (M1).** An event is stored once per `(tenant, X-Shopify-Webhook-Id)` and, within 24 hours,
-once per `(tenant, topic, SHA-256 of the raw body)`. The id headers are not signed, so the digest is
+**Dedup (M1; corrected by ADR-085).** An event is stored once per `(tenant, X-Shopify-Webhook-Id)`
+and, within a replay window, once per `(tenant, SHA-256 of the raw body)`, under any topic (the
+topic header is unsigned too: the first version of this ADR keyed on the topic, which let a
+relabelled body through). The id headers are not signed, so the digest is
 what stops a captured delivery replayed under a new id. The unique key on `external_id` becomes
 `(tenant_id, external_id)`: a delivery id is a fact about one tenant's delivery.
 
 **Processing.** The event row and the `webhook.process@1` job are written in one transaction with
 the idempotency key `webhook.process:{event_id}`. The worker re-checks the body's shop domain.
 
-- `app/uninstalled`: the worker asks Shopify whether the token still works. A 401 or 403 confirms:
+- `app/uninstalled`: the worker asks Shopify whether the token still works. A 401 confirms (a 403 is
+  not a confirmation, ADR-085):
   shop `uninstalled`, tokens deleted, queued work cancelled (the compliance webhook job is kept).
   A working token means a replay, so nothing changes. Shopify unreachable means retry.
 - `customers/data_request`, `customers/redact`: Rampsmith holds no customer data (it reads
   products, collections, pages and menus, never orders or customers), so the audit log records
   `none_held` with the request id only. The body, which carries the customer's details, is cleared.
-- `shop/redact`: deletes every table that holds the shop's scans, findings, fixes, snapshots,
-  statements, AI records and tokens, clears the site settings, marks the shop `redacted`. The
-  audit log (append-only, no personal data) and webhook digests stay. Idempotent.
+- `shop/redact`: for a shop still `installed`, runs the same grant check as `app/uninstalled`
+  first (ADR-085): a token Shopify still accepts means a replay, so nothing is deleted. Then
+  deletes every table that holds the shop's scans, findings, fixes, snapshots, statements, AI
+  records and tokens, clears the site settings, marks the shop `redacted`. The audit log
+  (append-only, no personal data) and webhook digests stay. Idempotent. (The first version of this
+  ADR deleted unconditionally; lane A audit H1.)
 - `shop/update`: refreshes primary domain and locales.
 
 **Admin client** (`crates/shopify-admin`). `AdminFactory` builds an `AdminClient` per shop and token.

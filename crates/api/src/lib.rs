@@ -81,7 +81,7 @@ impl AppState {
         self
     }
 
-    /// Enables the free scanner's anonymous scans (ADR-265). Without it its routes answer 503.
+    /// Enables the free scanner's anonymous scans (ADR-267). Without it its routes answer 503.
     #[must_use]
     pub fn with_free_scans(mut self, free_scans: free_scan::FreeScans) -> Self {
         self.free_scans = Some(free_scans);
@@ -127,7 +127,7 @@ impl AppState {
         (name = "operations", description = "Liveness and readiness for the platform"),
         (name = "shopify", description = "The embedded Shopify app's session"),
         (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
-        (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-265)"),
+        (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-267)"),
         (name = "app", description = "The embedded app's scans, findings, fixes, evidence, settings and statement")
     )
 )]
@@ -152,7 +152,7 @@ impl utoipa::Modify for SecuritySchemes {
         );
         let mut service = Http::new(HttpAuthScheme::Bearer);
         service.description = Some(
-            "`FREE_SCAN_SERVICE_TOKEN`: the secret the web server presents for the free scanner (ADR-265)."
+            "`FREE_SCAN_SERVICE_TOKEN`: the secret the web server presents for the free scanner (ADR-267)."
                 .to_owned(),
         );
         components.add_security_scheme("free_scan_service", SecurityScheme::Http(service));

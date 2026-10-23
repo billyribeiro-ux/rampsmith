@@ -1,4 +1,4 @@
-//! The sealed vector the TypeScript engine also opens (ADR-264). If this test and
+//! The sealed vector the TypeScript engine also opens (ADR-266). If this test and
 //! `packages/engine/test/scan-secret.test.ts` ever disagree, the format changed on one side.
 
 // Integration tests are test code: PLAN §8 denies these lints outside tests only.

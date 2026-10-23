@@ -160,7 +160,7 @@ export default defineConfig({
     },
     {
       // The site with the scanner running through the api, which tests/mock-api.ts stands in
-      // for. This server holds no Turnstile secret: the api verifies the challenge (ADR-265).
+      // for. This server holds no Turnstile secret: the api verifies the challenge (ADR-267).
       command: 'node build',
       url: 'http://127.0.0.1:3992/',
       reuseExistingServer: false,

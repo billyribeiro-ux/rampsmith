@@ -19,7 +19,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 /**
  * Whether the scanner is open. It stays closed, not open and unprotected, while the challenge is
- * not set up (LAUNCH.md C row 6). With the api running the scans (ADR-265) the widget's site key
+ * not set up (LAUNCH.md C row 6). With the api running the scans (ADR-267) the widget's site key
  * and the service token are what this server needs; the secret key lives with the api, which
  * verifies the challenge itself.
  */

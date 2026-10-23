@@ -1,4 +1,4 @@
--- The storefront password of a password-protected store, for the length of one scan (ADR-264).
+-- The storefront password of a password-protected store, for the length of one scan (ADR-266).
 --
 -- `ctl` opens `sites.storefront_password_ct` with the master keys and seals the password again
 -- under a key that only `ctl` and the engine hold (`RAMPSMITH_SCAN_SECRET_KEYS`), bound to the

@@ -1,5 +1,5 @@
 /**
- * A free scan end to end (ADR-265): the real `free_scan.run` handler loads a local site in
+ * A free scan end to end (ADR-267): the real `free_scan.run` handler loads a local site in
  * Chromium through the real egress proxy, reads its robots.txt through the same proxy, and
  * writes the summary to a `free_scans` row. LAUNCH.md section E keeps the live version, against
  * a real public site, until it passes.

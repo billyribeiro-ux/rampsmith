@@ -433,7 +433,7 @@ A PENDING run older than 10 hours whose branch has had no push for 3 hours is st
       39307060823; `release-verifier` PASS in round 5 (`d6f68f5`, PR #17)
 - [ ] R1 Private beta
       Integration (`r1-integration`, 22 Oct 2026): scan.page@1 removed, storefront password hand-off
-      (ADR-264), `scans.ruleset_version`, `shop.name`, the free scanner's anonymous path (ADR-265),
+      (ADR-266), `scans.ruleset_version`, `shop.name`, the free scanner's anonymous path (ADR-267),
       LAUNCH.md section E rows from the lanes, tenancy suite complete, `lock_site` proven necessary.
       Evidence: `docs/evidence/r1-integration.md`. Lane A and C audit fixes are in separate PRs.
 - [ ] R2 Public launch

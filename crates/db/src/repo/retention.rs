@@ -1,4 +1,4 @@
-//! The sweeps the leader runs for data that expires on its own clock (ADR-035, ADR-265). Each
+//! The sweeps the leader runs for data that expires on its own clock (ADR-035, ADR-267). Each
 //! calls a function that only the worker role may execute and whose ages are fixed in the
 //! migration, so no caller chooses what is deleted.
 
@@ -14,7 +14,7 @@ pub async fn scan_inputs(tx: &mut PublicTx) -> Result<i64, DbError> {
     )
 }
 
-/// Ends free scans the engine never finished and deletes expired ones (ADR-265); returns how
+/// Ends free scans the engine never finished and deletes expired ones (ADR-267); returns how
 /// many it deleted.
 pub async fn free_scans(tx: &mut PublicTx) -> Result<i64, DbError> {
     crate::repo::free_scans::sweep(tx).await

@@ -1,4 +1,4 @@
-# ADR-265: The free scanner scans through the api and the engine, and the limits live in the database
+# ADR-267: The free scanner scans through the api and the engine, and the limits live in the database
 
 - Status: Accepted
 - Date: 2026-10-22

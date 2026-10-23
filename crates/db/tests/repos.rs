@@ -1094,3 +1094,72 @@ async fn only_the_worker_may_list_tokens_to_rewrap(opts: PgPoolOptions, conn: Pg
     let err = app.token_key_counts().await.unwrap_err();
     assert!(matches!(err, db::DbError::Forbidden), "{err:?}");
 }
+
+/// Security audit M2/M3: the limits the engine enforces are stored with the plan, from the same
+/// entitlements function the api reads, on every `put`.
+#[sqlx::test]
+async fn storing_a_plan_stores_the_limits_the_engine_enforces(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    use billing::reconcile::{PaidPlan, Standing};
+    use billing::{BillingInterval, BillingState, Plan};
+    use sqlx::Row;
+
+    let db = app_db(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts, conn).await;
+    let g = seed(&db, 33).await;
+    let limits = |plan: &'static str| {
+        let owner = owner.clone();
+        async move {
+            let row = sqlx::query(
+                "select effective_plan, ai_budget_max_micro_usd, alt_text_draft_limit,
+                        alt_text_draft_lifetime from shop_billing where shop_id = $1",
+            )
+            .bind(g.shop.as_uuid())
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+            assert_eq!(row.get::<String, _>("effective_plan"), plan);
+            (
+                row.get::<i64, _>("ai_budget_max_micro_usd"),
+                row.get::<i32, _>("alt_text_draft_limit"),
+                row.get::<bool, _>("alt_text_draft_lifetime"),
+            )
+        }
+    };
+
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    let unconfirmed = billing::stored::stored_of(&BillingState::new());
+    db::repo::shop_billing::put(&mut tx, g.shop, &unconfirmed)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(limits("free").await, (500_000, 25, true));
+
+    let growth = BillingState {
+        standing: Standing::Paid(PaidPlan {
+            plan: Plan::Growth,
+            interval: BillingInterval::Monthly,
+            cancel_at_end_of_cycle: false,
+            trial_ends_at: None,
+            cycle: None,
+            scheduled: None,
+        }),
+        ..BillingState::new()
+    };
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    db::repo::shop_billing::put(&mut tx, g.shop, &billing::stored::stored_of(&growth))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(limits("growth").await, (20_000_000, 10_000, false));
+
+    // Back to no plan (an uninstall, a lapsed subscription): the limits fall with it.
+    let mut tx = db.tenant(g.tenant).await.unwrap();
+    db::repo::shop_billing::put(&mut tx, g.shop, &unconfirmed)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(limits("free").await, (500_000, 25, true));
+}

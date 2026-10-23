@@ -129,9 +129,11 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [261](261-turnstile-integration.md) | Cloudflare Turnstile protects the free scanner; the script and frame are allowed on that page only | Accepted |
 | [262](262-free-scanner-limits.md) | The free scanner's caps and cache live in the web process | Accepted |
 | [263](263-marketing-site-structure.md) | How the marketing site is built | Accepted |
-| [264](264-storefront-password-reaches-the-engine-sealed-per-scan.md) | A protected store's password reaches the engine sealed for one scan | Accepted |
-| [265](265-free-scanner-anonymous-path.md) | The free scanner scans through the api and the engine, and the limits live in the database | Accepted |
-| [266](266-r1-integration-decisions.md) | R1 integration decisions | Accepted |
+| [264](264-health-listeners-for-ctl-egress-and-engine.md) | Health listeners for ctl, egress and engine | Accepted |
+| [265](265-chromium-sandbox-on-railway.md) | Chromium's sandbox on Railway | Accepted |
+| [266](266-storefront-password-reaches-the-engine-sealed-per-scan.md) | A protected store's password reaches the engine sealed for one scan | Accepted |
+| [267](267-free-scanner-anonymous-path.md) | The free scanner scans through the api and the engine, and the limits live in the database | Accepted |
+| [268](268-r1-integration-decisions.md) | R1 integration decisions | Accepted |
 | [040](040-runtime-database-roles.md) | Runtime database roles and the startup guard | Accepted |
 | [041](041-per-shop-token-lock.md) | The per-shop token lock holds one connection and waits a bounded time | Accepted |
 | [042](042-passkey-start-limits-and-sweep.md) | Rate limits on the passkey start endpoints, and the sweep of expired sign-in state | Accepted |
@@ -167,6 +169,10 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [093](093-alt-text-review-queue.md) | The alt-text review queue: approve, edit, reject, undo | Accepted |
 | [094](094-app-home-test-shim.md) | Testing the App Home without Shopify: a typed fake api and a Polaris shim | Accepted |
 | [095](095-plan-gates-and-settings.md) | Plan gates and settings in the App Home | Accepted |
+| [096](096-review-flags-and-flagged-approval.md) | Review flags reach the stored draft, and a flagged draft needs a confirmation | Accepted |
+| [097](097-plan-limits-where-drafts-are-made.md) | The plan's AI budget and draft allowance are enforced where drafts are made | Accepted |
+| [098](098-defer-instead-of-lose.md) | Outages and a missing key defer the job; they do not spend its attempts | Accepted |
+| [099](099-image-loaders-media-limits-and-preview-load.md) | Image loaders are allow-listed; the media route is limited; the preview loads once | Accepted |
 | [080](080-webhook-listener-and-admin-client.md) | The webhook listener, the compliance topics and the Admin API client | Accepted |
 | [081](081-store-reads-and-scan-inputs.md) | Store reads, and what `scan_inputs` holds | Accepted |
 | [082](082-data-fix-lifecycle.md) | The data-fix lifecycle: approve, apply, verify, undo | Accepted |

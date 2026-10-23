@@ -76,12 +76,16 @@
     target?.focus();
   }
 
-  async function decide(fix: FixSummary, kind: 'approve' | 'reject'): Promise<void> {
+  async function decide(
+    fix: FixSummary,
+    kind: 'approve' | 'reject',
+    confirmed = false,
+  ): Promise<void> {
     setBusy(fix.id, true);
     setError(fix.id, '');
     const before = queued;
     try {
-      if (kind === 'approve') await app.api.approveFix(fix.id);
+      if (kind === 'approve') await app.api.approveFix(fix.id, { confirmFlagged: confirmed });
       else await app.api.rejectFix(fix.id);
       app.announce(
         kind === 'approve'
@@ -160,7 +164,7 @@
           busy={busy[fix.id] === true}
           error={errors[fix.id] ?? ''}
           {maxCharacters}
-          onapprove={() => void decide(fix, 'approve')}
+          onapprove={(confirmed: boolean) => void decide(fix, 'approve', confirmed)}
           onreject={() => void decide(fix, 'reject')}
           onundo={() => undefined}
           onsave={(alt: string) => save(fix, alt)}

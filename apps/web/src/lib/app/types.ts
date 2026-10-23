@@ -152,6 +152,12 @@ export interface AltTextChange {
   readonly language: string;
   readonly contains_text: boolean;
   readonly escalated: boolean;
+  /**
+   * Why the draft needs a closer look: `instruction_like_text_seen` or
+   * `suspected_prompt_injection`. A flagged draft is approved only with an explicit
+   * confirmation (ADR-213, ADR-096).
+   */
+  readonly flags: readonly string[];
 }
 
 interface FixFinding {

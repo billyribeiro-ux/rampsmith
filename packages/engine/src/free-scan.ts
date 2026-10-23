@@ -1,5 +1,5 @@
 /**
- * The `free_scan.run@1` job (PLAN §16, ADR-265): an anonymous scan of one public website for the
+ * The `free_scan.run@1` job (PLAN §16, ADR-267): an anonymous scan of one public website for the
  * marketing site's free scanner. It belongs to no tenant and touches no tenant row.
  *
  * It honours `robots.txt` for the Rampsmith user agent, loads the home page and up to two linked

@@ -1,5 +1,5 @@
 /**
- * Opens the storefront password `ctl` sealed for one scan (ADR-264).
+ * Opens the storefront password `ctl` sealed for one scan (ADR-266).
  *
  * The engine holds no master key (ADR-035). `ctl` opens the merchant's saved password and seals
  * it again under `RAMPSMITH_SCAN_SECRET_KEYS`, a key ring only `ctl` and the engine hold, with

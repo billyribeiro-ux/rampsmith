@@ -3,7 +3,7 @@
  * the queues that need a Shopify token; the engine never does. An R1 lane builds a queue by
  * replacing its stub in `jobs/` and, when the handler needs dependencies, its line below.
  * Every queue is built as of R1. `free_scan.run` serves the marketing site's free scanner for no
- * tenant (ADR-265).
+ * tenant (ADR-267).
  */
 import { freeScanHandler } from './free-scan.ts';
 import { altTextHandler } from './jobs/alt-text.ts';

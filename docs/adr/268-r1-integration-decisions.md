@@ -1,4 +1,4 @@
-# ADR-266: R1 integration decisions
+# ADR-268: R1 integration decisions
 
 - Status: Accepted
 - Date: 2026-10-22
@@ -37,7 +37,7 @@ integration pass closed the gaps between them. Four small decisions belong on re
 
 ## Consequences
 
-- A migration (`20261105000001`) adds `shopify_shops.name`; `20261105000002` adds the sealed
-  scan password columns (ADR-264); `20261105000003` adds the free scanner's table and functions
-  (ADR-265).
+- A migration (`20261105000003`) adds `shopify_shops.name`; `20261105000004` adds the sealed
+  scan password columns (ADR-266); `20261105000005` adds the free scanner's table and functions
+  (ADR-267).
 - The `.sqlx` cache and the generated contracts are regenerated in the same change.

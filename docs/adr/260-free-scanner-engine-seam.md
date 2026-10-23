@@ -56,4 +56,4 @@ lane does not own.
 - Hiding the scanner page until the engine exists: the site, the Turnstile wiring and the
   limits are real work that can be tested now.
 
-> Update (R1 integration): the seam is now implemented. The web server delegates to the api, which verifies Turnstile and queues the engine job (ADR-265). `FREE_SCANNER_BACKEND=api`.
+> Update (R1 integration): the seam is now implemented. The web server delegates to the api, which verifies Turnstile and queues the engine job (ADR-267). `FREE_SCANNER_BACKEND=api`.

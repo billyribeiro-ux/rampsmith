@@ -538,6 +538,11 @@ pub(crate) struct AltTextChangeDto {
     language: String,
     contains_text: bool,
     escalated: bool,
+    /// Why the draft needs a closer look before it is approved: `instruction_like_text_seen`
+    /// (the model said the image or the store data held instructions) or
+    /// `suspected_prompt_injection` (the product title or type read like instructions). A flagged
+    /// draft is approved only with `confirm_flagged` (ADR-213).
+    flags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -598,7 +603,43 @@ fn change_of(diff: Option<&Value>) -> AltTextChangeDto {
             .and_then(|d| d.get("escalated"))
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        flags: flags_of(diff),
     }
+}
+
+/// The review flags the engine stored with a draft (security audit M1). Only known flags pass,
+/// so a malformed diff cannot put arbitrary text on the card.
+fn flags_of(diff: Option<&Value>) -> Vec<String> {
+    let mut flags: Vec<String> = diff
+        .and_then(|d| d.get("flags"))
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_str)
+                .filter(|flag| REVIEW_FLAGS.contains(flag))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    flags.sort();
+    flags.dedup();
+    flags
+}
+
+/// The flags that make a draft need an explicit confirmation to approve.
+const REVIEW_FLAGS: [&str; 2] = ["instruction_like_text_seen", "suspected_prompt_injection"];
+
+/// Refuses a flagged draft that the merchant has not explicitly confirmed. Every path that
+/// approves fixes, one at a time or in bulk, calls this first: a flagged draft never rides along
+/// with a batch (ADR-213).
+fn require_confirmation(diff: Option<&Value>, confirmed: bool) -> Result<(), ApiError> {
+    if confirmed || flags_of(diff).is_empty() {
+        return Ok(());
+    }
+    Err(invalid(
+        "confirm_flagged",
+        "must be true to approve a draft that was flagged for review",
+    ))
 }
 
 /// The review cards for these fixes: the change, the product it is on and the findings it
@@ -1063,6 +1104,15 @@ pub(crate) async fn edit_fix(
     Ok(Json(dto))
 }
 
+/// Whether the merchant confirmed a draft that was flagged for review.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(crate) struct ApproveQuery {
+    /// Must be true to approve a draft flagged `instruction_like_text_seen` or
+    /// `suspected_prompt_injection`; ignored for an unflagged draft.
+    confirm_flagged: Option<bool>,
+}
+
 /// Approves a fix: Rampsmith then changes the alt text in the shop.
 #[utoipa::path(
     post,
@@ -1070,9 +1120,15 @@ pub(crate) async fn edit_fix(
     tag = "app",
     operation_id = "approveFix",
     security(("shopify_session" = [])),
-    params(("fix_id" = String, Path, description = "The fix's identifier")),
+    params(
+        ("fix_id" = String, Path, description = "The fix's identifier"),
+        ApproveQuery
+    ),
     responses(
         (status = OK, description = "The approved fix; it is applied shortly", body = FixDto),
+        (status = UNPROCESSABLE_ENTITY,
+            description = "The draft was flagged for review and `confirm_flagged` is not true",
+            body = http_kit::Problem, content_type = "application/problem+json"),
         (status = NOT_FOUND, description = "No such fix",
             body = http_kit::Problem, content_type = "application/problem+json"),
         (status = CONFLICT, description = "The fix was already decided",
@@ -1087,6 +1143,7 @@ pub(crate) async fn approve_fix(
     State(state): State<AppState>,
     ShopSession(session): ShopSession,
     Path(fix_id): Path<String>,
+    Query(query): Query<ApproveQuery>,
 ) -> Result<Json<FixDto>, ApiError> {
     let id = uuid_of(&fix_id)?;
     let approver = staff(&session)?.to_owned();
@@ -1098,6 +1155,7 @@ pub(crate) async fn approve_fix(
     if fix.status != "proposed" {
         return Err(ApiError::new(ProblemCode::Conflict).detail("The fix was already decided."));
     }
+    require_confirmation(fix.diff.as_ref(), query.confirm_flagged.unwrap_or(false))?;
     let view = plan_view(&mut tx, session.shop_id, OffsetDateTime::now_utc()).await?;
     // One approval at a time per shop, so the allowance cannot be passed by a race.
     app_views::lock_site(&mut tx, site).await?;

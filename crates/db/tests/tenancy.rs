@@ -140,6 +140,20 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    seed_r1_billing_and_digests(&mut tx, &graph).await;
+    tx.commit().await.unwrap();
+}
+
+/// The rows of `shop_billing`, `webhook_digests` and `ai_draft_holds` (ADR-084, ADR-085).
+async fn seed_r1_billing_and_digests(tx: &mut sqlx::PgConnection, graph: &Graph) {
+    sqlx::query(
+        "insert into ai_draft_holds (id, tenant_id, units, expires_at)
+         values (gen_random_uuid(), $1, 1, now() + interval '1 hour')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
     sqlx::query(
         "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'unknown')",
     )
@@ -148,7 +162,14 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
-    tx.commit().await.unwrap();
+    sqlx::query(
+        "insert into webhook_digests (tenant_id, body_sha256, topic, expires_at)
+         values ($1, decode(repeat('ab', 32), 'hex'), 'app/uninstalled', now() + interval '1 day')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
 }
 
 async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool, Graph, Graph) {
@@ -414,7 +435,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 21] = [
+const TENANT_TABLES: [&str; 23] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -438,10 +459,12 @@ const TENANT_TABLES: [&str; 21] = [
     "webhook_events",
     // The fix loop's plan state (ADR-084).
     "shop_billing",
+    "webhook_digests",
+    "ai_draft_holds",
 ];
 
 /// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 9] = [
+const R1_TABLES: [&str; 11] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -451,6 +474,8 @@ const R1_TABLES: [&str; 9] = [
     "ai_reservations",
     "webhook_events",
     "shop_billing",
+    "webhook_digests",
+    "ai_draft_holds",
 ];
 
 #[sqlx::test]
@@ -823,7 +848,13 @@ async fn r1_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
         );
     }
     // Updates and deletes of the other tenant's rows touch nothing.
-    for table in ["scan_inputs", "evidence", "statements", "webhook_events"] {
+    for table in [
+        "scan_inputs",
+        "evidence",
+        "statements",
+        "webhook_events",
+        "webhook_digests",
+    ] {
         let deleted = as_tenant(
             &pool,
             a.tenant,
@@ -1111,7 +1142,7 @@ async fn assert_data_fixes_isolate(db: &Db, a: Graph, b: Graph) {
     tx.rollback().await.unwrap();
 }
 
-/// The storefront password of a site and the sealed copy on a scan (ADR-264).
+/// The storefront password of a site and the sealed copy on a scan (ADR-266).
 async fn assert_scan_secrets_isolate(db: &Db, a: Graph, b: Graph) {
     let secret = scan_secrets::SealedSecret {
         key_id: "scan1".to_owned(),

@@ -1,4 +1,4 @@
-//! The storefront password for one scan, sealed to the scan key (ADR-264).
+//! The storefront password for one scan, sealed to the scan key (ADR-266).
 //!
 //! `ctl` reads the site's password (sealed under the master keys), re-seals it under the scan
 //! key and stores it on the scan. The engine opens and clears it with plain SQL, because it is

@@ -1,4 +1,4 @@
-//! The free scanner's api (ADR-265): service authentication, the address guard, Turnstile
+//! The free scanner's api (ADR-267): service authentication, the address guard, Turnstile
 //! checked server-side before anything is queued, the daily limits and the cache, all from the
 //! database.
 

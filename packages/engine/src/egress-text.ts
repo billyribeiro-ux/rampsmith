@@ -1,6 +1,6 @@
 /**
  * Fetches a small text document (the free scanner's `robots.txt`) through `egress` (ADR-025,
- * ADR-265): the engine never opens a connection of its own to an address a visitor supplied. A
+ * ADR-267): the engine never opens a connection of its own to an address a visitor supplied. A
  * scan token names the hosts the fetch may reach and `egress` checks what they resolve to. A
  * redirect is followed only to another host the token names, at most three times.
  */

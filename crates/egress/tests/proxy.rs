@@ -395,6 +395,76 @@ impl tracing::Subscriber for Capture {
     }
 }
 
+/// ADR-264: Railway's health check gets 200 on exactly `GET /healthz` in origin form, without a
+/// token, and that path can never be used to reach anything.
+#[tokio::test]
+async fn the_health_check_answers_for_the_process_and_is_never_proxied() {
+    let h = test_network().await;
+    let t = token(&h, &["shop.test"], 10);
+
+    // Railway's request: origin form, its own Host header.
+    let (status, text, _) = send(
+        &h,
+        "GET /healthz HTTP/1.1\r\nHost: healthcheck.railway.app\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert_eq!(status, 200, "{text}");
+    assert!(text.ends_with("ok"), "{text}");
+    // A Host header naming a proxy target does not turn the check into a forward: the upstream
+    // answers `path=...`, the health check answers `ok`.
+    let (status, text, _) = send(
+        &h,
+        &format!(
+            "GET /healthz HTTP/1.1\r\nHost: shop.test:{}\r\nConnection: close\r\n{}\r\n",
+            h.upstream,
+            auth(&t)
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{text}");
+    assert!(!text.contains("path="), "forwarded to the upstream: {text}");
+
+    // Every other shape still needs a token: another path, a query, a trailing slash, another
+    // method, a proxy-form URI that happens to end in /healthz, and a tunnel.
+    let absolute = format!("http://shop.test:{}/healthz", h.upstream);
+    for head in [
+        "GET /healthz/ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n".to_owned(),
+        "GET /healthz?x=1 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n".to_owned(),
+        "GET /healthzz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n".to_owned(),
+        "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n".to_owned(),
+        "POST /healthz HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            .to_owned(),
+        format!("GET {absolute} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+    ] {
+        let (status, text, _) = send(&h, &head).await;
+        assert_eq!(status, 407, "{head}\n{text}");
+    }
+    let (status, _, _) = connect(&h, "shop.test", None).await;
+    assert_eq!(status, 407);
+
+    // With a token, origin-form requests other than the health check are malformed proxy
+    // requests, not forwards; the absolute form is forwarded only to a host on the token's list.
+    let (status, text, _) = send(
+        &h,
+        &format!(
+            "GET /healthz/ HTTP/1.1\r\nHost: shop.test\r\nConnection: close\r\n{}\r\n",
+            auth(&t)
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "{text}");
+    let (status, text, _) = send(
+        &h,
+        &format!(
+            "GET http://other.test:{}/healthz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n{}\r\n",
+            h.upstream,
+            auth(&t)
+        ),
+    )
+    .await;
+    assert_eq!(status, 403, "{text}");
+}
+
 /// The proxy serves allowed and refused requests for named hosts; what it tells `tracing` names
 /// the scan and the outcome and never a host.
 #[tokio::test]

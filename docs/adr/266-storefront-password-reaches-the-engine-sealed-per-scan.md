@@ -1,4 +1,4 @@
-# ADR-264: A protected store's password reaches the engine sealed for one scan
+# ADR-266: A protected store's password reaches the engine sealed for one scan
 
 - Status: Accepted
 - Date: 2026-10-22

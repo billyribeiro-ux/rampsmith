@@ -2,7 +2,7 @@
 //! tenant in SQL, on top of row-level security (ADR-006). The isolation suite in
 //! `tests/tenancy.rs` calls each one across the tenant boundary. The one exception is
 //! [`identity`], whose rows belong to people rather than tenants (ADR-024), [`free_scans`], whose
-//! rows belong to no one (ADR-265), and [`retention`], the sweeps that delete expired data.
+//! rows belong to no one (ADR-267), and [`retention`], the sweeps that delete expired data.
 
 pub mod app_views;
 pub mod audit;

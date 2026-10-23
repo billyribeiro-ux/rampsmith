@@ -135,7 +135,7 @@ impl ScanPlan {
 /// Payload of `scan.page` jobs, schema `scan.page@2`. Runs in the engine: loads `url` at the
 /// viewport, checks it in each state in order, and records the findings. It replaced
 /// `scan.page@1`, which carried only the URL; `@1` was removed once nothing enqueued it
-/// (ADR-036, ADR-264).
+/// (ADR-036, ADR-266).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScanPageV2 {

@@ -39,6 +39,15 @@ export function mediaUrl(raw: string | null, width = 240): URL | undefined {
 
 type Fetch = typeof globalThis.fetch;
 
+/** Releases the connection of a response that will not be read (security audit L4). */
+async function discard(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The stream was already closed or errored: nothing is held.
+  }
+}
+
 export type MediaResult =
   | { readonly ok: true; readonly bytes: Uint8Array<ArrayBuffer>; readonly type: string }
   | { readonly ok: false; readonly status: 400 | 404 | 413 | 415 | 502 };
@@ -54,26 +63,45 @@ export async function fetchMedia(url: URL, fetchImpl: Fetch = fetch): Promise<Me
   } catch {
     return { ok: false, status: 502 };
   }
-  if (response.status === 404) return { ok: false, status: 404 };
-  if (!response.ok) return { ok: false, status: 502 };
+  // Every early return below closes the body first, so the socket goes back to the pool.
+  if (response.status === 404) {
+    await discard(response);
+    return { ok: false, status: 404 };
+  }
+  if (!response.ok) {
+    await discard(response);
+    return { ok: false, status: 502 };
+  }
   const type =
     (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
-  if (!RASTER.has(type)) return { ok: false, status: 415 };
+  if (!RASTER.has(type)) {
+    await discard(response);
+    return { ok: false, status: 415 };
+  }
   const declared = Number(response.headers.get('content-length') ?? '0');
-  if (declared > MAX_MEDIA_BYTES) return { ok: false, status: 413 };
+  if (declared > MAX_MEDIA_BYTES) {
+    await discard(response);
+    return { ok: false, status: 413 };
+  }
   const reader = response.body?.getReader();
   if (reader === undefined) return { ok: false, status: 502 };
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_MEDIA_BYTES) {
-      await reader.cancel();
-      return { ok: false, status: 413 };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_MEDIA_BYTES) {
+        await reader.cancel();
+        return { ok: false, status: 413 };
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    // The CDN cut the download off (or the timeout fired): close what is left.
+    await reader.cancel().catch(() => undefined);
+    return { ok: false, status: 502 };
   }
   const bytes = new Uint8Array(new ArrayBuffer(total));
   let offset = 0;

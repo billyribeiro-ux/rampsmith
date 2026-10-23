@@ -1,5 +1,5 @@
 /**
- * The free scanner's real path (ADR-265): the api owns everything that protects it. It checks
+ * The free scanner's real path (ADR-267): the api owns everything that protects it. It checks
  * the address, verifies the Turnstile token server-side, enforces the daily limits and the
  * 24-hour cache from the database, and queues the scan for the engine. This module only
  * carries the visitor's request there, with the shared service token, and turns the api's

@@ -199,6 +199,9 @@ export function prepareAltText(
  * decorative.
  */
 export function needsEscalation(result: TaskResult<AltTextDraft>): boolean {
+  // A model that says the image or the data held instructions gets a second, stronger look
+  // (security audit M1); the flag still reaches the stored draft either way.
+  if (result.flags.includes('instruction_like_text_seen')) return true;
   if (result.status === 'needs_review') {
     return result.reasons.some((r) => r !== 'marked_decorative');
   }
@@ -217,11 +220,18 @@ export interface AltTextOutcome {
 export async function generateAltText(
   deps: AiDeps,
   input: AltTextInput,
-  context: CallContext & { readonly interactive?: boolean },
+  context: CallContext & {
+    readonly interactive?: boolean;
+    /**
+     * Whether a second call to the stronger model is allowed. A caller that has room for only
+     * one more draft in the plan's allowance passes `false` and keeps the first result.
+     */
+    readonly allowEscalation?: boolean;
+  },
 ): Promise<AltTextOutcome> {
   const options = { tenantId: context.tenantId, interactive: context.interactive ?? true };
   const first = await runCall(deps, prepareAltText(input, options), context);
-  if (!needsEscalation(first.result)) {
+  if (context.allowEscalation === false || !needsEscalation(first.result)) {
     return {
       result: first.result,
       escalated: false,
@@ -235,8 +245,10 @@ export async function generateAltText(
     prepareAltText(input, { ...options, escalated: true }),
     context,
   );
+  // A flag the first pass raised stays on the draft even if the stronger model does not repeat it.
+  const flags = [...new Set([...first.result.flags, ...second.result.flags])];
   return {
-    result: second.result,
+    result: { ...second.result, flags },
     escalated: true,
     promptVersion: second.record.promptVersion,
     model: second.record.model,

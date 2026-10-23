@@ -85,7 +85,7 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
     expect(s.approvalRate).toBe(0.9);
     expect(s.unsupportedRate).toBe(0);
     expect(s.namedPeople).toBe(0);
-    expect(s.escalationRate).toBe(0.25);
+    expect(s.escalationRate).toBe(0.3);
     expect(s.gate).toEqual({ passed: true, failures: [] });
     const byId = new Map(report.candidates.map((c) => [c.id, c]));
     expect(byId.get('pagoda-lake')).toMatchObject({ approvable: false, coverage: 0.5 });
@@ -93,7 +93,7 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
     expect(byId.get('horse-silhouette')).toMatchObject({ approvable: true, escalated: true });
     expect(byId.get('grass-texture')).toMatchObject({ approvable: true, decorative: true });
     expect(byId.get('sock-pack-injection')?.alt).not.toMatch(/accessible|best socks/iu);
-    expect(report.calls).toHaveLength(25);
+    expect(report.calls).toHaveLength(26);
     expect(report.calls.every((c) => c.promptVersion === 'alt-text@2')).toBe(true);
     expect(report.batchCostPerThousandImagesMicroUsd).toBeLessThan(s.costPerThousandImagesMicroUsd);
     expect(formatReport(report)).toMatch(/Gate: PASS/u);
@@ -132,7 +132,7 @@ describe('the recorded run (substitute for the live check, LAUNCH.md section E)'
     );
     expect(requestKey(a.params)).toBe(requestKey(b.params));
     expect(requestKey(a.params)).not.toBe(requestKey(c.params));
-    expect(new RecordedTransport().size).toBe(25);
+    expect(new RecordedTransport().size).toBe(26);
   });
 
   it('marks every bundled recording as authored, not captured', () => {

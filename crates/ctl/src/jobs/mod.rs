@@ -50,7 +50,7 @@ impl Jobs {
         }
     }
 
-    /// Lets scans of a password-protected store reach the engine (ADR-264). Without it the
+    /// Lets scans of a password-protected store reach the engine (ADR-266). Without it the
     /// engine reports such a store as blocked.
     #[must_use]
     pub fn with_scan_secrets(mut self, secrets: scan_secret::ScanSecrets) -> Self {

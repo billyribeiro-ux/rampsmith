@@ -33,7 +33,7 @@ pub struct Config {
     /// without them the app serves each shop's stored plan, Free until one is stored.
     pub partner: Option<PartnerConfig>,
     /// The free scanner (`FREE_SCAN_SERVICE_TOKEN`, `TURNSTILE_SECRET_KEY`, optional
-    /// `TURNSTILE_ORIGIN`; ADR-265). Both secrets or neither: without them the free scanner's
+    /// `TURNSTILE_ORIGIN`; ADR-267). Both secrets or neither: without them the free scanner's
     /// routes answer 503 and the marketing site's form stays closed.
     pub free_scan: Option<crate::free_scan::FreeScanSettings>,
     /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).

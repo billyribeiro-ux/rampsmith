@@ -87,3 +87,68 @@ describe('fetchMedia', () => {
     expect(seen?.redirect).toBe('error');
   });
 });
+
+describe('fetchMedia closes every response it does not read (security audit L4)', () => {
+  const url = new URL('https://cdn.shopify.com/s/files/1/a.jpg');
+
+  /** A response whose body reports when it is cancelled. */
+  function watched(status: number, headers: Record<string, string>) {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return {
+      response: new Response(body, { status, headers }),
+      cancelled: () => cancelled,
+    };
+  }
+
+  it.each([
+    ['a missing file', 404, { 'content-type': 'image/jpeg' }, 404],
+    ['a CDN error', 500, { 'content-type': 'image/jpeg' }, 502],
+    ['a type that is not a raster image', 200, { 'content-type': 'text/html' }, 415],
+    [
+      'a declared size over the limit',
+      200,
+      { 'content-type': 'image/jpeg', 'content-length': String(MAX_MEDIA_BYTES + 1) },
+      413,
+    ],
+  ] as const)('cancels the body of %s', async (_name, status, headers, expected) => {
+    const seen = watched(status, headers);
+    const result = await fetchMedia(url, () => Promise.resolve(seen.response));
+    expect(result).toEqual({ ok: false, status: expected });
+    expect(seen.cancelled()).toBe(true);
+  });
+
+  it('cancels a download that runs past the limit, and one that is cut off', async () => {
+    const endless = watched(200, { 'content-type': 'image/png' });
+    // The stream above never ends: the size check must stop it.
+    const big = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(1024 * 1024));
+      },
+      cancel() {
+        endless.cancelled();
+      },
+    });
+    const result = await fetchMedia(url, () =>
+      Promise.resolve(new Response(big, { headers: { 'content-type': 'image/png' } })),
+    );
+    expect(result).toEqual({ ok: false, status: 413 });
+
+    const broken = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('reset'));
+      },
+    });
+    const cut = await fetchMedia(url, () =>
+      Promise.resolve(new Response(broken, { headers: { 'content-type': 'image/png' } })),
+    );
+    expect(cut).toEqual({ ok: false, status: 502 });
+  });
+});

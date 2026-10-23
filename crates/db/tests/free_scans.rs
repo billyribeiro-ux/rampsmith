@@ -1,4 +1,4 @@
-//! The free scanner's anonymous scans (ADR-265): the quota ledger, the 24-hour cache, the one
+//! The free scanner's anonymous scans (ADR-267): the quota ledger, the 24-hour cache, the one
 //! tenantless job the application role may create, and the sweep.
 
 #![allow(

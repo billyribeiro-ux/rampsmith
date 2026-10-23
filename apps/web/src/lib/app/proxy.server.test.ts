@@ -57,6 +57,21 @@ describe('resolve', () => {
     });
     expect(resolve('GET', 'overview', q('impact=serious'))).toEqual({ ok: true, path: 'overview' });
   });
+
+  it('passes the confirmation of a flagged draft on approve and nowhere else (audit M1)', () => {
+    expect(resolve('POST', `fixes/${ID}/approve`, q('confirm_flagged=true&evil=1'))).toEqual({
+      ok: true,
+      path: `fixes/${ID}/approve?confirm_flagged=true`,
+    });
+    expect(resolve('POST', `fixes/${ID}/reject`, q('confirm_flagged=true'))).toEqual({
+      ok: true,
+      path: `fixes/${ID}/reject`,
+    });
+    expect(resolve('POST', `fixes/${ID}/approve`, q('confirm_flagged=true%0d%0a'))).toEqual({
+      ok: true,
+      path: `fixes/${ID}/approve`,
+    });
+  });
 });
 
 describe('forward', () => {

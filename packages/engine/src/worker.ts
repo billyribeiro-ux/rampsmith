@@ -29,7 +29,7 @@ export interface EngineDeps {
   /**
    * The storefront password of a protected store, for this scan only. The engine holds no key to
    * unseal the stored one (ADR-035, ADR-071); `ctl` seals a copy for the scan under the scan key
-   * ring and `storefrontPasswordFromScan` opens it (ADR-264). Without that ring, wiring supplies
+   * ring and `storefrontPasswordFromScan` opens it (ADR-266). Without that ring, wiring supplies
    * none and a protected store is reported as blocked.
    */
   readonly storefrontPassword?: (

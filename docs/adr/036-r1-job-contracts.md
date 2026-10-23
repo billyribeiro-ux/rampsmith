@@ -52,4 +52,4 @@ TypeScript generated from the schemas and drift failing CI.
 - One generic payload with a `kind` member: it would lose the per-queue strictness Ajv and
   serde give today.
 
-> Update (R1 integration): `scan.page@1` was removed from the contracts; `scan.page@2` is the only page-scan payload. `free_scan.run@1` is added for the free scanner (ADR-265).
+> Update (R1 integration): `scan.page@1` was removed from the contracts; `scan.page@2` is the only page-scan payload. `free_scan.run@1` is added for the free scanner (ADR-267).

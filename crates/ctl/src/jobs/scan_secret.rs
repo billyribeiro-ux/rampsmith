@@ -1,4 +1,4 @@
-//! The storefront password, handed to the engine for one scan (ADR-264).
+//! The storefront password, handed to the engine for one scan (ADR-266).
 //!
 //! The engine never holds a master key (ADR-035), so it cannot open `sites.storefront_password_ct`.
 //! When a scan starts, `ctl` opens the site's password with the master keys and seals it again

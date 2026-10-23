@@ -189,7 +189,7 @@ E elevation of privilege.
 
 | ID | STRIDE | Threat | Control (PLAN) | Status |
 | --- | --- | --- | --- | --- |
-| E1 | E | Hostile page exploits Chromium | Sandbox on; non-root container with a seccomp profile; fresh context per page; time and memory limits; Playwright updated within 7 days (§18) | planned (R0 step 9) |
+| E1 | E | Hostile page exploits Chromium | Sandbox on where the host allows it, off and logged where Railway refuses it (ADR-265); non-root container; fresh context per page; time and memory limits; Playwright updated within 7 days (§18) | planned (R0 step 9) |
 | E2 | I | Server-side request forgery through a scanned URL | All browser traffic through `egress`; only the verified store and Shopify CDN hosts reachable (§11, §18) | planned (R0 step 9) |
 | E3 | T | Prompt injection from page or product text | No tools, no secrets; untrusted text passed as delimited data; JSON Schema output validated with Ajv; human approval before anything ships (§13, §18) | planned (R1) |
 | E4 | T | Malformed job payload | Payloads validated against the generated JSON Schema; contract drift fails CI (§10, ADR-009) | built (drift check: `.github/workflows/ci.yml` job `contracts`); payload validation planned (R1) |

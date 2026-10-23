@@ -104,7 +104,7 @@ pub async fn sweep_identity(db: &Db) -> Result<u64, DbError> {
 }
 
 /// Deletes what expires on its own clock: store data read for scans after 30 days (ADR-035), and
-/// free scans after 24 hours, ending the ones the engine never finished first (ADR-265).
+/// free scans after 24 hours, ending the ones the engine never finished first (ADR-267).
 /// Returns `(scan inputs, free scans)` deleted.
 pub async fn sweep_retention(db: &Db) -> Result<(i64, i64), DbError> {
     let mut tx = db.public().await?;

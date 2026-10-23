@@ -5,7 +5,7 @@
  * `RAMPSMITH_LIVE_STORE_PASSWORD` are set (section C, row 3: `SHOPIFY_DEV_STORE_DOMAIN` and
  * `SHOPIFY_DEV_STORE_PASSWORD`) and otherwise skips with a notice naming the row; it never
  * passes silently. The substitute that passes now is the password tests of `scan.e2e.ts`, and
- * the sealed hand-off from ctl to the engine is `scan-secret.test.ts` (ADR-264).
+ * the sealed hand-off from ctl to the engine is `scan-secret.test.ts` (ADR-266).
  *
  *   RAMPSMITH_LIVE_STORE=$SHOPIFY_DEV_STORE_DOMAIN RAMPSMITH_LIVE_STORE_PASSWORD=$SHOPIFY_DEV_STORE_PASSWORD \
  *     pnpm --filter @rampsmith/engine exec vitest run test/storefront-password.live.test.ts

@@ -926,7 +926,7 @@ One SvelteKit app serves three surfaces: the Shopify embedded admin, a standalon
 - The free scanner honours `robots.txt` for the Rampsmith user agent and passes through the same request-forgery guard as paid scans.
 - Result pages are `noindex` and never public. Rampsmith does not publish anyone's failures.
 - The page states plainly that the check is automated and partial.
-- The scan runs through the api and the engine (ADR-265): the api verifies Turnstile, applies the limits from the database and queues `free_scan.run@1`; the row and its result are deleted after 24 hours.
+- The scan runs through the api and the engine (ADR-267): the api verifies Turnstile, applies the limits from the database and queues `free_scan.run@1`; the row and its result are deleted after 24 hours.
 
 ### Accessible design system (`packages/ui`)
 
@@ -1005,7 +1005,7 @@ The two threats unique to Rampsmith are a headless browser that loads hostile pa
 | --- | --- |
 | One tenant reads another's data | Row-level security plus compile-time tenant scoping; the isolation suite runs on every pull request (section 9) |
 | Server-side request forgery through scanned URLs | Chromium sends all traffic through `egress-guard`, a small Rust forward proxy deployed as the `egress` service and reachable only by the engine. It resolves DNS itself, refuses loopback, private, link-local (including cloud metadata), CGNAT, unique-local and IPv4-mapped addresses, re-checks on every redirect, and enforces a connection budget per page. Each page job carries a signed, two-minute scan token naming the hosts it may reach (ADR-025). Resolving and connecting in one place also defeats DNS rebinding. |
-| A hostile page exploits the browser | Chromium's sandbox stays on; the container runs as non-root with a seccomp profile; one fresh context per page; hard time and memory limits; Playwright updated within 7 days of each release |
+| A hostile page exploits the browser | Chromium's sandbox is on wherever the host allows it, and off, logged, only where the host refuses it (Railway; ADR-265); the container runs as non-root, with a seccomp profile under Docker; one fresh context per page; hard time and memory limits; Playwright updated within 7 days of each release |
 | Prompt injection from page or product text | Claude gets no tools and no secrets. Untrusted text is passed as delimited data, outputs must match a JSON Schema, and nothing AI-written ships without human approval |
 | Theft of Shopify or GitHub tokens | Envelope encryption with per-row data keys; master key only in the environment; `secrecy` keeps values out of logs; minimal scopes; one-hour GitHub tokens held in memory |
 | Forged or replayed webhooks | HMAC verification in constant time; deduplication on the provider's event id; payloads processed only from the stored copy |
@@ -1209,7 +1209,7 @@ Everything runs on Railway in a US region at launch, as immutable images tagged 
 | `web` | `node:<26 LTS version>-trixie-slim` pinned by digest, multi-stage build, `adapter-node` | Health check on `/healthz` |
 | `api` | Rust release binary on `debian:trixie-slim` pinned by digest, with Debian security updates applied at build (it links the system OpenSSL for `webauthn-rs-core`; ADR-020, ADR-028) | `/healthz` for liveness; `/readyz` checks the database and the migration version |
 | `ctl` | Same image as `api`, different command | Scheduler leadership through the advisory lock |
-| `engine` | Microsoft's Playwright 1.64.1 image pinned by digest, with its own Node removed and Node 26's binary copied from the pinned `node:<26 LTS version>-trixie-slim` image (ADR-028, ADR-029 amendment of 19 Oct 2026) | Non-root, seccomp profile, Chromium sandbox on |
+| `engine` | Microsoft's Playwright 1.64.1 image pinned by digest, with its own Node removed and Node 26's binary copied from the pinned `node:<26 LTS version>-trixie-slim` image (ADR-028, ADR-029 amendment of 19 Oct 2026) | Non-root; Chromium sandbox on where the host allows it, off and logged where it refuses (ADR-265) |
 | `egress` | Rust release binary | The request-forgery guard; reachable only by `engine` on the private network |
 | PostgreSQL 18 | Railway PostgreSQL with PITR enabled | Direct connections for `LISTEN`; a connection pool per service |
 

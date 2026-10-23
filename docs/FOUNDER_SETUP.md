@@ -333,7 +333,7 @@ Values:
 - Never in GitHub: no workflow uses it.
 - Sealed values are not copied into PR environments, so builders need a non-sealed test value there.
 
-Two more secrets belong to this input (ADR-264, ADR-265). Generate `RAMPSMITH_SCAN_SECRET_KEYS` with `rsctl keys generate` too, a ring of its own that is never the master ring, and set it, sealed, on `ctl` and `engine` only: ctl re-seals a store's storefront password under it for the length of one scan, and the engine, which never holds the master keys, opens it. Generate `FREE_SCAN_SERVICE_TOKEN` as 32 or more random characters (`openssl rand -base64 36`) and set the same sealed value on `api` and `web`. `rsctl doctor` does not check these two yet; the free scanner stays closed, and a password-protected store is reported as blocked, until they are set.
+Two more secrets belong to this input (ADR-266, ADR-267). Generate `RAMPSMITH_SCAN_SECRET_KEYS` with `rsctl keys generate` too, a ring of its own that is never the master ring, and set it, sealed, on `ctl` and `engine` only: ctl re-seals a store's storefront password under it for the length of one scan, and the engine, which never holds the master keys, opens it. Generate `FREE_SCAN_SERVICE_TOKEN` as 32 or more random characters (`openssl rand -base64 36`) and set the same sealed value on `api` and `web`. `rsctl doctor` does not check these two yet; the free scanner stays closed, and a password-protected store is reported as blocked, until they are set.
 
 Check: `rsctl doctor --row 12`. It parses the ring and checks that every key seals and opens a test value. It needs no network.
 
@@ -400,7 +400,7 @@ Values:
 - `R2_BUCKET_EVIDENCE` and `R2_BUCKET_BACKUPS`, the bucket names (*public*) → RW. `R2_BUCKET_BACKUPS` is `rampsmith-backups-staging` in staging and `rampsmith-backups-production` in production, and `rampsmith-backups-staging` as an environment variable of `backup-drill`.
 - The `rampsmith-backup-<environment>` and `rampsmith-drill` tokens are row 16: `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY` → RW, and `DRILL_R2_ACCESS_KEY_ID` and `DRILL_R2_SECRET_ACCESS_KEY` → GH env `backup-drill` only (section 16).
 - `TURNSTILE_SITE_KEY` (*public*) → RW
-- `TURNSTILE_SECRET_KEY` → RW, on the `api` service (it verifies the challenge itself, ADR-265); the `web` service no longer needs it
+- `TURNSTILE_SECRET_KEY` → RW, on the `api` service (it verifies the challenge itself, ADR-267); the `web` service no longer needs it
 
 Check: `rsctl doctor --row 6`. With the engine's token it writes one object to the evidence bucket, reads it back and deletes it, and then tries the backups bucket, where R2 must answer `AccessDenied` (HTTP 403) for a write and a read. For Turnstile it sends a made-up token and expects the answer `invalid-input-response`, which proves the secret was accepted; it fails a Cloudflare testing secret when run with `--environment production`. It cannot check the evidence bucket's lifecycle rule or the public site key. The other two tokens are checked by `rsctl doctor --row 16` (section 16).
 

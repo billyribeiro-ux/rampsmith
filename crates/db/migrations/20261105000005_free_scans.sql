@@ -1,4 +1,4 @@
--- The free scanner's anonymous scans (PLAN §16, ADR-265).
+-- The free scanner's anonymous scans (PLAN §16, ADR-267).
 --
 -- Not a tenant table: no merchant owns a free scan, and nothing in it is tenant data. It holds
 -- a public domain, a keyed hash of the visitor's address (never the address), the status of the

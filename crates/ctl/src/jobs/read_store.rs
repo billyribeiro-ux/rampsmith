@@ -238,7 +238,7 @@ async fn persist(
     shops::set_shop_gid(&mut tx, shop, &info.gid)
         .await
         .map_err(|e| database(&e))?;
-    // A password-protected store: the engine gets the password for this scan only (ADR-264).
+    // A password-protected store: the engine gets the password for this scan only (ADR-266).
     jobs.hand_storefront_password(&mut tx, scan, site).await?;
     job_repo::enqueue(
         &mut tx,

@@ -100,7 +100,7 @@ impl Db {
         })
     }
 
-    /// Opens a transaction over rows that no tenant owns: the free scanner's (ADR-265) and the
+    /// Opens a transaction over rows that no tenant owns: the free scanner's (ADR-267) and the
     /// retention sweeps'. Only the functions in `repo::free_scans` and `repo::retention` accept it.
     pub async fn public(&self) -> Result<PublicTx, DbError> {
         Ok(PublicTx {
@@ -339,7 +339,7 @@ impl IdentityTx {
     }
 }
 
-/// A transaction over rows that belong to no tenant: the free scanner's (ADR-265) and the
+/// A transaction over rows that belong to no tenant: the free scanner's (ADR-267) and the
 /// retention sweeps'; see [`Db::public`].
 pub struct PublicTx {
     tx: Transaction<'static, Postgres>,
