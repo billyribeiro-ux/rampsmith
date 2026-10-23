@@ -21,7 +21,7 @@ const SHOP: Query = Query {
     name: "RampsmithShop",
     cost_hint: 6.0,
     text: r"query RampsmithShop {
-  shop { id name myshopifyDomain primaryDomain { host url } }
+  shop { id name email myshopifyDomain primaryDomain { host url } }
   shopLocales { locale primary published }
   themes(first: 1, roles: [MAIN]) { nodes { id name role updatedAt } }
 }",
@@ -165,6 +165,26 @@ fn paged<T>(connection: Connection<T>) -> Page<T> {
     }
 }
 
+/// The shop owner's email address. Personal data: `Debug` never prints it, so a `{:?}` of the
+/// shop that holds it (a log line, a panic message) cannot leak it.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OwnerEmail(String);
+
+impl OwnerEmail {
+    /// The address, as Shopify wrote it.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for OwnerEmail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OwnerEmail(..)")
+    }
+}
+
 /// The shop, its locales and its live theme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShopInfo {
@@ -172,6 +192,9 @@ pub struct ShopInfo {
     pub gid: String,
     /// The shop's name.
     pub name: String,
+    /// The shop owner's address, for the emails Rampsmith sends about the shop (ADR-272). It is
+    /// personal data: callers store it in `shop_contacts` and never log it.
+    pub email: Option<OwnerEmail>,
     /// The permanent `*.myshopify.com` host.
     pub myshopify_domain: String,
     /// The primary domain, when the shop has one.
@@ -234,6 +257,10 @@ struct Connection2<T> {
 struct ShopNode {
     id: String,
     name: String,
+    /// The shop owner's address (`Shop.email`, the one Shopify writes to). Personal data: it is
+    /// stored for the transactional email only and never logged.
+    #[serde(default)]
+    email: Option<OwnerEmail>,
     myshopify_domain: String,
     #[serde(default)]
     primary_domain: Option<Domain>,
@@ -675,6 +702,7 @@ impl AdminClient {
         Ok(ShopInfo {
             gid: data.shop.id,
             name: data.shop.name,
+            email: data.shop.email,
             myshopify_domain: data.shop.myshopify_domain,
             primary_domain: data.shop.primary_domain,
             locales: data.shop_locales,

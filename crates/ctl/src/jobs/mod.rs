@@ -34,13 +34,29 @@ pub struct Jobs {
     db: Db,
     auth: ShopifyAuth,
     admin: AdminFactory,
+    /// The app's public origin (`APP_ORIGIN`), which the links in emails point at. Without it no
+    /// email that carries a link is queued (ADR-272).
+    app_origin: Option<String>,
 }
 
 impl Jobs {
     /// Handlers over `db` (connected as `rampsmith_worker`).
     #[must_use]
     pub const fn new(db: Db, auth: ShopifyAuth, admin: AdminFactory) -> Self {
-        Self { db, auth, admin }
+        Self {
+            db,
+            auth,
+            admin,
+            app_origin: None,
+        }
+    }
+
+    /// Gives the handlers the app's origin, such as `https://app.rampsmith.com`, for the links
+    /// in the emails they queue.
+    #[must_use]
+    pub fn with_app_origin(mut self, origin: Option<String>) -> Self {
+        self.app_origin = origin;
+        self
     }
 
     /// Hands `job` to its queue's handler. The queue is the one the worker claimed from, so a

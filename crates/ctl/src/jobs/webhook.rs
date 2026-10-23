@@ -3,19 +3,21 @@
 //!
 //! | Topic | Action |
 //! | --- | --- |
-//! | `app/uninstalled` | Ask Shopify whether the grant is really gone (the delivery headers are not signed, so a captured delivery can be replayed), then mark the shop uninstalled, cancel its jobs, delete its tokens and start the retention clock |
+//! | `app/uninstalled` | Ask Shopify whether the grant is really gone (the delivery headers are not signed, so a captured delivery can be replayed), then mark the shop uninstalled, cancel its jobs, delete its tokens, start the retention clock and queue the export email (`email.send`, PLAN §19, ADR-272) |
 //! | `shop/redact` | A shop still `installed` is redacted only after the same grant check as an uninstall (a token Shopify still accepts: audit `compliance.shop_redact_ignored`, nothing deleted); then delete all of the shop's data (PLAN §19), keeping the audit log and the webhook digests |
 //! | `customers/data_request`, `customers/redact` | R1 stores no data about a shop's customers, so the answer is "none held", recorded in the audit log without the customer's details |
-//! | `shop/update` | Read the shop again: primary domain and locales |
+//! | `shop/update` | Read the shop again: primary domain, locales, and the owner's address for email |
 //!
 //! Every branch is idempotent: running an event twice, or two events for one shop at once,
 //! ends in the same state.
 
-use contracts::WebhookProcess;
-use db::repo::{audit, redact, shopify as shops, webhooks};
+use contracts::{EmailRecipient, EmailSend, EmailTemplate, UninstallExportInput, WebhookProcess};
+use db::repo::{audit, email as contacts, jobs as job_repo, redact, shopify as shops, webhooks};
 use domain::{ActorKind, ShopId, TenantId};
-use queue::{ClaimedJob, Failure};
+use queue::{ClaimedJob, Failure, NewJob};
 use serde_json::{Value, json};
+use time::format_description::well_known::Rfc3339;
+use time::{Duration, OffsetDateTime};
 use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
@@ -199,6 +201,9 @@ async fn uninstalled(
     }
     let mut tx = jobs.db.tenant(tenant).await.map_err(|e| database(&e))?;
     let ended = end_installation(&mut tx, shop).await?;
+    // Queued in the same transaction as the uninstall: both happen or neither does. The jobs
+    // that `end_installation` cancelled are the ones that were already waiting; this one is new.
+    let export = queue_export_email(jobs, &mut tx, event_id, shop, ended.changed).await?;
     record(
         &mut tx,
         event_id,
@@ -206,13 +211,69 @@ async fn uninstalled(
         shop,
         json!({"changed": ended.changed, "jobs_cancelled": ended.cancelled,
                "fixes_failed": ended.fixes_failed,
-               // No mail transport or send job exists yet (audit L8, ADR-087).
-               "export_email": "not_queued_no_sender"}),
+               "export_email": export}),
     )
     .await?;
     tx.commit().await.map_err(|e| database(&e))?;
     info!(%shop, changed = ended.changed, cancelled = ended.cancelled, "app uninstalled");
     Ok(())
+}
+
+/// Shopify sends `shop/redact` 48 hours after an uninstall, and `shop/redact` deletes the data.
+/// The export link is promised until then (PLAN §19), so the email says so.
+const EXPORT_WINDOW: Duration = Duration::hours(48);
+
+/// Queues the email that gives the shop owner a link to the remediation record before
+/// `shop/redact` deletes it (PLAN §19), and says what happened, as the audit entry's
+/// `export_email`: `queued`, or why not. Nothing here fails the uninstall: an email that cannot
+/// be queued is a gap to read in the audit log, not a reason to keep a shop installed.
+async fn queue_export_email(
+    jobs: &Jobs,
+    tx: &mut db::TenantTx,
+    event_id: Uuid,
+    shop: ShopId,
+    changed: bool,
+) -> Result<&'static str, Failure> {
+    // A repeated webhook for a shop that was already uninstalled must not send a second mail.
+    if !changed {
+        return Ok("not_queued_already_uninstalled");
+    }
+    let Some(origin) = jobs.app_origin.as_deref() else {
+        return Ok("not_queued_no_app_origin");
+    };
+    let Some(contact) = contacts::get_shop_contact(tx, shop)
+        .await
+        .map_err(|e| database(&e))?
+    else {
+        return Ok("not_queued_no_contact");
+    };
+    let delete_at = (OffsetDateTime::now_utc() + EXPORT_WINDOW)
+        .replace_nanosecond(0)
+        .ok()
+        .and_then(|at| at.format(&Rfc3339).ok())
+        .ok_or_else(|| failure(false, "time_format", "the deletion time could not be written"))?;
+    let message = EmailSend {
+        template: EmailTemplate::UninstallExport,
+        recipient: EmailRecipient::ShopOwner { shop_id: shop.as_uuid() },
+        input: UninstallExportInput {
+            store_name: contact.store_name,
+            export_url: format!("{origin}/app/log"),
+            delete_at,
+            locale: contact.locale,
+        }
+        .into_map(),
+        message_key: format!("uninstall-export:{event_id}"),
+    };
+    let payload = serde_json::to_value(&message)
+        .map_err(|e| failure(false, "payload_invalid", e.to_string()))?;
+    job_repo::enqueue(
+        tx,
+        NewJob::new(EmailSend::QUEUE, EmailSend::SCHEMA, payload)
+            .idempotency_key(message.idempotency_key()),
+    )
+    .await
+    .map_err(|e| database(&e))?;
+    Ok("queued")
 }
 
 /// `shop/redact`. Shopify sends it 48 hours after an uninstall, but the topic header and the
@@ -318,6 +379,35 @@ async fn shop_update(
     )
     .await
     .map_err(|e| database(&e))?;
-    record(&mut tx, event_id, "shopify.shop_updated", shop, json!({})).await?;
+    let contact = store_contact(&mut tx, shop, &info).await?;
+    record(
+        &mut tx,
+        event_id,
+        "shopify.shop_updated",
+        shop,
+        json!({"contact": contact}),
+    )
+    .await?;
     tx.commit().await.map_err(|e| database(&e))
+}
+
+/// Keeps the shop owner's address and the store's name for the emails Rampsmith sends about the
+/// shop (ADR-272), and says what happened without naming the address.
+pub(super) async fn store_contact(
+    tx: &mut db::TenantTx,
+    shop: ShopId,
+    info: &shopify_admin::ShopInfo,
+) -> Result<&'static str, Failure> {
+    let Some(address) = info.email.as_ref() else {
+        return Ok("none_reported");
+    };
+    let locale = info
+        .locales
+        .iter()
+        .find(|l| l.primary)
+        .map(|l| l.locale.as_str());
+    let stored = contacts::put_shop_contact(tx, shop, address.as_str(), &info.name, locale)
+        .await
+        .map_err(|e| database(&e))?;
+    Ok(if stored { "stored" } else { "unusable" })
 }

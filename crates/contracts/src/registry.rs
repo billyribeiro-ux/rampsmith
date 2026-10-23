@@ -2,6 +2,7 @@
 
 use schemars::{Schema, schema_for};
 
+use crate::email::EmailSend;
 use crate::job::{JobError, ScanPage, ShopifyTokenRefresh};
 use crate::pipeline::{
     AiAltText, AuditData, ScanFinalize, ScanPageV2, ScanPlan, ShopifyApplyDataFix,
@@ -29,6 +30,10 @@ pub fn schemas() -> Vec<NamedSchema> {
         NamedSchema {
             name: "audit-data",
             schema: schema_for!(AuditData),
+        },
+        NamedSchema {
+            name: "email-send",
+            schema: schema_for!(EmailSend),
         },
         NamedSchema {
             name: "job-error",

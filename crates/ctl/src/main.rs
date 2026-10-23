@@ -83,7 +83,8 @@ async fn run(config: Config) -> anyhow::Result<()> {
             Duration::from_secs(20),
         )
         .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
-    );
+    )
+    .with_app_origin(config.app_origin.clone());
 
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {
         let _ = rx.wait_for(|stop| *stop).await;

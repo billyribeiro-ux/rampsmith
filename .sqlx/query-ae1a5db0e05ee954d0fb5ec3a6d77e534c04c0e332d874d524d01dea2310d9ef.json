@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into email_suppressions (tenant_id, address_hash, reason)\n           values ($1, email_address_hash($1, $2), $3)\n           on conflict (tenant_id, address_hash) do update set reason = excluded.reason",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ae1a5db0e05ee954d0fb5ec3a6d77e534c04c0e332d874d524d01dea2310d9ef"
+}

@@ -99,6 +99,15 @@ function verifySignature(
     );
   if (match === null) return 'IncompleteSignature';
   const [, accessKeyId, day, region, service, signedList, signature] = match;
+  if (
+    accessKeyId === undefined ||
+    day === undefined ||
+    region === undefined ||
+    service === undefined ||
+    signedList === undefined
+  ) {
+    return 'IncompleteSignature';
+  }
   if (accessKeyId !== options.accessKeyId) return 'UnrecognizedClientException';
   if (region !== options.region || service !== 'ses') return 'InvalidSignatureException';
   const amzDate = header(request, 'x-amz-date');

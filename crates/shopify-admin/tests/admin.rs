@@ -316,6 +316,15 @@ async fn a_throttled_call_waits_and_runs_again() {
     answer(&server, "RampsmithShop", fixture("shop")).await;
     let shop = client(&server).shop().await.unwrap();
     assert_eq!(shop.name, "Super Toys");
+    assert_eq!(
+        shop.email.as_ref().map(shopify_admin::OwnerEmail::as_str),
+        Some("Owner@SuperToys.example")
+    );
+    // Debug output never shows the owner's address.
+    assert!(
+        !format!("{shop:?}").to_lowercase().contains("owner@"),
+        "Debug must not show the owner's address"
+    );
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
 
