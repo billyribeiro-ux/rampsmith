@@ -488,12 +488,12 @@ async fn the_retention_sweep_removes_old_store_data_and_ends_and_deletes_free_sc
                 ('00000000-0000-7000-8000-0000000000b2', '00000000-0000-7000-8000-0000000000a1',
                  '00000000-0000-7000-8000-0000000000a3', '00000000-0000-7000-8000-0000000000a2',
                  'products', 1, '{}', now() - interval '1 day')",
-        "insert into free_scans (id, domain, origin, ip_hash, status, created_at)
-         values ('00000000-0000-7000-8000-0000000000c1', 'stuck.example.com',
+        "insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status, created_at)
+         values ('00000000-0000-7000-8000-0000000000c1', 'stuck.example.com', 'stuck.example.com',
                  'https://stuck.example.com/', '\\x0101010101010101010101010101010101010101010101010101010101010101',
                  'running', now() - interval '11 minutes')",
-        "insert into free_scans (id, domain, origin, ip_hash, status, created_at, expires_at)
-         values ('00000000-0000-7000-8000-0000000000c2', 'old.example.com',
+        "insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status, created_at, expires_at)
+         values ('00000000-0000-7000-8000-0000000000c2', 'old.example.com', 'old.example.com',
                  'https://old.example.com/', '\\x0202020202020202020202020202020202020202020202020202020202020202',
                  'queued', now() - interval '25 hours', now() - interval '1 hour')",
     ] {
@@ -512,6 +512,39 @@ async fn the_retention_sweep_removes_old_store_data_and_ends_and_deletes_free_sc
         "a scan the engine never finished is ended"
     );
     assert_eq!(leader::sweep_retention(&db).await.unwrap(), (0, 0));
+}
+
+/// Audit M3 (ADR-283): a sealed storefront-password copy that is more than an hour old belongs
+/// to a scan that ended by a path that forgot it; the leader's sweep clears it.
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_leader_clears_password_copies_older_than_an_hour(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let owner = opts.clone().connect_with(conn.clone()).await.unwrap();
+    let db = Db::from_pool(worker_pool(opts, conn).await);
+    let tenant = uuid::Uuid::now_v7();
+    let site = uuid::Uuid::now_v7();
+    let (old, fresh) = (uuid::Uuid::now_v7(), uuid::Uuid::now_v7());
+    for statement in [
+        format!("insert into tenants (id, kind) values ('{tenant}', 'shopify_store')"),
+        format!("insert into sites (id, tenant_id, platform, base_url) values ('{site}', '{tenant}', 'shopify', 'https://demo.example/')"),
+        format!("insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version, storefront_password_ct, storefront_password_key_id, created_at)
+                 values ('{old}', '{tenant}', '{site}', 'manual', 'running', 'v', '\\x0102', 'scan-1', now() - interval '2 hours')"),
+        format!("insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version, storefront_password_ct, storefront_password_key_id)
+                 values ('{fresh}', '{tenant}', '{site}', 'manual', 'running', 'v', '\\x0102', 'scan-1')"),
+    ] {
+        sqlx::query(sqlx::AssertSqlSafe(statement)).execute(&owner).await.unwrap();
+    }
+
+    assert_eq!(leader::sweep_scan_passwords(&db).await.unwrap(), 1);
+    let left: Vec<uuid::Uuid> =
+        sqlx::query_scalar("select id from scans where storefront_password_ct is not null")
+            .fetch_all(&owner)
+            .await
+            .unwrap();
+    assert_eq!(left, vec![fresh]);
+    assert_eq!(leader::sweep_scan_passwords(&db).await.unwrap(), 0);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

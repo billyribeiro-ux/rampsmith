@@ -114,7 +114,31 @@ export interface ScanOptions {
   readonly cropSelectors?: readonly string[];
   /** Return the page's link targets, for the free scanner to choose two more pages from. */
   readonly collectLinks?: boolean;
+  /**
+   * The whole page scan's deadline, from the first navigation to the last state. When it passes,
+   * the browser context is closed and the scan throws {@link ScanDeadlineError}, whatever the
+   * page is doing: the navigation timeout bounds only navigation, and a page can replace its
+   * own timers or busy-loop its main thread (audit M2). Default {@link DEFAULT_DEADLINE_MS}.
+   */
+  readonly deadlineMs?: number;
 }
+
+/** A page scan that ran out its overall deadline. The context was closed. */
+export class ScanDeadlineError extends Error {
+  readonly deadlineMs: number;
+
+  constructor(deadlineMs: number) {
+    super(`the page scan did not finish within ${deadlineMs.toString()} ms`);
+    this.name = 'ScanDeadlineError';
+    this.deadlineMs = deadlineMs;
+  }
+}
+
+/**
+ * The overall deadline of one page scan when the caller sets none (audit M2). Under the
+ * page token's 120 seconds (`PAGE_TOKEN_TTL_SECONDS`).
+ */
+export const DEFAULT_DEADLINE_MS = 100_000;
 
 const IMPACTS = new Set<string>(['minor', 'moderate', 'serious', 'critical']);
 const IMPACT_ORDER: Readonly<Record<Impact, number>> = {
@@ -482,8 +506,70 @@ async function linksOf(page: Page): Promise<string[]> {
   );
 }
 
-/** Scans one page. Throws on navigation failure, which the caller retries. */
+/**
+ * Scans one page. Throws on navigation failure, which the caller retries, and throws
+ * {@link ScanDeadlineError} when the scan outlasts `options.deadlineMs` (audit M2): the deadline
+ * is a timer in this process, not in the page, so a page that replaces its timers or never
+ * returns control cannot hold the engine, and the context is closed to end its renderer.
+ */
 export async function scanPage(browser: Browser, options: ScanOptions): Promise<PageScan> {
+  const deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
+  const open: OpenContext = { expired: false };
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      open.expired = true;
+      // Closing the context ends the page and its renderer even while the page's script runs;
+      // the scan below then fails on its next call and unwinds.
+      void closeWithin(open);
+      reject(new ScanDeadlineError(deadlineMs));
+    }, deadlineMs);
+  });
+  const scanning = scanWithin(browser, options, open);
+  // If the deadline wins, the scan's own failure (its page was closed under it) is expected.
+  scanning.catch(() => undefined);
+  try {
+    return await Promise.race([scanning, expired]);
+  } finally {
+    clearTimeout(timer);
+    // A scan that outlived the deadline must not leave its context behind, and a context that
+    // will not close must not hold this call either.
+    await closeWithin(open);
+  }
+}
+
+/** The context in use, and whether the deadline has passed. */
+interface OpenContext {
+  context?: BrowserContext;
+  expired: boolean;
+  /** The one close in progress: Playwright's second `close()` returns before the first ends. */
+  closing?: Promise<void>;
+}
+
+/** How long a context may take to close before the engine stops waiting for it. */
+const CLOSE_GRACE_MS = 5_000;
+
+function closeWithin(open: OpenContext): Promise<void> {
+  const { context } = open;
+  if (context === undefined) return Promise.resolve();
+  open.closing ??= (async () => {
+    let grace: NodeJS.Timeout | undefined;
+    await Promise.race([
+      context.close().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        grace = setTimeout(resolve, CLOSE_GRACE_MS);
+      }),
+    ]);
+    clearTimeout(grace);
+  })();
+  return open.closing;
+}
+
+async function scanWithin(
+  browser: Browser,
+  options: ScanOptions,
+  open: OpenContext,
+): Promise<PageScan> {
   // Through egress, loopback is only reachable if Chromium proxies it (audit L2).
   if (options.proxy !== undefined) assertLoopbackProxied();
   const started = performance.now();
@@ -494,8 +580,8 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
   const requested: PageState[] = [...new Set<PageState>(options.states ?? ['default'])].sort(
     (a, b) => Number(b === 'default') - Number(a === 'default'),
   );
-  const open = (): Promise<BrowserContext> =>
-    browser.newContext({
+  const newContext = async (): Promise<BrowserContext> => {
+    const created = await browser.newContext({
       viewport: VIEWPORT_SIZES[options.viewport ?? 'desktop'],
       locale: options.locale ?? 'en',
       timezoneId: 'UTC',
@@ -507,7 +593,16 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
         ? {}
         : { proxy: contextProxy(options.proxy.server, options.proxy.token) }),
     });
-  let context = await open();
+    // A context created after the deadline is closed at once and the scan stops.
+    if (open.expired) {
+      await created.close().catch(() => undefined);
+      throw new ScanDeadlineError(options.deadlineMs ?? DEFAULT_DEADLINE_MS);
+    }
+    open.context = created;
+    delete open.closing;
+    return created;
+  };
+  let context = await newContext();
   try {
     let page = await context.newPage();
     const loaded = await load(page, options, timeout, quietMs);
@@ -561,7 +656,7 @@ export async function scanPage(browser: Browser, options: ScanOptions): Promise<
       // guard, an open drawer or an item in the cart behind.
       if (states.length > 0) {
         await context.close().catch(() => undefined);
-        context = await open();
+        context = await newContext();
         page = await context.newPage();
         const reloaded = await load(page, options, timeout, quietMs).catch(() => undefined);
         if (reloaded === undefined || reloaded.blocked !== undefined) {

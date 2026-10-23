@@ -29,6 +29,8 @@ mod support;
 use support::app_login_pool;
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef-service";
+/// The one hostname the test widget is served from (`TURNSTILE_HOSTNAMES`).
+const HOSTNAME: &str = "rampsmith.test";
 const CHALLENGE: &str = "turnstile-token-from-the-widget";
 
 struct Harness {
@@ -48,6 +50,7 @@ async fn harness(opts: PgPoolOptions, conn: PgConnectOptions, configured: bool) 
                 service_token: SecretString::from(TOKEN),
                 turnstile_secret: SecretString::from("turnstile-secret"),
                 turnstile_origin: url::Url::parse(&turnstile.uri()).unwrap(),
+                turnstile_hostnames: vec![HOSTNAME.to_owned()],
             })
             .unwrap(),
         );
@@ -77,10 +80,19 @@ async fn beat(owner: &PgPool, worker: &str, age: &str) {
 }
 
 async fn solved(h: &Harness) {
+    solved_as(h, "free_scan", HOSTNAME).await;
+}
+
+/// Cloudflare's answer for a challenge solved with this `action` on this `hostname`.
+async fn solved_as(h: &Harness, action: &str, hostname: &str) {
     Mock::given(method("POST"))
         .and(path("/turnstile/v0/siteverify"))
         .and(body_string_contains("secret=turnstile-secret"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "success": true })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "success": true,
+            "action": action,
+            "hostname": hostname,
+        })))
         .mount(&h.turnstile)
         .await;
 }
@@ -204,6 +216,9 @@ async fn an_address_that_is_not_a_public_site_never_reaches_cloudflare_or_the_qu
         "intranet",
         "shop.com:8443",
         "ftp://shop.com",
+        // A whole public suffix is not a site (audit L1).
+        "co.uk",
+        "https://myshopify.com/",
         "",
     ] {
         let (status, _, body) = call(&h.state, post(Some(TOKEN), &ask(url, "203.0.113.5"))).await;
@@ -379,7 +394,7 @@ async fn a_finished_scan_answers_the_next_visitor_for_a_day_at_no_cost(
     assert_eq!(count(&h.owner, "jobs").await, 1);
 
     // The cache cost the second visitor nothing: the same address can still use all three.
-    for domain in ["a.example.com", "b.example.com", "c.example.com"] {
+    for domain in ["a-shop.com", "b-shop.com", "c-shop.com"] {
         let (status, _, body) =
             call(&h.state, post(Some(TOKEN), &ask(domain, "198.51.100.9"))).await;
         assert_eq!(status, StatusCode::ACCEPTED, "{domain}: {body}");
@@ -393,7 +408,7 @@ async fn an_address_gets_three_scans_a_day_and_then_neither_cloudflare_nor_the_q
 ) {
     let h = harness(opts, conn, true).await;
     solved(&h).await;
-    for domain in ["a.example.com", "b.example.com", "c.example.com"] {
+    for domain in ["a-shop.com", "b-shop.com", "c-shop.com"] {
         let (status, _, body) =
             call(&h.state, post(Some(TOKEN), &ask(domain, "203.0.113.5"))).await;
         assert_eq!(status, StatusCode::ACCEPTED, "{domain}: {body}");
@@ -401,7 +416,7 @@ async fn an_address_gets_three_scans_a_day_and_then_neither_cloudflare_nor_the_q
     let spent = h.turnstile.received_requests().await.unwrap().len();
     let (status, headers, body) = call(
         &h.state,
-        post(Some(TOKEN), &ask("d.example.com", "203.0.113.5")),
+        post(Some(TOKEN), &ask("d-shop.com", "203.0.113.5")),
     )
     .await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
@@ -421,7 +436,7 @@ async fn an_address_gets_three_scans_a_day_and_then_neither_cloudflare_nor_the_q
     // Another visitor is not held back by this one.
     let (status, _, _) = call(
         &h.state,
-        post(Some(TOKEN), &ask("e.example.com", "198.51.100.9")),
+        post(Some(TOKEN), &ask("e-shop.com", "198.51.100.9")),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED);
@@ -500,6 +515,77 @@ async fn a_result_that_breaks_the_limits_is_not_served(
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
+async fn a_token_from_another_form_or_another_site_is_refused(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    // Solved, but for another form, on another site, or with no action at all (audit L3).
+    for (action, hostname) in [
+        ("login", HOSTNAME),
+        ("", HOSTNAME),
+        ("free_scan", "attacker.example"),
+        ("free_scan", ""),
+    ] {
+        let h = harness(opts.clone(), conn.clone(), true).await;
+        solved_as(&h, action, hostname).await;
+        let (status, _, body) =
+            call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{action}/{hostname}: {body}"
+        );
+        assert_eq!(body["errors"][0]["field"], "turnstile_token");
+        assert_eq!(body["errors"][0]["message"], "failed");
+        assert_eq!(count(&h.owner, "free_scans").await, 0);
+        assert_eq!(count(&h.owner, "jobs").await, 0);
+    }
+    // The hostname is compared without regard to case.
+    let h = harness(opts, conn, true).await;
+    solved_as(&h, "free_scan", "RampSmith.TEST").await;
+    let (status, _, body) =
+        call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_daily_limit_covers_every_subdomain_of_a_registrable_domain(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true).await;
+    solved(&h).await;
+    let (status, _, first) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("a.shop.co.uk", "203.0.113.5")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    finish(
+        &h.owner,
+        first["id"].as_str().unwrap(),
+        "refused",
+        "a.shop.co.uk",
+    )
+    .await;
+    // Another host under the same registrable domain, from another address: the day is spent.
+    let (status, _, body) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("b.shop.co.uk", "198.51.100.9")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(body["errors"][0]["message"], "domain");
+    // A different registrable domain under the same suffix is a different site.
+    let (status, _, body) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("other.co.uk", "198.51.100.9")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
 async fn an_unknown_or_malformed_id_is_not_found(opts: PgPoolOptions, conn: PgConnectOptions) {
     let h = harness(opts, conn, true).await;
     for id in [uuid::Uuid::now_v7().to_string(), "nope".to_owned()] {
@@ -563,4 +649,53 @@ async fn a_fresh_heartbeat_from_any_one_engine_is_enough(
     let (status, _, body) =
         call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+}
+
+/// Audit M1: behind one shared address (or after the day's budget is spent) a cached result is
+/// still served, without a Cloudflare call and without spending anything.
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_cached_result_is_served_before_the_budget_and_before_cloudflare(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true).await;
+    solved(&h).await;
+    let (_, _, first) = call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+    finish(
+        &h.owner,
+        first["id"].as_str().unwrap(),
+        "complete",
+        "shop.com",
+    )
+    .await;
+    for domain in ["a-shop.com", "b-shop.com"] {
+        let (status, _, _) = call(&h.state, post(Some(TOKEN), &ask(domain, "203.0.113.5"))).await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+    }
+    // The address has now used its 3 scans.
+    let (status, _, _) = call(
+        &h.state,
+        post(Some(TOKEN), &ask("c-shop.com", "203.0.113.5")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    let before = h
+        .turnstile
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .len();
+
+    let (status, _, again) =
+        call(&h.state, post(Some(TOKEN), &ask("shop.com", "203.0.113.5"))).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["cached"], true);
+    assert_eq!(again["id"], first["id"]);
+    let after = h
+        .turnstile
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .len();
+    assert_eq!(before, after, "a cache hit called Cloudflare");
 }

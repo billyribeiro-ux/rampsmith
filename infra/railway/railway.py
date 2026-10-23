@@ -316,6 +316,12 @@ def _web(env: str, inputs: Inputs) -> Any:
         # api, and no Turnstile secret (ADR-267).
         "FREE_SCANNER_BACKEND": "api",
         "FREE_SCAN_SERVICE_TOKEN": shared("FREE_SCAN_SERVICE_TOKEN"),
+        # Behind Railway's edge every request arrives from the edge's own address, so without
+        # these the free scanner's per-address budget is one budget for everyone and Turnstile's
+        # `remoteip` is the edge (audit M1, ADR-281). Railway's documentation names `X-Real-IP`
+        # as the header that carries the client's address and does not document
+        # `X-Forwarded-For`; adapter-node reads the whole value of any other header.
+        "ADDRESS_HEADER": "X-Real-IP",
     }
     return service(
         "web",
@@ -343,6 +349,9 @@ def _api(env: str, inputs: Inputs) -> Any:
         # secret the api verifies the challenge with.
         "FREE_SCAN_SERVICE_TOKEN": shared("FREE_SCAN_SERVICE_TOKEN"),
         "TURNSTILE_SECRET_KEY": shared("TURNSTILE_SECRET_KEY"),
+        # The widget is served by the web service on the app's public host; Cloudflare reports
+        # that hostname and the api refuses a token solved anywhere else (audit L3, ADR-286).
+        "TURNSTILE_HOSTNAMES": inputs.app_host or preserve_existing(),
         "WEBAUTHN_RP_ID": inputs.app_host or preserve_existing(),
         "WEBAUTHN_RP_ORIGIN": (
             f"https://{inputs.app_host}" if inputs.app_host else preserve_existing()

@@ -21,11 +21,22 @@ const IP: [u8; 32] = [7; 32];
 const OTHER_IP: [u8; 32] = [8; 32];
 
 async fn ask(db: &Db, ip: &[u8], domain: &str) -> Uuid {
+    ask_under(db, ip, domain, domain).await
+}
+
+async fn ask_under(db: &Db, ip: &[u8], domain: &str, registrable: &str) -> Uuid {
     let id = Uuid::now_v7();
     let mut tx = db.public().await.unwrap();
-    free_scans::create(&mut tx, id, domain, &format!("https://{domain}/"), ip)
-        .await
-        .unwrap();
+    free_scans::create(
+        &mut tx,
+        id,
+        domain,
+        registrable,
+        &format!("https://{domain}/"),
+        ip,
+    )
+    .await
+    .unwrap();
     free_scans::enqueue(&mut tx, id).await.unwrap();
     tx.commit().await.unwrap();
     id
@@ -254,6 +265,7 @@ async fn concurrent_requests_cannot_both_take_the_last_place(
                 &mut tx,
                 Uuid::now_v7(),
                 domain,
+                domain,
                 "https://x.example.com/",
                 &IP,
             )
@@ -368,4 +380,79 @@ async fn only_a_fresh_heartbeat_from_a_worker_makes_the_scanner_available(
         .execute(&app)
         .await;
     assert!(inserted.is_err(), "the app role inserted a heartbeat");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_daily_count_is_kept_per_registrable_domain(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = Db::from_pool(app_pool(opts, conn).await);
+    ask_under(&db, &IP, "a.shop.com", "shop.com").await;
+    ask_under(&db, &OTHER_IP, "b.shop.com", "shop.com").await;
+    ask_under(&db, &OTHER_IP, "other.com", "other.com").await;
+    let mut tx = db.public().await.unwrap();
+    // Two hosts under shop.com share one count; the cache and the join stay per host.
+    assert_eq!(
+        free_scans::used_by_domain(&mut tx, "shop.com")
+            .await
+            .unwrap()
+            .count,
+        2
+    );
+    assert_eq!(
+        free_scans::used_by_domain(&mut tx, "other.com")
+            .await
+            .unwrap()
+            .count,
+        1
+    );
+    assert!(
+        free_scans::in_flight_for(&mut tx, "a.shop.com")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        free_scans::in_flight_for(&mut tx, "shop.com")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_engine_can_update_only_what_a_run_changes(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let db = Db::from_pool(app_pool(opts.clone(), conn.clone()).await);
+    let worker = worker_pool(opts, conn).await;
+    let id = ask(&db, &IP, "shop.example.com").await;
+
+    // What a run sets.
+    sqlx::query("update free_scans set status = 'running', started_at = now() where id = $1")
+        .bind(id)
+        .execute(&worker)
+        .await
+        .unwrap();
+    finish(&worker, id, "complete").await;
+
+    // Nothing else: not the visitor's hash, the domains, the address or the expiry.
+    for column in [
+        "ip_hash = '\\x0000000000000000000000000000000000000000000000000000000000000000'",
+        "domain = 'other.example.com'",
+        "registrable_domain = 'other.example.com'",
+        "origin = 'https://other.example.com/'",
+        "expires_at = now() + interval '30 days'",
+        "created_at = now()",
+    ] {
+        let sql = format!("update free_scans set {column} where id = $1");
+        let denied = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(id)
+            .execute(&worker)
+            .await;
+        let message = denied.unwrap_err().to_string();
+        assert!(message.contains("permission denied"), "{column}: {message}");
+    }
 }

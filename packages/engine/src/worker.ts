@@ -6,7 +6,7 @@
 import { JobFailure } from '@rampsmith/queue';
 import type postgres from 'postgres';
 import type { Browser } from 'playwright';
-import { signScanToken } from './egress-token.ts';
+import { PAGE_TOKEN_TTL_SECONDS, signScanToken } from './egress-token.ts';
 import { isLastAttempt, parsePayload, requireTenant, type JobHandler } from './jobs/payload.ts';
 import { finalizeWhenComplete } from './pipeline/finalize-trigger.ts';
 import { scanPage, type PageScan, type ScanOptions } from './scan-page.ts';
@@ -131,7 +131,7 @@ export async function scanThroughEgress(deps: EngineDeps, request: PageRequest):
     scan: request.scanId,
     hosts: [request.target.hostname, ...SHOPIFY_CDN_HOSTS],
     budget: deps.budget ?? 400,
-    exp: Math.floor(Date.now() / 1000) + 300,
+    exp: Math.floor(Date.now() / 1000) + PAGE_TOKEN_TTL_SECONDS,
   });
   const password = await deps.storefrontPassword?.(
     request.tenantId,

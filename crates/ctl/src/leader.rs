@@ -120,6 +120,21 @@ pub async fn sweep_retention(db: &Db) -> Result<(i64, i64), DbError> {
     Ok((inputs, free))
 }
 
+/// Clears sealed storefront-password copies more than an hour old (audit M3, ADR-283): a scan
+/// lives minutes, so a copy that old belongs to a scan that ended by a path that forgot it.
+pub async fn sweep_scan_passwords(db: &Db) -> Result<i64, DbError> {
+    let mut tx = db.public().await?;
+    let cleared = db::repo::retention::scan_passwords(&mut tx).await?;
+    tx.commit().await?;
+    if cleared > 0 {
+        warn!(
+            cleared,
+            "cleared storefront-password copies of scans that never ended them"
+        );
+    }
+    Ok(cleared)
+}
+
 /// What [`sweep_webhooks`] found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WebhookSweep {
@@ -220,7 +235,11 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                         if let Err(error) = &retention {
                             warn!(%error, "retention sweep failed; retrying next tick");
                         }
-                        if identity.is_ok() && retention.is_ok() {
+                        let passwords = sweep_scan_passwords(&db).await;
+                        if let Err(error) = &passwords {
+                            warn!(%error, "password-copy sweep failed; retrying next tick");
+                        }
+                        if identity.is_ok() && retention.is_ok() && passwords.is_ok() {
                             sweep_due = Instant::now() + cadence.sweep_every;
                         }
                     }

@@ -149,7 +149,8 @@ rd_repo_newest_migration() {
 # only in schema public: no extension, event trigger, rule, language, cast, operator, aggregate,
 # publication, subscription, foreign server, text-search object or default privilege, and nothing
 # in another schema. (A schema-changing migration that adds a new kind of object must add it
-# here, with a test, in the same change.)
+# here, with a test, in the same change.) A column-level privilege (`grant update (a, b) on t`,
+# audit L2, ADR-285) is an `ACL public COLUMN` entry.
 rd_toc_violations() {
   LC_ALL=C awk '
     /^;/ || /^[[:space:]]*$/ { next }
@@ -168,7 +169,7 @@ rd_toc_violations() {
       if (line ~ /^SEQUENCE (OWNED BY|SET) public [A-Za-z0-9_]+ /) next
       if (line ~ /^DEFAULT public [A-Za-z0-9_]+ [A-Za-z0-9_]+ /) next
       if (line ~ /^ACL - SCHEMA public /) next
-      if (line ~ /^ACL public (TABLE|FUNCTION|SEQUENCE|TYPE|DOMAIN) /) next
+      if (line ~ /^ACL public (TABLE|COLUMN|FUNCTION|SEQUENCE|TYPE|DOMAIN) /) next
       if (line ~ /^COMMENT public /) next
       print $0
     }' "$1"

@@ -17,9 +17,10 @@ import type {
   FreeScanRun,
 } from '@rampsmith/contracts-ts';
 import type postgres from 'postgres';
+import { parse as parseHost } from 'tldts';
 import { fetchTextViaEgress, type TextFetcher, type TextResponse } from './egress-text.ts';
-import { signScanToken } from './egress-token.ts';
-import { isLastAttempt, parsePayload, type JobHandler } from './jobs/payload.ts';
+import { PAGE_TOKEN_TTL_SECONDS, signScanToken } from './egress-token.ts';
+import { isFreeScanResult, isLastAttempt, parsePayload, type JobHandler } from './jobs/payload.ts';
 import { robotsAllows } from './robots.ts';
 import { scanPage, type Occurrence, type PageScan } from './scan-page.ts';
 import { BOT_TOKEN } from './user-agent.ts';
@@ -30,10 +31,17 @@ const MAX_PAGES = 3;
 const MAX_GROUPS = 20;
 const MAX_EXAMPLES = 3;
 const MAX_SNIPPET = 240;
+const MAX_URL_CHARS = 2048;
 /** Connections one page may open through egress. */
 const PAGE_BUDGET = 200;
 /** Navigation budget per page. */
 const PAGE_TIMEOUT_MS = 20_000;
+/** Overall deadline of one page scan, whatever the page does (audit M2). */
+const PAGE_DEADLINE_MS = 45_000;
+/** The whole job's budget: robots.txt and every page. A page is not started with less than
+ * {@link MIN_PAGE_MS} of it left. */
+export const FREE_SCAN_BUDGET_MS = 120_000;
+const MIN_PAGE_MS = 10_000;
 
 type Refusal = 'robots' | 'bot-challenge' | 'unreachable';
 
@@ -42,10 +50,24 @@ function refusalOf(blocked: NonNullable<PageScan['blocked']>): Refusal {
   return blocked === 'storefront_password' ? 'unreachable' : 'bot-challenge';
 }
 
-/** The hosts a free scan of `host` may reach: the site and its subdomains, and Shopify's CDN. */
+/**
+ * Whether `host` is itself a public suffix (`co.uk`, `myshopify.com`, `github.io`), from the
+ * Public Suffix List including its private section (audit L1, ADR-284): no one site owns a name
+ * like that, and `.` + the name would let a scan reach every site beneath it.
+ */
+export function isPublicSuffix(host: string): boolean {
+  const parsed = parseHost(host, { allowPrivateDomains: true });
+  return parsed.hostname !== null && parsed.domain === null && parsed.isIp !== true;
+}
+
+/**
+ * The hosts a free scan of `host` may reach: the site and its subdomains, and Shopify's CDN.
+ * A name that is a public suffix gets no subdomain entry (`.apex`): the api refuses such a name
+ * before a scan exists, and this keeps a bad row from widening the token.
+ */
 export function hostsFor(host: string): string[] {
   const apex = host.startsWith('www.') ? host.slice(4) : host;
-  return [apex, `www.${apex}`, `.${apex}`, ...SHOPIFY_CDN_HOSTS];
+  return [apex, `www.${apex}`, ...(isPublicSuffix(apex) ? [] : [`.${apex}`]), ...SHOPIFY_CDN_HOSTS];
 }
 
 const ASSET = /\.(?:jpe?g|png|gif|webp|avif|svg|ico|pdf|zip|mp4|webm|mp3|css|js|json|xml|txt)$/i;
@@ -75,6 +97,8 @@ export function chooseLinks(home: URL, links: readonly string[], wanted = MAX_PA
       continue;
     }
     if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+    // An address the result could not carry is not worth a page (audit L5).
+    if (`${home.protocol}//${home.host}${url.pathname}`.length > MAX_URL_CHARS) continue;
     if (url.username !== '' || url.password !== '' || url.port !== home.port) continue;
     if (apex(url.hostname.toLowerCase()) !== apex(home.hostname.toLowerCase())) continue;
     const path = url.pathname.replace(/\/+$/, '') || '/';
@@ -165,9 +189,9 @@ export function aggregate(
   const passed = [...run].filter((id) => !failed.has(id) && !undecided.has(id)).length;
   const failures: FreeScanFailure[] = [...groups.entries()]
     .map(([ruleId, group]) => ({
-      rule_id: ruleId,
+      rule_id: ruleId.slice(0, 120),
       title: snippetOf(group.first.help),
-      criterion: group.first.criteria[0] ?? 'WCAG',
+      criterion: (group.first.criteria[0] ?? 'WCAG').slice(0, 120),
       count: group.count,
       examples: group.examples,
     }))
@@ -224,6 +248,10 @@ async function finish(sql: postgres.Sql, id: string, outcome: Outcome | 'failed'
 export interface FreeScanDeps extends EngineDeps {
   /** Test seam: fetches `robots.txt`. Production uses egress. */
   readonly fetchText?: TextFetcher;
+  /** Test seam: the job's overall budget. Default {@link FREE_SCAN_BUDGET_MS}. */
+  readonly budgetMs?: number;
+  /** Test seam: the clock for the budget, in milliseconds. */
+  readonly clock?: () => number;
 }
 
 /**
@@ -251,6 +279,13 @@ export function freeScanHandler(deps: FreeScanDeps): JobHandler {
 
     try {
       const outcome = await run(deps, fetchText, id, row);
+      if (outcome.kind === 'complete' && !isFreeScanResult(outcome.result)) {
+        // Never store what the api would refuse to serve (audit L5). No value in the message.
+        throw new JobFailure('permanent', {
+          code: 'free_scan_result_invalid',
+          message: 'the result does not match its schema',
+        });
+      }
       await finish(deps.sql, id, outcome);
     } catch (error) {
       if (error instanceof JobFailure && error.failure.kind === 'permanent') {
@@ -276,6 +311,9 @@ async function run(
   id: string,
   row: Row,
 ): Promise<Outcome> {
+  const clock = deps.clock ?? Date.now;
+  const startedAt = clock();
+  const remaining = (): number => (deps.budgetMs ?? FREE_SCAN_BUDGET_MS) - (clock() - startedAt);
   const home = new URL(row.origin);
   const hosts = hostsFor(home.hostname);
   const load = (url: URL): URL => deps.rewriteUrl?.(url) ?? url;
@@ -297,7 +335,7 @@ async function run(
       scan: id,
       hosts,
       budget: deps.budget ?? PAGE_BUDGET,
-      exp: Math.floor(Date.now() / 1000) + 300,
+      exp: Math.floor(Date.now() / 1000) + PAGE_TOKEN_TTL_SECONDS,
     });
     return scan(deps.browser, {
       url: load(url).href,
@@ -307,6 +345,8 @@ async function run(
       states: ['default'],
       deep: false,
       timeoutMs: PAGE_TIMEOUT_MS,
+      // A page ends at its own deadline or when the job's budget does, whichever is first.
+      deadlineMs: Math.max(1, Math.min(PAGE_DEADLINE_MS, remaining())),
       collectLinks,
     });
   };
@@ -329,6 +369,8 @@ async function run(
   }
   for (const target of chooseLinks(base, homeScan.links ?? [])) {
     if (verdict(target) !== 'allowed') continue;
+    // Out of budget: the result covers the pages scanned so far and says which they are.
+    if (remaining() < MIN_PAGE_MS) break;
     try {
       const page = await scanOne(target, false);
       if (page.blocked !== undefined) continue;

@@ -19,6 +19,12 @@ export interface ScanToken {
 
 const CONTEXT = 'rampsmith-egress-v1.';
 
+/**
+ * How long a page's egress token lives (PLAN §18: 120 seconds, audit L8). A page scan's deadline
+ * (`DEFAULT_DEADLINE_MS`) is shorter, so a scan never outlives its token.
+ */
+export const PAGE_TOKEN_TTL_SECONDS = 120;
+
 export function signScanToken(secret: string, token: ScanToken): string {
   if (Buffer.byteLength(secret) < 32) {
     throw new Error('EGRESS_TOKEN_SECRET must be at least 32 bytes');

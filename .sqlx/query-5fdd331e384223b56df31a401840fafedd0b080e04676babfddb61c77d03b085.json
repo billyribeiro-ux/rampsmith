@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status)\n           values ($1, $2, $3, $4, $5, 'queued')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5fdd331e384223b56df31a401840fafedd0b080e04676babfddb61c77d03b085"
+}
