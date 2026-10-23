@@ -492,6 +492,21 @@ jobs:
           cli=node_modules/.bin/shopify
           "$cli" version
 
+      - name: The app configuration subscribes to the webhook host (ADR-088)
+        if: steps.inputs.outputs.deploy == 'true'
+        env:
+          SHOPIFY_APP_CONFIG: shopify.app.${{ inputs.environment }}.toml
+          RAMPSMITH_WEBHOOK_HOST: ${{ needs.railway.outputs.webhook-host }}
+        run: |
+          # `shopify app config link` writes shopify.app.<env>.toml without webhook
+          # subscriptions; deploying it would leave the app subscribed to nothing.
+          if [ -z "$RAMPSMITH_WEBHOOK_HOST" ]; then
+            echo "::error title=Webhook host::RAMPSMITH_WEBHOOK_HOST is not set, so the subscription URIs cannot be checked (LAUNCH.md C row 10)."
+            exit 1
+          fi
+          python3 -m unittest discover -s infra/railway/tests -p 'test_shopify_app_config.py' -v
+          echo "| Webhook subscriptions | $SHOPIFY_APP_CONFIG subscribes the five topics to https://$RAMPSMITH_WEBHOOK_HOST/webhooks/shopify |" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy the Shopify app configuration and theme app extension
         if: steps.inputs.outputs.deploy == 'true'
         env:

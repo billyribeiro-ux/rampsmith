@@ -437,7 +437,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 22] = [
+const TENANT_TABLES: [&str; 23] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -461,6 +461,8 @@ const TENANT_TABLES: [&str; 22] = [
     "webhook_events",
     "webhook_digests",
     "shop_billing",
+    // The alt-text job's allowance holds (lane C audit M3); `shop/redact` deletes them.
+    "ai_draft_holds",
 ];
 
 /// The tables ADR-037 added, which `seed_r1` fills with one row per tenant.
@@ -701,6 +703,21 @@ async fn only_the_ctl_role_can_delete_ai_calls_and_only_for_its_own_tenant(
     let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
     let owner = owner_pool(opts.clone(), conn.clone()).await;
     let workers = worker_pool(opts.clone(), conn.clone()).await;
+    // Only the redaction group may run the function: not PUBLIC, not the worker, not the
+    // group that migration 20261105000004 created under ctl's login name (ADR-089).
+    let (public, worker, old_ctl, redactor): (bool, bool, bool, bool) = sqlx::query_as(
+        "select has_function_privilege('public', 'redact_ai_calls()', 'execute'),
+                has_function_privilege('rampsmith_worker', 'redact_ai_calls()', 'execute'),
+                has_function_privilege('rampsmith_ctl', 'redact_ai_calls()', 'execute'),
+                has_function_privilege('rampsmith_redactor', 'redact_ai_calls()', 'execute')",
+    )
+    .fetch_one(&owner)
+    .await
+    .unwrap();
+    assert_eq!(
+        (public, worker, old_ctl, redactor),
+        (false, false, false, true)
+    );
     for statement in ["delete from ai_calls", "select redact_ai_calls()"] {
         let mut tx = workers.begin().await.unwrap();
         sqlx::query("select set_config('app.tenant_id', $1, true)")

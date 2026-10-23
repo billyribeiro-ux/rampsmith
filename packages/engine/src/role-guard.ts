@@ -22,6 +22,7 @@ interface RoleFacts {
   readonly login_super: boolean | null;
   readonly login_bypass: boolean | null;
   readonly member: boolean;
+  readonly can_redact: boolean;
   readonly owned: readonly string[];
 }
 
@@ -51,6 +52,10 @@ export async function checkWorkerRole(
                 from pg_roles r where r.rolname = ${workerRole}),
              false) as member,
            coalesce(
+             has_function_privilege(
+               current_user, to_regprocedure('public.redact_ai_calls()'), 'execute'),
+             false) as can_redact,
+           coalesce(
              (select array_agg(c.relname::text order by c.relname)
                 from pg_class c
                 join pg_namespace n on n.oid = c.relnamespace
@@ -77,6 +82,15 @@ export async function checkWorkerRole(
   }
   if (!facts.member) {
     reasons.push(`it is not a member of ${workerRole}, or does not inherit its privileges`);
+  }
+  // Only ctl deletes a redacted shop's AI call records (through redact_ai_calls()). The engine
+  // handles merchant-controlled pages, so it must not be able to delete the cost record
+  // (ADR-037, ADR-089).
+  if (facts.can_redact) {
+    reasons.push(
+      "it may execute redact_ai_calls(), which only ctl's login may (it is a member of " +
+        'rampsmith_redactor)',
+    );
   }
   return reasons;
 }

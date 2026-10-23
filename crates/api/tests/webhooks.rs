@@ -88,7 +88,8 @@ fn body_for(topic: &str) -> Value {
         "shop/redact" => json!({"shop_id": 954_889, "shop_domain": SHOP}),
         "customers/data_request" => json!({
             "shop_id": 954_889, "shop_domain": SHOP,
-            "customer": {"id": 191_167}, "data_request": {"id": 9999}
+            "customer": {"id": 191_167}, "orders_requested": [299_938],
+            "data_request": {"id": 9999}
         }),
         "customers/redact" => json!({
             "shop_id": 954_889, "shop_domain": SHOP,
@@ -271,8 +272,11 @@ async fn repeats_by_delivery_id_and_by_body_digest_are_acknowledged_not_processe
     assert_eq!(events(&f.owner).await, 1);
     assert_eq!(process_jobs(&f.owner).await, 1);
 
-    // A different body is a new event; the same body under another topic is a replay too
-    // (the topic header is unsigned, audit H1).
+    // A different body is a new event. So is the same body under another non-compliance topic:
+    // `shop/update` and `app/uninstalled` both carry the shop object, and an uninstall that
+    // follows an identical shop/update must not be dropped as its replay (re-audit L-1). The
+    // compliance topics, which a relabelled body could attack, share one claim (db test
+    // `compliance_topics_share_one_replay_claim`).
     let changed = Delivery::signed("shop/update", "w-3", &named(2));
     assert_eq!(
         send(&f.router, changed.request("/webhooks/shopify"))
@@ -287,8 +291,17 @@ async fn repeats_by_delivery_id_and_by_body_digest_are_acknowledged_not_processe
             .0,
         StatusCode::OK
     );
-    assert_eq!(events(&f.owner).await, 2);
-    assert_eq!(process_jobs(&f.owner).await, 2);
+    assert_eq!(events(&f.owner).await, 3);
+    assert_eq!(process_jobs(&f.owner).await, 3);
+    // The uninstall is a replay of itself, though, under any delivery id.
+    let uninstall_again = Delivery::signed("app/uninstalled", "w-6", &body);
+    assert_eq!(
+        send(&f.router, uninstall_again.request("/webhooks/shopify"))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(events(&f.owner).await, 3);
 
     // After the replay window a body is accepted again.
     set_age(&f.owner, 25).await;
@@ -297,7 +310,7 @@ async fn repeats_by_delivery_id_and_by_body_digest_are_acknowledged_not_processe
         send(&f.router, again.request("/webhooks/shopify")).await.0,
         StatusCode::OK
     );
-    assert_eq!(events(&f.owner).await, 3);
+    assert_eq!(events(&f.owner).await, 4);
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
@@ -362,9 +375,23 @@ async fn a_body_that_is_not_shaped_like_its_topic_is_refused(
     let f = fixture(opts, conn).await;
     let uninstall = named(1);
     let request = body_for("customers/data_request");
+    let customer_redact = body_for("customers/redact");
     let redact = body_for("shop/redact");
-    let mut wide_redact = redact.clone();
-    wide_redact["extra"] = json!(1);
+    let mut redact_with_customer = redact.clone();
+    redact_with_customer["customer"] = json!({"id": 1});
+    let mut redact_with_orders = redact.clone();
+    redact_with_orders["orders_to_redact"] = json!([1]);
+    let mut redact_with_shop_object = redact.clone();
+    redact_with_shop_object["myshopify_domain"] = json!(SHOP);
+    let mut redact_without_id = redact.clone();
+    redact_without_id.as_object_mut().unwrap().remove("shop_id");
+    let mut request_without_orders = request.clone();
+    request_without_orders
+        .as_object_mut()
+        .unwrap()
+        .remove("orders_requested");
+    let mut customer_redact_with_request = customer_redact.clone();
+    customer_redact_with_request["data_request"] = json!({"id": 1});
     for (name, topic, body) in [
         // A signed customers/data_request relabelled shop/redact.
         (
@@ -372,17 +399,50 @@ async fn a_body_that_is_not_shaped_like_its_topic_is_refused(
             "shop/redact",
             request.clone(),
         ),
+        // A signed customers/redact relabelled shop/redact.
+        (
+            "customers/redact as shop/redact",
+            "shop/redact",
+            customer_redact.clone(),
+        ),
         // A signed app/uninstalled relabelled shop/redact.
         (
             "uninstalled as shop/redact",
             "shop/redact",
             uninstall.clone(),
         ),
-        ("redact with extra keys", "shop/redact", wide_redact),
+        ("redact with customer", "shop/redact", redact_with_customer),
+        ("redact with orders", "shop/redact", redact_with_orders),
+        (
+            "redact with shop object",
+            "shop/redact",
+            redact_with_shop_object,
+        ),
+        ("redact without shop_id", "shop/redact", redact_without_id),
         (
             "redact as customers/redact",
             "customers/redact",
             redact.clone(),
+        ),
+        (
+            "data_request as customers/redact",
+            "customers/redact",
+            request.clone(),
+        ),
+        (
+            "customers/redact carrying a data request",
+            "customers/redact",
+            customer_redact_with_request,
+        ),
+        (
+            "customers/redact as data_request",
+            "customers/data_request",
+            customer_redact.clone(),
+        ),
+        (
+            "data_request without orders_requested",
+            "customers/data_request",
+            request_without_orders,
         ),
         (
             "redact as app/uninstalled",
@@ -402,6 +462,31 @@ async fn a_body_that_is_not_shaped_like_its_topic_is_refused(
     }
     assert_eq!(events(&f.owner).await, 0);
     assert_eq!(process_jobs(&f.owner).await, 0);
+}
+
+/// Shopify adds fields to payloads without a new version, so unknown keys are tolerated (L-4).
+#[sqlx::test(migrations = "../db/migrations")]
+async fn extra_fields_in_a_documented_payload_are_tolerated(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let f = fixture(opts, conn).await;
+    for (i, topic) in ["shop/redact", "customers/data_request", "customers/redact"]
+        .iter()
+        .enumerate()
+    {
+        let mut body = body_for(topic);
+        body["a_field_shopify_added_later"] = json!({"nested": [1, 2]});
+        let delivery = Delivery::signed(topic, &format!("x-{i}"), &body);
+        assert_eq!(
+            send(&f.router, delivery.request("/webhooks/shopify"))
+                .await
+                .0,
+            StatusCode::OK,
+            "{topic}"
+        );
+    }
+    assert_eq!(events(&f.owner).await, 3);
 }
 
 #[sqlx::test(migrations = "../db/migrations")]

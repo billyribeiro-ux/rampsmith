@@ -30,6 +30,43 @@ pub enum Command {
         #[command(subcommand)]
         action: KeysCommand,
     },
+    /// Operate on a shop's data (ADR-269). Run inside ctl's service, where `DATABASE_URL` is
+    /// ctl's own login.
+    Shops {
+        /// The shop operation.
+        #[command(subcommand)]
+        action: ShopsCommand,
+    },
+}
+
+/// The `rsctl shops` operations.
+#[derive(Debug, Subcommand)]
+pub enum ShopsCommand {
+    /// Complete a shop's redaction after a person confirmed the app is uninstalled, when
+    /// `shop/redact` cannot finish by itself (a frozen or closed store, for weeks).
+    ///
+    /// Shows what it would do unless `--execute` is given. Deletes the shop's data, keeping the
+    /// audit log, and records who confirmed what. Never asks Shopify.
+    Redact(ShopRedactArgs),
+}
+
+/// Options for `rsctl shops redact`.
+#[derive(Debug, Args)]
+pub struct ShopRedactArgs {
+    /// The shop's `*.myshopify.com` domain.
+    #[arg(long, value_name = "DOMAIN")]
+    pub shop: String,
+    /// Who confirmed the uninstall (a name or a handle, not an email address). Kept in the audit
+    /// log.
+    #[arg(long, value_name = "NAME")]
+    pub confirmed_by: String,
+    /// What was checked, for example `Partner Dashboard shows the app uninstalled on 2026-11-02;
+    /// ticket 123`. Kept in the audit log; no personal data.
+    #[arg(long, value_name = "TEXT")]
+    pub evidence: String,
+    /// Do it. Without this the command only shows what it would do.
+    #[arg(long)]
+    pub execute: bool,
 }
 
 /// Options for `rsctl doctor`.

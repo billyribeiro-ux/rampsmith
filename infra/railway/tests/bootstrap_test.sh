@@ -119,6 +119,37 @@ for login in ctl engine; do
     fail "rampsmith_$login cannot read jobs"
 done
 
+echo "6b. only ctl's login may execute redact_ai_calls() (ADR-089)"
+logins=$(as_superuser -c "
+  select string_agg(rolname, ',' order by rolname) from pg_roles
+  where rolcanlogin and rolname like 'rampsmith%'")
+[ "$logins" = "rampsmith_api,rampsmith_ctl,rampsmith_engine,rampsmith_migrator" ] ||
+  fail "unexpected rampsmith login roles (a second login for ctl?): $logins"
+for login in ctl api engine; do
+  want=f
+  [ "$login" = ctl ] && want=t
+  got=$(as_superuser -c "select has_function_privilege('rampsmith_$login', 'public.redact_ai_calls()', 'execute')")
+  [ "$got" = "$want" ] || fail "rampsmith_$login: has_function_privilege on redact_ai_calls() is $got, expected $want"
+done
+[ "$(as_superuser -c "select pg_has_role('rampsmith_ctl', 'rampsmith_redactor', 'member')")" = t ] ||
+  fail "rampsmith_ctl is not a member of rampsmith_redactor"
+[ "$(as_superuser -c "select pg_has_role('rampsmith_engine', 'rampsmith_redactor', 'member')
+  or pg_has_role('rampsmith_api', 'rampsmith_redactor', 'member')")" = f ] ||
+  fail "the engine or the api login is a member of rampsmith_redactor"
+as_login rampsmith_ctl "$RAMPSMITH_DB_PASSWORD_CTL" -c "
+  begin;
+  select set_config('app.tenant_id', '$tenant', true);
+  select redact_ai_calls();
+  commit;" >/dev/null || fail "rampsmith_ctl cannot run redact_ai_calls()"
+if out=$(as_login rampsmith_engine "$RAMPSMITH_DB_PASSWORD_ENGINE" -c "
+  begin;
+  select set_config('app.tenant_id', '$tenant', true);
+  select redact_ai_calls();
+  commit;" 2>&1); then
+  fail "rampsmith_engine ran redact_ai_calls()"
+fi
+grep -q 'permission denied' <<<"$out" || fail "unexpected error for the engine: $out"
+
 echo "7. running bootstrap again rotates the passwords"
 old_api=$RAMPSMITH_DB_PASSWORD_API
 RAMPSMITH_DB_PASSWORD_API=$(hex)

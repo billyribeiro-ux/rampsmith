@@ -22,9 +22,13 @@
 --                       object it creates. Not a superuser, no BYPASSRLS. CREATEROLE because
 --                       migrations create the group roles.
 --   rampsmith_api       login for `api`, member of rampsmith_app.
---   rampsmith_ctl       login for `ctl`, member of rampsmith_worker.
---   rampsmith_engine    login for `engine`, member of rampsmith_worker: as broad as ctl's until
---                       a migration adds a narrower engine role (ADR-183, open item).
+--   rampsmith_ctl       login for `ctl`, member of rampsmith_worker and rampsmith_redactor.
+--   rampsmith_redactor  NOLOGIN group that may execute redact_ai_calls(), the only way to delete
+--                       AI call records (`shop/redact`); only ctl's login is a member, so the api
+--                       and the engine cannot (ADR-089). Do not create another login for ctl.
+--   rampsmith_engine    login for `engine`, member of rampsmith_worker: as broad as ctl's, except
+--                       that it cannot execute redact_ai_calls(), until a migration adds a
+--                       narrower engine role (ADR-183, open item).
 -- None of the service logins is a superuser, owns a table, or has BYPASSRLS, so every
 -- row-level security policy applies to them (ADR-006, crates/db/migrations).
 
@@ -111,6 +115,14 @@ exception
 end
 $$;
 
+do $$
+begin
+  create role rampsmith_redactor nologin;
+exception
+  when duplicate_object or unique_violation then null;
+end
+$$;
+
 -- Logins: create the missing ones, then (re)apply attributes and passwords to all of them.
 select format('create role %I', name)
 from (values ('rampsmith_migrator'), ('rampsmith_api'), ('rampsmith_ctl'), ('rampsmith_engine'))
@@ -138,6 +150,7 @@ from (values
 
 grant rampsmith_app to rampsmith_api;
 grant rampsmith_worker to rampsmith_ctl, rampsmith_engine;
+grant rampsmith_redactor to rampsmith_ctl;
 
 -- The migrator owns the schema, so it can create objects and grant on them.
 select format('grant connect, create, temporary on database %I to rampsmith_migrator',

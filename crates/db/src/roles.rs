@@ -17,8 +17,12 @@ use crate::{Db, DbError};
 pub enum RuntimeRole {
     /// The `api` service: acts for one tenant per transaction (`rampsmith_app`).
     App,
-    /// `ctl` (and the engine): claims jobs across tenants (`rampsmith_worker`).
+    /// A service that claims jobs across tenants (`rampsmith_worker`) and may not delete the AI
+    /// call record: the engine's profile.
     Worker,
+    /// `ctl`: a worker that also deletes a redacted shop's AI call records, through
+    /// `redact_ai_calls()`, by membership of `rampsmith_redactor` (ADR-089).
+    Ctl,
 }
 
 impl RuntimeRole {
@@ -27,8 +31,15 @@ impl RuntimeRole {
     pub const fn group(self) -> &'static str {
         match self {
             Self::App => "rampsmith_app",
-            Self::Worker => "rampsmith_worker",
+            Self::Worker | Self::Ctl => "rampsmith_worker",
         }
+    }
+
+    /// Whether the role must be able to execute `redact_ai_calls()`: `Some(true)` it must,
+    /// `Some(false)` it must not. Only `ctl` redacts; the api and the engine run next to
+    /// merchant-controlled input and may not delete the cost record (ADR-037, ADR-089).
+    const fn redacts(self) -> bool {
+        matches!(self, Self::Ctl)
     }
 
     /// The group role the service must not also belong to. The `jobs` policies are per role
@@ -37,7 +48,7 @@ impl RuntimeRole {
     const fn forbidden(self) -> Option<&'static str> {
         match self {
             Self::App => Some("rampsmith_worker"),
-            Self::Worker => None,
+            Self::Worker | Self::Ctl => None,
         }
     }
 }
@@ -64,6 +75,10 @@ pub enum RoleViolation {
     NotMember(&'static str),
     /// The role belongs to a group role this service must not use.
     AlsoMember(&'static str),
+    /// The role may execute `redact_ai_calls()`, which only `ctl` may.
+    CanRedact,
+    /// The role may not execute `redact_ai_calls()`, so `shop/redact` would fail for ever.
+    CannotRedact,
 }
 
 impl fmt::Display for RoleViolation {
@@ -87,6 +102,14 @@ impl fmt::Display for RoleViolation {
                 )
             }
             Self::AlsoMember(group) => write!(f, "the role must not be a member of {group}"),
+            Self::CanRedact => f.write_str(
+                "the role may execute redact_ai_calls(), which only ctl's login may \
+                 (it must not be a member of rampsmith_redactor)",
+            ),
+            Self::CannotRedact => f.write_str(
+                "the role may not execute redact_ai_calls(), so a shop could never be redacted \
+                 (ctl's login must be a member of rampsmith_redactor)",
+            ),
         }
     }
 }
@@ -119,7 +142,7 @@ impl Db {
     /// Confirms the pool is connected as a plain `LOGIN` member of `role`'s group role: not a
     /// superuser, without `BYPASSRLS`, owning no relation and not the database, unable to
     /// create objects in `public`, inheriting the group's privileges, and (for the api) not
-    /// also a worker. The session's own login must be as unprivileged as `current_user`.
+    /// also a worker. Only `ctl` may execute `redact_ai_calls()`, and it must. The session's own login must be as unprivileged as `current_user`.
     pub async fn verify_runtime_role(&self, role: RuntimeRole) -> Result<(), RoleError> {
         let row = sqlx::query!(
             r#"select
@@ -141,7 +164,10 @@ impl Db {
                  case when $2::text is not null
                        and exists (select 1 from pg_roles where rolname = $2::text)
                       then pg_has_role(current_user, $2::text::name, 'member')
-                      else false end as "forbidden!"
+                      else false end as "forbidden!",
+                 coalesce(has_function_privilege(
+                            current_user, to_regprocedure('public.redact_ai_calls()'), 'execute'),
+                          false) as "can_redact!"
                from pg_roles cu, pg_roles su
               where cu.rolname = current_user and su.rolname = session_user"#,
             role.group(),
@@ -174,6 +200,11 @@ impl Db {
         flag(!row.member, RoleViolation::NotMember(role.group()));
         if let Some(group) = role.forbidden() {
             flag(row.forbidden, RoleViolation::AlsoMember(group));
+        }
+        if role.redacts() {
+            flag(!row.can_redact, RoleViolation::CannotRedact);
+        } else {
+            flag(row.can_redact, RoleViolation::CanRedact);
         }
         if violations.is_empty() {
             Ok(())

@@ -40,17 +40,39 @@ pub async fn worker_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool 
     .expect("connect as rampsmith_worker")
 }
 
-/// A pool connected as `rampsmith_ctl`: a worker that may also run the redaction function.
+/// The `LOGIN` role the tests use for ctl: a member of `rampsmith_worker` and of
+/// `rampsmith_redactor`, exactly as `rampsmith_ctl` is in production (bootstrap.sql, ADR-089).
+pub const CTL_LOGIN: &str = "rs_test_ctl_login";
+
+/// A pool connected as [`CTL_LOGIN`]: a worker that may also run the redaction function. Roles
+/// are cluster-wide and tests run in parallel, so the login is created once, tolerating a
+/// concurrent creation, and left in place (it owns nothing and its password is public).
 pub async fn ctl_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
-    opts.after_connect(|c, _| {
-        Box::pin(async move {
-            c.execute("set role rampsmith_ctl").await?;
-            Ok(())
-        })
-    })
-    .connect_with(conn)
-    .await
-    .expect("connect as rampsmith_ctl")
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    for attempt in 0..20_u64 {
+        let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "do $$ begin
+               create role {CTL_LOGIN} login password '{TEST_ROLE_PASSWORD}'
+                 in role rampsmith_worker, rampsmith_redactor;
+             exception when duplicate_object or unique_violation then null;
+             end $$"
+        )))
+        .execute(&owner)
+        .await;
+        let ready: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select coalesce((select pg_has_role(rolname, 'rampsmith_worker', 'usage')
+                                     and pg_has_role(rolname, 'rampsmith_redactor', 'usage')
+                                from pg_roles where rolname = '{CTL_LOGIN}'), false)"
+        )))
+        .fetch_one(&owner)
+        .await
+        .unwrap_or(false);
+        if ready {
+            return pool_as(&opts, &conn, CTL_LOGIN).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50 * (attempt + 1))).await;
+    }
+    panic!("could not create the {CTL_LOGIN} test role");
 }
 
 /// Password of the throw-away `LOGIN` roles the tests create. They exist only on the test

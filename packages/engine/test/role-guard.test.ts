@@ -85,6 +85,17 @@ describe('the engine database role guard', () => {
     await expect(assertWorkerRole(app)).rejects.toThrow(/rampsmith_worker/);
   });
 
+  it('refuses a worker that may delete AI call records (ctl is the only one, ADR-089)', async () => {
+    const sql = await login('in role rampsmith_worker, rampsmith_redactor');
+    const reasons = await checkWorkerRole(sql);
+    expect(reasons.join('; ')).toMatch(/redact_ai_calls\(\)/);
+    await expect(assertWorkerRole(sql)).rejects.toThrow(/rampsmith_redactor/);
+    // The same group through another role does not get around the check.
+    const group = await db.createRole('in role rampsmith_redactor', false);
+    const indirect = await login(`in role rampsmith_worker, ${group.name}`);
+    await expect(assertWorkerRole(indirect)).rejects.toThrow(/redact_ai_calls/);
+  });
+
   it('refuses a member that does not inherit the role privileges', async () => {
     const sql = await login('noinherit in role rampsmith_worker');
     await expect(assertWorkerRole(sql)).rejects.toThrow(/rampsmith_worker/);
