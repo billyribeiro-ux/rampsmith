@@ -17,6 +17,7 @@ pub mod apply_data_fix;
 pub(crate) mod data_fix;
 pub mod read_store;
 pub mod revert_data_fix;
+pub mod scan_secret;
 pub mod webhook;
 
 /// The queues this registry serves.
@@ -34,13 +35,27 @@ pub struct Jobs {
     db: Db,
     auth: ShopifyAuth,
     admin: AdminFactory,
+    scan_secrets: Option<scan_secret::ScanSecrets>,
 }
 
 impl Jobs {
     /// Handlers over `db` (connected as `rampsmith_worker`).
     #[must_use]
-    pub const fn new(db: Db, auth: ShopifyAuth, admin: AdminFactory) -> Self {
-        Self { db, auth, admin }
+    pub fn new(db: Db, auth: ShopifyAuth, admin: AdminFactory) -> Self {
+        Self {
+            db,
+            auth,
+            admin,
+            scan_secrets: None,
+        }
+    }
+
+    /// Lets scans of a password-protected store reach the engine (ADR-266). Without it the
+    /// engine reports such a store as blocked.
+    #[must_use]
+    pub fn with_scan_secrets(mut self, secrets: scan_secret::ScanSecrets) -> Self {
+        self.scan_secrets = Some(secrets);
+        self
     }
 
     /// Hands `job` to its queue's handler. The queue is the one the worker claimed from, so a

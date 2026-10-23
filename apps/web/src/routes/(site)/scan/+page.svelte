@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
   import { resolve } from '$app/paths';
+  import { Button } from '@rampsmith/ui';
   import { m } from '#lib/paraglide/messages.js';
   import type { UrlRefusal } from '#lib/server/scanner/url.ts';
   import ScanForm from '#lib/site/ScanForm.svelte';
@@ -47,7 +49,10 @@
     switch (outcome.kind) {
       case 'result':
       case 'not-connected':
+      case 'still-running':
         return undefined;
+      case 'busy':
+        return m.site_scan_err_busy();
       case 'invalid-url':
         return invalidProblem(outcome.reason);
       case 'challenge-failed':
@@ -106,6 +111,24 @@
       <p>
         <a href={resolve('/(site)/scan')} data-sveltekit-reload>{m.site_scan_result_again()}</a>
       </p>
+    {:else if form?.kind === 'still-running'}
+      <div class="site-callout" role="status">
+        <h2 class="callout-title">{m.site_scan_running_title()}</h2>
+        <p>{m.site_scan_running_body()}</p>
+        <form
+          method="POST"
+          action="/scan"
+          use:enhance={() =>
+            async ({ update }) => {
+              await update({ reset: false });
+              focusOutcome();
+            }}
+        >
+          <input type="hidden" name="scan" value={form.id} />
+          <input type="hidden" name="url" value={form.url} />
+          <Button type="submit" variant="primary">{m.site_scan_running_check()}</Button>
+        </form>
+      </div>
     {:else if form?.kind === 'not-connected'}
       <div class="site-callout warning" role="status">
         <h2 class="callout-title">{m.site_scan_not_connected_title()}</h2>

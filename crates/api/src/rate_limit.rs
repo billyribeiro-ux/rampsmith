@@ -238,7 +238,7 @@ pub fn client_address(headers: &HeaderMap) -> Option<IpAddr> {
 }
 
 /// IPv4-mapped IPv6 addresses count as the IPv4 address; other IPv6 addresses as their /64.
-fn normalise(address: IpAddr) -> IpAddr {
+pub(crate) fn normalise(address: IpAddr) -> IpAddr {
     match address {
         IpAddr::V4(_) => address,
         IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or_else(

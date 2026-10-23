@@ -521,7 +521,7 @@ Jobs are rows in PostgreSQL, claimed with `FOR UPDATE SKIP LOCKED` under a lease
 create table jobs (
   id uuid primary key,
   queue text not null,                      -- 'scan.page', 'shopify.apply_data_fix', ...
-  payload_schema text not null,             -- 'scan.page@1'; consumers accept N and N-1
+  payload_schema text not null,             -- 'scan.page@2'; consumers accept N and N-1
   payload jsonb not null,
   tenant_id uuid,
   priority smallint not null default 0,
@@ -926,6 +926,7 @@ One SvelteKit app serves three surfaces: the Shopify embedded admin, a standalon
 - The free scanner honours `robots.txt` for the Rampsmith user agent and passes through the same request-forgery guard as paid scans.
 - Result pages are `noindex` and never public. Rampsmith does not publish anyone's failures.
 - The page states plainly that the check is automated and partial.
+- The scan runs through the api and the engine (ADR-267): the api verifies Turnstile, applies the limits from the database and queues `free_scan.run@1`; the row and its result are deleted after 24 hours.
 
 ### Accessible design system (`packages/ui`)
 

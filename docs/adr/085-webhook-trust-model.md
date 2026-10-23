@@ -51,7 +51,7 @@ deleted a live shop's data (audit H1).
   were bypassed.
 - A genuine `shop/redact` for a shop whose token is still accepted is ignored on purpose; Shopify
   sends it only after the merchant removed the app, at which point the token is dead.
-- Migration `20261105000001` adds `webhook_digests` and drops `webhook_events_body`.
+- Migration `20261105000002` adds `webhook_digests` and drops `webhook_events_body`.
 
 ## Rejected alternatives
 

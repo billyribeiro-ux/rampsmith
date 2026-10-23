@@ -9,7 +9,10 @@
 )]
 
 use contracts::{ShopifyApplyDataFix, ShopifyRevertDataFix};
+use crypto::KeyRing;
+use ctl::jobs::scan_secret::{ScanSecrets, scan_context};
 use queue::Failure;
+use secrecy::ExposeSecret;
 use serde_json::{Value, json};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use uuid::Uuid;
@@ -253,6 +256,66 @@ async fn an_approved_fix_is_written_verified_and_logged_with_who_approved_it(
             .await,
         1
     );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_verification_scan_of_a_protected_store_gets_the_password_too(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    let master = KeyRing::parse("k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8").unwrap();
+    let scan_ring = KeyRing::parse("scan1:Hx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA").unwrap();
+    let site = w.site().await;
+    let sealed = master
+        .seal(
+            b"open-sesame, 12!",
+            format!("sites/storefront_password/{site}").as_bytes(),
+        )
+        .unwrap();
+    let (key_id, bytes) = sealed.into_parts();
+    sqlx::query(
+        "update sites set storefront_password_ct = $1, storefront_password_key_id = $2 where id = $3",
+    )
+    .bind(bytes)
+    .bind(key_id.as_str())
+    .bind(site)
+    .execute(&w.owner)
+    .await
+    .unwrap();
+    let s = seed(&w, "approved", true, None, "A snow globe on a table").await;
+    answer_once(&w, "RampsmithNodeValue", media_node(None, "READY")).await;
+    w.admin_operation("RampsmithSetMediaAlt", fixture("file_update_ok"))
+        .await;
+    w.admin_operation("RampsmithOwner", fixture("owner_product"))
+        .await;
+    let armed = w
+        .jobs
+        .clone()
+        .with_scan_secrets(ScanSecrets::new(master, scan_ring.clone()));
+    armed
+        .dispatch(w.job(
+            ShopifyApplyDataFix::QUEUE,
+            ShopifyApplyDataFix::SCHEMA,
+            json!({"fix_id": s.fix, "shop_id": w.session.shop_id.as_uuid()}),
+        ))
+        .await
+        .unwrap();
+    let (scan, ct, key): (Uuid, Option<Vec<u8>>, Option<String>) = sqlx::query_as(
+        "select id, storefront_password_ct, storefront_password_key_id from scans
+          where trigger = 'verify'",
+    )
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
+    let opened = scan_ring
+        .open_string(
+            &key.unwrap(),
+            &ct.unwrap(),
+            &scan_context(domain::ScanId::from_uuid(scan)),
+        )
+        .unwrap();
+    assert_eq!(opened.expose_secret(), "open-sesame, 12!");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

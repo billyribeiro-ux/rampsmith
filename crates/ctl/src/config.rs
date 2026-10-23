@@ -23,6 +23,10 @@ pub struct Config {
     pub shopify_client_secret: SecretString,
     /// Master keys for envelope encryption (ADR-021).
     pub master_keys: KeyRing,
+    /// The key ring shared with the engine, to seal a storefront password for one scan
+    /// (`RAMPSMITH_SCAN_SECRET_KEYS`, ADR-266). Optional: without it a password-protected
+    /// store is reported as blocked.
+    pub scan_secret_keys: Option<KeyRing>,
     /// Where the health listener binds: `BIND_ADDR`, else `[::]:$PORT`, else `[::]:8080`
     /// (ADR-264). Railway's deploy health check calls `GET /healthz` on `PORT`.
     pub health_bind: SocketAddr,
@@ -80,6 +84,13 @@ impl Config {
                 reason: e.to_string(),
             }
         })?;
+        let scan_secret_keys = get("RAMPSMITH_SCAN_SECRET_KEYS")
+            .map(|spec| KeyRing::parse(&spec))
+            .transpose()
+            .map_err(|e| ConfigError::Invalid {
+                name: "RAMPSMITH_SCAN_SECRET_KEYS",
+                reason: e.to_string(),
+            })?;
         let health_bind = if let Some(addr) = get("BIND_ADDR") {
             addr.trim()
                 .parse()
@@ -105,6 +116,7 @@ impl Config {
             shopify_client_id: require("SHOPIFY_API_KEY")?.trim().to_owned(),
             shopify_client_secret: SecretString::from(require("SHOPIFY_API_SECRET")?),
             master_keys,
+            scan_secret_keys,
             health_bind,
         })
     }
@@ -193,5 +205,23 @@ mod tests {
                 "{name}={value}"
             );
         }
+    }
+
+    #[test]
+    fn the_scan_secret_ring_is_optional_but_never_malformed() {
+        assert!(config(&[]).unwrap().scan_secret_keys.is_none());
+        let ring = config(&[(
+            "RAMPSMITH_SCAN_SECRET_KEYS",
+            "s1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        )])
+        .unwrap();
+        assert_eq!(ring.scan_secret_keys.unwrap().active().as_str(), "s1");
+        assert!(matches!(
+            config(&[("RAMPSMITH_SCAN_SECRET_KEYS", "s1:short")]),
+            Err(ConfigError::Invalid {
+                name: "RAMPSMITH_SCAN_SECRET_KEYS",
+                ..
+            })
+        ));
     }
 }

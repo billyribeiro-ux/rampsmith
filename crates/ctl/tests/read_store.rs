@@ -8,7 +8,10 @@
 )]
 
 use contracts::ShopifyReadStore;
+use crypto::KeyRing;
+use ctl::jobs::scan_secret::{ScanSecrets, scan_context};
 use queue::Failure;
+use secrecy::ExposeSecret;
 use serde_json::{Value, json};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use uuid::Uuid;
@@ -70,6 +73,140 @@ async fn read(w: &World, scan: Uuid) -> Result<(), Failure> {
         json!({"scan_id": scan, "site_id": w.site().await, "shop_id": w.session.shop_id.as_uuid()}),
     );
     w.jobs.dispatch(job).await
+}
+
+async fn read_as(w: &World, jobs: &ctl::jobs::Jobs, scan: Uuid) -> Result<(), Failure> {
+    let job = w.job(
+        ShopifyReadStore::QUEUE,
+        ShopifyReadStore::SCHEMA,
+        json!({"scan_id": scan, "site_id": w.site().await, "shop_id": w.session.shop_id.as_uuid()}),
+    );
+    jobs.dispatch(job).await
+}
+
+const MASTER: &str = "k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+const SCAN_KEYS: &str = "scan1:Hx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA";
+
+/// Saves `password` on the shop's site the way the api does: sealed under the master keys, bound
+/// to the site.
+async fn save_password(w: &World, master: &KeyRing, password: &str) {
+    let site = w.site().await;
+    let sealed = master
+        .seal(
+            password.as_bytes(),
+            format!("sites/storefront_password/{site}").as_bytes(),
+        )
+        .unwrap();
+    let (key_id, bytes) = sealed.into_parts();
+    sqlx::query(
+        "update sites set storefront_password_ct = $1, storefront_password_key_id = $2 where id = $3",
+    )
+    .bind(bytes)
+    .bind(key_id.as_str())
+    .bind(site)
+    .execute(&w.owner)
+    .await
+    .unwrap();
+}
+
+async fn scan_secret(w: &World, scan: Uuid) -> Option<(String, Vec<u8>)> {
+    let row: (Option<Vec<u8>>, Option<String>) = sqlx::query_as(
+        "select storefront_password_ct, storefront_password_key_id from scans where id = $1",
+    )
+    .bind(scan)
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
+    row.0.zip(row.1).map(|(bytes, id)| (id, bytes))
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_protected_stores_password_reaches_the_engine_sealed_for_that_scan_only(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    mount_store(&w).await;
+    let master = KeyRing::parse(MASTER).unwrap();
+    let scan_ring = KeyRing::parse(SCAN_KEYS).unwrap();
+    save_password(&w, &master, "open-sesame, 12!").await;
+    let armed = w
+        .jobs
+        .clone()
+        .with_scan_secrets(ScanSecrets::new(master.clone(), scan_ring.clone()));
+
+    // Not configured: the engine gets nothing and the read still succeeds.
+    let plain = w.scan().await;
+    read(&w, plain).await.unwrap();
+    assert!(scan_secret(&w, plain).await.is_none());
+
+    // Configured: a copy sealed under the scan key ring, bound to this scan.
+    let scan = w.scan().await;
+    read_as(&w, &armed, scan).await.unwrap();
+    let (key_id, bytes) = scan_secret(&w, scan).await.expect("a sealed copy");
+    assert_eq!(key_id, "scan1");
+    let opened = scan_ring
+        .open_string(
+            &key_id,
+            &bytes,
+            &scan_context(domain::ScanId::from_uuid(scan)),
+        )
+        .unwrap();
+    assert_eq!(opened.expose_secret(), "open-sesame, 12!");
+    assert!(
+        !bytes.windows(8).any(|w| w == b"open-ses"),
+        "the plaintext is not in the stored bytes"
+    );
+    // It is bound to the scan, and the master keys do not open it.
+    assert!(
+        scan_ring
+            .open_string(
+                &key_id,
+                &bytes,
+                &scan_context(domain::ScanId::from_uuid(plain))
+            )
+            .is_err()
+    );
+    assert!(master.open_string(&key_id, &bytes, b"x").is_err());
+    // Reading again (a retry) keeps one copy; the log of the run never carries the value.
+    read_as(&w, &armed, scan).await.unwrap();
+    assert!(scan_secret(&w, scan).await.is_some());
+
+    // A failed scan drops it.
+    let mut tx = w.db.tenant(w.session.tenant).await.unwrap();
+    db::repo::scans::fail(
+        &mut tx,
+        domain::ScanId::from_uuid(scan),
+        "store_unreachable",
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert!(scan_secret(&w, scan).await.is_none());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_password_that_cannot_be_opened_or_is_absent_hands_over_nothing_and_the_read_succeeds(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let w = world(opts, conn).await;
+    mount_store(&w).await;
+    let master = KeyRing::parse(MASTER).unwrap();
+    let armed = w
+        .jobs
+        .clone()
+        .with_scan_secrets(ScanSecrets::new(master, KeyRing::parse(SCAN_KEYS).unwrap()));
+    // No saved password.
+    let none = w.scan().await;
+    read_as(&w, &armed, none).await.unwrap();
+    assert!(scan_secret(&w, none).await.is_none());
+    // Sealed under a key the ring no longer holds.
+    let gone = KeyRing::parse("old:CwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSo").unwrap();
+    save_password(&w, &gone, "lost").await;
+    let lost = w.scan().await;
+    read_as(&w, &armed, lost).await.unwrap();
+    assert!(scan_secret(&w, lost).await.is_none());
 }
 
 async fn inputs(w: &World, scan: Uuid, kind: &str) -> Vec<Value> {
@@ -146,13 +283,18 @@ async fn the_store_is_read_into_scan_inputs_and_the_audit_and_plan_are_queued(
             .await,
         1
     );
-    let site: (Option<String>, Vec<String>) =
-        sqlx::query_as("select primary_domain, locales from shopify_shops")
+    let site: (Option<String>, Vec<String>, Option<String>) =
+        sqlx::query_as("select primary_domain, locales, name from shopify_shops")
             .fetch_one(&w.owner)
             .await
             .unwrap();
     assert_eq!(site.0.as_deref(), Some("supertoys.example"));
     assert_eq!(site.1, ["en", "fr"]);
+    assert_eq!(
+        site.2.as_deref(),
+        Some("Super Toys"),
+        "the shop's name is stored for the overview"
+    );
 
     // Reading again (a retry) replaces the batches and queues nothing twice.
     read(&w, scan).await.unwrap();

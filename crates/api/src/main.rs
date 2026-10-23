@@ -106,6 +106,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
             .context("the Partner API client could not be built")?,
         );
     }
+    state = with_free_scan(state, config.free_scan)?;
     api::serve::serve(listener, api::app(state), shutdown_signal())
         .await
         .context("server")?;
@@ -140,4 +141,19 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
+}
+
+/// Opens the free scanner's routes when it is configured; otherwise they answer 503.
+fn with_free_scan(
+    state: AppState,
+    settings: Option<api::free_scan::FreeScanSettings>,
+) -> anyhow::Result<AppState> {
+    let Some(settings) = settings else {
+        warn!("the free scanner is not configured; its routes answer 503");
+        return Ok(state);
+    };
+    Ok(state.with_free_scans(
+        api::free_scan::FreeScans::new(settings)
+            .map_err(|e| anyhow::anyhow!("free scanner: {e}"))?,
+    ))
 }

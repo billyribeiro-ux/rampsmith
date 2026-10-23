@@ -20,11 +20,12 @@ const turnstileOrigin = (value: string | undefined) => {
   return url.origin;
 };
 
-const scannerBackend = (value: string | undefined): 'not-connected' | 'fixture' => {
+const scannerBackend = (value: string | undefined): 'not-connected' | 'fixture' | 'api' => {
   const text = value?.trim() ?? '';
   if (text === '' || text === 'not-connected') return 'not-connected';
   if (text === 'fixture') return 'fixture';
-  throw new Error("FREE_SCANNER_BACKEND must be 'not-connected' or 'fixture'");
+  if (text === 'api') return 'api';
+  throw new Error("FREE_SCANNER_BACKEND must be 'not-connected', 'fixture' or 'api'");
 };
 
 export const variables = defineEnvVars({
@@ -55,8 +56,13 @@ export const variables = defineEnvVars({
   },
   FREE_SCANNER_BACKEND: {
     description:
-      "'not-connected' (the default) until the engine accepts anonymous scans; 'fixture' serves a fixed sample result and exists for the end-to-end tests only (ADR-260)",
+      "'api' runs scans through the api and the engine (ADR-267); 'not-connected' (the default) answers that the scanner is not connected; 'fixture' serves a fixed sample result and exists for the end-to-end tests only (ADR-260)",
     schema: scannerBackend,
+  },
+  FREE_SCAN_SERVICE_TOKEN: {
+    description:
+      "The secret this server presents to the api for the free scanner, the same value as the api's FREE_SCAN_SERVICE_TOKEN (at least 32 characters); required when FREE_SCANNER_BACKEND is 'api' (LAUNCH.md section C, row 12)",
+    schema: optional,
   },
   SERVICE_VERSION: {
     description: 'Reported as service.version, normally the image commit',

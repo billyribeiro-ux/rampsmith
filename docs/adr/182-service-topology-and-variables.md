@@ -99,7 +99,10 @@ argument, so a variable change can never label an old image as a new release.
 | `ANTHROPIC_API_KEY` | engine |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID`, `R2_BUCKET_EVIDENCE` (a token scoped to the evidence bucket only) | api, ctl, engine |
 | `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `EMAIL_FROM` | ctl |
-| `TURNSTILE_SECRET_KEY`, `TURNSTILE_SITE_KEY` | web |
+| `TURNSTILE_SITE_KEY` | web |
+| `TURNSTILE_SECRET_KEY` | api (verifies the challenge before it queues a free scan, ADR-267) |
+| `FREE_SCAN_SERVICE_TOKEN` (32 or more random characters, the same value on both) | api, web |
+| `RAMPSMITH_SCAN_SECRET_KEYS` (a second key ring, never the master ring; ADR-266) | ctl, engine |
 | `EGRESS_TOKEN_SECRET` (new, generated) | engine, egress |
 | `RAMPSMITH_DB_PASSWORD_API`, `_CTL`, `_ENGINE` (new, generated) | api, ctl, engine, each its own |
 | `RAMPSMITH_DB_PASSWORD_MIGRATOR` (new, generated) | api, pre-deploy only (ADR-183) |
