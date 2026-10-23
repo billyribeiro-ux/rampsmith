@@ -5,7 +5,8 @@
  *
  * - `GET /turnstile/v0/api.js`: a script with the explicit-render API (`render`, `reset`,
  *   `remove`) that puts a `cf-turnstile-response` field and a visible status in the container.
- *   Every render and reset issues a new single-use token, `fake-pass-<n>`.
+ *   Every render and reset issues a new single-use token, `fake-pass-<action>-<n>-<random>`, and
+ *   siteverify reports that action, as Cloudflare does.
  * - `POST /turnstile/v0/siteverify`: form data with `secret` and `response`. It answers
  *   `success: true` once per issued token and `timeout-or-duplicate` after that, and it answers
  *   `invalid-input-secret` for any secret but `fake-secret` and `invalid-input-response` for a
@@ -24,7 +25,10 @@ const calls: { secret: string; response: string; remoteip: string | null }[] = [
 const script = `
 (() => {
   let counter = 0;
-  const fresh = () => 'fake-pass-' + (++counter) + '-' + Math.random().toString(36).slice(2, 10);
+  // The token carries the widget's \`action\`, which siteverify reports back as Cloudflare does.
+  const fresh = (options) =>
+    'fake-pass-' + ((options && options.action) || 'none') + '-' + (++counter) + '-' +
+    Math.random().toString(36).slice(2, 10);
   const widgets = new Map();
   const status = (input) => {
     const label = input.parentElement.querySelector('[data-fake-status]');
@@ -40,14 +44,14 @@ const script = `
       container.append(input, label);
       const id = 'fake-' + widgets.size;
       widgets.set(id, { input, options });
-      input.value = fresh();
+      input.value = fresh(options);
       status(input);
       if (options && options.callback) options.callback(input.value);
       return id;
     },
     reset(id) {
       const widget = widgets.get(id);
-      if (widget) { widget.input.value = fresh(); status(widget.input); }
+      if (widget) { widget.input.value = fresh(widget.options); status(widget.input); }
     },
     remove(id) {
       const widget = widgets.get(id);
@@ -96,7 +100,12 @@ createServer((request, response) => {
         reply({ success: false, 'error-codes': ['timeout-or-duplicate'] });
       } else {
         used.add(token);
-        reply({ success: true, hostname: 'localhost', challenge_ts: new Date().toISOString() });
+        reply({
+          success: true,
+          hostname: 'localhost',
+          action: token.split('-')[2] === 'none' ? '' : token.split('-')[2],
+          challenge_ts: new Date().toISOString(),
+        });
       }
     });
     return;

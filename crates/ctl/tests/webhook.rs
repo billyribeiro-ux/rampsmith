@@ -120,6 +120,16 @@ async fn a_real_uninstall_ends_the_shop_cancels_its_jobs_and_deletes_its_tokens(
         .unwrap();
     }
     seed_shop_data(&w).await;
+    // A scan of the shop is queued with a sealed storefront-password copy (audit M3, ADR-283).
+    sqlx::query(
+        "insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version,
+                            storefront_password_ct, storefront_password_key_id)
+         select $1, tenant_id, id, 'manual', 'queued', 'v', '\\x0102', 'scan-1' from sites",
+    )
+    .bind(Uuid::now_v7())
+    .execute(&w.owner)
+    .await
+    .unwrap();
     sqlx::query("update fixes set status = 'approved', applied_at = null, approved_by_ref = '1', approved_at = now()")
         .execute(&w.owner)
         .await
@@ -139,6 +149,18 @@ async fn a_real_uninstall_ends_the_shop_cancels_its_jobs_and_deletes_its_tokens(
         ("failed".to_owned(), Some("shop_uninstalled".to_owned()))
     );
     assert_eq!(w.count("select count(*) from shopify_tokens").await, 0);
+    // The queued scan ended with its sealed password copy.
+    assert_eq!(
+        w.count("select count(*) from scans where status = 'cancelled' and error_code = 'shop_uninstalled' and storefront_password_ct is null")
+            .await,
+        1,
+        "the open scan is cancelled and its copy cleared"
+    );
+    assert_eq!(
+        w.count("select count(*) from scans where storefront_password_ct is not null")
+            .await,
+        0
+    );
     assert_eq!(
         w.count("select count(*) from shopify_shops where uninstalled_at is not null")
             .await,

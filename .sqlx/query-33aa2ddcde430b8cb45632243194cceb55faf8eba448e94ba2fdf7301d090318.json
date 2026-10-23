@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select scan_passwords_sweep() as \"cleared!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cleared!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "33aa2ddcde430b8cb45632243194cceb55faf8eba448e94ba2fdf7301d090318"
+}

@@ -33,7 +33,7 @@ pub struct Config {
     /// without them the app serves each shop's stored plan, Free until one is stored.
     pub partner: Option<PartnerConfig>,
     /// The free scanner (`FREE_SCAN_SERVICE_TOKEN`, `TURNSTILE_SECRET_KEY`, optional
-    /// `TURNSTILE_ORIGIN`; ADR-267). Both secrets or neither: without them the free scanner's
+    /// `TURNSTILE_ORIGIN` and `TURNSTILE_HOSTNAMES`; ADR-267). Both secrets or neither: without them the free scanner's
     /// routes answer 503 and the marketing site's form stays closed.
     pub free_scan: Option<crate::free_scan::FreeScanSettings>,
     /// The keys of the links in email and the app's origin (`EMAIL_LINK_KEYS`, `APP_ORIGIN`;
@@ -231,10 +231,26 @@ fn free_scan_config(
             reason: "must be an http(s) origin such as https://challenges.cloudflare.com"
                 .to_owned(),
         })?;
+    // The widget's hostnames, comma separated; unset checks none (development).
+    let mut hostnames = Vec::new();
+    for name in get("TURNSTILE_HOSTNAMES").unwrap_or_default().split(',') {
+        let name = name.trim().to_ascii_lowercase();
+        if name.is_empty() {
+            continue;
+        }
+        if !is_host_name(&name) {
+            return Err(ConfigError::Invalid {
+                name: "TURNSTILE_HOSTNAMES",
+                reason: "must be comma-separated host names such as rampsmith.com".to_owned(),
+            });
+        }
+        hostnames.push(name);
+    }
     Ok(Some(crate::free_scan::FreeScanSettings {
         service_token: SecretString::from(token.trim().to_owned()),
         turnstile_secret: SecretString::from(secret.trim().to_owned()),
         turnstile_origin: origin,
+        turnstile_hostnames: hostnames,
     }))
 }
 
@@ -498,6 +514,39 @@ mod tests {
             .unwrap_err(),
             ConfigError::Invalid {
                 name: "TURNSTILE_ORIGIN",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn the_widgets_hostnames_are_a_lowercase_list_or_nothing() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        let long = "t".repeat(crate::free_scan::MIN_SERVICE_TOKEN);
+        let with = |hostnames: &str| {
+            config(&[
+                base,
+                ("FREE_SCAN_SERVICE_TOKEN", &long),
+                ("TURNSTILE_SECRET_KEY", "s"),
+                ("TURNSTILE_HOSTNAMES", hostnames),
+            ])
+        };
+        let settings = with(" Rampsmith.com, www.rampsmith.com ,")
+            .unwrap()
+            .free_scan
+            .unwrap();
+        assert_eq!(
+            settings.turnstile_hostnames,
+            ["rampsmith.com", "www.rampsmith.com"]
+        );
+        assert_eq!(
+            with("").unwrap().free_scan.unwrap().turnstile_hostnames,
+            Vec::<String>::new()
+        );
+        assert!(matches!(
+            with("https://rampsmith.com").unwrap_err(),
+            ConfigError::Invalid {
+                name: "TURNSTILE_HOSTNAMES",
                 ..
             }
         ));

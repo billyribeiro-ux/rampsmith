@@ -5,12 +5,13 @@
  * Every queue is built as of R1 (`email.send` is the mailer's, ADR-276). `free_scan.run` serves the marketing site's free scanner for no
  * tenant (ADR-267).
  */
-import { freeScanHandler } from './free-scan.ts';
+import { FREE_SCAN_BUDGET_MS, freeScanHandler } from './free-scan.ts';
 import { altTextHandler } from './jobs/alt-text.ts';
 import { auditDataHandler } from './jobs/audit-data.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
 import type { JobHandler } from './jobs/payload.ts';
 import { scanPlanHandler } from './jobs/plan.ts';
+import { endingScanOnFailure } from './jobs/scan-cleanup.ts';
 import { verifyScanHandler } from './jobs/verify.ts';
 import type { SandboxMode } from './browser.ts';
 import { scanPageHandler, type EngineDeps } from './worker.ts';
@@ -35,6 +36,16 @@ export type EngineQueue = (typeof ENGINE_QUEUES)[number];
  */
 const SANDBOX_ONLY_QUEUES: readonly EngineQueue[] = ['free_scan.run'];
 
+/**
+ * The longest one attempt of a queue may run (audit M2). Each is above what the handler bounds
+ * itself to (a page scan's own deadline, the free scan's budget), so the handler's own failure
+ * handling runs first and this is the backstop for a handler that never returns.
+ */
+export function deadlineMs(queue: EngineQueue): number {
+  if (queue === 'free_scan.run') return FREE_SCAN_BUDGET_MS + 30_000;
+  return queue === 'scan.page' ? 150_000 : 600_000;
+}
+
 /** The queues an engine whose Chromium has `sandbox` serves. */
 export function queuesFor(sandbox: SandboxMode): readonly EngineQueue[] {
   return sandbox === 'on'
@@ -48,13 +59,16 @@ export function queuesFor(sandbox: SandboxMode): readonly EngineQueue[] {
  * SES keys.
  */
 export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
+  // A scan that cannot finish ends with its sealed password copy cleared (audit M3, ADR-283).
+  const ending = (handler: JobHandler, onLastAttempt = true): JobHandler =>
+    endingScanOnFailure(deps.sql, handler, { onLastAttempt });
   return {
-    'scan.plan': scanPlanHandler(deps),
-    'scan.page': scanPageHandler(deps),
-    'scan.finalize': scanFinalizeHandler(deps),
-    'audit.data': auditDataHandler(deps),
+    'scan.plan': ending(scanPlanHandler(deps)),
+    'scan.page': ending(scanPageHandler(deps), false),
+    'scan.finalize': ending(scanFinalizeHandler(deps)),
+    'audit.data': ending(auditDataHandler(deps)),
     'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
-    'verify.scan': verifyScanHandler(deps),
+    'verify.scan': ending(verifyScanHandler(deps)),
     'free_scan.run': freeScanHandler(deps),
   };
 }

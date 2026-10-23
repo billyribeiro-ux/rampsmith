@@ -1053,6 +1053,8 @@ Rampsmith processes store content on the merchant's behalf and holds almost no s
 | Shop owner's email address and store name (`shop_contacts`) | Admin API (`Shop.email`) | Transactional and notification email about the store (ADR-272) | While installed; deleted on `shop/redact`, and by a sweep 30 days after the uninstall if `shop/redact` never arrives. Read by the mailer only; the application role cannot select it |
 | Email delivery records (`email_deliveries`): message key, template, state, SES message id; no address, subject or body | System | Sending each email once (ADR-271) | Deleted on `shop/redact`; swept 90 days after the last change |
 | Email suppression and opt-out lists (`email_suppressions`, `email_opt_outs`): SHA-256 of the tenant id and the address, never the address | Unsubscribe links, SES bounces and complaints | Honouring an unsubscribe, a bounce or a complaint, including after a reinstall | Life of the tenant. The hash is pseudonymous, not anonymous: anyone holding the database can test a guessed address against it |
+| Free-scanner requests: the scanned domain and origin, a keyed hash of the visitor's address (the /64 for IPv6; the address itself is never stored), the scan's status and a bounded result (failure counts and up to three scrubbed examples of 240 characters) | The public scanner (§16) | Daily limits, the 24-hour result cache and the result page | 24 hours, then deleted by `free_scans_sweep()` (ADR-267, ADR-287) |
+| Sealed storefront-password copy for one scan | Merchant's saved password, re-sealed by `ctl` under the scan key ring | Lets the engine open a closed store for that scan | Until the scan ends, and no later than one hour (ADR-266, ADR-283) |
 
 ### Shopify compliance webhooks
 

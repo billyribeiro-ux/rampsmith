@@ -7,11 +7,13 @@ import {
   chooseLinks,
   freeScanHandler,
   hostsFor,
+  isPublicSuffix,
   robotsVerdict,
   summarise,
   type PageSummary,
 } from '../src/free-scan.ts';
 import type { Occurrence, PageScan, ScanOptions } from '../src/scan-page.ts';
+import { isFreeScanResult } from '../src/jobs/payload.ts';
 import { freshDatabase, type TestDatabase } from './db.ts';
 
 function occurrence(ruleId: string, html: string, criteria = ['1.1.1']): Occurrence {
@@ -56,6 +58,34 @@ describe('choosing the pages to scan beside the home page', () => {
     ]);
   });
 
+  it('drops a link whose address would not fit the result (audit L5)', () => {
+    const long = `https://shop.com/pages/${'a'.repeat(2100)}`;
+    const edge = `/pages/${'b'.repeat(2048 - 'https://shop.com/pages/'.length)}`;
+    expect(edge.length + 'https://shop.com'.length).toBe(2048);
+    expect(
+      chooseLinks(home, [long, `https://shop.com${edge}`, `https://shop.com${edge}c`]).map(
+        (u) => u.href.length,
+      ),
+    ).toEqual([2048]);
+  });
+
+  it('checks a result against its schema before it is stored (audit L5)', () => {
+    const ok = {
+      domain: 'shop.com',
+      scanned_at: '2026-10-22T10:00:00Z',
+      pages: ['https://shop.com/'],
+      checks_run: 2,
+      checks_passed: 1,
+      failures: [],
+    };
+    expect(isFreeScanResult(ok)).toBe(true);
+    expect(isFreeScanResult({ ...ok, pages: [`https://shop.com/${'a'.repeat(2048)}`] })).toBe(
+      false,
+    );
+    expect(isFreeScanResult({ ...ok, extra: 1 })).toBe(false);
+    expect(isFreeScanResult({ ...ok, failures: 'none' })).toBe(false);
+  });
+
   it('falls back to a repeated kind, and returns fewer when the page has fewer links', () => {
     expect(
       chooseLinks(home, ['https://shop.com/collections/a', 'https://shop.com/collections/b']).map(
@@ -66,6 +96,18 @@ describe('choosing the pages to scan beside the home page', () => {
       '/about',
     ]);
     expect(chooseLinks(home, [])).toEqual([]);
+  });
+
+  it('never opens a whole public suffix to a scan (audit L1)', () => {
+    for (const suffix of ['co.uk', 'myshopify.com', 'github.io', 'com', 'blogspot.com']) {
+      expect(isPublicSuffix(suffix), suffix).toBe(true);
+      expect(hostsFor(suffix), suffix).not.toContain(`.${suffix}`);
+    }
+    // A name beneath a suffix is a site: its subdomains stay reachable.
+    for (const site of ['shop.co.uk', 'store.myshopify.com', 'me.github.io', 'shop.com']) {
+      expect(isPublicSuffix(site), site).toBe(false);
+      expect(hostsFor(site), site).toContain(`.${site}`);
+    }
   });
 
   it('names the site, its www spelling and its subdomains, and no other host', () => {
@@ -198,8 +240,8 @@ describe('the free_scan.run job', () => {
   async function ask(origin: string, domain: string): Promise<string> {
     const id = uuidv7();
     await db.owner`
-      insert into free_scans (id, domain, origin, ip_hash, status)
-      values (${id}, ${domain}, ${origin}, ${Buffer.alloc(32, 1)}, 'queued')`;
+      insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status)
+      values (${id}, ${domain}, ${domain}, ${origin}, ${Buffer.alloc(32, 1)}, 'queued')`;
     return id;
   }
 
@@ -283,6 +325,65 @@ describe('the free_scan.run job', () => {
     const [finished] = await db.owner<{ finished: boolean }[]>`
       select finished_at is not null as finished from free_scans where id = ${id}`;
     expect(finished?.finished).toBe(true);
+  });
+
+  it('gives each page a deadline inside the job budget and a token that lives 120 seconds (audit M2, L8)', async () => {
+    const id = await ask('https://budget.com/', 'budget.com');
+    const seen: ScanOptions[] = [];
+    const inner = scanned(['https://budget.com/collections/all', 'https://budget.com/pages/about']);
+    let now = 1_000_000;
+    await freeScanHandler({
+      sql,
+      browser: NOT_USED,
+      egress,
+      userAgent: 'RampsmithBot/test',
+      fetchText: allowRobots,
+      budgetMs: 100_000,
+      clock: () => now,
+      scan: (browser, options) => {
+        seen.push(options);
+        // Each page takes 30 seconds of the job's budget.
+        now += 30_000;
+        return inner(browser, options);
+      },
+    })(job(id));
+    // 100 s budget: the home page may take its 45 s cap; after 30 s and 60 s the rest still fits
+    // (70 s and 40 s left) until fewer than 10 s remain.
+    expect(seen.map((s) => s.deadlineMs)).toEqual([45_000, 45_000, 40_000]);
+    for (const options of seen) {
+      const token = options.proxy?.token ?? '';
+      const claims = JSON.parse(
+        Buffer.from(token.split('.')[0] ?? '', 'base64url').toString('utf8'),
+      ) as { exp: number };
+      const ttl = claims.exp - Math.floor(Date.now() / 1000);
+      expect(ttl).toBeGreaterThan(110);
+      expect(ttl).toBeLessThanOrEqual(120);
+    }
+  });
+
+  it('stops starting pages when the job budget is nearly spent, and keeps what it has', async () => {
+    const id = await ask('https://slow.com/', 'slow.com');
+    const seen: ScanOptions[] = [];
+    const inner = scanned(['https://slow.com/collections/all', 'https://slow.com/pages/about']);
+    let now = 0;
+    await freeScanHandler({
+      sql,
+      browser: NOT_USED,
+      egress,
+      userAgent: 'RampsmithBot/test',
+      fetchText: allowRobots,
+      budgetMs: 100_000,
+      clock: () => now,
+      scan: (browser, options) => {
+        seen.push(options);
+        now += 95_000;
+        return inner(browser, options);
+      },
+    })(job(id));
+    expect(seen.length).toBe(1);
+    const stored = await row(id);
+    expect(stored?.status).toBe('complete');
+    expect(stored?.result?.['pages']).toEqual(['https://slow.com/']);
   });
 
   it('refuses, without loading anything, when robots.txt disallows the agent', async () => {

@@ -54,8 +54,9 @@ next to the default action. The status request is now a field (`scan`) of the de
 
 ## Open items
 
-- ctl's re-wrap job (`rewrap.rs`) covers the Shopify tokens only, not `sites.storefront_password_ct`;
-  retiring a master key needs the merchant to enter the password again (ADR-266).
+- (Corrected by the integration audit, L9.) ctl's re-wrap job (`rewrap.rs`) covers the Shopify
+  tokens and `sites.storefront_password_ct` (migration `20261105000003`); this item was stale when
+  written. See `docs/evidence/r1-integration-audit.md`.
 - Free scans block third-party-host styles and scripts (egress allows only the site and the
   Shopify CDN), which can change contrast results on sites that load styles elsewhere.
 - `scan_inputs_sweep` is wired to the leader for the first time here.

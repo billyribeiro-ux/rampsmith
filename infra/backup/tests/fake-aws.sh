@@ -60,7 +60,7 @@ corrupt() {
   flipped=$((original ^ 255))
   octal=$(printf '%03o' "$flipped")
   head -c 100 "$1"
-  printf "\\$octal"
+  printf '%b' "\\0${octal}"
   tail -c +102 "$1"
 }
 

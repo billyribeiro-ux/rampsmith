@@ -85,8 +85,8 @@ async function runScan(): Promise<string> {
   const sql = db.as('rampsmith_worker');
   const id = uuidv7();
   await db.owner`
-    insert into free_scans (id, domain, origin, ip_hash, status)
-    values (${id}, '127.0.0.1', ${origin}, ${Buffer.alloc(32, 3)}, 'queued')`;
+    insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status)
+    values (${id}, '127.0.0.1', '127.0.0.1', ${origin}, ${Buffer.alloc(32, 3)}, 'queued')`;
   const handlers = engineHandlers({
     sql,
     browser,

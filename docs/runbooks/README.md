@@ -26,6 +26,7 @@ something that does not exist says **not built**.
 | [Restore from PITR](restore-from-pitr.md) | Data was damaged or deleted and the database still runs; WAL archiving is failing; the database service or volume is gone but the Railway project exists |
 | [Restore from the logical backup](restore-from-logical-backup.md) | The Railway project, environment or account is lost; PITR is unavailable or suspect; the data needed is older than the PITR window |
 | [Rotate the token master key](rotate-token-master-key.md) | Someone with access to the ring leaves; the ring may have leaked; the yearly rotation |
+| [Rotate the scan secret keys](rotate-scan-secret-keys.md) (added by ADR-289, outside PLAN §22's nine) | Someone with access to the scan ring leaves; the ring may have leaked; the yearly rotation |
 | [Rotate the GitHub App key](rotate-github-app-key.md) | The App's private key or webhook secret may have leaked, or on schedule |
 | [Shopify API version upgrade](shopify-api-version-upgrade.md) | Each quarter (a new stable version at 5 pm UTC on the first day of the quarter); Shopify announces a deprecation; a version is served that was not asked for |
 | [Dead-letter triage](dead-letter-triage.md) | A job died; the dead-job page fires; after any outage, to sweep what it killed |
