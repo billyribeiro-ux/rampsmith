@@ -221,6 +221,21 @@ describe('the first scan', () => {
     expect(ses.requests[before]?.body.Destination.ToAddresses).toEqual([OWNER]);
   });
 
+  it('is dropped, not sent, when the store uninstalled before it went out', async () => {
+    const s = await store();
+    await runScan(s, s.scanId, PRODUCTS);
+    const [job] = await emailJobs(s);
+    if (job === undefined) throw new Error('no job');
+    await db.owner`update shopify_shops set status = 'uninstalled', uninstalled_at = now() where id = ${s.shopId}`;
+    const before = ses.requests.length;
+    await deliver(s, job);
+    expect(ses.requests.length - before).toBe(0);
+    const [row] = await db.owner<{ state: string; error_code: string }[]>`
+      select state, error_code from email_deliveries
+       where tenant_id = ${s.tenantId} and message_key = ${job.payload.message_key}`;
+    expect(row).toEqual({ state: 'suppressed', error_code: 'suppressed_shop_left' });
+  });
+
   it('queues nothing for a store with no contact', async () => {
     const s = await store(false);
     await runScan(s, s.scanId, PRODUCTS);

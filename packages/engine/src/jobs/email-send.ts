@@ -83,7 +83,12 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
         throw permanent('recipient_missing', 'the recipient does not exist for this tenant');
       }
       const ledger = new PgLedger(deps.sql, tenantId, kind);
-      const refusal = refusalFor(category, recipient.suppression, recipient.optOuts);
+      const refusal = refusalFor(
+        category,
+        recipient.suppression,
+        recipient.optOuts,
+        recipient.shopInstalled,
+      );
       if (refusal !== null) {
         await ledger.suppressed(payload.message_key, refusal);
         return;

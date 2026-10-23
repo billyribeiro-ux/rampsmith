@@ -15,6 +15,7 @@ use shopify_auth::{RefreshError, ShopifyAuth};
 
 pub mod apply_data_fix;
 pub(crate) mod data_fix;
+pub(crate) mod email_triggers;
 pub mod read_store;
 pub mod revert_data_fix;
 pub mod scan_secret;
