@@ -11,6 +11,7 @@ import { JobFailure, retryDelayMs } from '@rampsmith/queue';
 import {
   categoryOf,
   guardSender,
+  isSubscribedCategory,
   InputError,
   isEmailKind,
   SendFailure,
@@ -21,7 +22,8 @@ import type postgres from 'postgres';
 import { PgLedger } from '../email/ledger.ts';
 import { resolveRecipient } from '../email/recipient.ts';
 import type { EmailRuntime } from '../email/runtime.ts';
-import { blocks } from '../email/suppression.ts';
+import { subscriptionLinks } from '../email/links.ts';
+import { refusalFor } from '../email/suppression.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
 export interface EmailDeps {
@@ -62,20 +64,48 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
       });
     }
 
+    const category = categoryOf(kind);
+    const subscribed = isSubscribedCategory(category);
+    if (subscribed && runtime.links === undefined) {
+      // The links of a notification need the key ring and the webhook origin (ADR-274).
+      throw new JobFailure('retryable', {
+        code: 'email_not_configured',
+        message: runtime.problems.join('; '),
+      });
+    }
+
     try {
-      const recipient = await resolveRecipient(deps.sql, tenantId, payload.recipient);
+      const recipient = await resolveRecipient(deps.sql, tenantId, payload.recipient, category);
       if (recipient === undefined) {
         throw permanent('recipient_missing', 'the recipient does not exist for this tenant');
       }
       const ledger = new PgLedger(deps.sql, tenantId, kind);
-      if (recipient.suppression !== null && blocks(recipient.suppression, categoryOf(kind))) {
-        await ledger.suppressed(payload.message_key, recipient.suppression);
+      const refusal = refusalFor(category, recipient.suppression, recipient.optOuts);
+      if (refusal !== null) {
+        await ledger.suppressed(payload.message_key, refusal);
         return;
       }
 
+      // Notification and marketing mail carries the recipient's own signed links; whatever the
+      // queued input said about them is replaced (ADR-274).
+      const input =
+        subscribed &&
+        runtime.links !== undefined &&
+        (category === 'notification' || category === 'marketing')
+          ? {
+              ...payload.input,
+              ...subscriptionLinks(runtime.links, {
+                tenantId,
+                shopId: recipient.shopId,
+                addressHash: recipient.addressHash,
+                category,
+              }),
+            }
+          : payload.input;
+
       let email;
       try {
-        email = runtime.renderer.renderUnknown(kind, payload.input);
+        email = runtime.renderer.renderUnknown(kind, input);
       } catch (error) {
         if (error instanceof InputError) {
           // The path names the field; the reason says what is wrong with it. Neither holds the value.

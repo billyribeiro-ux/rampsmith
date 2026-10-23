@@ -21,6 +21,8 @@ pub(super) const READS: &[Var] = &[
     Var::SesAccessKeyId,
     Var::SesSecretAccessKey,
     Var::EmailFrom,
+    // Read when set: the sender needs it for marketing mail only (CAN-SPAM, ADR-191).
+    Var::EmailPostalAddress,
 ];
 
 #[derive(Deserialize)]
@@ -208,8 +210,38 @@ impl Session<'_> {
     }
 }
 
+/// Longest postal address the sender accepts (`packages/email`, `settings.ts`).
+const MAX_POSTAL_ADDRESS: usize = 300;
+
+/// What is wrong with `EMAIL_POSTAL_ADDRESS`, when it is set. Unset is not a fault: only marketing
+/// mail needs it (CAN-SPAM, ADR-191), and R1 sends none.
+fn postal_problem(text: &str) -> Option<String> {
+    let lines = text.lines().filter(|line| !line.trim().is_empty()).count();
+    if text.trim().chars().count() > MAX_POSTAL_ADDRESS {
+        Some(format!(
+            "EMAIL_POSTAL_ADDRESS is longer than {MAX_POSTAL_ADDRESS} characters; the sender refuses it"
+        ))
+    } else if lines < 2 {
+        Some(
+            "EMAIL_POSTAL_ADDRESS should be a street address on at least two lines (street, then city, region, postal code and country)"
+                .to_owned(),
+        )
+    } else {
+        None
+    }
+}
+
 async fn probe(ctx: &Ctx) -> Step<Outcome> {
-    let inputs = gather(ctx, 7, READS)?;
+    let inputs = gather(
+        ctx,
+        7,
+        &[
+            Var::SesRegion,
+            Var::SesAccessKeyId,
+            Var::SesSecretAccessKey,
+            Var::EmailFrom,
+        ],
+    )?;
     let region = inputs.text(Var::SesRegion);
     if !region_ok(region) {
         return Ok(Outcome::fail(
@@ -221,6 +253,11 @@ async fn probe(ctx: &Ctx) -> Step<Outcome> {
             "EMAIL_FROM has no email address (use name@example.com or Name <name@example.com>)",
         ));
     };
+    if let Ok(found) = ctx.vars.gather(7, &[Var::EmailPostalAddress])
+        && let Some(problem) = postal_problem(found.text(Var::EmailPostalAddress))
+    {
+        return Ok(Outcome::fail(problem));
+    }
     let domain = address
         .rsplit_once('@')
         .map_or("", |(_, domain)| domain)
@@ -257,6 +294,17 @@ mod tests {
         assert_eq!(address("Name <nope>"), None);
         assert_eq!(address("two words@example.com"), None);
         assert_eq!(address("a@b"), None);
+    }
+
+    #[test]
+    fn a_postal_address_needs_a_street_and_a_place_and_a_sane_length() {
+        assert_eq!(
+            postal_problem("1 Main St\nSpringfield, EX 00000\nUnited States"),
+            None
+        );
+        assert!(postal_problem("1 Main St, Springfield").is_some());
+        assert!(postal_problem("").is_some());
+        assert!(postal_problem(&format!("a\n{}", "b".repeat(400))).is_some());
     }
 
     #[test]

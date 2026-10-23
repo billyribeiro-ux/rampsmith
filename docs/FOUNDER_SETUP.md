@@ -187,6 +187,7 @@ Values:
 - `SES_ACCESS_KEY_ID` → RW
 - `SES_SECRET_ACCESS_KEY` → RW
 - `EMAIL_FROM`, an address on the verified domain (ask builders if they want a display name) → RW
+- `EMAIL_POSTAL_ADDRESS`, Rampsmith's physical postal address on two or more lines (street, then city, region, postal code and country) → RW. Marketing email must carry it (CAN-SPAM, ADR-191), and the sender refuses to send marketing without it. R1 sends no marketing email, so this can wait; a P.O. box or a registered-agent address is acceptable under CAN-SPAM if it can receive mail. Decide with your attorney which address to publish.
 
 Check: `rsctl doctor --row 7`. It reads the account (out of the sandbox, sending enabled) and the identity (verified for sending) and sends no mail. The test email delivered to you stays a manual step in LAUNCH.md section E.
 
@@ -334,6 +335,8 @@ Values:
 - Sealed values are not copied into PR environments, so builders need a non-sealed test value there.
 
 Two more secrets belong to this input (ADR-266, ADR-267). Generate `RAMPSMITH_SCAN_SECRET_KEYS` with `rsctl keys generate` too, a ring of its own that is never the master ring, and set it, sealed, on `ctl` and `engine` only: ctl re-seals a store's storefront password under it for the length of one scan, and the engine, which never holds the master keys, opens it. Generate `FREE_SCAN_SERVICE_TOKEN` as 32 or more random characters (`openssl rand -base64 36`) and set the same sealed value on `api` and `web`. `rsctl doctor --row 12` checks both when they are set (the ring parses and round-trips and shares no key with the master ring; the token has 32 or more characters). Until they are set the free scanner stays closed, and a password-protected store is reported as blocked.
+
+One more belongs here (ADR-274): `EMAIL_LINK_KEYS`, a third ring from `rsctl keys generate`, never shared with the other two, set, sealed, on `api` and `engine` only. The engine signs the unsubscribe and preferences links in every notification email with it and the api checks them; without it notification email is not sent (the job waits and retries), and the unsubscribe pages answer that they are unavailable. `rsctl doctor --row 12` checks it when set. Rotate it like the others, by adding the new key at the front: links already sent stay valid for 180 days under the old one.
 
 Check: `rsctl doctor --row 12`. It parses the ring and checks that every key seals and opens a test value. It needs no network.
 

@@ -17,6 +17,7 @@ import type {
   Overview,
   ProblemBody,
   ScanSummary,
+  EmailPreferences,
   Settings,
   SettingsUpdate,
   StartedScan,
@@ -83,6 +84,8 @@ export interface AppApi {
   undoFix(id: string): Promise<FixSummary>;
   settings(): Promise<Settings>;
   updateSettings(update: SettingsUpdate): Promise<Settings>;
+  emailPreferences(): Promise<EmailPreferences>;
+  setEmailPreference(category: 'notification', enabled: boolean): Promise<EmailPreferences>;
   statement(): Promise<StatementState>;
   saveStatement(content: StatementContent): Promise<StatementState>;
   previewStatement(content: StatementContent): Promise<StatementPreview>;
@@ -184,6 +187,9 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
     undoFix: (id) => fixAction(id, 'undo'),
     settings: () => json<Settings>(`${BASE}/settings`),
     updateSettings: (update) => json<Settings>(`${BASE}/settings`, write('PUT', update)),
+    emailPreferences: () => json<EmailPreferences>(`${BASE}/email-preferences`),
+    setEmailPreference: (category, enabled) =>
+      json<EmailPreferences>(`${BASE}/email-preferences`, write('PUT', { category, enabled })),
     statement: () => json<StatementState>(`${BASE}/statement`),
     saveStatement: (content) => json<StatementState>(`${BASE}/statement`, write('PUT', content)),
     previewStatement: (content) =>

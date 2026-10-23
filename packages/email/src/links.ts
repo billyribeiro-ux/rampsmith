@@ -14,8 +14,12 @@ export type SafeUrl = string & { readonly [safeUrlBrand]: true };
 /** The merchant's Shopify admin, where the embedded app's deep links live. */
 export const SHOPIFY_ADMIN_ORIGIN = 'https://admin.shopify.com';
 
-/** The places a link may point to. */
-export type OriginName = 'app' | 'site' | 'shopifyAdmin';
+/**
+ * The places a link may point to. `oneClick` is the public listener that takes the RFC 8058
+ * one-click POST: the app's own web server cannot, because SvelteKit refuses a form POST without
+ * an `Origin` header (ADR-274).
+ */
+export type OriginName = 'app' | 'site' | 'shopifyAdmin' | 'oneClick';
 
 export type Origins = Readonly<Record<OriginName, string>>;
 

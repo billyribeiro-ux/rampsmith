@@ -200,6 +200,8 @@ class Inputs:
                 )
             self.images[name] = value
         self.app_host = host(environ, "RAMPSMITH_APP_HOST")
+        # The api's public webhook listener, which also serves the one-click unsubscribe route.
+        self.webhook_host = host(environ, "RAMPSMITH_WEBHOOK_HOST")
 
 
 def _environment(ctx: Any) -> str:
@@ -359,6 +361,10 @@ def _api(env: str, inputs: Inputs) -> Any:
         "GITHUB_APP_ID": shared("GITHUB_APP_ID"),
         "GITHUB_APP_CLIENT_ID": shared("GITHUB_APP_CLIENT_ID"),
         "GITHUB_APP_WEBHOOK_SECRET": shared("GITHUB_APP_WEBHOOK_SECRET"),
+        # Checks the signed links in email (ADR-274); the engine, which mints them, holds the
+        # same ring, and nothing else does.
+        "EMAIL_LINK_KEYS": shared("EMAIL_LINK_KEYS"),
+        "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }
     return service(
@@ -424,6 +430,14 @@ def _engine(env: str, inputs: Inputs) -> Any:
         "SES_ACCESS_KEY_ID": shared("SES_ACCESS_KEY_ID"),
         "SES_SECRET_ACCESS_KEY": shared("SES_SECRET_ACCESS_KEY"),
         "EMAIL_FROM": shared("EMAIL_FROM"),
+        # Required in marketing mail (ADR-191); the engine refuses to send such mail without it.
+        "EMAIL_POSTAL_ADDRESS": shared("EMAIL_POSTAL_ADDRESS"),
+        # Mints the unsubscribe and preferences links (ADR-274), and the address a mail client
+        # POSTs to for RFC 8058 one-click, which must be the api's public webhook host.
+        "EMAIL_LINK_KEYS": shared("EMAIL_LINK_KEYS"),
+        "EMAIL_ONE_CLICK_ORIGIN": (
+            f"https://{inputs.webhook_host}" if inputs.webhook_host else preserve_existing()
+        ),
         "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,
     }

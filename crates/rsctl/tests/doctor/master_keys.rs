@@ -124,3 +124,41 @@ async fn a_short_service_token_fails() {
     let outcome = rig.run("master-keys.round-trip").await;
     assert!(fail(&outcome).contains("shorter than 32 characters"));
 }
+
+#[tokio::test]
+async fn an_unsubscribe_link_ring_must_parse_and_be_separate_from_the_other_rings() {
+    let master = master_ring();
+    let scan = scan_ring();
+    let link = scan_ring();
+    let rig = Rig::new(&[
+        ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+        ("RAMPSMITH_SCAN_SECRET_KEYS", scan.as_str()),
+        ("EMAIL_LINK_KEYS", link.as_str()),
+    ])
+    .await;
+    pass(&rig.run("master-keys.round-trip").await);
+
+    let rig = Rig::new(&[
+        ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+        ("EMAIL_LINK_KEYS", "e1:short"),
+    ])
+    .await;
+    assert!(
+        fail(&rig.run("master-keys.round-trip").await).contains("EMAIL_LINK_KEYS does not parse")
+    );
+
+    for shared in [master.as_str(), scan.as_str()] {
+        let rig = Rig::new(&[
+            ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+            ("RAMPSMITH_SCAN_SECRET_KEYS", scan.as_str()),
+            ("EMAIL_LINK_KEYS", shared),
+        ])
+        .await;
+        let outcome = rig.run("master-keys.round-trip").await;
+        let detail = fail(&outcome);
+        assert!(
+            detail.contains("EMAIL_LINK_KEYS shares a key") && !detail.contains(shared),
+            "{detail}"
+        );
+    }
+}

@@ -9,12 +9,41 @@
   import { planLabel } from '#lib/app/plans.ts';
   import { Resource } from '#lib/app/resource.svelte.ts';
   import { ApiError } from '#lib/app/api.ts';
-  import type { FeatureKey, Settings, SettingsUpdate } from '#lib/app/types.ts';
+  import type { EmailPreferences, FeatureKey, Settings, SettingsUpdate } from '#lib/app/types.ts';
   import ErrorBlock from '#lib/app/components/ErrorBlock.svelte';
   import Loading from '#lib/app/components/Loading.svelte';
 
   const app = getAppContext();
   const res = new Resource<Settings>(() => app.api.settings());
+
+  // The email switch saves on its own, apart from the form: it is a choice, not a draft.
+  let emailPrefs = $state<EmailPreferences | undefined>(undefined);
+  let emailBusy = $state(false);
+  let emailError = $state('');
+
+  async function loadEmail(): Promise<void> {
+    try {
+      emailPrefs = await app.api.emailPreferences();
+    } catch {
+      emailPrefs = undefined;
+    }
+  }
+
+  async function setEmail(enabled: boolean): Promise<void> {
+    emailBusy = true;
+    emailError = '';
+    try {
+      emailPrefs = await app.api.setEmailPreference('notification', enabled);
+      app.announce(m.app_settings_email_saved());
+    } catch (error) {
+      emailError = errorMessage(error instanceof ApiError ? error : asApiError(error));
+      await loadEmail();
+    } finally {
+      emailBusy = false;
+    }
+  }
+
+  const notificationsOn = $derived(emailPrefs?.categories.every((c) => c.enabled) ?? true);
 
   // The form's working copy, in the units the merchant types (dollars, not micro-dollars).
   let weekly = $state(false);
@@ -45,7 +74,7 @@
   }
 
   onMount(async () => {
-    await res.refresh();
+    await Promise.all([res.refresh(), loadEmail()]);
     if (res.data !== undefined) load(res.data);
   });
 
@@ -249,6 +278,28 @@
         </s-section>
       {/if}
     </form>
+
+    {#if emailPrefs !== undefined}
+      <s-section heading={m.app_settings_email_section()}>
+        <s-stack gap="base">
+          <s-switch
+            label={m.app_settings_email_notifications()}
+            checked={notificationsOn}
+            disabled={emailBusy || !emailPrefs.address_known}
+            details={m.app_settings_email_notifications_hint()}
+            onchange={(e: Event) => void setEmail(checkedOf(e))}
+          ></s-switch>
+          {#if !emailPrefs.address_known}
+            <s-text>{m.app_settings_email_no_address()}</s-text>
+          {/if}
+          {#if emailError !== ''}
+            <s-banner tone="critical" heading={m.app_settings_email_failed()}>
+              <s-paragraph>{emailError}</s-paragraph>
+            </s-banner>
+          {/if}
+        </s-stack>
+      </s-section>
+    {/if}
 
     <s-section heading={m.app_settings_plan()}>
       <s-stack gap="base">
