@@ -19,11 +19,22 @@ export {
   type SendProblem,
 } from './render.ts';
 export { InputError } from './schema.ts';
+export { MemoryLedger, withLedger, type IdempotencyLedger, type LedgerClaim } from './ledger.ts';
+export { signRequest, type AwsCredentials, type SigningRequest } from './sigv4.ts';
+export {
+  createSesSender,
+  encodeSubject,
+  failureFor,
+  sesConfigFromEnv,
+  SesConfigError,
+  type SesConfig,
+} from './ses.ts';
 export {
   checkOutbound,
   describeForLog,
   guardSender,
   MemorySender,
+  SendFailure,
   SendRefusedError,
   type EmailSender,
   type OutboundEmail,
