@@ -234,6 +234,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/shopify/code-fixes/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Requests pull requests for the store's open code findings. Rampsmith reads the theme files
+         *     from the chosen repository, makes the fixes, and opens a pull request on a
+         *     `rampsmith/fix-<batch>` branch. It never merges.
+         */
+        post: operations["createCodeFixBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/shopify/code-fixes/connection": {
         parameters: {
             query?: never;
@@ -556,6 +577,31 @@ export interface components {
             /** @description Always `alt_text`. */
             type: string;
         };
+        /** @description A request for pull requests. */
+        BatchDto: {
+            /**
+             * Format: int32
+             * @description The open code findings it looked at, once known.
+             */
+            considered?: number | null;
+            /** @description When it was requested. */
+            created_at: string;
+            /** @description Why it ended without a pull request. */
+            failure_code?: string | null;
+            /**
+             * Format: int32
+             * @description The fixes it made, once known.
+             */
+            fixed?: number | null;
+            /** @description Rampsmith's id for it. */
+            id: string;
+            /** @description `core` or `every`: the recipes the plan included. */
+            recipes: string;
+            /** @description What it left alone, by code. */
+            skipped: components["schemas"]["SkippedDto"][];
+            /** @description `reading`, `patching`, `ready`, `opening`, `opened`, `nothing_to_fix` or `failed`. */
+            status: string;
+        };
         /** @description Completes a ceremony with the browser's answer. */
         CeremonyResponse: {
             /**
@@ -585,11 +631,15 @@ export interface components {
         };
         /** @description The "Code fixes" screen's state. */
         CodeFixesDto: {
+            /** @description The latest requests for pull requests, newest first. */
+            batches: components["schemas"]["BatchDto"][];
             connection?: components["schemas"]["GithubConnectionDto"] | null;
             /** @description Whether the channel is switched on in this deployment (`CODE_FIX_CHANNEL_ENABLED`). */
             enabled: boolean;
             /** @description What the plan allows. */
             plan: components["schemas"]["PlanGateDto"];
+            /** @description The pull requests Rampsmith opened, newest first. */
+            pull_requests: components["schemas"]["PullRequestDto"][];
             /** @description Its repositories, chosen one first. */
             repositories: components["schemas"]["GithubRepositoryDto"][];
         };
@@ -630,6 +680,20 @@ export interface components {
              * @description Findings waiting for a person's review.
              */
             review_queue?: number | null;
+        };
+        /** @description Asks Rampsmith to open pull requests for the store's open code findings. */
+        CreateBatchBody: {
+            /** @description What the person brings for findings that need judgement. */
+            judgements?: components["schemas"]["JudgementBody"][];
+        };
+        /** @description The request that was accepted. */
+        CreateBatchDto: {
+            /** @description Rampsmith's id for it. */
+            id: string;
+            /** @description `core` or `every`: the recipes the plan includes. */
+            recipes: string;
+            /** @description Always `reading`: ctl reads the theme files next. */
+            status: string;
         };
         /** @description A request for a free scan, from the web server. */
         CreateFreeScan: {
@@ -901,6 +965,23 @@ export interface components {
             /** Format: int64 */
             serious: number;
         };
+        /** @description What the person brings for one finding that needs judgement. */
+        JudgementBody: {
+            /** @description Why a decorative image has no text alternative. */
+            decorative_reason?: string | null;
+            /** @description The finding it is for. */
+            finding_id: string;
+            /** @description The `id` to give an element that needs one. */
+            id?: string | null;
+            label?: components["schemas"]["LabelBody"] | null;
+        };
+        /** @description A label the person wrote for a control that has none (a judgement call Rampsmith will not make). */
+        LabelBody: {
+            /** @description The translation key the label is stored under, such as `general.cart`. */
+            key: string;
+            /** @description The label, in the store's default language. */
+            text: string;
+        };
         LinkChange: {
             /** @description `notification` or `marketing`. */
             category: string;
@@ -976,6 +1057,44 @@ export interface components {
          * @enum {string}
          */
         ProblemCode: "bad_request" | "validation_failed" | "unauthenticated" | "forbidden" | "not_found" | "conflict" | "payload_too_large" | "rate_limited" | "internal" | "upstream_failed" | "unavailable";
+        /** @description A pull request Rampsmith opened in the merchant's repository. */
+        PullRequestDto: {
+            /**
+             * Format: int32
+             * @description Lines it changes.
+             */
+            changed_lines: number;
+            /** @description Whether someone added commits to the branch since Rampsmith pushed it. */
+            edited: boolean;
+            /**
+             * Format: int32
+             * @description Files it changes.
+             */
+            files: number;
+            /**
+             * Format: int32
+             * @description Fixes in it.
+             */
+            fix_count: number;
+            /** @description Its page on GitHub. */
+            html_url: string;
+            /** @description Rampsmith's id for it. */
+            id: string;
+            /**
+             * Format: int64
+             * @description The number in the repository.
+             */
+            number: number;
+            /** @description When it was opened. */
+            opened_at: string;
+            /**
+             * Format: int32
+             * @description Which part of a split batch, from 1.
+             */
+            part: number;
+            /** @description `open`, `closed` or `merged`. */
+            state: string;
+        };
         /** @description The process can serve: the database answers and has this build's migrations. */
         Readiness: {
             /**
@@ -1070,6 +1189,19 @@ export interface components {
             domain: string;
             /** @description The shop's name, once `shopify.read_store` has read it; null before the first scan. */
             name?: string | null;
+        };
+        /** @description How many findings of one kind a batch left alone, and why (a code, never finding text). */
+        SkippedDto: {
+            /**
+             * @description `no-recipe`, `plan`, `unmapped`, `needs-review`, `data`, `refused`, `already-fixed`,
+             *     `conflict` or `theme-check`.
+             */
+            code: string;
+            /**
+             * Format: int32
+             * @description How many findings.
+             */
+            count: number;
         };
         StartedScanDto: {
             scan: components["schemas"]["ScanSummaryDto"];
@@ -1617,6 +1749,75 @@ export interface operations {
             };
             /** @description Missing or invalid session token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createCodeFixBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBatchBody"];
+            };
+        };
+        responses: {
+            /** @description The request was accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateBatchDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan does not include pull requests, or no signed-in staff member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The channel is not switched on */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No theme repository is ready, or a request is already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A judgement is not valid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

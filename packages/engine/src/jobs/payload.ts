@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import type {
   AiAltText,
   AuditData,
+  CodeFixPatch,
   EmailSend,
   FreeScanRun,
   ScanFinalize,
@@ -40,6 +41,7 @@ interface Payloads {
   'scan.page@2': ScanPageV2;
   'scan.finalize@1': ScanFinalize;
   'audit.data@1': AuditData;
+  'code_fix.patch@1': CodeFixPatch;
   'ai.alt_text@1': AiAltText;
   'verify.scan@1': VerifyScan;
   'email.send@1': EmailSend;
@@ -53,6 +55,7 @@ const FILES: Readonly<Record<PayloadSchema, string>> = {
   'scan.page@2': 'scan-page-v2',
   'scan.finalize@1': 'scan-finalize',
   'audit.data@1': 'audit-data',
+  'code_fix.patch@1': 'code-fix-patch',
   'ai.alt_text@1': 'ai-alt-text',
   'verify.scan@1': 'verify-scan',
   'email.send@1': 'email-send',

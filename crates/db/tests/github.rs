@@ -13,6 +13,7 @@
 mod support;
 
 use db::Db;
+use db::repo::code_fix;
 use db::repo::github::{
     self, Linked, NewEvent, NewInstallation, Recorded, RepoUpsert, SelectOutcome,
 };
@@ -370,4 +371,244 @@ async fn a_shop_redaction_removes_every_github_row(opts: PgPoolOptions, conn: Pg
                 .unwrap();
         assert_eq!(left, 0, "{table}");
     }
+}
+
+/// A store with an installation and a chosen theme repository; returns the repository's row.
+async fn with_repo(db: &Db, graph: Graph, installation_id: i64, repo_id: i64) -> uuid::Uuid {
+    let mut tx = db.tenant(graph.tenant).await.unwrap();
+    let Linked::Linked(row) =
+        github::link_installation(&mut tx, &installation(graph, installation_id))
+            .await
+            .unwrap()
+    else {
+        panic!("link");
+    };
+    github::sync_repos(&mut tx, row, &[repo(repo_id, "theme", Some(true))], true)
+        .await
+        .unwrap();
+    let id = github::repo_by_github_id(&mut tx, repo_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    github::select_repo(&mut tx, id, "main").await.unwrap();
+    tx.commit().await.unwrap();
+    id
+}
+
+fn new_batch(graph: Graph, repo_row: uuid::Uuid, batch_id: &str) -> code_fix::NewBatch {
+    code_fix::NewBatch {
+        site: graph.site.as_uuid(),
+        repo_row,
+        batch_id: batch_id.to_owned(),
+        base_branch: "main".to_owned(),
+        requested_by: Some("shopify:42".to_owned()),
+        recipes: "core".to_owned(),
+        judgements: serde_json::json!([]),
+    }
+}
+
+#[sqlx::test]
+async fn a_store_has_one_batch_in_flight_and_cannot_touch_another_stores(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (db, _, a, b) = two_stores(opts, conn).await;
+    let repo_a = with_repo(&db, a, 4242, 4_242_000).await;
+    let repo_b = with_repo(&db, b, 5252, 5_252_000).await;
+
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let code_fix::Created::New(first) =
+        code_fix::create_batch(&mut tx, &new_batch(a, repo_a, "one"))
+            .await
+            .unwrap()
+    else {
+        panic!("the first batch is new");
+    };
+    // One at a time: a second request, or the same id again, is not created.
+    for id in ["two", "one"] {
+        assert_eq!(
+            code_fix::create_batch(&mut tx, &new_batch(a, repo_a, id))
+                .await
+                .unwrap(),
+            code_fix::Created::InFlight
+        );
+    }
+    code_fix::add_source_file(
+        &mut tx,
+        first,
+        "layout/theme.liquid",
+        "<html></html>",
+        &"a".repeat(40),
+    )
+    .await
+    .unwrap();
+    assert!(
+        code_fix::files_read(&mut tx, first, &"b".repeat(40))
+            .await
+            .unwrap()
+    );
+    assert!(
+        !code_fix::files_read(&mut tx, first, &"c".repeat(40))
+            .await
+            .unwrap(),
+        "only a batch still reading moves"
+    );
+    assert_eq!(
+        code_fix::batch_files(&mut tx, first).await.unwrap().len(),
+        1
+    );
+    tx.commit().await.unwrap();
+
+    // The other store sees none of it, and cannot move it or use its repository.
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert!(code_fix::batch(&mut tx, first).await.unwrap().is_none());
+    let recent = code_fix::recent_batches(&mut tx, 10).await.unwrap();
+    assert_eq!(recent.len(), 0);
+    let files = code_fix::batch_files(&mut tx, first).await.unwrap();
+    assert_eq!(files.len(), 0);
+    assert!(
+        !code_fix::move_batch(&mut tx, first, "patching", "ready")
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert!(
+        code_fix::create_batch(&mut tx, &new_batch(b, repo_a, "theirs"))
+            .await
+            .is_err(),
+        "a batch cannot name another store's repository"
+    );
+    drop(tx);
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert!(matches!(
+        code_fix::create_batch(&mut tx, &new_batch(b, repo_b, "theirs"))
+            .await
+            .unwrap(),
+        code_fix::Created::New(_)
+    ));
+    tx.commit().await.unwrap();
+
+    // Once the first batch ends, the store can ask again. (Dropping the source is the worker
+    // role's job and is covered with the jobs in `ctl`.)
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    assert!(
+        code_fix::move_batch(&mut tx, first, "patching", "failed")
+            .await
+            .unwrap()
+    );
+    assert!(matches!(
+        code_fix::create_batch(&mut tx, &new_batch(a, repo_a, "three"))
+            .await
+            .unwrap(),
+        code_fix::Created::New(_)
+    ));
+    tx.commit().await.unwrap();
+}
+
+#[sqlx::test]
+async fn a_pull_request_is_found_by_repository_id_and_number_inside_its_own_store(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (db, _, a, b) = two_stores(opts, conn).await;
+    let repo_a = with_repo(&db, a, 4242, 4_242_000).await;
+    with_repo(&db, b, 5252, 5_252_000).await;
+    let new = |repo_id: i64| code_fix::NewPullRequest {
+        repo_row: repo_a,
+        repo_id,
+        number: 7,
+        github_id: Some(99),
+        batch_id: "one".to_owned(),
+        part: 1,
+        head_branch: "rampsmith/fix-one".to_owned(),
+        base_branch: "main".to_owned(),
+        head_sha: "a".repeat(40),
+        pushed_sha: "a".repeat(40),
+        html_url: "https://github.com/octo/theme/pull/7".to_owned(),
+        check_run_id: None,
+        fix_count: 1,
+        files: 1,
+        changed_lines: 2,
+    };
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    let id = code_fix::upsert_pull_request(&mut tx, &new(4_242_000))
+        .await
+        .unwrap();
+    // Recording it again (a re-run after a crash) updates the same row.
+    let again = code_fix::upsert_pull_request(
+        &mut tx,
+        &code_fix::NewPullRequest {
+            head_sha: "b".repeat(40),
+            ..new(4_242_000)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(id, again);
+    code_fix::link_pull_request_fixes(&mut tx, id, &[a.fix.as_uuid()])
+        .await
+        .unwrap();
+    assert_eq!(
+        code_fix::pull_request_fix_ids(&mut tx, id).await.unwrap(),
+        [a.fix.as_uuid()]
+    );
+    // A number alone is not an identity: the repository id has to match too (audit L8).
+    assert!(
+        code_fix::pull_request_by_number(&mut tx, 4_242_000, 7)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        code_fix::pull_request_by_number(&mut tx, 1, 7)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        code_fix::pull_request_by_number(&mut tx, 4_242_000, 8)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        code_fix::open_pull_requests(&mut tx, 4_242_000)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    code_fix::record_pull_request_state(&mut tx, id, "merged", &"c".repeat(40))
+        .await
+        .unwrap();
+    let still_open = code_fix::open_pull_requests(&mut tx, 4_242_000)
+        .await
+        .unwrap();
+    assert_eq!(still_open.len(), 0);
+    let row = code_fix::pull_request(&mut tx, id).await.unwrap().unwrap();
+    assert_eq!(
+        (row.state.as_str(), row.head_sha),
+        ("merged", "c".repeat(40))
+    );
+    assert_eq!(
+        row.pushed_sha,
+        "a".repeat(40),
+        "what Rampsmith pushed is not what GitHub reports"
+    );
+    assert!(row.closed_at.is_some());
+    tx.commit().await.unwrap();
+
+    // The other store finds nothing, by id or by number.
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert!(code_fix::pull_request(&mut tx, id).await.unwrap().is_none());
+    assert!(
+        code_fix::pull_request_by_number(&mut tx, 4_242_000, 7)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let recent_prs = code_fix::recent_pull_requests(&mut tx, 10).await.unwrap();
+    assert_eq!(recent_prs.len(), 0);
 }

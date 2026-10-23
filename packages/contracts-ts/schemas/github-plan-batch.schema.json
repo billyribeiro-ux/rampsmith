@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GithubPlanBatch",
+  "description": "Payload of `github.plan_batch` jobs, schema `github.plan_batch@1`. Runs in `ctl`: reads the\nconnected branch's head and the theme files from the repository (theme directories only,\nthrough the read guards), stores them in `code_fix_files`, and queues `code_fix.patch`.",
+  "type": "object",
+  "properties": {
+    "batch_row": {
+      "description": "The `code_fix_batches.id` to read the files for.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "batch_row"
+  ]
+}

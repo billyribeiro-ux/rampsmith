@@ -4,7 +4,10 @@ use schemars::{Schema, schema_for};
 
 use crate::email::EmailSend;
 use crate::free_scan::{FreeScanResult, FreeScanRun};
-use crate::github::{GithubCheckRepository, GithubProcessEvent, GithubSyncInstallation};
+use crate::github::{
+    CodeFixPatch, GithubCheckRepository, GithubOpenPullRequest, GithubPlanBatch,
+    GithubProcessEvent, GithubSyncInstallation, GithubSyncPullRequest,
+};
 use crate::job::{JobError, ShopifyTokenRefresh};
 use crate::pipeline::{
     AiAltText, AuditData, ScanFinalize, ScanPageV2, ScanPlan, ShopifyApplyDataFix,
@@ -34,6 +37,10 @@ pub fn schemas() -> Vec<NamedSchema> {
             schema: schema_for!(AuditData),
         },
         NamedSchema {
+            name: "code-fix-patch",
+            schema: schema_for!(CodeFixPatch),
+        },
+        NamedSchema {
             name: "email-send",
             schema: schema_for!(EmailSend),
         },
@@ -50,12 +57,24 @@ pub fn schemas() -> Vec<NamedSchema> {
             schema: schema_for!(GithubCheckRepository),
         },
         NamedSchema {
+            name: "github-open-pull-request",
+            schema: schema_for!(GithubOpenPullRequest),
+        },
+        NamedSchema {
+            name: "github-plan-batch",
+            schema: schema_for!(GithubPlanBatch),
+        },
+        NamedSchema {
             name: "github-process-event",
             schema: schema_for!(GithubProcessEvent),
         },
         NamedSchema {
             name: "github-sync-installation",
             schema: schema_for!(GithubSyncInstallation),
+        },
+        NamedSchema {
+            name: "github-sync-pull-request",
+            schema: schema_for!(GithubSyncPullRequest),
         },
         NamedSchema {
             name: "job-error",

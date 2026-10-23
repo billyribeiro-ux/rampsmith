@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeFixPatch",
+  "description": "Payload of `code_fix.patch` jobs, schema `code_fix.patch@1`. Runs in the engine: maps the\nstore's open findings to the files `ctl` stored, plans and applies the recipes, checks the\nresult with Theme Check, stores the patched files and the fixes, and queues\n`github.open_pr`. The engine never talks to GitHub and never holds its key.",
+  "type": "object",
+  "properties": {
+    "batch_row": {
+      "description": "The `code_fix_batches.id` to patch.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "batch_row"
+  ]
+}

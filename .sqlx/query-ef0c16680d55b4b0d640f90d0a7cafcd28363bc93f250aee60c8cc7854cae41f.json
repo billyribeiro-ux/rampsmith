@@ -1,0 +1,89 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select fix_id, ordinal, rule_id, criterion, summary, finding\n           from code_fix_batch_fixes where tenant_id = $1 and batch_row = $2\n          order by ordinal",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fix_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batch_fixes",
+            "name": "fix_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "ordinal",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batch_fixes",
+            "name": "ordinal"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "rule_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batch_fixes",
+            "name": "rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "criterion",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batch_fixes",
+            "name": "criterion"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "summary",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batch_fixes",
+            "name": "summary"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "finding",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "code_fix_batch_fixes",
+            "name": "finding"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ef0c16680d55b4b0d640f90d0a7cafcd28363bc93f250aee60c8cc7854cae41f"
+}

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_pull_requests\n            set state = $3, head_sha = $4, updated_at = now(),\n                closed_at = case when $3 = 'open' then null else coalesce(closed_at, now()) end\n          where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b4357f5ceefce7e7a989f6a503a71b830b3a08285b6c1defec616ddad4c95596"
+}

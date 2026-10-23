@@ -612,6 +612,92 @@
         ]
       }
     },
+    "/v1/shopify/code-fixes/batches": {
+      "post": {
+        "tags": [
+          "code-fixes"
+        ],
+        "summary": "Requests pull requests for the store's open code findings. Rampsmith reads the theme files\nfrom the chosen repository, makes the fixes, and opens a pull request on a\n`rampsmith/fix-<batch>` branch. It never merges.",
+        "operationId": "createCodeFixBatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "The request was accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBatchDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The plan does not include pull requests, or no signed-in staff member",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The channel is not switched on",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No theme repository is ready, or a request is already in progress",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A judgement is not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
     "/v1/shopify/code-fixes/connection": {
       "post": {
         "tags": [
@@ -2002,6 +2088,67 @@
           }
         }
       },
+      "BatchDto": {
+        "type": "object",
+        "description": "A request for pull requests.",
+        "required": [
+          "id",
+          "status",
+          "recipes",
+          "skipped",
+          "created_at"
+        ],
+        "properties": {
+          "considered": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The open code findings it looked at, once known.",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "description": "When it was requested."
+          },
+          "failure_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it ended without a pull request."
+          },
+          "fixed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The fixes it made, once known.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "Rampsmith's id for it."
+          },
+          "recipes": {
+            "type": "string",
+            "description": "`core` or `every`: the recipes the plan included."
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkippedDto"
+            },
+            "description": "What it left alone, by code."
+          },
+          "status": {
+            "type": "string",
+            "description": "`reading`, `patching`, `ready`, `opening`, `opened`, `nothing_to_fix` or `failed`."
+          }
+        }
+      },
       "CeremonyResponse": {
         "type": "object",
         "description": "Completes a ceremony with the browser's answer.",
@@ -2066,9 +2213,18 @@
         "required": [
           "enabled",
           "plan",
-          "repositories"
+          "repositories",
+          "batches",
+          "pull_requests"
         ],
         "properties": {
+          "batches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchDto"
+            },
+            "description": "The latest requests for pull requests, newest first."
+          },
           "connection": {
             "oneOf": [
               {
@@ -2087,6 +2243,13 @@
           "plan": {
             "$ref": "#/components/schemas/PlanGateDto",
             "description": "What the plan allows."
+          },
+          "pull_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PullRequestDto"
+            },
+            "description": "The pull requests Rampsmith opened, newest first."
           },
           "repositories": {
             "type": "array",
@@ -2184,6 +2347,43 @@
             ],
             "format": "int64",
             "description": "Findings waiting for a person's review."
+          }
+        }
+      },
+      "CreateBatchBody": {
+        "type": "object",
+        "description": "Asks Rampsmith to open pull requests for the store's open code findings.",
+        "properties": {
+          "judgements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JudgementBody"
+            },
+            "description": "What the person brings for findings that need judgement."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateBatchDto": {
+        "type": "object",
+        "description": "The request that was accepted.",
+        "required": [
+          "id",
+          "status",
+          "recipes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Rampsmith's id for it."
+          },
+          "recipes": {
+            "type": "string",
+            "description": "`core` or `every`: the recipes the plan includes."
+          },
+          "status": {
+            "type": "string",
+            "description": "Always `reading`: ctl reads the theme files next."
           }
         }
       },
@@ -3054,6 +3254,64 @@
           }
         }
       },
+      "JudgementBody": {
+        "type": "object",
+        "description": "What the person brings for one finding that needs judgement.",
+        "required": [
+          "finding_id"
+        ],
+        "properties": {
+          "decorative_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a decorative image has no text alternative."
+          },
+          "finding_id": {
+            "type": "string",
+            "description": "The finding it is for."
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `id` to give an element that needs one."
+          },
+          "label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LabelBody",
+                "description": "The accessible name to add."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "LabelBody": {
+        "type": "object",
+        "description": "A label the person wrote for a control that has none (a judgement call Rampsmith will not make).",
+        "required": [
+          "key",
+          "text"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The translation key the label is stored under, such as `general.cart`."
+          },
+          "text": {
+            "type": "string",
+            "description": "The label, in the store's default language."
+          }
+        },
+        "additionalProperties": false
+      },
       "LinkChange": {
         "type": "object",
         "required": [
@@ -3263,6 +3521,69 @@
           "upstream_failed",
           "unavailable"
         ]
+      },
+      "PullRequestDto": {
+        "type": "object",
+        "description": "A pull request Rampsmith opened in the merchant's repository.",
+        "required": [
+          "id",
+          "number",
+          "part",
+          "state",
+          "html_url",
+          "fix_count",
+          "files",
+          "changed_lines",
+          "edited",
+          "opened_at"
+        ],
+        "properties": {
+          "changed_lines": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Lines it changes."
+          },
+          "edited": {
+            "type": "boolean",
+            "description": "Whether someone added commits to the branch since Rampsmith pushed it."
+          },
+          "files": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Files it changes."
+          },
+          "fix_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Fixes in it."
+          },
+          "html_url": {
+            "type": "string",
+            "description": "Its page on GitHub."
+          },
+          "id": {
+            "type": "string",
+            "description": "Rampsmith's id for it."
+          },
+          "number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The number in the repository."
+          },
+          "opened_at": {
+            "type": "string",
+            "description": "When it was opened."
+          },
+          "part": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Which part of a split batch, from 1."
+          },
+          "state": {
+            "type": "string",
+            "description": "`open`, `closed` or `merged`."
+          }
+        }
       },
       "Readiness": {
         "type": "object",
@@ -3521,6 +3842,26 @@
               "null"
             ],
             "description": "The shop's name, once `shopify.read_store` has read it; null before the first scan."
+          }
+        }
+      },
+      "SkippedDto": {
+        "type": "object",
+        "description": "How many findings of one kind a batch left alone, and why (a code, never finding text).",
+        "required": [
+          "code",
+          "count"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "`no-recipe`, `plan`, `unmapped`, `needs-review`, `data`, `refused`, `already-fixed`,\n`conflict` or `theme-check`."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many findings.",
+            "minimum": 0
           }
         }
       },

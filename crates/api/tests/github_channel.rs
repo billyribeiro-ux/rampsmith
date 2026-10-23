@@ -334,6 +334,11 @@ async fn a_plan_without_pull_requests_cannot_connect(opts: PgPoolOptions, conn: 
         h.count("select count(*) from github_install_states").await,
         0
     );
+    let batch = h
+        .call("POST", "/v1/shopify/code-fixes/batches", Some(json!({})))
+        .await;
+    assert_eq!(batch.status, StatusCode::FORBIDDEN, "{}", batch.body);
+    assert_eq!(h.count("select count(*) from code_fix_batches").await, 0);
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
@@ -579,4 +584,136 @@ async fn disconnecting_ends_the_link_and_forgets_the_choice(
     let screen = h.call("GET", "/v1/shopify/code-fixes", None).await;
     assert_eq!(screen.body["connection"]["account"], "octo");
     let _ = (&h.github, h.shop);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn while_the_flag_is_off_a_request_for_pull_requests_is_404(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, false, Some("growth"), &[INSTALLATION]).await;
+    assert_eq!(
+        h.call("POST", "/v1/shopify/code-fixes/batches", Some(json!({})))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(h.count("select count(*) from code_fix_batches").await, 0);
+}
+
+/// Connects, chooses `octo/theme` on `main` and marks the theme check done.
+async fn ready_theme(h: &Harness) {
+    h.connect().await;
+    let screen = h.call("GET", "/v1/shopify/code-fixes", None).await;
+    let repo = screen.body["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["full_name"] == "octo/theme")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let chosen = h
+        .call(
+            "PUT",
+            "/v1/shopify/code-fixes/repository",
+            Some(json!({"repository_id": repo, "connected_branch": "main"})),
+        )
+        .await;
+    assert_eq!(chosen.status, StatusCode::OK, "{}", chosen.body);
+    sqlx::query("update github_repos set theme_state = 'ok' where selected")
+        .execute(&h.owner)
+        .await
+        .unwrap();
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_request_for_pull_requests_is_gated_by_flag_plan_and_theme_and_runs_one_at_a_time(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = harness(opts, conn, true, Some("starter"), &[INSTALLATION]).await;
+    // No repository yet.
+    let early = h
+        .call("POST", "/v1/shopify/code-fixes/batches", Some(json!({})))
+        .await;
+    assert_eq!(early.status, StatusCode::CONFLICT, "{}", early.body);
+    ready_theme(&h).await;
+
+    // A judgement that is not well formed is refused before anything is stored.
+    for bad in [
+        json!({"judgements": [{"finding_id": "nope"}]}),
+        json!({"judgements": [{"finding_id": Uuid::now_v7(), "label": {"key": "Bad Key", "text": "Cart"}}]}),
+        json!({"judgements": [{"finding_id": Uuid::now_v7(), "id": "has space"}]}),
+        json!({"judgements": [], "extra": 1}),
+    ] {
+        let refused = h
+            .call("POST", "/v1/shopify/code-fixes/batches", Some(bad))
+            .await;
+        assert!(
+            refused.status == StatusCode::UNPROCESSABLE_ENTITY
+                || refused.status == StatusCode::BAD_REQUEST,
+            "{} {}",
+            refused.status,
+            refused.body
+        );
+    }
+    assert_eq!(h.count("select count(*) from code_fix_batches").await, 0);
+
+    let label = json!({"key": "general.cart", "text": "Cart"});
+    let accepted = h
+        .call(
+            "POST",
+            "/v1/shopify/code-fixes/batches",
+            Some(json!({"judgements": [{"finding_id": Uuid::now_v7(), "label": label}]})),
+        )
+        .await;
+    assert_eq!(accepted.status, StatusCode::ACCEPTED, "{}", accepted.body);
+    assert_eq!(accepted.body["status"], "reading");
+    assert_eq!(
+        accepted.body["recipes"], "core",
+        "Starter has the core recipes"
+    );
+    assert_eq!(h.count("select count(*) from code_fix_batches").await, 1);
+    assert_eq!(
+        h.count("select count(*) from jobs where queue = 'github.plan_batch'")
+            .await,
+        1
+    );
+
+    // One at a time.
+    let again = h
+        .call("POST", "/v1/shopify/code-fixes/batches", Some(json!({})))
+        .await;
+    assert_eq!(again.status, StatusCode::CONFLICT, "{}", again.body);
+    assert_eq!(h.count("select count(*) from code_fix_batches").await, 1);
+
+    // The screen shows it.
+    let screen = h.call("GET", "/v1/shopify/code-fixes", None).await;
+    assert_eq!(screen.body["batches"][0]["status"], "reading");
+    assert_eq!(screen.body["batches"][0]["recipes"], "core");
+    assert_eq!(screen.body["pull_requests"], json!([]));
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_plan_with_every_recipe_asks_for_every_recipe(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let growth = harness(
+        opts.clone(),
+        conn.clone(),
+        true,
+        Some("growth"),
+        &[INSTALLATION],
+    )
+    .await;
+    ready_theme(&growth).await;
+    let accepted = growth
+        .call("POST", "/v1/shopify/code-fixes/batches", Some(json!({})))
+        .await;
+    assert_eq!(accepted.status, StatusCode::ACCEPTED, "{}", accepted.body);
+    assert_eq!(accepted.body["recipes"], "every");
+    drop(growth);
 }

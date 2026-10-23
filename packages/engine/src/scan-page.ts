@@ -52,8 +52,20 @@ export interface Occurrence {
   readonly html: string;
   /** The `shopify-section-*` wrapper's id, when the element sits in one. */
   readonly section: string | undefined;
+  /** The element's ancestors up to its section wrapper, nearest first (ADR-296). */
+  readonly ancestors?: readonly AncestorNode[];
+  /** What axe-core measured for a `color-contrast` node, for the code-fix channel (ADR-296). */
+  readonly evidence?: ContrastReading;
   /** A PNG of the area around the element (at most 64 KiB), when one could be taken. */
   readonly crop?: Buffer;
+}
+
+/** The colours and text size axe-core's `color-contrast` check measured. */
+interface ContrastReading {
+  readonly foreground: string;
+  readonly background: string;
+  readonly font_size_px: number;
+  readonly bold: boolean;
 }
 
 /** How a state ended; the values of `scan_pages.state_outcome`. */
@@ -175,6 +187,32 @@ interface AxeNode {
   readonly target: unknown;
   readonly html: string;
   readonly impact?: string | null;
+  /** The passing-any checks' results; only `color-contrast`'s data is kept (ADR-296). */
+  readonly any?: readonly { readonly id: string; readonly data?: unknown }[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** axe-core's measure for a `color-contrast` node: `fgColor`, `bgColor`, `fontSize`, weight. */
+function contrastReading(node: AxeNode): ContrastReading | undefined {
+  const data = node.any?.find((c) => c.id === 'color-contrast')?.data;
+  if (!isRecord(data)) return undefined;
+  const fg = data['fgColor'];
+  const bg = data['bgColor'];
+  const size = data['fontSize'];
+  const weight = data['fontWeight'];
+  const px = typeof size === 'string' ? /\((\d*\.?\d+)px\)/u.exec(size)?.[1] : undefined;
+  if (typeof fg !== 'string' || typeof bg !== 'string' || px === undefined) return undefined;
+  const font = Number(px);
+  if (!Number.isFinite(font) || font <= 0 || font > 1000) return undefined;
+  return {
+    foreground: fg.slice(0, 32),
+    background: bg.slice(0, 32),
+    font_size_px: font,
+    bold: weight === 'bold' || (typeof weight === 'number' && weight >= 700),
+  };
 }
 
 interface AxeRule {
@@ -189,25 +227,60 @@ function selectorOf(target: unknown): string {
   return Array.isArray(target) ? target.map(String).join(' >>> ') : String(target);
 }
 
+/** An ancestor of a failing element: its tag and attributes, for the source mapper. */
+interface AncestorNode {
+  readonly tag: string;
+  readonly attributes: Readonly<Record<string, string>>;
+}
+
+/** Most ancestors, attributes per ancestor and characters per attribute value the scanner keeps. */
+const MAX_ANCESTORS = 16;
+const MAX_ANCESTOR_ATTRIBUTES = 12;
+const MAX_ATTRIBUTE_CHARS = 160;
+
+interface Located {
+  readonly section: string | null;
+  readonly ancestors: readonly AncestorNode[];
+}
+
 async function occurrences(page: Page, rules: readonly AxeRule[]): Promise<Occurrence[]> {
   const flat = rules.flatMap((rule) => rule.nodes.map((node) => ({ rule, node })));
   const selectors = flat.map(({ node }) =>
     Array.isArray(node.target) && node.target.length === 1 ? String(node.target[0]) : '',
   );
-  const sections = await page.evaluate(
-    (list) =>
+  const located: Located[] = await page.evaluate(
+    ([list, maxAncestors, maxAttributes, maxChars]) =>
       list.map((selector) => {
-        if (selector === '') return null;
+        const none = { section: null, ancestors: [] };
+        if (selector === '') return none;
         try {
-          return document.querySelector(selector)?.closest('[id^="shopify-section-"]')?.id ?? null;
+          const el = document.querySelector(selector);
+          if (el === null) return none;
+          const ancestors: { tag: string; attributes: Record<string, string> }[] = [];
+          for (let p = el.parentElement; p !== null; p = p.parentElement) {
+            const attributes: Record<string, string> = {};
+            for (const a of Array.from(p.attributes).slice(0, maxAttributes)) {
+              attributes[a.name.toLowerCase()] = a.value.slice(0, maxChars);
+            }
+            ancestors.push({ tag: p.tagName.toLowerCase(), attributes });
+            // `getAttribute`: a form with a field named `id` has an `id` property that is that field.
+            const id = p.getAttribute('id') ?? '';
+            if (id.startsWith('shopify-section-') || ancestors.length >= maxAncestors) break;
+          }
+          return {
+            section: el.closest('[id^="shopify-section-"]')?.getAttribute('id') ?? null,
+            ancestors,
+          };
         } catch {
-          return null;
+          return none;
         }
       }),
-    selectors,
+    [selectors, MAX_ANCESTORS, MAX_ANCESTOR_ATTRIBUTES, MAX_ATTRIBUTE_CHARS] as const,
   );
   return flat.map(({ rule, node }, i) => {
     const impact = node.impact ?? rule.impact ?? 'moderate';
+    const where = located[i];
+    const reading = rule.id === 'color-contrast' ? contrastReading(node) : undefined;
     return {
       ruleId: rule.id,
       impact: IMPACTS.has(impact) ? (impact as Impact) : 'moderate',
@@ -215,7 +288,11 @@ async function occurrences(page: Page, rules: readonly AxeRule[]): Promise<Occur
       help: rule.help,
       target: selectorOf(node.target),
       html: scrubExcerpt(node.html),
-      section: sections[i] ?? undefined,
+      section: where?.section ?? undefined,
+      ...(where === undefined || where.ancestors.length === 0
+        ? {}
+        : { ancestors: where.ancestors }),
+      ...(reading === undefined ? {} : { evidence: reading }),
     };
   });
 }
@@ -239,7 +316,7 @@ async function describeTargets(
           if (!(node instanceof Element)) return { html: '', section: undefined };
           return {
             html: node.outerHTML.slice(0, 4096),
-            section: node.closest('[id^="shopify-section-"]')?.id,
+            section: node.closest('[id^="shopify-section-"]')?.getAttribute('id') ?? undefined,
           };
         } catch {
           return { html: '', section: undefined };
@@ -338,6 +415,12 @@ async function analyzeRegion(page: Page, region: readonly string[]): Promise<Axe
             target: n.target,
             html: n.html,
             impact: n.impact ?? null,
+            any:
+              r.id === 'color-contrast'
+                ? n.any
+                    .filter((c) => c.id === 'color-contrast')
+                    .map((c) => ({ id: c.id, data: c.data as unknown }))
+                : [],
           })),
         }));
       return {

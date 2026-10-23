@@ -341,6 +341,9 @@ pub struct FakePull {
     pub base: String,
     pub title: String,
     pub body: String,
+    /// Set by a test to say the pull request was closed or merged.
+    pub closed: bool,
+    pub merged: bool,
 }
 
 /// The fake's state: a tiny Git object store plus pulls and check runs.
@@ -844,6 +847,8 @@ async fn handle(
                 base: input["base"].as_str().unwrap().to_owned(),
                 title: input["title"].as_str().unwrap().to_owned(),
                 body: input["body"].as_str().unwrap().to_owned(),
+                closed: false,
+                merged: false,
             };
             if !s.refs.contains_key(&pull.head) {
                 return reply(422, &json!({"message": "Validation Failed"}));
@@ -962,8 +967,8 @@ fn pull_json(s: &FakeState, p: &FakePull) -> Value {
     json!({
         "id": 77_000 + p.number,
         "number": p.number,
-        "state": "open",
-        "merged": false,
+        "state": if p.closed || p.merged { "closed" } else { "open" },
+        "merged": p.merged,
         "html_url": format!("https://github.com/{OWNER}/{REPO}/pull/{}", p.number),
         "head": {"ref": p.head, "sha": s.refs.get(&p.head).cloned().unwrap_or_default()},
         "base": {"ref": p.base, "sha": s.refs.get(&p.base).cloned().unwrap_or_default(), "repo": {"id": REPO_ID}},

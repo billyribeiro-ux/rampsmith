@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from code_fix_files where tenant_id = $1 and batch_row = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e48f959776a8c2aa89b4e216a51f605c782453ec9845d9377f915f9dbe4db596"
+}

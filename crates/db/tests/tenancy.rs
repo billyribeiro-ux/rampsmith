@@ -225,6 +225,45 @@ async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    seed_code_fix(tx, graph, repo).await;
+}
+
+/// A batch with a file and a fix (ADR-295).
+async fn seed_code_fix(tx: &mut sqlx::PgConnection, graph: &Graph, repo: uuid::Uuid) {
+    let batch = uuid::Uuid::now_v7();
+    sqlx::query(
+        "insert into code_fix_batches (id, tenant_id, site_id, repo_row, batch_id, status,
+                                       base_branch, recipes)
+         values ($1, $2, $3, $4, 'batch-1', 'patching', 'main', 'core')",
+    )
+    .bind(batch)
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.site.as_uuid())
+    .bind(repo)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into code_fix_files (batch_row, tenant_id, path, ordinal, content, blob_sha)
+         values ($1, $2, 'layout/theme.liquid', 0, '<html></html>', repeat('b', 40))",
+    )
+    .bind(batch)
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into code_fix_batch_fixes (batch_row, tenant_id, fix_id, ordinal, rule_id,
+                                           criterion, summary, finding)
+         values ($1, $2, $3, 1, 'html-has-lang', '3.1.1', 'Add the page language',
+                 'The page has no lang attribute')",
+    )
+    .bind(batch)
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.fix.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
 }
 
 /// The rows of `shop_billing`, `webhook_digests` and `ai_draft_holds` (ADR-084, ADR-085).
@@ -518,7 +557,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 29] = [
+const TENANT_TABLES: [&str; 32] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -552,10 +591,14 @@ const TENANT_TABLES: [&str; 29] = [
     "github_pull_requests",
     "github_pr_fixes",
     "github_events",
+    // The code-fix pipeline (ADR-295 to ADR-299).
+    "code_fix_batches",
+    "code_fix_files",
+    "code_fix_batch_fixes",
 ];
 
 /// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 17] = [
+const R1_TABLES: [&str; 20] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -573,6 +616,10 @@ const R1_TABLES: [&str; 17] = [
     "github_pull_requests",
     "github_pr_fixes",
     "github_events",
+    // The code-fix pipeline (ADR-295 to ADR-299).
+    "code_fix_batches",
+    "code_fix_files",
+    "code_fix_batch_fixes",
 ];
 
 #[sqlx::test]

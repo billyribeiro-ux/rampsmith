@@ -58,6 +58,30 @@ export function withTenant<T>(
   }) as Promise<T>;
 }
 
+/**
+ * The section wrapper id the code-fix channel keeps (ADR-296), when it has the form the column
+ * accepts; a stranger's markup can name anything.
+ */
+const SECTION_ID = /^shopify-section-[A-Za-z0-9_.:-]{1,200}$/u;
+function sectionIdOf(section: string | undefined): string | null {
+  return section !== undefined && SECTION_ID.test(section) ? section : null;
+}
+
+/** The ancestors as stored: scrubbed like the excerpt, since attribute values are page content. */
+function ancestorsOf(tx: postgres.TransactionSql, o: Occurrence): postgres.Parameter | null {
+  if (o.ancestors === undefined || o.ancestors.length === 0) return null;
+  return tx.json(
+    o.ancestors.slice(0, 16).map((a) => ({
+      tag: a.tag.slice(0, 40),
+      attributes: Object.fromEntries(
+        Object.entries(a.attributes)
+          .slice(0, 12)
+          .map(([name, value]) => [name.slice(0, 60), scrubExcerpt(value).slice(0, 160)]),
+      ),
+    })),
+  );
+}
+
 type Kind = 'violation' | 'incomplete' | 'best_practice';
 
 interface Group {
@@ -136,9 +160,11 @@ async function recordGroup(
     await tx`
       insert into finding_occurrences
         (finding_id, scan_id, tenant_id, page_url, page_state, target, html_excerpt, captured_at,
-         page_type, viewport)
+         page_type, viewport, section_id, ancestors, evidence)
       values (${finding.id}, ${ctx.scanId}, ${ctx.tenantId}, ${pageUrl}, ${state.state},
-              ${o.target}, ${o.html}, ${capturedAt}, ${meta.pageType}, ${meta.viewport})`;
+              ${o.target}, ${o.html}, ${capturedAt}, ${meta.pageType}, ${meta.viewport},
+              ${sectionIdOf(o.section)}, ${ancestorsOf(tx, o)},
+              ${o.evidence === undefined ? null : tx.json({ ...o.evidence })})`;
     written += 1;
   }
   // The "before" picture: the first crop of a finding that has none yet.

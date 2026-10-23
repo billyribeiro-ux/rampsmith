@@ -424,6 +424,9 @@ importers:
       '@rampsmith/email':
         specifier: workspace:*
         version: link:../email
+      '@rampsmith/liquid-patch':
+        specifier: workspace:*
+        version: link:../liquid-patch
       '@rampsmith/queue':
         specifier: workspace:*
         version: link:../queue

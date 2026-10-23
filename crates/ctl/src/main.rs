@@ -185,6 +185,9 @@ fn with_github_channel(handlers: jobs::Jobs, config: &mut Config) -> anyhow::Res
         std::sync::Arc::new(github::SystemClock),
     )
     .map_err(|e| anyhow::anyhow!("GitHub client: {e}"))?;
+    let origin = config.app_origin.clone().ok_or_else(|| {
+        anyhow::anyhow!("APP_ORIGIN is required while CODE_FIX_CHANNEL_ENABLED is on")
+    })?;
     info!("the GitHub pull-request channel is on");
-    Ok(handlers.with_github(client))
+    Ok(handlers.with_github(client).with_app_origin(origin))
 }

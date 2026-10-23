@@ -107,6 +107,20 @@ values (md5(:'label' || ':gh:pr')::uuid, :'tenant', md5(:'label' || ':gh:repo'):
 insert into github_pr_fixes (pull_request_id, fix_id, tenant_id)
 values (md5(:'label' || ':gh:pr')::uuid, md5(:'label' || ':fix:1')::uuid, :'tenant');
 
+insert into code_fix_batches (id, tenant_id, site_id, repo_row, batch_id, status, base_branch,
+                              recipes)
+values (md5(:'label' || ':gh:batch')::uuid, :'tenant', md5(:'label' || ':site')::uuid,
+        md5(:'label' || ':gh:repo')::uuid, 'seeded-batch', 'opened', 'main', 'core');
+
+insert into code_fix_files (batch_row, tenant_id, path, ordinal, content, blob_sha)
+values (md5(:'label' || ':gh:batch')::uuid, :'tenant', 'layout/theme.liquid', 0, '<html></html>',
+        repeat('b', 40));
+
+insert into code_fix_batch_fixes (batch_row, tenant_id, fix_id, ordinal, rule_id, criterion,
+                                  summary, finding)
+values (md5(:'label' || ':gh:batch')::uuid, :'tenant', md5(:'label' || ':fix:1')::uuid, 1,
+        'html-has-lang', '3.1.1', 'Add the page language', 'The page has no lang attribute');
+
 insert into github_events (id, tenant_id, delivery_id, event, installation_id, body, body_sha256)
 values (md5(:'label' || ':gh:event')::uuid, :'tenant', 'seeded-delivery', 'pull_request',
         1 + abs(hashtext(:'label')), '{}', sha256(convert_to(:'label', 'UTF8')));
