@@ -5,7 +5,7 @@
 
 use time::OffsetDateTime;
 
-use crate::entitlements::{Entitlements, entitlements};
+use crate::entitlements::{DraftAllowance, Entitlements, entitlements};
 use crate::partner_api::BillingCycle;
 use crate::plan::{BillingInterval, Plan};
 use crate::reconcile::{BillingState, FreeSource, PaidPlan, ScheduledChange, Standing};
@@ -156,10 +156,78 @@ pub fn entitlements_of(state: &BillingState) -> Entitlements {
     entitlements(state.effective_plan().unwrap_or(Plan::Free))
 }
 
+/// The limits of a shop's plan that the engine enforces without linking this crate: stored
+/// beside the plan (`shop_billing`, ADR-096) every time the state is, so the api and the engine
+/// read one source (security audit M2, M3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoredLimits {
+    /// The plan the limits are those of: the confirmed plan, or Free while none is.
+    pub plan: Plan,
+    /// The most the store's monthly AI budget may be, in micro-dollars.
+    pub ai_budget_max_micro_usd: i64,
+    /// AI alt-text drafts the plan includes.
+    pub alt_text_draft_limit: i32,
+    /// Whether that allowance is granted once for the shop's lifetime (Free) rather than monthly.
+    pub alt_text_draft_lifetime: bool,
+}
+
+/// The limits that apply to a shop in `state`.
+#[must_use]
+pub fn limits_of(state: &BillingState) -> StoredLimits {
+    let granted = entitlements_of(state);
+    let (limit, lifetime) = match granted.alt_text_drafts() {
+        DraftAllowance::Lifetime(limit) => (limit, true),
+        DraftAllowance::Monthly(limit) => (limit, false),
+    };
+    StoredLimits {
+        plan: granted.plan(),
+        ai_budget_max_micro_usd: i64::try_from(granted.ai_budget_micro_usd()).unwrap_or(i64::MAX),
+        alt_text_draft_limit: i32::try_from(limit).unwrap_or(i32::MAX),
+        alt_text_draft_lifetime: lifetime,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use time::macros::datetime;
+
+    #[test]
+    fn stored_limits_follow_the_plan_table() {
+        let paid = |plan| BillingState {
+            standing: Standing::Paid(PaidPlan {
+                plan,
+                interval: BillingInterval::Monthly,
+                cancel_at_end_of_cycle: false,
+                trial_ends_at: None,
+                cycle: None,
+                scheduled: None,
+            }),
+            ..BillingState::new()
+        };
+        let free = limits_of(&BillingState::new());
+        assert_eq!(free.plan, Plan::Free, "an unconfirmed shop is on Free");
+        assert_eq!(
+            (
+                free.ai_budget_max_micro_usd,
+                free.alt_text_draft_limit,
+                free.alt_text_draft_lifetime
+            ),
+            (500_000, 25, true)
+        );
+        let table = [
+            (Plan::Starter, 5_000_000, 2_000),
+            (Plan::Growth, 20_000_000, 10_000),
+            (Plan::Pro, 60_000_000, 50_000),
+        ];
+        for (plan, budget, drafts) in table {
+            let limits = limits_of(&paid(plan));
+            assert_eq!(limits.plan, plan);
+            assert_eq!(limits.ai_budget_max_micro_usd, budget);
+            assert_eq!(limits.alt_text_draft_limit, drafts);
+            assert!(!limits.alt_text_draft_lifetime, "{plan:?} renews monthly");
+        }
+    }
 
     #[test]
     fn a_shop_without_a_row_is_on_free_until_confirmed() {

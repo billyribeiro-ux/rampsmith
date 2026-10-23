@@ -187,6 +187,20 @@ fn destination(req: &Request<Incoming>, config: &ProxyConfig) -> Result<(String,
     Ok((host.to_owned(), port))
 }
 
+/// Railway's deploy health check (ADR-264): `GET /healthz` in origin form, exactly. A proxy
+/// request always names its destination (a `CONNECT` authority or an absolute `http://` URI),
+/// so a request with neither scheme nor authority can never be a proxy target: this path
+/// answers for the process itself and forwards nothing. Anything else, including a query, a
+/// trailing slash or another method, takes the normal path and needs a scan token.
+fn is_health_check(req: &Request<Incoming>) -> bool {
+    let uri = req.uri();
+    req.method() == Method::GET
+        && uri.scheme().is_none()
+        && uri.authority().is_none()
+        && uri.path() == "/healthz"
+        && uri.query().is_none()
+}
+
 /// Headers that belong to one hop and never travel on (RFC 9110 §7.6.1).
 const HOP_BY_HOP: &[HeaderName] = &[
     header::CONNECTION,
@@ -263,6 +277,9 @@ impl<R: Resolve> Proxy<R> {
     }
 
     async fn handle(&self, req: Request<Incoming>) -> Response<Body> {
+        if is_health_check(&req) {
+            return text(StatusCode::OK, "ok");
+        }
         let span = info_span!(
             "egress.request",
             http.request.method = %req.method(),

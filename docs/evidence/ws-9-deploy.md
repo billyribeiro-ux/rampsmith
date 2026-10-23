@@ -155,7 +155,7 @@ met. The final run is under "Final state".
    features `postgres` and `rustls`) at `/usr/local/bin/sqlx`, `crates/db/migrations` at
    `/usr/local/share/rampsmith/migrations`, and `/bin/sh`. `image_smoke.sh` reports a gap
    until then, and a release on `main` fails on it.
-2. `web`, `ctl`, `engine` and `egress` answer `GET /healthz` on `PORT`; `ctl` listens on
+2. (Done, ADR-264: `ctl`, `engine` and `egress` answer it.) `web`, `ctl`, `engine` and `egress` answer `GET /healthz` on `PORT`; `ctl` listens on
    `BIND_ADDR`; the api serves only `/webhooks/*` on `WEBHOOK_BIND_ADDR` (port 8081): 404 for
    everything else, 401 for an unsigned webhook. `image_smoke.sh` checks each.
 3. Each Dockerfile declares `ARG SERVICE_VERSION` and `ENV SERVICE_VERSION=$SERVICE_VERSION`;
@@ -163,7 +163,7 @@ met. The final run is under "Final state".
    the argument is unused, and telemetry carries no version.
 4. Telemetry code exports logs over OTLP too (Rust: `opentelemetry-appender-tracing`; engine:
    an OTLP log exporter), and reads `OTEL_EXPORTER_OTLP_HEADERS` (both SDKs do by default).
-5. The engine's Playwright seccomp profile (ADR-028): Railway has no documented way to pass
+5. (Decided, ADR-265: sandbox first, off only when the host refuses it.) The engine's Playwright seccomp profile (ADR-028): Railway has no documented way to pass
    `--security-opt seccomp=...`, so the first staging deploy shows whether Chromium starts
    (live check 9).
 6. A narrower database role for the engine (open item 1): a migration in `crates/db/migrations`
@@ -289,7 +289,7 @@ Each has a substitute test that passes in CI now and skips live with a notice na
 | 6. Public smoke tests and TLS | 10 | `image_smoke.sh` (health, webhook listener 404/401) | the `smoke` job |
 | 7. Telemetry: a trace, a metric and a log in Grafana; the log in the R2 archive under `<environment>/logs/` | 6, 9 | `infra/collector/tests/smoke.py` | Grafana Explore; `aws s3 ls --endpoint-url https://<account>.r2.cloudflarestorage.com s3://<logs bucket>/staging/logs/ --recursive` |
 | 8. Collector start-up: one configuration only (Railway start command and the image's `CMD`) | 8 | `smoke.py` starts it with the same command | `railway logs --service collector` shows one "Everything is ready", "Starting HTTP server" on `[::]:4318` only, and no "Starting GRPC server" (the image's default config would add an unauthenticated gRPC receiver) |
-| 9. Engine starts on Railway without the seccomp option (ADR-028) | 8 | `image_smoke.sh engine` (gap on PRs, failure on `main`) | the `railway` job's wait for `engine`, then `railway logs --service engine` |
+| 9. Engine starts on Railway without the seccomp option (ADR-028) | 8 | `image_smoke.sh engine` (starts as Railway does; asserts the logged sandbox mode, ADR-265) | the `railway` job's wait for `engine`, then `railway logs --service engine` |
 | 10. Shopify app deploy | 1, 2, 15 | `npm ci --ignore-scripts` and `shopify version` in `release.yml` | the `shopify` job |
 | 11. Production promotion waits for the founder | 14 | `check_protection.py --require-reviewer` tests | a release with staging verified: the `railway production` job waits for review |
 | 12. Node.js LTS guard lets a deploy through | none (a pin change) | the guard against real binaries in `release.yml` | the first release after `.mise.toml` and the images move to a 26.x LTS release |

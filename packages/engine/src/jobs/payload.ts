@@ -26,8 +26,11 @@ export function isLastAttempt(job: JobInput): boolean {
   );
 }
 
-/** What `runWorker` calls; it must reject rather than throw. */
-export type JobHandler = (job: JobInput) => Promise<void>;
+/**
+ * What `runWorker` calls; it must reject rather than throw. `signal` aborts when the job's
+ * lease is lost, and a handler that pays for work (a download, a model call) passes it on.
+ */
+export type JobHandler = (job: JobInput, signal?: AbortSignal) => Promise<void>;
 
 /** Each engine payload schema and the generated type it validates to. */
 interface Payloads {

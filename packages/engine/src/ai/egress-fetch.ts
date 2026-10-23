@@ -27,6 +27,8 @@ export interface EgressFetchOptions {
   /** Test seam: an extra CA that signs the image host's certificate. */
   readonly ca?: string;
   readonly now?: () => number;
+  /** Aborts the download and closes the tunnel, for example when the job lost its lease. */
+  readonly signal?: AbortSignal;
 }
 
 function failure(kind: 'retryable' | 'permanent', code: string, message: string): JobFailure {
@@ -96,6 +98,7 @@ export async function fetchImageViaEgress(
   options: EgressFetchOptions,
 ): Promise<Buffer> {
   const url = checkImageUrl(imageUrl);
+  options.signal?.throwIfAborted();
   const timeoutMs = options.timeoutMs ?? 15_000;
   const now = options.now ?? Date.now;
   const token = signScanToken(options.tokenSecret, {
@@ -112,6 +115,15 @@ export async function fetchImageViaEgress(
     timeoutMs,
   );
   return new Promise<Buffer>((resolve, reject) => {
+    const aborted = (): void => {
+      tunnel.destroy();
+      reject(failure('retryable', 'image_fetch_aborted', 'the download was aborted'));
+    };
+    if (options.signal?.aborted === true) {
+      aborted();
+      return;
+    }
+    options.signal?.addEventListener('abort', aborted, { once: true });
     const req = httpsRequest(
       {
         host: url.hostname,
@@ -162,6 +174,13 @@ export async function fetchImageViaEgress(
           reject(failure('retryable', 'image_fetch_failed', 'the image download was cut off'));
         });
       },
+    );
+    options.signal?.addEventListener(
+      'abort',
+      () => {
+        req.destroy();
+      },
+      { once: true },
     );
     req.once('timeout', () => {
       req.destroy();

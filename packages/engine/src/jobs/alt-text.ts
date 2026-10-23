@@ -8,9 +8,16 @@
  * (Haiku first, Sonnet when it flags embedded text or low confidence) inside the store's
  * monthly budget; store the draft, its diff and its snapshot (a second tenant transaction).
  * No transaction is open while the network is.
+ *
+ * Plan limits (security audit M2, M3, ADR-096, ADR-097): the budget is what the merchant set,
+ * never more than the plan's ceiling, and a draft needs room in the plan's draft allowance,
+ * held under a per-tenant lock before the model is called. Outages and a missing API key defer
+ * the job instead of spending its attempts (L5, ADR-098).
  */
 import process from 'node:process';
 import {
+  ALT_TEXT_MAX_LIMIT,
+  ALT_TEXT_MIN_LIMIT,
   CircuitBreaker,
   createAnthropicTransport,
   generateAltText,
@@ -22,6 +29,14 @@ import {
 } from '@rampsmith/ai';
 import { JobFailure, uuidv7 } from '@rampsmith/queue';
 import type postgres from 'postgres';
+import {
+  effectiveBudgetMicroUsd,
+  readLimits,
+  releaseHold,
+  reserveDrafts,
+  standing,
+  type Reservation,
+} from '../ai/allowance.ts';
 import { PostgresBudgetLedger } from '../ai/ledger.ts';
 import { postgresCallSink } from '../ai/sink.ts';
 import { findImageContext, primaryLocaleOf, type ImageContext } from '../ai/context.ts';
@@ -30,8 +45,12 @@ import { prepareImage } from '../ai/image.ts';
 import { withTenant } from '../store.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
-/** The monthly AI budget of a store that has not set one: $0.50, the Free plan (ADR-214). */
-export const DEFAULT_BUDGET_MICRO_USD = 500_000;
+/** How long a job waits when the provider is down or the key is missing and nothing says. */
+const OUTAGE_DEFER_MS = 60 * 60 * 1000;
+/** How long a job waits for rate limits and overload when the provider does not say. */
+const BUSY_DEFER_MS = 60 * 1000;
+/** How long a job waits when only other jobs' holds stand between it and the allowance. */
+const HOLD_DEFER_MS = 30 * 1000;
 
 /** What the handler needs; `queues.ts` passes the engine's own dependencies. */
 export interface AltTextRuntime {
@@ -40,10 +59,9 @@ export interface AltTextRuntime {
   /** Test seam: the model transport. Production builds one from `ANTHROPIC_API_KEY`. */
   readonly transport?: AiTransport;
   /** Test seam: the image download. Production goes through egress. */
-  readonly fetchImage?: (url: string, scanId: string) => Promise<Uint8Array>;
+  readonly fetchImage?: (url: string, scanId: string, signal?: AbortSignal) => Promise<Uint8Array>;
   /** Shared across jobs so repeated provider failures pause the queue (PLAN §13). */
   readonly breaker?: CircuitBreaker;
-  readonly defaultBudgetMicroUsd?: number;
 }
 
 const processBreaker = new CircuitBreaker();
@@ -55,10 +73,15 @@ function transportFor(runtime: AltTextRuntime): AiTransport {
   const apiKey = process.env['ANTHROPIC_API_KEY'] ?? '';
   if (apiKey.trim() === '') {
     // Scans go on without drafts (PLAN §13); the founder input is LAUNCH.md section C, row 5.
-    throw new JobFailure('permanent', {
-      code: 'ai_not_configured',
-      message: 'ANTHROPIC_API_KEY is not set (LAUNCH.md section C, row 5)',
-    });
+    // The job waits for the key instead of dying, so the drafts exist once it is set.
+    throw new JobFailure(
+      'defer',
+      {
+        code: 'ai_not_configured',
+        message: 'ANTHROPIC_API_KEY is not set (LAUNCH.md section C, row 5)',
+      },
+      { delayMs: OUTAGE_DEFER_MS },
+    );
   }
   processTransport = createAnthropicTransport({ apiKey: apiKey.trim() });
   return processTransport;
@@ -76,6 +99,43 @@ function integerSetting(settings: unknown, key: string): number | undefined {
   if (typeof settings !== 'object' || settings === null) return undefined;
   const value = (settings as Record<string, unknown>)[key];
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * The merchant's alt-text length limit, or `undefined` for the default. A value outside what
+ * the model task accepts (the api never stores one, but the settings document is JSON anyone
+ * with database access can edit) is ignored instead of failing every image.
+ */
+export function characterLimit(settings: unknown): number | undefined {
+  const value = integerSetting(settings, 'alt_text_max_characters');
+  return value !== undefined && value >= ALT_TEXT_MIN_LIMIT && value <= ALT_TEXT_MAX_LIMIT
+    ? value
+    : undefined;
+}
+
+/** Why no more drafts can be made now: permanent when the allowance never renews. */
+function allowanceFailure(r: Extract<Reservation, { ok: false }>, now = Date.now()): JobFailure {
+  if (!r.spent) {
+    return new JobFailure(
+      'defer',
+      { code: 'ai_draft_allowance_busy', message: 'other drafts hold the last of the allowance' },
+      { delayMs: HOLD_DEFER_MS },
+    );
+  }
+  if (r.renewsAt === null) {
+    return new JobFailure('permanent', {
+      code: 'ai_draft_allowance_exhausted',
+      message: "the plan's AI draft allowance is used up and does not renew",
+    });
+  }
+  return new JobFailure(
+    'defer',
+    {
+      code: 'ai_draft_allowance_exhausted',
+      message: "the plan's AI draft allowance is used up until it renews",
+    },
+    { delayMs: r.renewsAt.getTime() - now },
+  );
 }
 
 /** Reads what the draft needs, or returns `undefined` when a fix for the finding exists. */
@@ -119,15 +179,27 @@ async function load(
     const [shop] = await tx<{ payload: unknown }[]>`
       select payload from scan_inputs
        where tenant_id = ${tenantId} and scan_id = ${input.scan_id} and kind = 'shop' and seq = 0`;
+    // The plan's limits come from the row the api writes with the plan (ADR-096).
+    const limits = await readLimits(tx, tenantId, payload.site_id);
+    const room = await standing(tx, tenantId, limits);
+    if (room.remaining < 1) {
+      // Nothing is downloaded or sent while the allowance is used up.
+      throw allowanceFailure({
+        ok: false,
+        spent: room.used >= room.limit,
+        lifetime: limits.draftLifetime,
+        renewsAt: room.renewsAt,
+      });
+    }
     return {
       image,
       scanId: input.scan_id,
       primaryLocale: primaryLocaleOf(shop?.payload),
-      maxCharacters: integerSetting(site.settings, 'alt_text_max_characters'),
-      budgetMicroUsd:
-        integerSetting(site.settings, 'ai_budget_micro_usd') ??
-        runtime.defaultBudgetMicroUsd ??
-        DEFAULT_BUDGET_MICRO_USD,
+      maxCharacters: characterLimit(site.settings),
+      budgetMicroUsd: effectiveBudgetMicroUsd(
+        integerSetting(site.settings, 'ai_budget_micro_usd'),
+        limits.aiBudgetMaxMicroUsd,
+      ),
     };
   });
 }
@@ -143,6 +215,9 @@ function diffOf(gid: string, before: string | null, draft: AltTextDraft, outcome
     language: draft.language,
     contains_text: draft.containsText,
     escalated: outcome.escalated,
+    // Why the draft needs a closer look: the api shows these on the card and refuses to approve
+    // a flagged draft without an explicit confirmation (security audit M1, ADR-096).
+    flags: [...new Set(outcome.result.flags)].sort(),
   };
 }
 
@@ -157,10 +232,11 @@ async function store(
   const diff = diffOf(payload.resource_gid, before, draft, outcome);
   await withTenant(runtime.sql, tenantId, async (tx) => {
     // Two drafts of one finding (a retry racing a rescan) serialise on the finding row.
-    const locked = await tx`
-      select id from findings where tenant_id = ${tenantId} and id = ${payload.finding_id}
+    const [locked] = await tx<{ status: string }[]>`
+      select status from findings where tenant_id = ${tenantId} and id = ${payload.finding_id}
        for update`;
-    if (locked.length === 0) return;
+    // A rescan may have fixed or dismissed the finding while the model was thinking (L2).
+    if (locked?.status !== 'open') return;
     const existing = await tx`
       select 1 from fix_findings
        where tenant_id = ${tenantId} and finding_id = ${payload.finding_id} limit 1`;
@@ -183,9 +259,26 @@ async function store(
   });
 }
 
+/** Failures that say nothing about this job: it waits and tries again without losing an attempt. */
+const DEFERRED_CODES: ReadonlySet<string> = new Set([
+  'ai_unavailable',
+  'ai_auth',
+  'ai_spend_limit',
+  'ai_rate_limited',
+  'ai_overloaded',
+]);
+
 function aiFailure(error: unknown): JobFailure {
   if (error instanceof JobFailure) return error;
   if (isAiError(error)) {
+    if (DEFERRED_CODES.has(error.code)) {
+      const busy = error.code === 'ai_rate_limited' || error.code === 'ai_overloaded';
+      return new JobFailure(
+        'defer',
+        { code: error.code, message: error.message },
+        { delayMs: error.retryAfterMs ?? (busy ? BUSY_DEFER_MS : OUTAGE_DEFER_MS) },
+      );
+    }
     return new JobFailure(error.retryable ? 'retryable' : 'permanent', {
       code: error.code,
       message: error.message,
@@ -195,23 +288,26 @@ function aiFailure(error: unknown): JobFailure {
 }
 
 export function altTextHandler(runtime: AltTextRuntime): JobHandler {
-  return async (job) => {
+  return async (job, signal) => {
     const payload = parsePayload(job, 'ai.alt_text@1');
     const tenantId = requireTenant(job);
     try {
       const loaded = await load(runtime, tenantId, payload);
       if (loaded === undefined) return;
       const transport = transportFor(runtime);
+      // The lease signal reaches the download and the model call (L3): a worker that lost its
+      // lease stops paying for work another attempt will redo.
       const bytes = await (
         runtime.fetchImage ??
-        ((url, scan) =>
+        ((url, scan, abort) =>
           fetchImageViaEgress(url, {
             proxyUrl: runtime.egress.proxyUrl,
             tokenSecret: runtime.egress.tokenSecret,
             scanId: scan,
             maxBytes: MAX_IMAGE_BYTES,
+            ...(abort === undefined ? {} : { signal: abort }),
           }))
-      )(loaded.image.url, loaded.scanId);
+      )(loaded.image.url, loaded.scanId, signal);
       const image = await prepareImage(bytes);
       const deps: AiDeps = {
         transport,
@@ -220,18 +316,36 @@ export function altTextHandler(runtime: AltTextRuntime): JobHandler {
         sink: postgresCallSink(runtime.sql),
         budgetLimit: () => Promise.resolve(loaded.budgetMicroUsd),
       };
-      const outcome = await generateAltText(
-        deps,
-        {
-          image,
-          productTitle: loaded.image.productTitle,
-          productType: loaded.image.productType,
-          primaryLocale: loaded.primaryLocale,
-          ...(loaded.maxCharacters === undefined ? {} : { maxCharacters: loaded.maxCharacters }),
-        },
-        // A synchronous call, one per image job; the Batch API is a later bulk path (ADR-090).
-        { tenantId, interactive: true },
-      );
+      // The draft allowance is held before the model is called, under a per-tenant lock, so
+      // concurrent jobs cannot spend more drafts than the plan includes (M3).
+      const holdId = uuidv7();
+      const reservation = await reserveDrafts(runtime.sql, tenantId, payload.site_id, holdId);
+      if (!reservation.ok) throw allowanceFailure(reservation);
+      let outcome: AltTextOutcome;
+      try {
+        outcome = await generateAltText(
+          deps,
+          {
+            image,
+            productTitle: loaded.image.productTitle,
+            productType: loaded.image.productType,
+            primaryLocale: loaded.primaryLocale,
+            ...(loaded.maxCharacters === undefined ? {} : { maxCharacters: loaded.maxCharacters }),
+          },
+          // A synchronous call, one per image job; the Batch API is a later bulk path (ADR-090).
+          // A second call to Sonnet is another draft against the allowance: only when held.
+          {
+            tenantId,
+            interactive: true,
+            allowEscalation: reservation.units === 2,
+            ...(signal === undefined ? {} : { signal }),
+          },
+        );
+      } finally {
+        // The calls are recorded in `ai_calls` by now, which is what counts. A failed release
+        // is covered by the hold's expiry.
+        await releaseHold(runtime.sql, tenantId, holdId).catch(() => undefined);
+      }
       // A draft that failed the PLAN §13 checks never reaches the approval queue; the finding
       // stays open for the merchant to write the text by hand.
       if (outcome.result.status !== 'draft') return;

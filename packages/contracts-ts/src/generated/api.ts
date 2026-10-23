@@ -377,6 +377,13 @@ export interface components {
             escalated: boolean;
             /** @description Always `alt`. */
             field: string;
+            /**
+             * @description Why the draft needs a closer look before it is approved: `instruction_like_text_seen`
+             *     (the model said the image or the store data held instructions) or
+             *     `suspected_prompt_injection` (the product title or type read like instructions). A flagged
+             *     draft is approved only with `confirm_flagged` (ADR-213).
+             */
+            flags: string[];
             language: string;
             resource_gid: string;
             /** @description Always `alt_text`. */
@@ -1238,7 +1245,13 @@ export interface operations {
     };
     approveFix: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Must be true to approve a draft flagged `instruction_like_text_seen` or
+                 *     `suspected_prompt_injection`; ignored for an unflagged draft.
+                 */
+                confirm_flagged?: boolean;
+            };
             header?: never;
             path: {
                 /** @description The fix's identifier */
@@ -1286,6 +1299,15 @@ export interface operations {
             };
             /** @description The fix was already decided */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The draft was flagged for review and `confirm_flagged` is not true */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

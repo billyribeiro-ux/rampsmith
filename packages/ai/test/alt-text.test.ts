@@ -207,6 +207,29 @@ describe('escalation to Sonnet 5.5', () => {
     expect(outcome.result.status).toBe('draft');
   });
 
+  it('escalates a draft whose model reported instruction-like text and keeps the flag', async () => {
+    const flagged = checkAltText({ ...draft, instruction_like_text: true }, ctx);
+    expect(needsEscalation(flagged)).toBe(true);
+    const transport = new FakeTransport([
+      message({ ...draft, instruction_like_text: true }),
+      message(draft, { model: 'claude-sonnet-5-5' }),
+    ]);
+    const outcome = await generateAltText(testDeps(transport), input, { tenantId: TENANT });
+    expect(outcome.escalated).toBe(true);
+    // The stronger model did not repeat the flag; the first pass's flag still reaches the draft.
+    expect(outcome.result.flags).toContain('instruction_like_text_seen');
+  });
+
+  it('keeps the first result when the caller has room for one draft only', async () => {
+    const transport = new FakeTransport([message({ ...draft, contains_text: true })]);
+    const outcome = await generateAltText(testDeps(transport), input, {
+      tenantId: TENANT,
+      allowEscalation: false,
+    });
+    expect(outcome.escalated).toBe(false);
+    expect(transport.requests).toHaveLength(1);
+  });
+
   it('does not escalate a good draft', async () => {
     const transport = new FakeTransport([message(draft)]);
     const outcome = await generateAltText(testDeps(transport), input, { tenantId: TENANT });

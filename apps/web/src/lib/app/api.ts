@@ -77,7 +77,8 @@ export interface AppApi {
   finding(id: string): Promise<FindingDetail>;
   fixes(filter: FixFilter, cursor?: string): Promise<FixList>;
   editFix(id: string, alt: string): Promise<FixSummary>;
-  approveFix(id: string): Promise<FixSummary>;
+  /** `confirmFlagged` must be true to approve a draft that was flagged for review. */
+  approveFix(id: string, options?: { readonly confirmFlagged?: boolean }): Promise<FixSummary>;
   rejectFix(id: string): Promise<FixSummary>;
   undoFix(id: string): Promise<FixSummary>;
   settings(): Promise<Settings>;
@@ -150,8 +151,8 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   });
-  const fixAction = (id: string, action: 'approve' | 'reject' | 'undo') =>
-    json<FixSummary>(`${BASE}/fixes/${encodeURIComponent(id)}/${action}`, write('POST'));
+  const fixAction = (id: string, action: 'approve' | 'reject' | 'undo', query = '') =>
+    json<FixSummary>(`${BASE}/fixes/${encodeURIComponent(id)}/${action}${query}`, write('POST'));
 
   return {
     startSession: () => json('/app/api/session', write('POST')),
@@ -177,7 +178,8 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
     },
     editFix: (id, alt) =>
       json<FixSummary>(`${BASE}/fixes/${encodeURIComponent(id)}`, write('PUT', { alt })),
-    approveFix: (id) => fixAction(id, 'approve'),
+    approveFix: (id, options) =>
+      fixAction(id, 'approve', options?.confirmFlagged === true ? '?confirm_flagged=true' : ''),
     rejectFix: (id) => fixAction(id, 'reject'),
     undoFix: (id) => fixAction(id, 'undo'),
     settings: () => json<Settings>(`${BASE}/settings`),
