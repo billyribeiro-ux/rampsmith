@@ -464,9 +464,9 @@ async fn a_store_has_one_batch_in_flight_and_cannot_touch_another_stores(
     let mut tx = db.tenant(b.tenant).await.unwrap();
     assert!(code_fix::batch(&mut tx, first).await.unwrap().is_none());
     let recent = code_fix::recent_batches(&mut tx, 10).await.unwrap();
-    assert!(recent.is_empty());
+    assert_eq!(recent.len(), 0);
     let files = code_fix::batch_files(&mut tx, first).await.unwrap();
-    assert!(files.is_empty());
+    assert_eq!(files.len(), 0);
     assert!(
         !code_fix::move_batch(&mut tx, first, "patching", "ready")
             .await
@@ -586,7 +586,7 @@ async fn a_pull_request_is_found_by_repository_id_and_number_inside_its_own_stor
     let still_open = code_fix::open_pull_requests(&mut tx, 4_242_000)
         .await
         .unwrap();
-    assert!(still_open.is_empty());
+    assert_eq!(still_open.len(), 0);
     let row = code_fix::pull_request(&mut tx, id).await.unwrap().unwrap();
     assert_eq!(
         (row.state.as_str(), row.head_sha),
@@ -610,5 +610,5 @@ async fn a_pull_request_is_found_by_repository_id_and_number_inside_its_own_stor
             .is_none()
     );
     let recent_prs = code_fix::recent_pull_requests(&mut tx, 10).await.unwrap();
-    assert!(recent_prs.is_empty());
+    assert_eq!(recent_prs.len(), 0);
 }
