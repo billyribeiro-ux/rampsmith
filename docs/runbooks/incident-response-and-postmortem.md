@@ -208,7 +208,7 @@ At each quarterly restore drill (PLAN §24) walk through this page with a made-u
 
 | Alert or SLO | Runbook |
 | --- | --- |
-| Dead job in `shopify.*`, `github.*` or token-refresh queues; token refresh failures | [Dead-letter triage](dead-letter-triage.md) |
+| Dead job in `shopify.*`, `github.*`, `webhook.process` or token-refresh queues; a stuck webhook event; token refresh failures | [Dead-letter triage](dead-letter-triage.md) |
 | Webhook signature failures; the webhook SLO; oldest ready job over 10 minutes | [Webhook backlog](webhook-backlog.md) |
 | WAL archiving failing | [Restore from PITR](restore-from-pitr.md) |
 | AI circuit breaker open; AI spend above twice average | [AI provider outage](ai-provider-outage.md) |

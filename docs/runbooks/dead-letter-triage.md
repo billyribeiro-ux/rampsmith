@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Answers | PLAN §21 page "Any dead job in `shopify.*`, `github.*` or token-refresh queues"; the SLO "Shops losing access because Rampsmith failed to refresh a token" (target 0); the ticket "Oldest ready scan job older than 10 minutes" when dead jobs hold up a chain |
+| Answers | PLAN §21 page "Any dead job in `shopify.*`, `github.*` or token-refresh queues" (extended by ADR-086 to `webhook.process`, because Shopify never retries an event Rampsmith already answered 200); the SLO "Shops losing access because Rampsmith failed to refresh a token" (target 0); the ticket "Oldest ready scan job older than 10 minutes" when dead jobs hold up a chain |
 | Severity | SEV2 as paged (a dead token-refresh job is a shop that will lose access); SEV3 for other queues |
 | Use it when | The page fires; a `job is dead` line appears in the logs; `jobs-depth.sql` shows a non-zero `dead` row; after any outage, to sweep what the outage killed |
 | Decisions behind it | ADR-018 (the queue protocol), ADR-022 (token refresh), ADR-178 (this triage and the SQL) |
