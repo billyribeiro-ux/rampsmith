@@ -11,11 +11,13 @@ import { runWorker } from '@rampsmith/queue';
 import postgres from 'postgres';
 import { launchEngineBrowser } from './browser.ts';
 import { createEmailRuntime } from './email/runtime.ts';
+import { startFreeScanBeat, type FreeScanBeat } from './free-scan-beat.ts';
 import { startHealthServer } from './health.ts';
+import { exitWhenBrowserLost } from './lifecycle.ts';
 import { assertWorkerRole } from './role-guard.ts';
 import { ScanKeyRing, storefrontPasswordFromScan } from './scan-secret.ts';
 import { userAgent } from './user-agent.ts';
-import { ENGINE_QUEUES, engineHandlers } from './queues.ts';
+import { engineHandlers, queuesFor } from './queues.ts';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -54,8 +56,16 @@ async function run(): Promise<void> {
   // are, so a deployment that cannot scan never goes live.
   const health = await startHealthServer(process.env['PORT']);
   const stop = new AbortController();
+  // A browser that dies takes the engine with it (audit L6); a shutdown on purpose does not.
+  const watch = exitWhenBrowserLost(
+    browser,
+    health,
+    (line) => process.stderr.write(line),
+    (code) => process.exit(code),
+  );
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.once(signal, () => {
+      watch.stopping();
       stop.abort();
     });
   }
@@ -89,9 +99,25 @@ async function run(): Promise<void> {
   );
   const workerId = process.env['WORKER_ID'] ?? `engine-${hostname()}-${process.pid.toString()}`;
 
+  // Free scans visit sites chosen by strangers, so this engine serves them only with Chromium's
+  // sandbox on (audit H1, ADR-280). It says so in the database for the api, which refuses free
+  // scans while no engine does.
+  const queues = queuesFor(sandbox);
+  let beat: FreeScanBeat | undefined;
+  if (queues.includes('free_scan.run')) {
+    beat = await startFreeScanBeat(sql, workerId, {
+      warn: (message) => process.stderr.write(`engine: warning: ${message}\n`),
+    });
+    process.stderr.write('engine: serving free scans (chromium sandbox is on)\n');
+  } else {
+    process.stderr.write(
+      'engine: not serving free scans: chromium runs without its sandbox (ADR-280)\n',
+    );
+  }
+
   try {
     await Promise.all(
-      ENGINE_QUEUES.map((queue) =>
+      queues.map((queue) =>
         runWorker({
           sql,
           queue,
@@ -103,6 +129,8 @@ async function run(): Promise<void> {
       ),
     );
   } finally {
+    watch.stopping();
+    await beat?.stop();
     await health.close();
     await browser.close();
   }

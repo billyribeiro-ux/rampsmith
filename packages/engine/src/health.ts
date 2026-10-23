@@ -22,6 +22,8 @@ export function healthPort(value: string | undefined): number {
 export interface HealthServer {
   /** The port it listens on (the real one when started on 0). */
   readonly port: number;
+  /** From now on `/healthz` answers 503: the engine can no longer scan (audit L6). */
+  setUnhealthy(): void;
   close(): Promise<void>;
 }
 
@@ -38,8 +40,14 @@ function listen(server: Server, port: number, host: string): Promise<void> {
 /** Starts the listener on `[::]` (IPv4 too where the host allows both), else on `0.0.0.0`. */
 export async function startHealthServer(portValue: string | undefined): Promise<HealthServer> {
   const port = healthPort(portValue);
+  let healthy = true;
   const server = createServer((request, response) => {
     if (request.method === 'GET' && request.url === '/healthz') {
+      if (!healthy) {
+        response.writeHead(503, { 'content-type': 'text/plain', 'content-length': 9 });
+        response.end('unhealthy');
+        return;
+      }
       response.writeHead(200, { 'content-type': 'text/plain', 'content-length': 2 });
       response.end('ok');
       return;
@@ -62,6 +70,9 @@ export async function startHealthServer(portValue: string | undefined): Promise<
   const bound = typeof address === 'object' && address !== null ? address.port : port;
   return {
     port: bound,
+    setUnhealthy: () => {
+      healthy = false;
+    },
     close: () =>
       new Promise((resolve) => {
         server.close(() => {

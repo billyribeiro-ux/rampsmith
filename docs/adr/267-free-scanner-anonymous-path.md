@@ -79,6 +79,15 @@ checks and queues; the engine scans; the web server shows the result.
 - Live proof, against a real public site and the real Turnstile widget, is LAUNCH.md section E
   until it passes.
 
+## Amendment (audit H1, ADR-280): only a sandboxed engine serves free scans
+
+`free_scan.run` is registered only by an engine whose Chromium has its own sandbox (ADR-265's
+fallback engines never serve it), and the api accepts `POST /v1/free-scans` only while such an
+engine has beaten its heartbeat (`free_scan_engines`) in the last 45 seconds; otherwise it answers
+503 "free scanner unavailable" before it spends a Turnstile call or a budget place, and the page
+shows its not-connected state. A separate low-privilege free-scan service is recommended to the
+founder (ADR-280); it is not built.
+
 ## Rejected alternatives
 
 - Keep the caps in web memory and only add the engine job: a second web replica or a restart

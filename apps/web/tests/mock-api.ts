@@ -92,6 +92,10 @@ async function freeScans(request: IncomingMessage, response: ServerResponse): Pr
     } else if (url.includes('busy')) {
       const refused = problem(503, []);
       response.writeHead(refused.status, refused.headers).end(refused.body);
+    } else if (url.includes('no-engine')) {
+      // No engine with a sandboxed browser is serving free scans (ADR-280).
+      const refused = problem(503, [{ field: 'scanner', message: 'unavailable' }]);
+      response.writeHead(refused.status, refused.headers).end(refused.body);
     } else if (url.includes('robots')) {
       json(
         200,
