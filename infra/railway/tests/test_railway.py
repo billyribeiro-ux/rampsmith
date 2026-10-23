@@ -342,6 +342,17 @@ class Exposure(unittest.TestCase):
         self.assertEqual(literal(api, "WEBAUTHN_RP_ID"), "app.rampsmith.example")
         self.assertEqual(literal(api, "WEBAUTHN_RP_ORIGIN"), "https://app.rampsmith.example")
 
+    def test_the_api_accepts_the_challenge_only_from_the_widgets_host(self) -> None:
+        # Audit L3: the api alone verifies the token and checks the hostname Cloudflare reports.
+        full_plan = full()
+        self.assertEqual(
+            literal(full_plan["api"], "TURNSTILE_HOSTNAMES"), "app.rampsmith.example"
+        )
+        self.assertNotIn("TURNSTILE_HOSTNAMES", variables(full_plan["web"]))
+        self.assertEqual(
+            variables(evaluate("staging")["api"])["TURNSTILE_HOSTNAMES"], {"type": "preserve"}
+        )
+
     def test_without_an_app_host_passkey_settings_are_kept(self) -> None:
         api = evaluate("staging")["api"]
         self.assertEqual(variables(api)["WEBAUTHN_RP_ID"], {"type": "preserve"})

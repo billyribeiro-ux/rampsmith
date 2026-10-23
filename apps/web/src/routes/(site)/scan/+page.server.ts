@@ -14,6 +14,7 @@ import {
 } from '#lib/server/scanner/service.ts';
 import { apiClient } from '#lib/server/api.ts';
 import { apiDelegate } from '#lib/server/scanner/delegate.ts';
+import { TURNSTILE_ACTION } from '#lib/site/turnstile-client.ts';
 import { verifyTurnstile } from '#lib/server/scanner/turnstile.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -50,6 +51,7 @@ const service = createFreeScanService({
   verifyChallenge: (token, ip) =>
     verifyTurnstile({
       secret: TURNSTILE_SECRET_KEY,
+      expectedAction: TURNSTILE_ACTION,
       token,
       remoteIp: ip,
       origin: TURNSTILE_ORIGIN,

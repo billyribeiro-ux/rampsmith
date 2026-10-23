@@ -1050,6 +1050,8 @@ Rampsmith processes store content on the merchant's behalf and holds almost no s
 | Dashboard users: email, passkeys | Sign-up | Authentication | Until the user deletes the account |
 | AI call metadata: model, tokens, cost | System | Cost and quality control | 13 months; prompt content is not stored |
 | Billing records | Shopify, Stripe | Accounting | As tax law requires |
+| Free-scanner requests: the scanned domain and origin, a keyed hash of the visitor's address (the /64 for IPv6; the address itself is never stored), the scan's status and a bounded result (failure counts and up to three scrubbed examples of 240 characters) | The public scanner (§16) | Daily limits, the 24-hour result cache and the result page | 24 hours, then deleted by `free_scans_sweep()` (ADR-267, ADR-287) |
+| Sealed storefront-password copy for one scan | Merchant's saved password, re-sealed by `ctl` under the scan key ring | Lets the engine open a closed store for that scan | Until the scan ends, and no later than one hour (ADR-266, ADR-283) |
 
 ### Shopify compliance webhooks
 

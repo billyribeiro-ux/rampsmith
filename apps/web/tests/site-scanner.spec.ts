@@ -122,10 +122,10 @@ test.describe('the scanner, with Turnstile stood in and no engine connected', ()
       expect(response.status(), token).toBe(400);
       expect(await response.text()).toContain('The bot check did not pass');
     }
-    const first = await post(page, SITE, 'example.com', 'fake-pass-replay-1');
+    const first = await post(page, SITE, 'example.com', 'fake-pass-free_scan-replay-1');
     expect(first.status()).toBe(503);
     expect(await first.text()).toContain('The scanner is not connected yet');
-    const replay = await post(page, SITE, 'example.com', 'fake-pass-replay-1');
+    const replay = await post(page, SITE, 'example.com', 'fake-pass-free_scan-replay-1');
     expect(replay.status()).toBe(400);
     expect(await replay.text()).toContain('The bot check did not pass');
   });
@@ -201,7 +201,7 @@ test.describe('the scanner, with a fixed sample result', () => {
   });
 
   test('serves a result that is no cache hit with private, no-store headers', async ({ page }) => {
-    const response = await post(page, SITE_FIXTURE, 'headers-check.com', 'fake-pass-headers-1');
+    const response = await post(page, SITE_FIXTURE, 'headers-check.com', 'fake-pass-free_scan-headers-1');
     expect(response.status()).toBe(200);
     expect(response.headers()['cache-control']).toBe('private, no-store');
     expect(response.headers()['x-robots-tag']).toBe('noindex, nofollow');
@@ -210,12 +210,12 @@ test.describe('the scanner, with a fixed sample result', () => {
   test('caches a domain for a day and stops a visitor at three scans', async ({ page }) => {
     // example.com was scanned above and headers-check.com just now: two of the three scans.
     // A repeat of a scanned domain comes from the cache and costs no scan.
-    const cached = await post(page, SITE_FIXTURE, 'www.example.com', 'fake-pass-cap-1');
+    const cached = await post(page, SITE_FIXTURE, 'www.example.com', 'fake-pass-free_scan-cap-1');
     expect(cached.status()).toBe(200);
     expect(await cached.text()).toContain('result from the last 24 hours');
-    const third = await post(page, SITE_FIXTURE, 'third-shop.com', 'fake-pass-cap-2');
+    const third = await post(page, SITE_FIXTURE, 'third-shop.com', 'fake-pass-free_scan-cap-2');
     expect(third.status()).toBe(200);
-    const fourth = await post(page, SITE_FIXTURE, 'fourth-shop.com', 'fake-pass-cap-3');
+    const fourth = await post(page, SITE_FIXTURE, 'fourth-shop.com', 'fake-pass-free_scan-cap-3');
     expect(fourth.status()).toBe(429);
     expect(Number(fourth.headers()['retry-after'])).toBeGreaterThan(0);
     expect(await fourth.text()).toContain("You have used today's 3 scans");
@@ -235,7 +235,7 @@ test.describe('the scanner, on a server without Turnstile keys', () => {
     await expect(page.getByText('The free scanner is closed for now')).toBeVisible();
     await expect(page.getByLabel('Website address')).toHaveCount(0);
     await axe(page);
-    const response = await post(page, SITE_CLOSED, 'example.com', 'fake-pass-closed-1');
+    const response = await post(page, SITE_CLOSED, 'example.com', 'fake-pass-free_scan-closed-1');
     expect(response.status()).toBe(503);
   });
 });

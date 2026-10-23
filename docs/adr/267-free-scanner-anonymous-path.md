@@ -30,7 +30,7 @@ checks and queues; the engine scans; the web server shows the result.
   4. in one transaction, under advisory locks for the address and the domain, it returns a
      complete scan of the domain from the last 24 hours (the cache; no quota), or joins a scan
      of the domain that is still running, or enforces the caps and creates and enqueues the scan.
-- **Limits** (PLAN §16): 3 scans per address and 1 per domain per day, counted from the
+- **Limits** (PLAN §16): 3 scans per address and 1 per registrable domain per day (ADR-284), counted from the
   `free_scans` table, plus a ceiling of 40 scans queued or running at once (503 with
   `Retry-After`). A scan that failed on our side does not count; a refused one does, because it
   cost a robots.txt fetch and a page load. The limits hold across restarts and replicas.
@@ -38,11 +38,12 @@ checks and queues; the engine scans; the web server shows the result.
   data, so it has no `tenant_id` and no row-level security. It holds the domain, the origin, a
   status, a refusal reason, the result (a bounded JSON summary), and `ip_hash`: an HMAC-SHA256 of
   the visitor's address (the /64 for IPv6, the IPv4 for a mapped address) under a key derived
-  from the service token. The address is never stored; the hash allows equality counting only.
+  from the Turnstile secret, which only the api holds (amended by ADR-287). The address is never stored; the hash allows equality counting only.
   Rows are deleted 24 hours after creation (`expires_at`, ADR-262's retention) by
   `free_scans_sweep()`, which `ctl`'s leader runs every 10 minutes; it first ends scans that
   neither finished nor failed within 10 minutes. The application role may insert and select; the
-  worker role may select and update; nothing else has a grant.
+  worker role may select and update only `status`, `refusal`, `result`, `started_at` and
+  `finished_at` (ADR-285); nothing else has a grant.
 - **Queue.** `free_scan.run@1` with payload `{ free_scan_id }`. The application role cannot insert
   a job without a tenant (the job table's policy, ADR-003), and should not be able to: the api
   enqueues through `free_scan_enqueue(uuid)`, a `SECURITY DEFINER` function that creates only
@@ -87,6 +88,17 @@ engine has beaten its heartbeat (`free_scan_engines`) in the last 45 seconds; ot
 503 "free scanner unavailable" before it spends a Turnstile call or a budget place, and the page
 shows its not-connected state. A separate low-privilege free-scan service is recommended to the
 founder (ADR-280); it is not built.
+
+## Amendment (audit L1 to L5): what the api and the engine now check
+
+- A public suffix is refused before the budget and before Cloudflare, and the day's per-domain
+  count is keyed on the registrable domain (ADR-284).
+- The engine's update grant is limited to the columns a run sets (ADR-285).
+- A token must have been solved for the `free_scan` action on a listed hostname (ADR-286).
+- Visitor addresses are hashed under a key derived from the Turnstile secret, not the service
+  token (ADR-287); PLAN §19 lists the data. The privacy page stays a draft marked "attorney review
+  required".
+- Results are bounded (addresses at 2048 characters) and validated before they are stored (ADR-288).
 
 ## Rejected alternatives
 

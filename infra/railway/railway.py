@@ -349,6 +349,9 @@ def _api(env: str, inputs: Inputs) -> Any:
         # secret the api verifies the challenge with.
         "FREE_SCAN_SERVICE_TOKEN": shared("FREE_SCAN_SERVICE_TOKEN"),
         "TURNSTILE_SECRET_KEY": shared("TURNSTILE_SECRET_KEY"),
+        # The widget is served by the web service on the app's public host; Cloudflare reports
+        # that hostname and the api refuses a token solved anywhere else (audit L3, ADR-286).
+        "TURNSTILE_HOSTNAMES": inputs.app_host or preserve_existing(),
         "WEBAUTHN_RP_ID": inputs.app_host or preserve_existing(),
         "WEBAUTHN_RP_ORIGIN": (
             f"https://{inputs.app_host}" if inputs.app_host else preserve_existing()

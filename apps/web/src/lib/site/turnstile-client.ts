@@ -8,11 +8,19 @@
  * the one script the site loads from elsewhere.
  */
 
+/**
+ * The `action` the free scanner's widget reports to Cloudflare (letters, digits, `_` and `-`, at
+ * most 32). The api's `siteverify` check refuses a token solved for any other action (audit L3),
+ * so the same value is `TURNSTILE_ACTION` in `crates/api/src/free_scan.rs`.
+ */
+export const TURNSTILE_ACTION = 'free_scan';
+
 interface TurnstileApi {
   render(
     container: HTMLElement,
     options: {
       sitekey: string;
+      action?: string;
       theme?: 'auto' | 'light' | 'dark';
       size?: 'normal' | 'flexible' | 'compact';
       callback?: (token: string) => void;
@@ -64,6 +72,7 @@ export async function renderChallenge(
   const turnstile = await load(options.origin);
   const id = turnstile.render(container, {
     sitekey: options.siteKey,
+    action: TURNSTILE_ACTION,
     theme: 'auto',
     size: 'flexible',
   });

@@ -36,6 +36,12 @@ export type TurnstileVerdict =
 
 export interface VerifyTurnstileInput {
   readonly secret: string;
+  /**
+   * The `action` the widget was rendered with. A solved token that reports another action, or none,
+   * was not solved for this form and is refused (audit L3). Omitted only by callers that do not
+   * render the widget themselves.
+   */
+  readonly expectedAction?: string | undefined;
   readonly token: string;
   readonly remoteIp?: string | undefined;
   /** Overrides Cloudflare's origin; only the end-to-end test fake sets it. */
@@ -70,7 +76,13 @@ export async function verifyTurnstile(input: VerifyTurnstileInput): Promise<Turn
   if (typeof payload !== 'object' || payload === null || !('success' in payload)) {
     return { ok: false, reason: 'unavailable' };
   }
-  if (payload.success === true) return { ok: true };
+  if (payload.success === true) {
+    if (input.expectedAction !== undefined) {
+      const reported = 'action' in payload ? payload['action'] : undefined;
+      if (reported !== input.expectedAction) return { ok: false, reason: 'invalid' };
+    }
+    return { ok: true };
+  }
   const codes =
     'error-codes' in payload && Array.isArray(payload['error-codes']) ? payload['error-codes'] : [];
   const visitorFault =
