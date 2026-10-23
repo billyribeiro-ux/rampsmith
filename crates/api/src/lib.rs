@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod email_link;
 pub mod free_scan;
 mod health;
 pub mod plan;
@@ -33,6 +34,7 @@ pub struct AppState {
     keys: Option<crypto::KeyRing>,
     partner: Option<plan::PartnerPlans>,
     free_scans: Option<free_scan::FreeScans>,
+    email_links: Option<email_link::EmailLinks>,
     start_limiter: rate_limit::StartLimiter,
 }
 
@@ -48,6 +50,7 @@ impl AppState {
             keys: None,
             partner: None,
             free_scans: None,
+            email_links: None,
             start_limiter: rate_limit::StartLimiter::default(),
         }
     }
@@ -87,6 +90,18 @@ impl AppState {
     pub fn with_free_scans(mut self, free_scans: free_scan::FreeScans) -> Self {
         self.free_scans = Some(free_scans);
         self
+    }
+
+    /// Enables the pages behind email links (ADR-274). Without it their routes answer 503.
+    #[must_use]
+    pub fn with_email_links(mut self, links: email_link::EmailLinks) -> Self {
+        self.email_links = Some(links);
+        self
+    }
+
+    /// The email link keys, when configured.
+    pub(crate) const fn email_links(&self) -> Option<&email_link::EmailLinks> {
+        self.email_links.as_ref()
     }
 
     /// The free scanner, when configured.
@@ -129,6 +144,7 @@ impl AppState {
         (name = "shopify", description = "The embedded Shopify app's session"),
         (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
         (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-267)"),
+        (name = "email", description = "The pages behind the unsubscribe and preferences links in email (ADR-274)"),
         (name = "app", description = "The embedded app's scans, findings, fixes, evidence, settings and statement")
     )
 )]
@@ -189,6 +205,12 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(r1::get_evidence))
         .routes(routes!(r1::get_settings, r1::update_settings))
         .routes(routes!(r1::get_statement, r1::save_statement))
+        .routes(routes!(email_link::inspect_link))
+        .routes(routes!(email_link::change_link))
+        .routes(routes!(
+            email_link::get_email_preferences,
+            email_link::update_email_preferences
+        ))
 }
 
 /// The OpenAPI document, generated from the handlers.

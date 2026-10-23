@@ -79,6 +79,10 @@ fn environment() -> Vec<(String, String)> {
         ("TURNSTILE_SITE_KEY", "0x4AAAAAAAsitekey"),
         ("SES_REGION", "eu-west-1"),
         ("EMAIL_FROM", "hello@example.com"),
+        (
+            "EMAIL_POSTAL_ADDRESS",
+            "1 Example Street\nSpringfield, EX 00000",
+        ),
         ("STRIPE_PUBLISHABLE_KEY", "pk_test_not_a_real_key_marker"),
     ]
     .into_iter()
@@ -89,7 +93,7 @@ fn environment() -> Vec<(String, String)> {
         let value = match var {
             Var::GithubAppPrivateKey => key.pkcs1_pem.clone(),
             Var::RampsmithMasterKeys => master_ring(),
-            Var::RampsmithScanSecretKeys => scan_ring(),
+            Var::RampsmithScanSecretKeys | Var::EmailLinkKeys => scan_ring(),
             Var::StripeSecretKey => "sk_test_ECHOME0123456789abcdef".to_owned(),
             Var::StripeWebhookSecret => "whsec_ECHOME0123456789abcdef".to_owned(),
             Var::OtelExporterOtlpHeaders => {

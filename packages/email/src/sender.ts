@@ -7,6 +7,24 @@ import { isEmailAddress } from './links.ts';
 import { RenderedEmail } from './render.ts';
 import { hasLineBreak } from './sanitize.ts';
 
+/** A file sent with the message (SES v2 `Message.Attachments`; ADR-277). */
+export interface EmailAttachment {
+  /** A plain file name; the guard refuses anything else. */
+  readonly fileName: string;
+  /** `text/csv` or `application/json`; the guard refuses other types. */
+  readonly contentType: string;
+  readonly data: Uint8Array;
+}
+
+/**
+ * The most attachment bytes one message carries. SES v2 takes a message of up to 40 MB after
+ * base64, which this stays far below; the 40 MB figure is from AWS's quotas page, which this
+ * environment cannot read, so LAUNCH.md section E lists a live send of a near-limit record.
+ */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_TYPES: ReadonlySet<string> = new Set(['text/csv', 'application/json']);
+const ATTACHMENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u;
+
 /** One message for one recipient. */
 export interface OutboundEmail {
   /** A single plain address, no display name. Never logged. */
@@ -17,6 +35,8 @@ export interface OutboundEmail {
    */
   readonly idempotencyKey: string;
   readonly email: RenderedEmail;
+  /** Files to attach; at most two, {@link MAX_ATTACHMENT_BYTES} in all. */
+  readonly attachments?: readonly EmailAttachment[];
 }
 
 export type SendReceipt =
@@ -45,6 +65,7 @@ export type RefusalReason =
   | 'recipient-invalid'
   | 'idempotency-key-invalid'
   | 'header-invalid'
+  | 'attachment-invalid'
   | 'postal-address-missing'
   | 'unsubscribe-not-https';
 
@@ -100,7 +121,28 @@ function snapshot(message: OutboundEmail): OutboundEmail {
     to: typeof to === 'string' ? to : '',
     idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : '',
     email: email as RenderedEmail,
+    ...(message.attachments === undefined
+      ? {}
+      : { attachments: Object.freeze([...message.attachments]) }),
   });
+}
+
+function attachmentProblem(attachments: readonly EmailAttachment[] | undefined): boolean {
+  if (attachments === undefined) return false;
+  if (attachments.length > 2) return true;
+  let total = 0;
+  for (const file of attachments) {
+    if (
+      typeof file.fileName !== 'string' ||
+      !ATTACHMENT_NAME.test(file.fileName) ||
+      !ATTACHMENT_TYPES.has(file.contentType) ||
+      !(file.data instanceof Uint8Array)
+    ) {
+      return true;
+    }
+    total += file.data.byteLength;
+  }
+  return total > MAX_ATTACHMENT_BYTES;
 }
 
 function reasonsFor(message: OutboundEmail): RefusalReason[] {
@@ -121,6 +163,9 @@ function reasonsFor(message: OutboundEmail): RefusalReason[] {
     );
   if (headerProblem) {
     reasons.push('header-invalid');
+  }
+  if (attachmentProblem(message.attachments)) {
+    reasons.push('attachment-invalid');
   }
   reasons.push(...message.email.problems);
   return reasons;

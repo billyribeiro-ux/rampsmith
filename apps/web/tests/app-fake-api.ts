@@ -165,6 +165,7 @@ interface Scenario {
   /** Reads left before an approved fix counts as applied. */
   applying: Map<string, number>;
   settings: Settings;
+  emailOff: boolean;
   statement: StatementState;
   failing: boolean;
   firstFixAt: string | null;
@@ -173,6 +174,13 @@ interface Scenario {
 
 let state: Scenario = scenario('default');
 const requests: { method: string; path: string; authorization: string | null }[] = [];
+
+function emailPrefs() {
+  return {
+    address_known: state.settings.notification_email !== null,
+    categories: [{ category: 'notification', enabled: !state.emailOff }],
+  };
+}
 
 function scan(id: number, status: ScanSummary['status'], done: number): ScanSummary {
   const finished = status === 'succeeded';
@@ -349,6 +357,7 @@ function scenario(name: ScenarioName): Scenario {
       storefront_password_set: false,
       entitlements: entitlements(plan, 0),
     },
+    emailOff: false,
     statement: { draft: null, versions: [] },
     failing: name === 'error',
     firstFixAt: null,
@@ -612,6 +621,13 @@ function route(method: string, url: URL, body: Record<string, unknown>): Reply {
           : {}),
     };
     return { status: 200, body: state.settings };
+  }
+  if (method === 'GET' && path === 'email-preferences') return { status: 200, body: emailPrefs() };
+  if (method === 'PUT' && path === 'email-preferences') {
+    if (body['category'] !== 'notification' || typeof body['enabled'] !== 'boolean')
+      return problem(422, 'validation_failed', 'Invalid preference');
+    state.emailOff = !body['enabled'];
+    return { status: 200, body: emailPrefs() };
   }
   if (method === 'GET' && path === 'statement') return { status: 200, body: state.statement };
   if (method === 'PUT' && path === 'statement') {

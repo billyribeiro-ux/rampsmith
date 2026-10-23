@@ -283,6 +283,20 @@ test.describe('settings', () => {
     expect(JSON.stringify(await requestsSeen())).not.toContain('s3cret-pass');
   });
 
+  test('turns store emails off and on, saving at once and keeping the choice', async ({ page }) => {
+    await open(page, 'default', '/app/settings', 'Settings');
+    const emails = section(page, 'Email').getByRole('switch', { name: 'Email me about my store' });
+    await expect(emails).toBeChecked();
+    await emails.uncheck();
+    await expect(page.locator('.live')).toHaveText('Email preference saved.');
+    await page.reload();
+    await expect(
+      section(page, 'Email').getByRole('switch', { name: 'Email me about my store' }),
+    ).not.toBeChecked();
+    await section(page, 'Email').getByRole('switch', { name: 'Email me about my store' }).check();
+    await expect(page.locator('.live')).toHaveText('Email preference saved.');
+  });
+
   test('on the Free plan the weekly rescan is shown, labelled and disabled', async ({ page }) => {
     await open(page, 'free', '/app/settings', 'Settings');
     const weekly = page.getByRole('switch', { name: 'Rescan every week' });

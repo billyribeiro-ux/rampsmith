@@ -25,6 +25,7 @@ const ctx: { origins: Origins } = {
     app: SETTINGS.appOrigin,
     site: SETTINGS.siteOrigin,
     shopifyAdmin: 'https://admin.shopify.com',
+    oneClick: SETTINGS.appOrigin,
   },
 };
 

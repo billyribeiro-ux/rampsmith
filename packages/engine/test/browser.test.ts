@@ -5,6 +5,8 @@ import {
   PROXIED_LOOPBACK_OVERRIDE,
   WEBRTC_POLICY_ARG,
   assertLoopbackProxied,
+  BROWSER_ENV_ALLOWLIST,
+  browserEnv,
   contextProxy,
   SANDBOX_POLICY_ENV,
   isSandboxRefusal,
@@ -17,6 +19,39 @@ import { scanPage } from '../src/scan-page.ts';
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe('the browser process environment (audit M1)', () => {
+  const polluted = {
+    PATH: '/usr/bin',
+    HOME: '/home/pwuser',
+    LANG: 'C.UTF-8',
+    DATABASE_URL: 'postgres://engine:secret@db/app',
+    EGRESS_TOKEN_SECRET: 'egress-secret',
+    ANTHROPIC_API_KEY: 'sk-ant-secret',
+    SES_SECRET_ACCESS_KEY: 'ses-secret',
+    SES_ACCESS_KEY_ID: 'ses-id',
+    EMAIL_LINK_KEYS: 'k1:secret',
+    RAMPSMITH_SCAN_SECRET_KEYS: 's1:secret',
+    R2_SECRET_ACCESS_KEY: 'r2-secret',
+    OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20token',
+  };
+
+  it('passes Chromium only the variables it needs, never a secret', () => {
+    expect(browserEnv(polluted)).toEqual({
+      PATH: '/usr/bin',
+      HOME: '/home/pwuser',
+      LANG: 'C.UTF-8',
+    });
+  });
+
+  it('puts that environment in every launch', () => {
+    for (const [name, value] of Object.entries(polluted)) vi.stubEnv(name, value);
+    const env = launchOptions().env ?? {};
+    expect(Object.keys(env)).toEqual(expect.arrayContaining(['HOME', 'LANG', 'PATH']));
+    for (const name of Object.keys(env)) expect(BROWSER_ENV_ALLOWLIST).toContain(name);
+    expect(JSON.stringify(env)).not.toMatch(/secret|postgres/u);
+  });
 });
 
 describe('launchOptions', () => {

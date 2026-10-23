@@ -48,6 +48,7 @@ pub enum Var {
     SesAccessKeyId,
     SesSecretAccessKey,
     EmailFrom,
+    EmailPostalAddress,
     // Row 8: Railway.
     RailwayToken,
     RailwayApiToken,
@@ -65,6 +66,7 @@ pub enum Var {
     RampsmithMasterKeys,
     RampsmithScanSecretKeys,
     FreeScanServiceToken,
+    EmailLinkKeys,
     // Row 16: the nightly backup service and the weekly restore drill (ADR-251 to ADR-254).
     BackupR2AccessKeyId,
     BackupR2SecretAccessKey,
@@ -105,6 +107,7 @@ impl Var {
         Self::SesAccessKeyId,
         Self::SesSecretAccessKey,
         Self::EmailFrom,
+        Self::EmailPostalAddress,
         Self::RailwayToken,
         Self::RailwayApiToken,
         Self::OtelExporterOtlpEndpoint,
@@ -117,6 +120,7 @@ impl Var {
         Self::RampsmithMasterKeys,
         Self::RampsmithScanSecretKeys,
         Self::FreeScanServiceToken,
+        Self::EmailLinkKeys,
         Self::BackupR2AccessKeyId,
         Self::BackupR2SecretAccessKey,
         Self::BackupDbPassword,
@@ -157,6 +161,7 @@ impl Var {
             Self::SesAccessKeyId => "SES_ACCESS_KEY_ID",
             Self::SesSecretAccessKey => "SES_SECRET_ACCESS_KEY",
             Self::EmailFrom => "EMAIL_FROM",
+            Self::EmailPostalAddress => "EMAIL_POSTAL_ADDRESS",
             Self::RailwayToken => "RAILWAY_TOKEN",
             Self::RailwayApiToken => "RAILWAY_API_TOKEN",
             Self::OtelExporterOtlpEndpoint => "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -169,6 +174,7 @@ impl Var {
             Self::RampsmithMasterKeys => "RAMPSMITH_MASTER_KEYS",
             Self::RampsmithScanSecretKeys => "RAMPSMITH_SCAN_SECRET_KEYS",
             Self::FreeScanServiceToken => "FREE_SCAN_SERVICE_TOKEN",
+            Self::EmailLinkKeys => "EMAIL_LINK_KEYS",
             Self::BackupR2AccessKeyId => "BACKUP_R2_ACCESS_KEY_ID",
             Self::BackupR2SecretAccessKey => "BACKUP_R2_SECRET_ACCESS_KEY",
             Self::BackupDbPassword => "BACKUP_DB_PASSWORD",
@@ -205,9 +211,11 @@ impl Var {
             | Self::R2BucketBackups
             | Self::TurnstileSiteKey
             | Self::TurnstileSecretKey => 6,
-            Self::SesRegion | Self::SesAccessKeyId | Self::SesSecretAccessKey | Self::EmailFrom => {
-                7
-            }
+            Self::SesRegion
+            | Self::SesAccessKeyId
+            | Self::SesSecretAccessKey
+            | Self::EmailFrom
+            | Self::EmailPostalAddress => 7,
             Self::RailwayToken | Self::RailwayApiToken => 8,
             Self::OtelExporterOtlpEndpoint
             | Self::OtelExporterOtlpHeaders
@@ -216,7 +224,8 @@ impl Var {
             Self::StripeSecretKey | Self::StripePublishableKey | Self::StripeWebhookSecret => 11,
             Self::RampsmithMasterKeys
             | Self::RampsmithScanSecretKeys
-            | Self::FreeScanServiceToken => 12,
+            | Self::FreeScanServiceToken
+            | Self::EmailLinkKeys => 12,
             Self::BackupR2AccessKeyId
             | Self::BackupR2SecretAccessKey
             | Self::BackupDbPassword
@@ -256,6 +265,7 @@ impl Var {
                 | Self::RampsmithMasterKeys
                 | Self::RampsmithScanSecretKeys
                 | Self::FreeScanServiceToken
+                | Self::EmailLinkKeys
                 | Self::BackupR2AccessKeyId
                 | Self::BackupR2SecretAccessKey
                 | Self::BackupDbPassword

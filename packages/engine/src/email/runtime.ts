@@ -6,6 +6,9 @@
  */
 import {
   createEmailRenderer,
+  LinkKeyError,
+  LinkKeyRing,
+  parseOrigin,
   createSesSender,
   sesConfigFromEnv,
   SesConfigError,
@@ -14,12 +17,18 @@ import {
   type EmailSender,
   type SesConfig,
 } from '@rampsmith/email';
+import type { EmailLinkSettings } from './links.ts';
 
 export interface EmailRuntime {
   /** Undefined until the app origin and the support address are set and valid. */
   readonly renderer: EmailRenderer | undefined;
   /** The SES transport. Undefined until LAUNCH.md C row 7 is complete and valid. */
   readonly transport: EmailSender | undefined;
+  /**
+   * The signed links of subscribed mail (ADR-274). Undefined until `EMAIL_LINK_KEYS` and the
+   * one-click origin are set; notification and marketing mail waits for them, the rest does not.
+   */
+  readonly links: EmailLinkSettings | undefined;
   /** Why something is undefined, in fixed words that name settings and never hold a value. */
   readonly problems: readonly string[];
 }
@@ -45,6 +54,7 @@ export function createEmailRuntime(
   env: Env,
   ses: Partial<Pick<SesConfig, 'endpoint' | 'fetch' | 'now' | 'timeoutMs'>> = {},
 ): EmailRuntime {
+  const now = ses.now ?? ((): Date => new Date());
   const problems: string[] = [];
 
   const sesSettings = sesConfigFromEnv(env);
@@ -66,8 +76,8 @@ export function createEmailRuntime(
   }
 
   let renderer: EmailRenderer | undefined;
-  const appOrigin = present(env, 'APP_ORIGIN');
-  if (appOrigin === undefined) {
+  const appOriginText = present(env, 'APP_ORIGIN');
+  if (appOriginText === undefined) {
     problems.push('APP_ORIGIN must be set (the app origin that links in emails point at)');
   } else {
     // The support address defaults to the sender's: it is verified, and replies reach it.
@@ -81,10 +91,11 @@ export function createEmailRuntime(
     } else {
       try {
         renderer = createEmailRenderer({
-          appOrigin,
-          siteOrigin: present(env, 'SITE_ORIGIN') ?? appOrigin,
+          appOrigin: appOriginText,
+          siteOrigin: present(env, 'SITE_ORIGIN') ?? appOriginText,
           supportAddress: support,
           postalAddress: present(env, 'EMAIL_POSTAL_ADDRESS'),
+          oneClickOrigin: present(env, 'EMAIL_ONE_CLICK_ORIGIN'),
         });
       } catch (error) {
         problems.push(
@@ -95,5 +106,29 @@ export function createEmailRuntime(
       }
     }
   }
-  return { renderer, transport, problems };
+
+  let links: EmailLinkSettings | undefined;
+  const keys = present(env, 'EMAIL_LINK_KEYS');
+  const oneClickOrigin = parseOrigin(present(env, 'EMAIL_ONE_CLICK_ORIGIN') ?? '');
+  const linkAppOrigin = parseOrigin(appOriginText ?? '');
+  if (keys === undefined) {
+    problems.push(
+      'EMAIL_LINK_KEYS must be set (LAUNCH.md C row 12): notification emails need signed unsubscribe links',
+    );
+  } else if (oneClickOrigin === null) {
+    problems.push(
+      'EMAIL_ONE_CLICK_ORIGIN must be set to the public webhook host origin (RFC 8058 one-click unsubscribe)',
+    );
+  } else if (linkAppOrigin !== null) {
+    try {
+      links = { ring: LinkKeyRing.parse(keys), appOrigin: linkAppOrigin, oneClickOrigin, now };
+    } catch (error) {
+      problems.push(
+        error instanceof LinkKeyError
+          ? error.message
+          : 'EMAIL_LINK_KEYS (LAUNCH.md C row 12) was refused',
+      );
+    }
+  }
+  return { renderer, transport, links, problems };
 }

@@ -120,9 +120,55 @@ async function freeScans(request: IncomingMessage, response: ServerResponse): Pr
   return true;
 }
 
+/**
+ * The email-link pages' endpoints (ADR-274). Tokens: `unsub-ok` (one category), `prefs-ok` (every
+ * category the app offers), `expired`; anything else is not one of ours. Switches are kept per
+ * token, like the api keeps them per address.
+ */
+const emailOff = new Set<string>();
+
+function emailView(token: string) {
+  if (token === 'expired') return { status: 'expired', purpose: null, categories: [] };
+  if (token !== 'unsub-ok' && token !== 'prefs-ok' && token !== 'prefs-both') {
+    return { status: 'invalid', purpose: null, categories: [] };
+  }
+  const categories = token === 'prefs-both' ? ['notification', 'marketing'] : ['notification'];
+  return {
+    status: 'ok',
+    purpose: token === 'unsub-ok' ? 'unsubscribe' : 'preferences',
+    categories: categories.map((category) => ({
+      category,
+      enabled: !emailOff.has(`${token}:${category}`),
+    })),
+  };
+}
+
+async function emailLinks(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const path = request.url ?? '';
+  if (request.method !== 'POST' || !path.startsWith('/v1/email/links/')) return false;
+  const body = JSON.parse((await readBody(request)) || '{}') as {
+    token?: string;
+    category?: string;
+    enabled?: boolean;
+  };
+  const token = body.token ?? '';
+  if (path === '/v1/email/links/preference' && emailView(token).status === 'ok') {
+    const key = `${token}:${body.category ?? ''}`;
+    if (body.enabled === true) emailOff.delete(key);
+    else emailOff.add(key);
+  }
+  response
+    .writeHead(200, { 'content-type': 'application/json' })
+    .end(JSON.stringify(emailView(token)));
+  return true;
+}
+
 createServer((request, response) => {
-  void freeScans(request, response).then((handled) => {
-    if (!handled) route(request, response);
+  void emailLinks(request, response).then((done) => {
+    if (done) return;
+    void freeScans(request, response).then((handled) => {
+      if (!handled) route(request, response);
+    });
   });
 }).listen(port, '127.0.0.1');
 

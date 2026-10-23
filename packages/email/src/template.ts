@@ -59,6 +59,8 @@ export interface Content {
   readonly subscription?: {
     readonly unsubscribe: SafeUrl;
     readonly preferences?: SafeUrl;
+    /** The address of the RFC 8058 POST in `List-Unsubscribe`; `unsubscribe` when absent. */
+    readonly oneClick?: SafeUrl | undefined;
   };
 }
 
@@ -94,6 +96,8 @@ export const SUBSCRIPTION = {
   unsubscribeUrl: link(['app']),
   /** The recipient's email preferences page. */
   preferencesUrl: link(['app']),
+  /** Where mail clients POST the one-click unsubscribe (RFC 8058); `unsubscribeUrl` when absent. */
+  oneClickUrl: optional(link(['oneClick'])),
 } as const;
 
 /** Automated WCAG check totals; `passed` never exceeds `total`. */

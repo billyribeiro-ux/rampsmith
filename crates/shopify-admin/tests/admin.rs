@@ -45,6 +45,7 @@ async fn answer(server: &MockServer, operation: &str, body: serde_json::Value) {
 async fn the_shop_its_locales_and_its_live_theme_are_read() {
     let server = MockServer::start().await;
     answer(&server, "RampsmithShop", fixture("shop")).await;
+    answer(&server, "RampsmithShopOwner", fixture("shop")).await;
     let shop = client(&server).shop().await.unwrap();
     assert_eq!(shop.gid, "gid://shopify/Shop/548380009");
     assert_eq!(shop.myshopify_domain, "super-toys.myshopify.com");
@@ -314,6 +315,7 @@ async fn a_throttled_call_waits_and_runs_again() {
         .mount(&server)
         .await;
     answer(&server, "RampsmithShop", fixture("shop")).await;
+    answer(&server, "RampsmithShopOwner", fixture("shop")).await;
     let shop = client(&server).shop().await.unwrap();
     assert_eq!(shop.name, "Super Toys");
     assert_eq!(
@@ -325,7 +327,24 @@ async fn a_throttled_call_waits_and_runs_again() {
         !format!("{shop:?}").to_lowercase().contains("owner@"),
         "Debug must not show the owner's address"
     );
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    assert!(
+        !serde_json::to_string(&shop)
+            .unwrap()
+            .to_lowercase()
+            .contains("owner@"),
+        "the owner's address is never serialised"
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn a_failed_read_of_the_owner_address_leaves_the_shop_read_with_no_address() {
+    let server = MockServer::start().await;
+    answer(&server, "RampsmithShop", fixture("shop")).await;
+    answer(&server, "RampsmithShopOwner", fixture("internal_error")).await;
+    let shop = client(&server).shop().await.unwrap();
+    assert_eq!(shop.name, "Super Toys");
+    assert!(shop.email.is_none(), "none reported");
 }
 
 #[tokio::test]
@@ -449,6 +468,7 @@ async fn the_grant_check_asks_for_the_shop_id_only_and_only_a_401_is_a_dead_gran
 async fn the_throttle_follows_what_responses_report() {
     let server = MockServer::start().await;
     answer(&server, "RampsmithShop", fixture("shop")).await;
+    answer(&server, "RampsmithShopOwner", fixture("shop")).await;
     let factory =
         AdminFactory::new(AdminEndpoint::Base(server.uri()), Duration::from_secs(5)).unwrap();
     let shop = ShopDomain::parse("demo-store.myshopify.com").unwrap();
@@ -457,7 +477,8 @@ async fn the_throttle_follows_what_responses_report() {
     // A second client for the same shop shares the bucket the first one corrected.
     let again = factory.client(&shop, SecretString::from(TOKEN));
     again.shop().await.unwrap();
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    // Each `shop()` is two queries: the shop, and its owner's address (audit L4).
+    assert_eq!(server.received_requests().await.unwrap().len(), 4);
 }
 
 #[test]

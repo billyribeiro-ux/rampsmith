@@ -14,8 +14,11 @@ acknowledging must not send again.
 - `email_deliveries(tenant_id, message_key, template, state, tries, message_id, error_code)` with
   row-level security, primary key `(tenant_id, message_key)`. The contract's `message_key`
   (`email.send:{key}` is the queue idempotency key) names a message once.
-- `begin` inserts a `sending` row or bumps `tries` for a row in `sending` or `failed`; a `sent` or
-  `suppressed` row makes the job a no-op. A crash between SES accepting and `sent` being written
+- `begin` inserts a `sending` row, or claims a `failed` row, or a `sending` row that is waiting for
+  a retry (`error_code` set) or has not moved for 60 seconds. A `sending` row with a live attempt
+  makes a second worker defer (`email_in_flight`) instead of sending, and an attempt whose queue
+  lease is lost stops before the SES call (audit L2, ADR-276). A `sent` or `suppressed` row makes
+  the job a no-op. A crash between SES accepting and `sent` being written
   can still repeat one send (a window of one statement); it is recorded as the known limit.
 - Transient SES errors become `JobFailure('defer')`, which does not spend a queue attempt. The delay is
   the larger of SES's `Retry-After` and `retryDelayMs(tries)`. After 24 tries the job fails

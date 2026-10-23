@@ -33,6 +33,14 @@ export interface FakeSesRequest {
           readonly Html?: { readonly Data: string };
         };
         readonly Headers?: readonly { readonly Name: string; readonly Value: string }[];
+        /** The shape of the SES v2 `Attachment` structure (botocore `sesv2` 2019-09-27). */
+        readonly Attachments?: readonly {
+          readonly RawContent: string;
+          readonly FileName: string;
+          readonly ContentType?: string;
+          readonly ContentDisposition?: string;
+          readonly ContentTransferEncoding?: string;
+        }[];
       };
     };
     readonly ConfigurationOverrides?: {
@@ -170,6 +178,32 @@ function checkBody(value: unknown): string | null {
     if (!/^[!-9;-@A-~]{1,126}$/u.test(name)) return 'header name';
     if (!/^[ -~]{1,995}$/u.test(value) || name.length + value.length > 996) {
       return 'header value';
+    }
+  }
+  for (const a of simple.Attachments ?? []) {
+    // Limits and enums from the service model: FileName <= 255, ContentType 1..78.
+    if (typeof a.FileName !== 'string' || a.FileName === '' || a.FileName.length > 255) {
+      return 'attachment FileName';
+    }
+    if (a.ContentType !== undefined && (a.ContentType === '' || a.ContentType.length > 78)) {
+      return 'attachment ContentType';
+    }
+    if (
+      a.ContentDisposition !== undefined &&
+      a.ContentDisposition !== 'ATTACHMENT' &&
+      a.ContentDisposition !== 'INLINE'
+    ) {
+      return 'attachment ContentDisposition';
+    }
+    if (
+      a.ContentTransferEncoding !== undefined &&
+      !['BASE64', 'QUOTED_PRINTABLE', 'SEVEN_BIT'].includes(a.ContentTransferEncoding)
+    ) {
+      return 'attachment ContentTransferEncoding';
+    }
+    // A blob travels as base64 over the JSON interface.
+    if (typeof a.RawContent !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/u.test(a.RawContent)) {
+      return 'attachment RawContent is not base64';
     }
   }
   return null;

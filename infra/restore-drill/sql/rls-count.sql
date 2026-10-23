@@ -19,7 +19,10 @@
 begin;
 select set_config('app.tenant_id', :'tenant', true) as tenant_scope \gset
 
-select format($q$
+-- A table the login may not read prints `denied` in both columns instead of failing the whole
+-- run; verify.sh accepts that only for the tables it lists (the api login cannot read
+-- `shop_contacts`, audit L6, ADR-277).
+select case when has_table_privilege(c.oid, 'select') then format($q$
   select 'rls', %1$L,
          count(*) filter (where %2$I = %3$L::uuid)::text,
          count(*) filter (where %2$I <> %3$L::uuid)::text
@@ -27,6 +30,8 @@ select format($q$
   format('%I.%I', n.nspname, c.relname),
   case when c.relname = 'tenants' then 'id' else 'tenant_id' end,
   :'tenant')
+  else format($d$select 'rls', %L, 'denied', 'denied'$d$, format('%I.%I', n.nspname, c.relname))
+  end
 from pg_class c
 join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relispartition

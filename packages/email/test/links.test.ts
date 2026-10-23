@@ -5,6 +5,7 @@ const origins: Origins = {
   app: 'https://app.rampsmith.example',
   site: 'https://rampsmith.example',
   shopifyAdmin: 'https://admin.shopify.com',
+  oneClick: 'https://hooks.rampsmith.example',
 };
 
 describe('parseOrigin', () => {
