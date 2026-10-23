@@ -1,4 +1,4 @@
-//! R2, three tokens (ADR-093): the engine's writes, reads and deletes in the evidence bucket
+//! R2, three tokens (ADR-254): the engine's writes, reads and deletes in the evidence bucket
 //! and is refused on the backups bucket; the backup service's does the full round trip on the
 //! backups bucket; the drill's reads there and is refused a write.
 //!

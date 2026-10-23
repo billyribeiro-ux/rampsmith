@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The entrypoint of the `backup` image, run by Railway's cron schedule (ADR-090): one backup, then
+# The entrypoint of the `backup` image, run by Railway's cron schedule (ADR-251): one backup, then
 # exit. Railway skips the next run while a container is still running, so the process must end.
 #
 #   entrypoint.sh

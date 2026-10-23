@@ -1,6 +1,6 @@
 # ADR-174: The backup workflow: environments, schedule, the skip gate and how the job reaches the database
 
-- Status: Accepted
+- Status: Superseded by ADR-251
 - Date: 2026-10-19
 - Stream: WS-8 (`.github/workflows/backup.yml`, `infra/backup/gate.sh`)
 - Refines: PLAN §22 and §24; CLAUDE.md ("skips ... with a notice naming the input"); LAUNCH.md B7 and

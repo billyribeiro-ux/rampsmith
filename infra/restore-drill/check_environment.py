@@ -12,13 +12,24 @@ It passes only when:
 - deployments are limited to selected branches and the only selected branch is `main`.
 
 No reviewer is required: the drill runs on a schedule, and a reviewer gate would hold every run
-until someone clicked (ADR-092). The rule is the one `infra/railway/scripts/check_protection.py`
+until someone clicked (ADR-253). The rule is the one `infra/railway/scripts/check_protection.py`
 applies to staging and production, imported from there so that there is one definition of "limited
 to main".
 
 Usage: check_environment.py <environment.json> <branch-policies.json>
 where the files hold `gh api repos/OWNER/REPO/environments/backup-drill` and
 `gh api repos/OWNER/REPO/environments/backup-drill/deployment-branch-policies`.
+
+Second mode, `check_environment.py --stray <environments.json>` with the output of
+`gh api repos/OWNER/REPO/environments`: fails when an environment exists that an earlier design
+created and nothing uses any more. The first design ran the backup as a GitHub workflow in the
+environments `backup-production` and `backup-staging`; GitHub creates an environment, with no
+protection and no reviewer, the first time a workflow names one that does not exist
+("Running a workflow that references an environment that does not exist will create an environment
+with the referenced name", github/docs, manage-environments), so those two may exist unprotected.
+Nothing in this repository names them now, and an unprotected environment is a place a pull
+request's workflow could name to collect whatever secret someone later puts there (finding LOW-2,
+ADR-259).
 """
 
 from __future__ import annotations
@@ -30,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 ENVIRONMENT = "backup-drill"
+STRAY_ENVIRONMENTS = ("backup-production", "backup-staging")
 ROW = "LAUNCH.md section C row 16"
 PROTECTION = Path(__file__).resolve().parent.parent / "railway" / "scripts" / "check_protection.py"
 
@@ -51,7 +63,41 @@ def problems(environment: dict[str, Any], policies: dict[str, Any]) -> list[str]
     return found
 
 
+def stray(listing: dict[str, Any]) -> list[str]:
+    """The names of the environments in a `GET /repos/{owner}/{repo}/environments` listing that must not exist."""
+    names = [
+        item.get("name")
+        for item in listing.get("environments", [])
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    ]
+    return [name for name in STRAY_ENVIRONMENTS if name in names]
+
+
+def main_stray(path: str) -> int:
+    try:
+        listing = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        print("::error title=Stray environments::could not read the repository's environments")
+        return 1
+    if not isinstance(listing, dict):
+        print("::error title=Stray environments::unexpected environments listing")
+        return 1
+    found = stray(listing)
+    if found:
+        print(
+            f"::error title=Stray environments::The environment(s) {', '.join(found)} exist. "
+            "The earlier backup workflow created them without protection and nothing uses them now. "
+            "Delete them: Settings > Environments > the environment > Delete environment, or "
+            "gh api -X DELETE repos/OWNER/REPO/environments/NAME (LAUNCH.md section C row 16)."
+        )
+        return 1
+    print("No stray backup environments.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) == 3 and argv[1] == "--stray":
+        return main_stray(argv[2])
     if len(argv) != 3:
         print("usage: check_environment.py <environment.json> <policies.json>")
         return 2

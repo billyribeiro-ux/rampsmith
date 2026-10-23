@@ -40,15 +40,19 @@ bk_require() {
 # shellcheck disable=SC2034  # read by the scripts that source this file
 BK_EXIT_NOT_CONFIGURED=3
 
-# The LAUNCH.md section C row that provides the backup and drill inputs (ADR-091).
+# The LAUNCH.md section C row that provides the backup and drill inputs (ADR-252).
 # shellcheck disable=SC2034  # read by the scripts that source this file
 BK_LAUNCH_ROW="LAUNCH.md section C row 16"
 
-# R2 credentials come in two sets that no other code uses (ADR-091), named by a prefix:
-#   BACKUP_R2  the backup service: Object Read & Write on the backups bucket only
-#   DRILL_R2   the restore drill and an operator restoring: Object Read only on the same bucket
-# The engine's token (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) reaches only the evidence bucket and
-# is never read here. The account id and the bucket name are identifiers, not secrets.
+# R2 credentials come in two sets that no other code uses (ADR-252), named by a prefix:
+#   BACKUP_R2  the backup service of one environment: Object Read & Write on that environment's
+#              backups bucket only
+#   DRILL_R2   the restore drill and an operator restoring: Object Read only on the bucket of the
+#              environment being restored (the drill's token: the staging bucket only)
+# Each environment has its own bucket and its own backup token, so a token of staging cannot touch
+# production's backups (finding M2 of the re-audit). The engine's token (R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY) reaches only the evidence bucket and is never read here. The account id
+# and the bucket name are identifiers, not secrets.
 bk_valid_r2_prefix() {
   [[ ${1:-} == BACKUP_R2 || ${1:-} == DRILL_R2 ]]
 }
@@ -75,14 +79,49 @@ bk_missing_r2() {
 }
 
 # --- names -----------------------------------------------------------------------------------
-# One bucket, one prefix per environment:
+# One bucket per environment (named rampsmith-backups-<env>, ADR-252), one prefix per kind:
 #   <env>/daily/<YYYY-MM-DD>/rampsmith-<env>-<YYYYMMDDTHHMMSSZ>.dump.age   (the archive)
 #   <env>/daily/<YYYY-MM-DD>/rampsmith-<env>-<YYYYMMDDTHHMMSSZ>.meta.json  (written last)
-#   <env>/monthly/<YYYY-MM>/rampsmith-<env>-<YYYYMMDDTHHMMSSZ>.dump.age    (and .meta.json)
-# The metadata object is the commit marker: an archive without one is an unfinished upload.
+#   <env>/daily/<YYYY-MM-DD>/rampsmith-<env>-<YYYYMMDDTHHMMSSZ>.meta.json.sig (written second to last)
+#   <env>/monthly/<YYYY-MM>/rampsmith-<env>-<YYYYMMDDTHHMMSSZ>.dump.age    (and .meta.json, .meta.json.sig)
+# The metadata object is the commit marker: an archive without one is an unfinished upload. Its
+# signature (ADR-256) is what a restore trusts; the bucket is not trusted.
 
 bk_valid_environment() {
   [[ ${1:-} =~ ^[a-z][a-z0-9-]{1,30}$ ]]
+}
+
+# bk_bucket_matches_environment BUCKET ENVIRONMENT: the bucket is the one named for the
+# environment (rampsmith-backups-<env>, or any name ending in -<env>). A staging service pointed at
+# production's bucket, or the drill at a bucket that is not staging's, is a configuration error that
+# must stop before a byte moves (ADR-252).
+bk_bucket_matches_environment() {
+  [[ ${1:-} == *"-${2:-}" ]] && [[ -n ${2:-} ]]
+}
+
+# --- time --------------------------------------------------------------------------------------
+# How far ahead of the clock a timestamp may be before it is not believed: a backup stamped in the
+# future would sort newest and be restored, or make retention delete real backups (ADR-256).
+BK_CLOCK_SKEW_SECONDS=600
+
+# bk_stamp_epoch STAMP: seconds since the epoch, or failure for a stamp that is not a real UTC time.
+bk_stamp_epoch() {
+  local s=${1:-} epoch back
+  bk_valid_stamp "$s" || return 1
+  epoch=$(date -u -d "${s:0:4}-${s:4:2}-${s:6:2} ${s:9:2}:${s:11:2}:${s:13:2} UTC" +%s 2>/dev/null) || return 1
+  back=$(date -u -d "@${epoch}" +%Y%m%dT%H%M%SZ 2>/dev/null) || return 1
+  [ "$back" = "$s" ] || return 1
+  printf '%s' "$epoch"
+}
+
+# bk_epoch_stamp EPOCH: the stamp of a time.
+bk_epoch_stamp() {
+  date -u -d "@${1}" +%Y%m%dT%H%M%SZ
+}
+
+# bk_future_limit NOW_EPOCH: the newest stamp believed at that time (now plus the allowed skew).
+bk_future_limit() {
+  bk_epoch_stamp $((${1} + BK_CLOCK_SKEW_SECONDS))
 }
 
 # bk_utc_stamp: the timestamp of this run, YYYYMMDDTHHMMSSZ. BACKUP_NOW overrides it for tests.
@@ -95,7 +134,7 @@ bk_utc_stamp() {
 }
 
 bk_valid_stamp() {
-  [[ ${1:-} =~ ^[0-9]{8}T[0-9]{6}Z$ ]]
+  [[ ${1:-} =~ ^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z$ ]]
 }
 
 # bk_object_base ENVIRONMENT KIND STAMP: the key without its extension.
@@ -114,27 +153,30 @@ bk_object_base() {
 }
 
 # --- retention ---------------------------------------------------------------------------------
-# bk_retention_victims ENVIRONMENT KIND KEEP: reads object keys on stdin (one per line) and prints
-# the keys to delete: those of a period older than the KEEP-th newest *complete* period, where
-# a period is complete when it holds an archive and its metadata object. The rules, all
+# bk_retention_victims ENVIRONMENT KIND KEEP [LIMIT_STAMP]: reads object keys on stdin (one per line)
+# and prints the keys to delete: those of a period older than the KEEP-th newest *complete* period,
+# where a period is complete when it holds an archive and its metadata object. The rules, all
 # deliberately conservative:
 #   - a key that does not match this environment's naming exactly is never a victim;
+#   - a key stamped after LIMIT_STAMP (when given) is neither counted nor deleted: an object
+#     from the future must not push real backups out of the retention window (ADR-256);
 #   - an incomplete period (an unfinished upload) never counts towards KEEP and, while newer than
 #     the cutoff, is never deleted;
 #   - fewer than KEEP complete periods means nothing is deleted.
 bk_retention_victims() {
-  local env=$1 kind=$2 keep=$3
+  local env=$1 kind=$2 keep=$3 limit=${4:-}
   bk_valid_environment "$env" || bk_die "invalid environment name: ${env}"
   case $kind in
     daily | monthly) ;;
     *) bk_die "unknown backup kind: ${kind}" ;;
   esac
   [[ $keep =~ ^[1-9][0-9]*$ ]] || bk_die "retention count must be a positive integer: ${keep}"
-  LC_ALL=C awk -v env="$env" -v kind="$kind" -v keep="$keep" '
+  LC_ALL=C awk -v env="$env" -v kind="$kind" -v keep="$keep" -v limit="$limit" '
     BEGIN {
       if (kind == "daily") { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"; plen = 10 }
       else { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]"; plen = 7 }
-      key_re = "^" env "/" kind "/" period_re "/rampsmith-" env "-[0-9]+T[0-9]+Z\\.(dump\\.age|meta\\.json)$"
+      # Explicit digit classes, not {n}: the awk of Debian images (mawk) has no interval expressions.
+      key_re = "^" env "/" kind "/" period_re "/rampsmith-" env "-[0-9]+T[0-9]+Z\\.(dump\\.age|meta\\.json|meta\\.json\\.sig)$"
     }
     $0 ~ key_re {
       key = $0
@@ -143,10 +185,11 @@ bk_retention_victims() {
       # The period in the directory must agree with the timestamp in the file name.
       stamp = key; sub(/^.*-/, "", stamp); sub(/\..*$/, "", stamp)
       if (length(stamp) != 16) next
+      if (limit != "" && stamp > limit) next
       want = (kind == "daily") ? substr(stamp, 1, 4) "-" substr(stamp, 5, 2) "-" substr(stamp, 7, 2) \
                                : substr(stamp, 1, 4) "-" substr(stamp, 5, 2)
       if (want != period) next
-      base = key; sub(/\.(dump\.age|meta\.json)$/, "", base)
+      base = key; sub(/\.(dump\.age|meta\.json\.sig|meta\.json)$/, "", base)
       keys[key] = period
       if (key ~ /\.dump\.age$/) dump[base] = period
       if (key ~ /\.meta\.json$/) meta[base] = period
@@ -165,6 +208,61 @@ bk_retention_victims() {
       cutoff = periods[keep]
       for (key in keys) if (keys[key] < cutoff) print key
     }' | LC_ALL=C sort
+}
+
+# bk_backups ENVIRONMENT KIND LIMIT_STAMP: reads object keys on stdin and prints one line per backup
+# archive, tab separated: stamp, archive key, status. Newest first, ordered by the *parsed* timestamp
+# in the file name and not by the key's text, so a key placed in another directory cannot jump the
+# queue. Statuses:
+#   complete    archive, metadata object and signature exist; the directory agrees with the stamp
+#   incomplete  the archive has no metadata object or no signature (an unfinished upload, or a
+#               backup made before signatures existed): never restored
+#   future      the stamp is later than LIMIT_STAMP: not believed, never restored (ADR-256)
+#   misfiled    the directory does not agree with the stamp: not believed, never restored
+# Keys that do not match the environment's naming are ignored.
+bk_backups() {
+  local env=$1 kind=$2 limit=$3
+  bk_valid_environment "$env" || bk_die "invalid environment name: ${env}"
+  case $kind in
+    daily | monthly) ;;
+    *) bk_die "unknown backup kind: ${kind}" ;;
+  esac
+  bk_valid_stamp "$limit" || bk_die "invalid time limit: ${limit}"
+  LC_ALL=C awk -v env="$env" -v kind="$kind" -v limit="$limit" '
+    BEGIN {
+      if (kind == "daily") { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"; plen = 10 }
+      else { period_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]"; plen = 7 }
+      key_re = "^" env "/" kind "/" period_re "/rampsmith-" env "-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z\\.(dump\\.age|meta\\.json|meta\\.json\\.sig)$"
+    }
+    $0 ~ key_re {
+      key = $0
+      prefix = env "/" kind "/"
+      period = substr(key, length(prefix) + 1, plen)
+      stamp = key; sub(/^.*-/, "", stamp); sub(/\..*$/, "", stamp)
+      base = key; sub(/\.(dump\.age|meta\.json\.sig|meta\.json)$/, "", base)
+      stampof[base] = stamp; periodof[base] = period
+      if (key ~ /\.dump\.age$/) dump[base] = 1
+      else if (key ~ /\.meta\.json\.sig$/) sig[base] = 1
+      else meta[base] = 1
+    }
+    END {
+      for (base in dump) {
+        stamp = stampof[base]
+        want = (kind == "daily") ? substr(stamp, 1, 4) "-" substr(stamp, 5, 2) "-" substr(stamp, 7, 2) \
+                                 : substr(stamp, 1, 4) "-" substr(stamp, 5, 2)
+        if (stamp > limit) status = "future"
+        else if (want != periodof[base]) status = "misfiled"
+        else if ((base in meta) && (base in sig)) status = "complete"
+        else status = "incomplete"
+        printf "%s\t%s.dump.age\t%s\n", stamp, base, status
+      }
+    }' | LC_ALL=C sort -t "$(printf '\t')" -k1,1r -k2,2r
+}
+
+# bk_newest_complete ENVIRONMENT KIND LIMIT_STAMP < keys: the key of the newest backup archive that is
+# complete and not from the future, or nothing.
+bk_newest_complete() {
+  bk_backups "$1" "$2" "$3" | awk -F'\t' '$3 == "complete" { print $2; exit }'
 }
 
 # bk_period_exists ENVIRONMENT KIND STAMP < keys: succeeds when a complete backup of the stamp's

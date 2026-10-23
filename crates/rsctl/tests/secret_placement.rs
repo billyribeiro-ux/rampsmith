@@ -1,4 +1,4 @@
-//! Where founder secrets live (ADR-092): Railway variables, or secrets of one GitHub
+//! Where founder secrets live (ADR-253): Railway variables, or secrets of one GitHub
 //! environment that only `main` can deploy to; never repository or organization secrets.
 //!
 //! Three things have to agree and this test keeps them equal: rsctl's list of founder secret
@@ -111,7 +111,7 @@ fn allowed_readers() -> BTreeMap<&'static str, Vec<&'static str>> {
     for name in ["RAILWAY_TOKEN", "SHOPIFY_APP_AUTOMATION_TOKEN"] {
         allowed.insert(name, vec!["ci.yml", "deploy.yml", "release.yml"]);
     }
-    // The restore drill's secrets: secrets of the `backup-drill` environment (ADR-092).
+    // The restore drill's secrets: secrets of the `backup-drill` environment (ADR-253).
     for name in [
         "DRILL_R2_ACCESS_KEY_ID",
         "DRILL_R2_SECRET_ACCESS_KEY",
@@ -124,6 +124,7 @@ fn allowed_readers() -> BTreeMap<&'static str, Vec<&'static str>> {
         "BACKUP_R2_ACCESS_KEY_ID",
         "BACKUP_R2_SECRET_ACCESS_KEY",
         "BACKUP_DB_PASSWORD",
+        "BACKUP_SIGNING_KEY",
         "R2_ACCESS_KEY_ID",
         "R2_SECRET_ACCESS_KEY",
         "RAILWAY_API_TOKEN",
@@ -161,7 +162,7 @@ fn only_the_listed_workflows_read_a_founder_secret() {
 
 #[test]
 fn backup_workflow_and_ssh_transport_are_gone() {
-    // The nightly backup runs as a Railway cron service (ADR-090); GitHub holds no credential
+    // The nightly backup runs as a Railway cron service (ADR-251); GitHub holds no credential
     // that could write a backup, so there is no backup workflow to read a secret.
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/backup.yml");
     assert!(!path.exists(), "backup.yml is back");

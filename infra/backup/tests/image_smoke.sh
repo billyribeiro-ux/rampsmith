@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts the backup image the way Railway's cron schedule does and checks what can be checked
-# without a bucket or a database (ADR-090). release.yml runs it on the image it built (pull
+# without a bucket or a database (ADR-251, ADR-258). release.yml runs it on the image it built (pull
 # requests) and on the pushed digest (main), through infra/railway/tests/image_smoke.sh.
 #
 #   image_smoke.sh IMAGE
@@ -51,6 +51,22 @@ tool "aws-cli/1.46.1" aws --version
 tool "(PostgreSQL) 18." pg_dump --version
 tool "(PostgreSQL) 18." pg_restore --version
 tool "(PostgreSQL) 18." psql --version
+tool "OpenSSL 3." openssl version
+
+# The image is the slim client image (finding MEDIUM-1): no PostgreSQL server, no gosu, and the
+# signing round trip the nightly run depends on (Ed25519 with -rawin) works with its OpenSSL.
+if run test -e /usr/lib/postgresql/18/bin/postgres; then fail "the image holds a PostgreSQL server binary"; fi
+if run sh -c 'command -v gosu'; then fail "the image holds gosu"; fi
+sign_out=$(docker run --rm --network none --entrypoint sh "$image" -c '
+  set -e
+  cd "$(mktemp -d)"
+  openssl genpkey -algorithm ed25519 -outform DER -out k.der
+  openssl pkey -inform DER -in k.der -pubout -out k.pub
+  printf "{}" >m.json
+  openssl pkeyutl -sign -inkey k.der -keyform DER -rawin -in m.json -out m.sig
+  openssl pkeyutl -verify -pubin -inkey k.pub -rawin -in m.json -sigfile m.sig' 2>&1) ||
+  fail "the image cannot sign and verify with Ed25519: $sign_out"
+echo "signing: Ed25519 sign and verify work"
 
 [ "$(run id -u)" != 0 ] || fail "the container runs as uid 0"
 if run test -w /opt/rampsmith/backup/backup.sh; then
@@ -62,7 +78,7 @@ status=0
 out=$(docker run --rm --network none "$image" 2>&1) || status=$?
 [ "$status" -eq 0 ] || fail "an unconfigured start exited $status, not 0: $out"
 for needle in "::warning::" "not configured" R2_ACCOUNT_ID BACKUP_R2_ACCESS_KEY_ID \
-  BACKUP_R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS BACKUP_AGE_RECIPIENTS BACKUP_DB_PASSWORD \
+  BACKUP_R2_SECRET_ACCESS_KEY R2_BUCKET_BACKUPS BACKUP_AGE_RECIPIENTS BACKUP_SIGNING_KEY BACKUP_DB_PASSWORD \
   "LAUNCH.md section C row 16"; do
   [[ $out == *"$needle"* ]] || fail "the unconfigured start did not say '$needle': $out"
 done
@@ -75,7 +91,8 @@ status=0
 out=$(docker run --rm --network none \
   -e BACKUP_ENVIRONMENT=staging -e BACKUP_DB_HOST=127.0.0.1 -e BACKUP_DB_PORT=9 \
   -e BACKUP_DB_NAME=rampsmith -e BACKUP_DB_USER=rampsmith_backup -e "BACKUP_DB_PASSWORD=pw-$marker" \
-  -e R2_ACCOUNT_ID=00000000000000000000000000000000 -e R2_BUCKET_BACKUPS=smoke-backups \
+  -e R2_ACCOUNT_ID=00000000000000000000000000000000 -e R2_BUCKET_BACKUPS=smoke-backups-staging \
+  -e "BACKUP_SIGNING_KEY=$(openssl genpkey -algorithm ed25519 -outform DER 2>/dev/null | base64 -w0)" \
   -e "BACKUP_R2_ACCESS_KEY_ID=key-$marker" -e "BACKUP_R2_SECRET_ACCESS_KEY=secret-$marker" \
   -e BACKUP_AGE_RECIPIENTS=age17prg4nysv8q4w5m3tl4dr49m7m4s98vt38pjd68xykpugw8qa3dqfqxq5n \
   "$image" 2>&1) || status=$?
