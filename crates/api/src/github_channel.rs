@@ -29,8 +29,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use billing::entitlements::{Feature, Gate, feature_gate};
 use billing::stored::{entitlements_of, state_of};
-use contracts::{GithubCheckRepository, GithubSyncInstallation};
+use contracts::{GithubCheckRepository, GithubPlanBatch, GithubSyncInstallation};
 use db::TenantTx;
+use db::repo::code_fix::{self as batches, Created, NewBatch};
 use db::repo::github::{self as store, Linked, NewInstallation, RepoUpsert, SelectOutcome};
 use db::repo::{audit, jobs as job_repo, shop_billing};
 use domain::{ActorKind, ShopId};
@@ -264,6 +265,118 @@ pub(crate) struct CodeFixesDto {
     connection: Option<GithubConnectionDto>,
     /// Its repositories, chosen one first.
     repositories: Vec<GithubRepositoryDto>,
+    /// The latest requests for pull requests, newest first.
+    batches: Vec<BatchDto>,
+    /// The pull requests Rampsmith opened, newest first.
+    pull_requests: Vec<PullRequestDto>,
+}
+
+/// How many findings of one kind a batch left alone, and why (a code, never finding text).
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct SkippedDto {
+    /// `no-recipe`, `plan`, `unmapped`, `needs-review`, `data`, `refused`, `already-fixed`,
+    /// `conflict` or `theme-check`.
+    code: String,
+    /// How many findings.
+    count: u32,
+}
+
+/// A request for pull requests.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct BatchDto {
+    /// Rampsmith's id for it.
+    id: String,
+    /// `reading`, `patching`, `ready`, `opening`, `opened`, `nothing_to_fix` or `failed`.
+    status: String,
+    /// `core` or `every`: the recipes the plan included.
+    recipes: String,
+    /// The open code findings it looked at, once known.
+    considered: Option<u32>,
+    /// The fixes it made, once known.
+    fixed: Option<u32>,
+    /// What it left alone, by code.
+    skipped: Vec<SkippedDto>,
+    /// Why it ended without a pull request.
+    failure_code: Option<String>,
+    /// When it was requested.
+    created_at: String,
+}
+
+/// A pull request Rampsmith opened in the merchant's repository.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct PullRequestDto {
+    /// Rampsmith's id for it.
+    id: String,
+    /// The number in the repository.
+    number: i64,
+    /// Which part of a split batch, from 1.
+    part: i32,
+    /// `open`, `closed` or `merged`.
+    state: String,
+    /// Its page on GitHub.
+    html_url: String,
+    /// Fixes in it.
+    fix_count: i32,
+    /// Files it changes.
+    files: i32,
+    /// Lines it changes.
+    changed_lines: i32,
+    /// Whether someone added commits to the branch since Rampsmith pushed it.
+    edited: bool,
+    /// When it was opened.
+    opened_at: String,
+}
+
+fn count_of(outcome: Option<&serde_json::Value>, key: &str) -> Option<u32> {
+    outcome?
+        .get(key)?
+        .as_u64()
+        .and_then(|n| u32::try_from(n).ok())
+}
+
+/// The outcome's skipped findings, counted by code.
+fn skipped_of(outcome: Option<&serde_json::Value>) -> Vec<SkippedDto> {
+    let mut counts = std::collections::BTreeMap::<String, u32>::new();
+    let items = outcome
+        .and_then(|o| o.get("skipped"))
+        .and_then(serde_json::Value::as_array);
+    for item in items.into_iter().flatten() {
+        if let Some(code) = item.get("code").and_then(serde_json::Value::as_str) {
+            *counts.entry(code.chars().take(32).collect()).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(code, count)| SkippedDto { code, count })
+        .collect()
+}
+
+fn batch_dto(row: batches::BatchRow) -> BatchDto {
+    BatchDto {
+        id: row.id.to_string(),
+        considered: count_of(row.outcome.as_ref(), "considered"),
+        fixed: count_of(row.outcome.as_ref(), "fixed"),
+        skipped: skipped_of(row.outcome.as_ref()),
+        status: row.status,
+        recipes: row.recipes,
+        failure_code: row.failure_code,
+        created_at: ts(row.created_at),
+    }
+}
+
+fn pull_request_dto(row: batches::PullRequestRow) -> PullRequestDto {
+    PullRequestDto {
+        id: row.id.to_string(),
+        number: row.number,
+        part: row.part,
+        edited: row.head_sha != row.pushed_sha,
+        state: row.state,
+        html_url: row.html_url,
+        fix_count: row.fix_count,
+        files: row.files,
+        changed_lines: row.changed_lines,
+        opened_at: ts(row.opened_at),
+    }
 }
 
 /// The plan's gate for pull requests.
@@ -297,6 +410,8 @@ async fn screen(tx: &mut TenantTx, shop: ShopId, enabled: bool) -> Result<CodeFi
         plan: gate_dto(gate),
         connection: None,
         repositories: Vec::new(),
+        batches: Vec::new(),
+        pull_requests: Vec::new(),
     };
     if !enabled {
         return Ok(dto);
@@ -334,6 +449,16 @@ async fn screen(tx: &mut TenantTx, shop: ShopId, enabled: bool) -> Result<CodeFi
                 connected_branch: r.connected_branch,
                 theme_state: r.theme_state,
             })
+            .collect();
+        dto.batches = batches::recent_batches(tx, 5)
+            .await?
+            .into_iter()
+            .map(batch_dto)
+            .collect();
+        dto.pull_requests = batches::recent_pull_requests(tx, 20)
+            .await?
+            .into_iter()
+            .map(pull_request_dto)
             .collect();
     }
     Ok(dto)
@@ -709,4 +834,217 @@ pub(crate) async fn delete_connection(
     let dto = screen(&mut tx, session.shop_id, true).await?;
     tx.commit().await?;
     Ok(Json(dto))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Requesting pull requests
+
+/// A label the person wrote for a control that has none (a judgement call Rampsmith will not make).
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LabelBody {
+    /// The translation key the label is stored under, such as `general.cart`.
+    key: String,
+    /// The label, in the store's default language.
+    text: String,
+}
+
+/// What the person brings for one finding that needs judgement.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct JudgementBody {
+    /// The finding it is for.
+    finding_id: String,
+    /// The accessible name to add.
+    label: Option<LabelBody>,
+    /// Why a decorative image has no text alternative.
+    decorative_reason: Option<String>,
+    /// The `id` to give an element that needs one.
+    id: Option<String>,
+}
+
+/// Asks Rampsmith to open pull requests for the store's open code findings.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CreateBatchBody {
+    /// What the person brings for findings that need judgement.
+    #[serde(default)]
+    judgements: Vec<JudgementBody>,
+}
+
+/// The request that was accepted.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct CreateBatchDto {
+    /// Rampsmith's id for it.
+    id: String,
+    /// Always `reading`: ctl reads the theme files next.
+    status: String,
+    /// `core` or `every`: the recipes the plan includes.
+    recipes: String,
+}
+
+const MAX_JUDGEMENTS: usize = 50;
+const MAX_TEXT_CHARS: usize = 200;
+
+fn key_is_well_formed(key: &str) -> bool {
+    (1..=80).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_'))
+}
+
+fn text_is_well_formed(text: &str) -> bool {
+    !text.trim().is_empty()
+        && text.chars().count() <= MAX_TEXT_CHARS
+        && !text.chars().any(char::is_control)
+}
+
+/// The judgements as the engine reads them. A value that is not well formed refuses the request.
+fn judgements_json(items: &[JudgementBody]) -> Result<serde_json::Value, ApiError> {
+    if items.len() > MAX_JUDGEMENTS {
+        return Err(invalid("judgements", "has too many entries"));
+    }
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let finding = Uuid::parse_str(&item.finding_id)
+            .map_err(|_| invalid("judgements", "has a finding_id that is not an id"))?;
+        let mut entry = serde_json::Map::new();
+        entry.insert("finding_id".to_owned(), json!(finding));
+        if let Some(label) = &item.label {
+            if !key_is_well_formed(&label.key) || !text_is_well_formed(&label.text) {
+                return Err(invalid("judgements", "has a label that is not valid"));
+            }
+            entry.insert("label".to_owned(), json!({"key": label.key, "text": label.text}));
+        }
+        if let Some(reason) = &item.decorative_reason {
+            if !text_is_well_formed(reason) {
+                return Err(invalid("judgements", "has a reason that is not valid"));
+            }
+            entry.insert("decorative_reason".to_owned(), json!(reason));
+        }
+        if let Some(id) = &item.id {
+            let well_formed = (1..=64).contains(&id.len())
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'));
+            if !well_formed {
+                return Err(invalid("judgements", "has an id that is not valid"));
+            }
+            entry.insert("id".to_owned(), json!(id));
+        }
+        out.push(serde_json::Value::Object(entry));
+    }
+    Ok(serde_json::Value::Array(out))
+}
+
+/// The recipes a plan includes: every recipe, or the core ones, or none.
+async fn recipes_of(tx: &mut TenantTx, shop: ShopId) -> Result<&'static str, ApiError> {
+    let stored = shop_billing::get(tx, shop).await?;
+    let plan = entitlements_of(&state_of(stored.as_ref())).plan();
+    if !matches!(feature_gate(plan, Feature::GithubPullRequests), Gate::Allowed) {
+        return Err(plan_refusal());
+    }
+    if matches!(feature_gate(plan, Feature::EveryRecipe), Gate::Allowed) {
+        Ok("every")
+    } else if matches!(feature_gate(plan, Feature::CoreRecipes), Gate::Allowed) {
+        Ok("core")
+    } else {
+        Err(plan_refusal())
+    }
+}
+
+/// Requests pull requests for the store's open code findings. Rampsmith reads the theme files
+/// from the chosen repository, makes the fixes, and opens a pull request on a
+/// `rampsmith/fix-<batch>` branch. It never merges.
+#[utoipa::path(
+    post,
+    path = "/v1/shopify/code-fixes/batches",
+    tag = "code-fixes",
+    operation_id = "createCodeFixBatch",
+    security(("shopify_session" = [])),
+    request_body = CreateBatchBody,
+    responses(
+        (status = ACCEPTED, description = "The request was accepted", body = CreateBatchDto),
+        (status = FORBIDDEN, description = "The plan does not include pull requests, or no signed-in staff member",
+            body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = NOT_FOUND, description = "The channel is not switched on",
+            body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = CONFLICT, description = "No theme repository is ready, or a request is already in progress",
+            body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = UNPROCESSABLE_ENTITY, description = "A judgement is not valid",
+            body = http_kit::Problem, content_type = "application/problem+json"),
+        (status = UNAUTHORIZED, description = "Missing or invalid session token",
+            body = http_kit::Problem, content_type = "application/problem+json")
+    )
+)]
+pub(crate) async fn create_batch(
+    State(state): State<AppState>,
+    ShopSession(session): ShopSession,
+    Body(body): Body<CreateBatchBody>,
+) -> Result<(axum::http::StatusCode, Json<CreateBatchDto>), ApiError> {
+    channel(&state)?;
+    staff(&session)?;
+    let judgements = judgements_json(&body.judgements)?;
+    let mut tx = state.db.tenant(session.tenant).await?;
+    let recipes = recipes_of(&mut tx, session.shop_id).await?;
+    let site = site_of(&mut tx, session.shop_id).await?;
+    let ready = store::live_installation(&mut tx).await?.is_some();
+    let repo = store::selected_repo(&mut tx)
+        .await?
+        .filter(|r| ready && r.status == "available" && !r.archived && r.theme_state == "ok");
+    let Some((repo, base)) = repo.and_then(|r| {
+        let base = r.connected_branch.clone()?;
+        Some((r, base))
+    }) else {
+        return Err(ApiError::new(ProblemCode::Conflict)
+            .detail("Choose a theme repository, and wait for the theme check, first."));
+    };
+    let batch_id = Uuid::now_v7().simple().to_string();
+    let created = batches::create_batch(
+        &mut tx,
+        &NewBatch {
+            site: site.as_uuid(),
+            repo_row: repo.id,
+            batch_id,
+            base_branch: base,
+            requested_by: actor_id(&session),
+            recipes: recipes.to_owned(),
+            judgements,
+        },
+    )
+    .await?;
+    let Created::New(id) = created else {
+        return Err(ApiError::new(ProblemCode::Conflict)
+            .detail("Pull requests are already being prepared for this store."));
+    };
+    audit::append(
+        &mut tx,
+        &audit::NewEntry {
+            actor_kind: ActorKind::User,
+            actor_id: actor_id(&session),
+            action: "github.batch_requested".to_owned(),
+            subject_type: "code_fix_batch".to_owned(),
+            subject_id: id,
+            data: json!({"recipes": recipes, "judgements": body.judgements.len()}),
+        },
+    )
+    .await?;
+    let payload =
+        serde_json::to_value(GithubPlanBatch { batch_row: id }).map_err(|e| queue_error(&e))?;
+    job_repo::enqueue(
+        &mut tx,
+        NewJob::new(GithubPlanBatch::QUEUE, GithubPlanBatch::SCHEMA, payload)
+            .idempotency_key(format!("{}:{id}", GithubPlanBatch::QUEUE))
+            .max_attempts(5),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok((
+        axum::http::StatusCode::ACCEPTED,
+        Json(CreateBatchDto {
+            id: id.to_string(),
+            status: "reading".to_owned(),
+            recipes: recipes.to_owned(),
+        }),
+    ))
 }

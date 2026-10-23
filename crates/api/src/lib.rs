@@ -223,6 +223,7 @@ fn routes() -> OpenApiRouter<AppState> {
             github_channel::delete_connection
         ))
         .routes(routes!(github_channel::choose_repository))
+        .routes(routes!(github_channel::create_batch))
         .routes(routes!(github_channel::finish_connection))
         .routes(routes!(email_link::inspect_link))
         .routes(routes!(email_link::change_link))

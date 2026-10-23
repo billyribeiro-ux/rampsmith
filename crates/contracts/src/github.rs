@@ -124,8 +124,8 @@ impl GithubOpenPullRequest {
 }
 
 /// Payload of `github.sync_pr` jobs, schema `github.sync_pr@1`. Runs in `ctl`: reads one pull
-/// request Rampsmith opened from the GitHub API and records its state; when the connected
-/// branch moved under an open one it queues a re-derive (PLAN §15, audit L3).
+/// request Rampsmith opened from the GitHub API and records its state and head. A branch a person
+/// edited is recorded, never overwritten (PLAN §15, audit L3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GithubSyncPullRequest {

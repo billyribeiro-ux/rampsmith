@@ -10,7 +10,11 @@
 //! state and its repositories are read from the API, so a forged or replayed delivery can at
 //! worst cause one extra read.
 
-use contracts::{GithubCheckRepository, GithubProcessEvent, GithubSyncInstallation};
+use contracts::{
+    GithubCheckRepository, GithubOpenPullRequest, GithubPlanBatch, GithubProcessEvent,
+    GithubSyncInstallation, GithubSyncPullRequest,
+};
+use db::repo::code_fix;
 use db::repo::github::{self as store, RepoUpsert};
 use db::repo::{audit, jobs as job_repo};
 use domain::ActorKind;
@@ -25,10 +29,13 @@ use uuid::Uuid;
 use super::{Jobs, database, failure, payload, tenant_of};
 
 /// The queues that exist only while the channel is on.
-pub const QUEUES: [&str; 3] = [
+pub const QUEUES: [&str; 6] = [
     GithubSyncInstallation::QUEUE,
     GithubProcessEvent::QUEUE,
     GithubCheckRepository::QUEUE,
+    GithubPlanBatch::QUEUE,
+    GithubOpenPullRequest::QUEUE,
+    GithubSyncPullRequest::QUEUE,
 ];
 
 /// A GitHub failure, classified by whether a retry can help. Messages carry no token or body.
@@ -38,6 +45,7 @@ pub(crate) fn github_failure(error: &GitHubError) -> Failure {
         GitHubError::Unauthorized => "github_unauthorized",
         GitHubError::Forbidden { .. } => "github_forbidden",
         GitHubError::NotFound => "github_not_found",
+        GitHubError::BranchMoved => "branch_moved",
         GitHubError::RateLimited { .. } => "github_rate_limited",
         GitHubError::Server { .. } => "github_server_error",
         _ => "github_error",
@@ -48,7 +56,7 @@ pub(crate) fn github_failure(error: &GitHubError) -> Failure {
 impl Jobs {
     /// The GitHub client, when the channel is on. A job for a channel that is off is a wiring
     /// mistake (nothing enqueues one), so it ends rather than retries.
-    fn github(&self, job: &ClaimedJob) -> Result<&GitHub, Failure> {
+    pub(super) fn github(&self, job: &ClaimedJob) -> Result<&GitHub, Failure> {
         self.github.as_deref().ok_or_else(|| {
             failure(
                 false,
@@ -211,37 +219,99 @@ pub async fn process_event(jobs: &Jobs, job: ClaimedJob) -> Result<(), Failure> 
         .map_err(|e| database(&e))?;
     // Only the store's own installation matters; the event's body is not trusted to say which.
     let ours = live.filter(|l| l.installation_id == event.installation_id);
-    // Pull request and push events are matched to the pull requests Rampsmith opened by
-    // repository id and number (audit L8), which arrive with the patch pipeline.
-    if let (Event::Installation(_) | Event::InstallationRepositories(_), Some(ours)) =
-        (&parsed, ours)
-    {
-        {
-            let payload = serde_json::to_value(GithubSyncInstallation {
-                installation_row: ours.id,
-            })
-            .map_err(|e| failure(false, "payload_invalid", e.to_string()))?;
-            job_repo::enqueue(
-                &mut tx,
-                NewJob::new(
-                    GithubSyncInstallation::QUEUE,
-                    GithubSyncInstallation::SCHEMA,
-                    payload,
+    if let Some(ours) = ours {
+        match &parsed {
+            Event::Installation(_) | Event::InstallationRepositories(_) => {
+                enqueue_sync_installation(&mut tx, ours.id, event_id).await?;
+            }
+            // Pull request and push events are matched to the pull requests Rampsmith opened by
+            // repository id and number (audit L8); the pull request is then read from the API.
+            Event::PullRequest(e) => {
+                let found = code_fix::pull_request_by_number(
+                    &mut tx,
+                    i64::try_from(e.repository.id.get()).unwrap_or(0),
+                    i64::try_from(e.number).unwrap_or(0),
                 )
-                .idempotency_key(format!(
-                    "{}:{}:event:{event_id}",
-                    GithubSyncInstallation::QUEUE,
-                    ours.id
-                )),
-            )
-            .await
-            .map_err(|e| database(&e))?;
+                .await
+                .map_err(|e| database(&e))?;
+                if let Some(row) = found {
+                    enqueue_sync_pr(&mut tx, row.id, event_id).await?;
+                }
+            }
+            Event::Push(e) => {
+                let rows = code_fix::open_pull_requests(
+                    &mut tx,
+                    i64::try_from(e.repository.id.get()).unwrap_or(0),
+                )
+                .await
+                .map_err(|e| database(&e))?;
+                for row in rows.iter().filter(|r| touched_by(r, &e.reference)) {
+                    enqueue_sync_pr(&mut tx, row.id, event_id).await?;
+                }
+            }
+            Event::Other { .. } => {}
         }
     }
     store::mark_event_processed(&mut tx, event_id)
         .await
         .map_err(|e| database(&e))?;
     tx.commit().await.map_err(|e| database(&e))
+}
+
+/// Whether a push to `reference` (`refs/heads/<branch>`) can change the pull request: it moved
+/// the pull request's head or its base.
+fn touched_by(row: &code_fix::PullRequestRow, reference: &str) -> bool {
+    reference.strip_prefix("refs/heads/").is_some_and(|branch| {
+        branch == row.head_branch || branch == row.base_branch
+    })
+}
+
+async fn enqueue_sync_installation(
+    tx: &mut db::TenantTx,
+    installation_row: Uuid,
+    event_id: Uuid,
+) -> Result<(), Failure> {
+    let payload = serde_json::to_value(GithubSyncInstallation { installation_row })
+        .map_err(|e| failure(false, "payload_invalid", e.to_string()))?;
+    job_repo::enqueue(
+        tx,
+        NewJob::new(
+            GithubSyncInstallation::QUEUE,
+            GithubSyncInstallation::SCHEMA,
+            payload,
+        )
+        .idempotency_key(format!(
+            "{}:{installation_row}:event:{event_id}",
+            GithubSyncInstallation::QUEUE
+        )),
+    )
+    .await
+    .map_err(|e| database(&e))?;
+    Ok(())
+}
+
+async fn enqueue_sync_pr(
+    tx: &mut db::TenantTx,
+    pull_request_row: Uuid,
+    event_id: Uuid,
+) -> Result<(), Failure> {
+    let payload = serde_json::to_value(GithubSyncPullRequest { pull_request_row })
+        .map_err(|e| failure(false, "payload_invalid", e.to_string()))?;
+    job_repo::enqueue(
+        tx,
+        NewJob::new(
+            GithubSyncPullRequest::QUEUE,
+            GithubSyncPullRequest::SCHEMA,
+            payload,
+        )
+        .idempotency_key(format!(
+            "{}:{pull_request_row}:event:{event_id}",
+            GithubSyncPullRequest::QUEUE
+        )),
+    )
+    .await
+    .map_err(|e| database(&e))?;
+    Ok(())
 }
 
 /// Handles one `github.check_repository@1` job: is the chosen branch a Shopify theme?
