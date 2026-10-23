@@ -272,7 +272,7 @@ async fn push_builds_one_commit_per_fix_on_the_fix_branch() {
     let client = fake.client();
     let repo = client.repository(installation(), repo_ref(), scope());
     let head = repo
-        .push(plan, &base, RefUpdate::FastForward)
+        .push(plan, &base, &RefUpdate::FastForward)
         .await
         .unwrap();
 
@@ -313,7 +313,8 @@ async fn re_derive_force_pushes_and_fast_forward_refuses_a_rewrite() {
         .remove(0);
     let client = fake.client();
     let repo = client.repository(installation(), repo_ref(), scope());
-    repo.push(&plan, &base, RefUpdate::FastForward)
+    let pushed = repo
+        .push(&plan, &base, &RefUpdate::FastForward)
         .await
         .unwrap();
 
@@ -326,13 +327,46 @@ async fn re_derive_force_pushes_and_fast_forward_refuses_a_rewrite() {
         Sha::parse(&commit).unwrap()
     };
     let err = repo
-        .push(&plan, &moved, RefUpdate::FastForward)
+        .push(&plan, &moved, &RefUpdate::FastForward)
         .await
         .unwrap_err();
     assert!(
         matches!(err, GitHubError::Validation { ref message } if message.contains("fast forward"))
     );
-    let head = repo.push(&plan, &moved, RefUpdate::Rederive).await.unwrap();
+    // A developer commits to the fix branch after Rampsmith's push: the re-derive must not
+    // discard their work (audit L3).
+    let developers = {
+        let mut state = fake.state();
+        let tree = state.commits[pushed.as_str()].tree.clone();
+        let commit = state.add_commit(&tree, vec![pushed.to_string()], "Fixup from a developer");
+        state
+            .refs
+            .insert("rampsmith/fix-b1".to_owned(), commit.clone());
+        Sha::parse(&commit).unwrap()
+    };
+    let err = repo
+        .push(
+            &plan,
+            &moved,
+            &RefUpdate::Rederive {
+                expected_head: pushed.clone(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err, GitHubError::BranchMoved);
+    assert_eq!(fake.state().refs["rampsmith/fix-b1"], developers.as_str());
+    // Once the developer's commit is the known head, the re-derive replaces the branch.
+    let head = repo
+        .push(
+            &plan,
+            &moved,
+            &RefUpdate::Rederive {
+                expected_head: developers,
+            },
+        )
+        .await
+        .unwrap();
     let state = fake.state();
     assert_eq!(state.refs["rampsmith/fix-b1"], head.as_str());
     let patches: Vec<bool> = state
@@ -342,6 +376,7 @@ async fn re_derive_force_pushes_and_fast_forward_refuses_a_rewrite() {
         .map(|r| r.json()["force"].as_bool().unwrap())
         .collect();
     assert_eq!(patches, [false, true], "force only for the re-derive");
+    assert_eq!(patches.len(), 2, "the refused re-derive sent no update");
 }
 
 #[tokio::test]
@@ -354,7 +389,7 @@ async fn pull_requests_are_opened_once_then_updated() {
     let client = fake.client();
     let repo = client.repository(installation(), repo_ref(), scope());
     let head = repo
-        .push(&plan, &base, RefUpdate::FastForward)
+        .push(&plan, &base, &RefUpdate::FastForward)
         .await
         .unwrap();
     let main = BranchName::parse("main").unwrap();
@@ -614,7 +649,8 @@ async fn malformed_token_responses_never_echo_the_token() {
 async fn too_many_repositories_are_refused_before_any_request() {
     let fake = Fake::start().await;
     let client = fake.client();
-    let mut wide = TokenScope::installation().permission(Permission::Contents, Access::Read);
+    let mut wide =
+        TokenScope::read_theme(RepositoryId::new(1)).permission(Permission::Contents, Access::Read);
     for id in 0..=500 {
         wide = wide.repository(RepositoryId::new(id));
     }

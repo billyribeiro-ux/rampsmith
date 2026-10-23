@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GithubProcessEvent",
+  "description": "Payload of `github.process_event` jobs, schema `github.process_event@1`. Runs in `ctl`:\nhandles one verified delivery already recorded in `github_events`. The body is read from that\nrow, never from the payload, and decides only which API read to make.",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "description": "The `github_events.id` to process.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "event_id"
+  ]
+}

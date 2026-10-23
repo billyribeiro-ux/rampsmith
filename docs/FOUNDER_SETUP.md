@@ -470,6 +470,9 @@ Values:
 - `GITHUB_APP_CLIENT_ID` → RW (ADR-122). The manifest conversion returns it as `client_id`.
 - `GITHUB_APP_PRIVATE_KEY`, the whole PEM → RW. In Railway use the Raw Editor or Cmd/Ctrl+Enter for the line breaks. (GitHub refuses secret names that start with `GITHUB_`, so these could not be GitHub secrets in any case.)
 - `GITHUB_APP_WEBHOOK_SECRET` → RW
+- `GITHUB_APP_CLIENT_SECRET` → RW, **`api` only** (ADR-291). The manifest conversion returns it as `client_secret`; if you register by hand, App settings > Client secrets > Generate a new client secret (it is shown once). The api exchanges the installer's authorization code with it when a merchant connects GitHub; no other service holds it.
+- `GITHUB_APP_SLUG` → RW on `web` (not a secret): the App's URL name, the last part of `https://github.com/apps/<slug>`. The manifest conversion returns it as `slug`.
+- `CODE_FIX_CHANNEL_ENABLED` → RW on `api`, `ctl` and `web`: `false` until you have decided to ship the pull-request channel. The App Store build keeps it `false` (ADR-290); with it off, every route and job of the channel answers 404 or does not run.
 
 To make a new key later: Settings > Developer settings > GitHub Apps > Edit > Private keys > Generate a private key. Keys do not expire and up to 25 can exist, which allows a rotation with an overlap.
 

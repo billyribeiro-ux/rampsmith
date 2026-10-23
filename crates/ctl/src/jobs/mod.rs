@@ -5,8 +5,11 @@
 //! due) and its client from the shared [`AdminFactory`], so one process paces every call for a
 //! shop through one cost bucket.
 
+use std::sync::Arc;
+
 use contracts::{
-    JobError, ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, WebhookProcess,
+    GithubCheckRepository, GithubProcessEvent, GithubSyncInstallation, JobError,
+    ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, WebhookProcess,
 };
 use db::Db;
 use queue::{ClaimedJob, Failure};
@@ -16,6 +19,7 @@ use shopify_auth::{RefreshError, ShopifyAuth};
 pub mod apply_data_fix;
 pub(crate) mod data_fix;
 pub(crate) mod email_triggers;
+pub mod github;
 pub mod read_store;
 pub mod revert_data_fix;
 pub mod scan_secret;
@@ -37,6 +41,9 @@ pub struct Jobs {
     auth: ShopifyAuth,
     admin: AdminFactory,
     scan_secrets: Option<scan_secret::ScanSecrets>,
+    /// The GitHub client, holding the App's private key, while the pull-request channel is on
+    /// (`CODE_FIX_CHANNEL_ENABLED`, ADR-290).
+    github: Option<Arc<::github::GitHub>>,
 }
 
 impl Jobs {
@@ -48,7 +55,25 @@ impl Jobs {
             auth,
             admin,
             scan_secrets: None,
+            github: None,
         }
+    }
+
+    /// Switches the GitHub pull-request channel on: its jobs can run once this client exists.
+    #[must_use]
+    pub fn with_github(mut self, client: ::github::GitHub) -> Self {
+        self.github = Some(Arc::new(client));
+        self
+    }
+
+    /// The queues to serve: the R1 queues, and the GitHub channel's while it is on.
+    #[must_use]
+    pub fn queues(&self) -> Vec<&'static str> {
+        let mut queues = QUEUES.to_vec();
+        if self.github.is_some() {
+            queues.extend(github::QUEUES);
+        }
+        queues
     }
 
     /// Lets scans of a password-protected store reach the engine (ADR-266). Without it the
@@ -67,6 +92,9 @@ impl Jobs {
             ShopifyApplyDataFix::QUEUE => apply_data_fix::handle(self, job).await,
             ShopifyRevertDataFix::QUEUE => revert_data_fix::handle(self, job).await,
             WebhookProcess::QUEUE => webhook::handle(self, job).await,
+            GithubSyncInstallation::QUEUE => github::sync_installation(self, job).await,
+            GithubProcessEvent::QUEUE => github::process_event(self, job).await,
+            GithubCheckRepository::QUEUE => github::check_repository(self, job).await,
             other => Err(Failure::Permanent(JobError {
                 code: "queue_unknown".to_owned(),
                 message: format!("ctl does not serve {other}"),

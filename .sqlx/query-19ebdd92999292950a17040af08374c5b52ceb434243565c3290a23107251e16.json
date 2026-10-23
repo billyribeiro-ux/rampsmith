@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_repos set selected = false, updated_at = now()\n          where tenant_id = $1 and selected and id <> $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "19ebdd92999292950a17040af08374c5b52ceb434243565c3290a23107251e16"
+}

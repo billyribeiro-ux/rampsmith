@@ -43,7 +43,7 @@ HOSTS = {
     "RAMPSMITH_SITE_HOST": "rampsmith.example",
     "RAMPSMITH_WEBHOOK_HOST": "hooks.rampsmith.example",
 }
-INPUT_NAMES = (*IMAGES, "RAMPSMITH_IMAGE_CTL", *HOSTS)
+INPUT_NAMES = (*IMAGES, "RAMPSMITH_IMAGE_CTL", *HOSTS, "RAMPSMITH_CODE_FIX_CHANNEL")
 ENVIRONMENTS = ("staging", "production", "preview")
 
 # Runtime founder inputs in LAUNCH.md section C (rows 1, 2, 4, 5, 6, 7, 9, 12), as Railway
@@ -58,6 +58,7 @@ LAUNCH_C_RUNTIME = {
     "GITHUB_APP_CLIENT_ID",
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_WEBHOOK_SECRET",
+    "GITHUB_APP_CLIENT_SECRET",
     "ANTHROPIC_API_KEY",
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
@@ -76,6 +77,8 @@ LAUNCH_C_RUNTIME = {
     "RAMPSMITH_MASTER_KEYS",
 }
 PROPOSED = {
+    # The App's public URL name (ADR-291).
+    "GITHUB_APP_SLUG",
     "GRAFANA_CLOUD_OTLP_ENDPOINT",
     "GRAFANA_CLOUD_OTLP_INSTANCE_ID",
     "GRAFANA_CLOUD_OTLP_TOKEN",
@@ -109,6 +112,8 @@ SECRET_USERS = {
     "SHOPIFY_PARTNER_API_TOKEN": {"ctl"},
     "GITHUB_APP_PRIVATE_KEY": {"ctl"},
     "GITHUB_APP_WEBHOOK_SECRET": {"api"},
+    # The api exchanges the installer's code; only ctl holds the private key (ADR-291).
+    "GITHUB_APP_CLIENT_SECRET": {"api"},
     "ANTHROPIC_API_KEY": {"engine"},
     "R2_SECRET_ACCESS_KEY": {"api", "ctl", "engine"},
     # The api verifies the challenge (ADR-267); the web service holds no Turnstile secret.
@@ -396,6 +401,33 @@ class Exposure(unittest.TestCase):
         self.assertEqual(
             variables(evaluate("staging")["api"])["TURNSTILE_HOSTNAMES"], {"type": "preserve"}
         )
+
+    def test_the_pull_request_channel_is_off_unless_the_deploy_turns_it_on(self) -> None:
+        # ADR-290: the App Store build never has it on, and a deploy that says nothing keeps it off.
+        for name in ("api", "ctl"):
+            off = evaluate("staging")[name]
+            self.assertEqual(literal(off, "CODE_FIX_CHANNEL_ENABLED"), "false")
+            on = evaluate("staging", RAMPSMITH_CODE_FIX_CHANNEL="true")[name]
+            self.assertEqual(literal(on, "CODE_FIX_CHANNEL_ENABLED"), "true")
+        self.assertNotIn("CODE_FIX_CHANNEL_ENABLED", variables(evaluate("staging")["web"]))
+        for typo in ("TRUE", "1", "yes"):
+            with self.assertRaises(ValueError):
+                evaluate("staging", RAMPSMITH_CODE_FIX_CHANNEL=typo)
+
+    def test_only_the_api_holds_the_oauth_client_secret_and_only_ctl_the_key(self) -> None:
+        plan = evaluate("staging")
+        holders = {
+            name
+            for name, resource in plan.items()
+            if "GITHUB_APP_CLIENT_SECRET" in shared_refs(resource)
+        }
+        self.assertEqual(holders, {"api"})
+        keyed = {
+            name
+            for name, resource in plan.items()
+            if "GITHUB_APP_PRIVATE_KEY" in shared_refs(resource)
+        }
+        self.assertEqual(keyed, {"ctl"})
 
     def test_without_an_app_host_passkey_settings_are_kept(self) -> None:
         api = evaluate("staging")["api"]

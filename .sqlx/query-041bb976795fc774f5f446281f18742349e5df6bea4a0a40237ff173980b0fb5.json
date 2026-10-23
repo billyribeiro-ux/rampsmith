@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_events set processed_at = now()\n          where tenant_id = $1 and id = $2 and processed_at is null",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "041bb976795fc774f5f446281f18742349e5df6bea4a0a40237ff173980b0fb5"
+}

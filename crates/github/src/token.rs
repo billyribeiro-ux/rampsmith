@@ -62,10 +62,19 @@ pub struct TokenScope {
 }
 
 impl TokenScope {
-    /// Everything the installation granted.
+    /// Everything the installation granted. Crate-private on purpose: a token for every
+    /// repository with every permission is never what a job needs, so callers outside this crate
+    /// can only ask for the narrow scopes below (integration audit L9).
     #[must_use]
-    pub fn installation() -> Self {
+    pub(crate) fn installation() -> Self {
         Self::default()
+    }
+
+    /// Metadata read on every repository of the installation: enough to list which repositories
+    /// the installation can reach, and nothing else.
+    #[must_use]
+    pub(crate) fn installation_metadata() -> Self {
+        Self::installation().permission(Permission::Metadata, Access::Read)
     }
 
     /// Adds a repository the token may access.

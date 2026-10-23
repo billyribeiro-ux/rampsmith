@@ -143,7 +143,88 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .await
     .unwrap();
     seed_r1_billing_and_digests(&mut tx, &graph).await;
+    seed_github(&mut tx, &graph).await;
     tx.commit().await.unwrap();
+}
+
+/// One row of each GitHub channel table (ADR-290 to ADR-294).
+async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
+    let install = uuid::Uuid::now_v7();
+    let repo = uuid::Uuid::now_v7();
+    let pr = uuid::Uuid::now_v7();
+    let suffix = graph.tenant.to_string();
+    let installation_id =
+        i64::from(u32::try_from(graph.tenant.as_uuid().as_u128() & 0x7fff_ffff).unwrap()) + 1;
+    sqlx::query(
+        "insert into github_install_states (state_sha256, tenant_id, site_id, expires_at)
+         values (sha256(convert_to($1, 'UTF8')), $2, $3, now() + interval '10 minutes')",
+    )
+    .bind(suffix.clone())
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.site.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into github_installations (id, tenant_id, site_id, installation_id, account_login,
+                                           account_type, repository_selection, status)
+         values ($1, $2, $3, $4, 'octo', 'User', 'selected', 'active')",
+    )
+    .bind(install)
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.site.as_uuid())
+    .bind(installation_id)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into github_repos (id, tenant_id, installation_row, repo_id, full_name,
+                                   default_branch, user_can_push, selected, connected_branch)
+         values ($1, $2, $3, $4, 'octo/theme', 'main', true, true, 'main')",
+    )
+    .bind(repo)
+    .bind(graph.tenant.as_uuid())
+    .bind(install)
+    .bind(installation_id * 10)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into github_pull_requests (id, tenant_id, repo_row, repo_id, number, batch_id,
+                head_branch, base_branch, head_sha, pushed_sha, state, html_url, fix_count, files,
+                changed_lines)
+         values ($1, $2, $3, $4, 7, 'batch-1', 'rampsmith/fix-batch-1', 'main',
+                 repeat('a', 40), repeat('a', 40), 'open', 'https://github.com/octo/theme/pull/7',
+                 1, 1, 2)",
+    )
+    .bind(pr)
+    .bind(graph.tenant.as_uuid())
+    .bind(repo)
+    .bind(installation_id * 10)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into github_pr_fixes (pull_request_id, fix_id, tenant_id) values ($1, $2, $3)",
+    )
+    .bind(pr)
+    .bind(graph.fix.as_uuid())
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into github_events (id, tenant_id, delivery_id, event, installation_id, body,
+                                    body_sha256)
+         values (gen_random_uuid(), $1, 'delivery-1', 'pull_request', $2, '{}',
+                 sha256(convert_to($3, 'UTF8')))",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(installation_id)
+    .bind(suffix)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
 }
 
 /// The rows of `shop_billing`, `webhook_digests` and `ai_draft_holds` (ADR-084, ADR-085).
@@ -437,7 +518,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 23] = [
+const TENANT_TABLES: [&str; 29] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -464,10 +545,17 @@ const TENANT_TABLES: [&str; 23] = [
     "webhook_digests",
     // The alt-text job's allowance holds (lane C audit M3); `shop/redact` deletes them.
     "ai_draft_holds",
+    // The GitHub pull-request channel (ADR-290 to ADR-294).
+    "github_install_states",
+    "github_installations",
+    "github_repos",
+    "github_pull_requests",
+    "github_pr_fixes",
+    "github_events",
 ];
 
 /// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 11] = [
+const R1_TABLES: [&str; 17] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -479,6 +567,12 @@ const R1_TABLES: [&str; 11] = [
     "shop_billing",
     "webhook_digests",
     "ai_draft_holds",
+    "github_install_states",
+    "github_installations",
+    "github_repos",
+    "github_pull_requests",
+    "github_pr_fixes",
+    "github_events",
 ];
 
 #[sqlx::test]

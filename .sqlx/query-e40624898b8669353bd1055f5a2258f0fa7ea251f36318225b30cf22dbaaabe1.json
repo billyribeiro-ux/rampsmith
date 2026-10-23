@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_repos\n            set status = 'removed', selected = false, updated_at = now()\n          where tenant_id = $1 and installation_row = $2 and status = 'available'\n            and not (repo_id = any($3))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e40624898b8669353bd1055f5a2258f0fa7ea251f36318225b30cf22dbaaabe1"
+}

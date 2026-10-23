@@ -19,7 +19,7 @@
 use domain::ShopId;
 use serde::Serialize;
 
-use crate::repo::{audit, data_fixes, jobs, shopify};
+use crate::repo::{audit, data_fixes, github, jobs, shopify};
 use crate::{Db, DbError, TenantTx};
 
 /// How many rows each step removed. Counts only, for the audit entry.
@@ -39,6 +39,9 @@ pub struct Redacted {
     pub other: u64,
     /// Stored webhook bodies of other events.
     pub webhooks: u64,
+    /// The GitHub channel's rows: installation links, repositories, pull request records and
+    /// stored deliveries (ADR-290).
+    pub github: u64,
     /// Other unprocessed webhook events closed without being handled, because the shop they
     /// are about no longer has any data.
     pub events_closed: u64,
@@ -71,6 +74,8 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
     sqlx::query!("delete from fix_findings where tenant_id = $1", tenant)
         .execute(tx.conn())
         .await?;
+    // The pull requests' links to fixes go first: they reference the fixes deleted below.
+    let github = clear_github(tx, tenant).await?;
     // Fixes point at each other (`reverts`) and at evidence; one statement removes them all.
     let fixes = sqlx::query!("delete from fixes where tenant_id = $1", tenant)
         .execute(tx.conn())
@@ -143,9 +148,32 @@ pub async fn shop(tx: &mut TenantTx, shop: ShopId) -> Result<Option<Redacted>, D
         evidence,
         other: other + contacts + deliveries,
         webhooks,
+        github,
         events_closed,
         jobs_cancelled,
     }))
+}
+
+/// Removes the GitHub channel's rows (its jobs are cancelled with the others). The merchant's repository is theirs
+/// and stays as it is; only Rampsmith's record of it goes. Returns how many rows were removed.
+async fn clear_github(tx: &mut TenantTx, tenant: uuid::Uuid) -> Result<u64, DbError> {
+    let mut removed = 0;
+    // Children before parents: the foreign keys are composite and unconditional.
+    for statement in [
+        "delete from github_pr_fixes where tenant_id = $1",
+        "delete from github_pull_requests where tenant_id = $1",
+        "delete from github_events where tenant_id = $1",
+        "delete from github_repos where tenant_id = $1",
+        "delete from github_installations where tenant_id = $1",
+        "delete from github_install_states where tenant_id = $1",
+    ] {
+        removed += sqlx::query(sqlx::AssertSqlSafe(statement))
+            .bind(tenant)
+            .execute(tx.conn())
+            .await?
+            .rows_affected();
+    }
+    Ok(removed)
 }
 
 /// Cancels, closes and clears the shop's webhook events and their jobs. Returns the jobs
@@ -239,6 +267,12 @@ pub async fn end_installation(tx: &mut TenantTx, shop: ShopId) -> Result<Ended, 
     // Their apply jobs were cancelled with the rest: without this they would stay approved for
     // ever (lane A audit L2).
     let fixes_failed = data_fixes::fail_in_flight(tx, "shop_uninstalled").await?;
+    // The store no longer uses the pull-request channel: its jobs were cancelled above and the
+    // GitHub link ends. The merchant's repository and the App's installation on GitHub are
+    // theirs to remove.
+    if let Some(live) = github::live_installation(tx).await? {
+        github::unlink_installation(tx, live.id).await?;
+    }
     Ok(Ended {
         changed,
         cancelled,

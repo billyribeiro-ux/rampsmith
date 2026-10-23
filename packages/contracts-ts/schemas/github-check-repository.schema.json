@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GithubCheckRepository",
+  "description": "Payload of `github.check_repository` jobs, schema `github.check_repository@1`. Runs in `ctl`:\nreads the tree of the chosen repository's connected branch and records whether it is a\nShopify theme (`layout/theme.liquid`, `sections/`, `templates/`, `config/`; PLAN §15).",
+  "type": "object",
+  "properties": {
+    "repo_row": {
+      "description": "The `github_repos.id` to check.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "repo_row"
+  ]
+}

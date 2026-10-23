@@ -7,6 +7,7 @@
 
 pub mod email;
 pub mod free_scan;
+pub mod github;
 pub mod job;
 pub mod pipeline;
 pub mod problem;
@@ -20,6 +21,7 @@ pub use free_scan::{
     FreeScanExample, FreeScanFailure, FreeScanResult, FreeScanRun, MAX_EXAMPLES,
     MAX_FAILURE_GROUPS, MAX_PAGES, MAX_SNIPPET_CHARS,
 };
+pub use github::{GithubCheckRepository, GithubProcessEvent, GithubSyncInstallation};
 pub use job::{JobError, ShopifyTokenRefresh};
 pub use pipeline::{
     AiAltText, AuditData, PageState, PageType, ScanFinalize, ScanPageV2, ScanPlan,

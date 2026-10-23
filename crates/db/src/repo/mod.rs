@@ -11,6 +11,7 @@ pub mod email;
 pub mod findings;
 pub mod fixes;
 pub mod free_scans;
+pub mod github;
 pub mod identity;
 pub mod jobs;
 pub mod occurrences;

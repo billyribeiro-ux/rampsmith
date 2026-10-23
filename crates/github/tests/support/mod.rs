@@ -45,6 +45,10 @@ pub const CLIENT_ID: &str = "Iv23liTestClient";
 pub const OWNER: &str = "octo-shop";
 pub const REPO: &str = "dawn-theme";
 pub const INSTALLATION: u64 = 4242;
+pub const CLIENT_SECRET: &str = "fake-client-secret-value";
+pub const USER_TOKEN: &str = "ghu_FakeUserTokenValue";
+pub const GOOD_CODE: &str = "good-code-123";
+pub const REPO_ID: u64 = 555;
 
 pub const HEADER: &str =
     "{% comment %}header{% endcomment %}\n<a href=\"/cart\">{% render 'icon-cart' %}</a>\n";
@@ -356,6 +360,10 @@ pub struct FakeState {
     pub pulls: Vec<FakePull>,
     pub check_runs: Vec<(u64, Value)>,
     pub truncate_trees: bool,
+    /// Repositories beyond the one the tests use, to exercise paging of repository lists.
+    pub extra_repos: usize,
+    /// Whether the user token may push to the test repository.
+    pub user_can_push: bool,
 }
 
 pub type Shared = Arc<Mutex<FakeState>>;
@@ -488,6 +496,8 @@ impl Fake {
             pulls: Vec::new(),
             check_runs: Vec::new(),
             truncate_trees: false,
+            extra_repos: 0,
+            user_can_push: true,
         }));
         let router = Router::new()
             .fallback(handle)
@@ -512,6 +522,10 @@ impl Fake {
     }
 
     pub fn client_with(&self, config: ClientConfig) -> GitHub {
+        let config = ClientConfig {
+            oauth_base_url: config.base_url.clone(),
+            ..config
+        };
         GitHub::new(config, credentials(), self.clock.clone()).unwrap()
     }
 
@@ -590,6 +604,23 @@ async fn handle(
             .collect(),
         body: body.to_vec(),
     });
+    if method == Method::POST && uri.path() == "/login/oauth/access_token" {
+        let input: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+        let ok = input["client_id"] == CLIENT_ID
+            && input["client_secret"] == CLIENT_SECRET
+            && input["code"] == GOOD_CODE;
+        // GitHub answers 200 with an `error` member when the exchange fails.
+        return if ok {
+            reply(
+                200,
+                &json!({"access_token": USER_TOKEN, "token_type": "bearer", "scope": "", "expires_in": 28800}),
+            )
+        } else if input["client_secret"] != CLIENT_SECRET {
+            reply(200, &json!({"error": "incorrect_client_credentials"}))
+        } else {
+            reply(200, &json!({"error": "bad_verification_code"}))
+        };
+    }
     if headers
         .get("x-github-api-version")
         .and_then(|v| v.to_str().ok())
@@ -628,6 +659,9 @@ async fn handle(
                 200,
                 &json!({"id": 123, "slug": "rampsmith-test", "client_id": CLIENT_ID}),
             ),
+            ("GET", ["app", "installations", id]) if *id == "4242" => {
+                reply(200, &installation_json())
+            }
             ("POST", ["app", "installations", id, "access_tokens"]) if *id == "4242" => {
                 let n = s.minted.len() + 1;
                 let token = format!("ghs_fake{n}SecretTokenValue{}", now.unix_timestamp());
@@ -648,9 +682,15 @@ async fn handle(
         };
     }
 
+    if bearer == USER_TOKEN {
+        return user_endpoints(&s, &method, &segments, uri.query().unwrap_or(""));
+    }
     match s.tokens.get(&bearer) {
         Some(expires) if *expires > now => {}
         _ => return reply(401, &json!({"message": "Bad credentials"})),
+    }
+    if method == Method::GET && segments.as_slice() == ["installation", "repositories"] {
+        return repositories_page(&s, uri.query().unwrap_or(""), false);
     }
     let ["repos", owner, repo, rest @ ..] = segments.as_slice() else {
         return not_found();
@@ -790,6 +830,13 @@ async fn handle(
                 .collect();
             reply(200, &Value::Array(open))
         }
+        ("GET", ["pulls", number]) => {
+            let n: u64 = number.parse().unwrap();
+            match s.pulls.iter().find(|p| p.number == n) {
+                Some(p) => reply(200, &pull_json(&s, p)),
+                None => not_found(),
+            }
+        }
         ("POST", ["pulls"]) => {
             let pull = FakePull {
                 number: s.pulls.len() as u64 + 1,
@@ -841,13 +888,84 @@ async fn handle(
     }
 }
 
+fn installation_json() -> Value {
+    json!({
+        "id": INSTALLATION,
+        "account": {"login": OWNER, "id": 9, "type": "User"},
+        "repository_selection": "selected",
+        "app_id": 123,
+        "suspended_at": null
+    })
+}
+
+fn repository_json(id: u64, name: &str, user: bool, can_push: bool) -> Value {
+    let mut repo = json!({
+        "id": id,
+        "full_name": format!("{OWNER}/{name}"),
+        "default_branch": "main",
+        "private": true,
+        "archived": false
+    });
+    if user {
+        repo["permissions"] = json!({"admin": can_push, "push": can_push, "pull": true});
+    }
+    repo
+}
+
+/// One page (`per_page`, `page`) of the test repository followed by `extra_repos` others.
+fn repositories_page(s: &FakeState, query: &str, user: bool) -> Response {
+    let get = |key: &str| {
+        query
+            .split('&')
+            .filter_map(|kv| kv.split_once('='))
+            .find(|(k, _)| *k == key)
+            .and_then(|(_, v)| v.parse::<usize>().ok())
+    };
+    let per_page = get("per_page").unwrap_or(30).min(100);
+    let page = get("page").unwrap_or(1).max(1);
+    let all: Vec<Value> = std::iter::once(repository_json(REPO_ID, REPO, user, s.user_can_push))
+        .chain((0..s.extra_repos).map(|i| {
+            repository_json(
+                10_000 + i as u64,
+                &format!("extra-{i}"),
+                user,
+                s.user_can_push,
+            )
+        }))
+        .collect();
+    let items: Vec<Value> = all
+        .into_iter()
+        .skip((page - 1) * per_page)
+        .take(per_page)
+        .collect();
+    reply(
+        200,
+        &json!({"total_count": 1 + s.extra_repos, "repositories": items}),
+    )
+}
+
+fn user_endpoints(s: &FakeState, method: &Method, segments: &[&str], query: &str) -> Response {
+    match (method.as_str(), segments) {
+        ("GET", ["user"]) => reply(200, &json!({"login": "octo-person", "id": 3})),
+        ("GET", ["user", "installations"]) => reply(
+            200,
+            &json!({"total_count": 1, "installations": [installation_json()]}),
+        ),
+        ("GET", ["user", "installations", id, "repositories"]) if *id == "4242" => {
+            repositories_page(s, query, true)
+        }
+        _ => not_found(),
+    }
+}
+
 fn pull_json(s: &FakeState, p: &FakePull) -> Value {
     json!({
         "id": 77_000 + p.number,
         "number": p.number,
         "state": "open",
+        "merged": false,
         "html_url": format!("https://github.com/{OWNER}/{REPO}/pull/{}", p.number),
         "head": {"ref": p.head, "sha": s.refs.get(&p.head).cloned().unwrap_or_default()},
-        "base": {"ref": p.base, "sha": s.refs.get(&p.base).cloned().unwrap_or_default()},
+        "base": {"ref": p.base, "sha": s.refs.get(&p.base).cloned().unwrap_or_default(), "repo": {"id": REPO_ID}},
     })
 }

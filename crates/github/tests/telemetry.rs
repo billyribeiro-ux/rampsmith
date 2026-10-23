@@ -40,7 +40,7 @@ async fn spans_and_debug_output_never_contain_secrets_or_content() {
     for file in &tree.theme_files {
         repo.read_theme_file(file).await.unwrap();
     }
-    repo.push(&plan, &base, RefUpdate::FastForward)
+    repo.push(&plan, &base, &RefUpdate::FastForward)
         .await
         .unwrap();
     repo.open_or_update_pull_request(&plan, &BranchName::parse("main").unwrap())

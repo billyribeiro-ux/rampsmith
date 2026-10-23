@@ -20,6 +20,7 @@ contracts = { package = "rampsmith-contracts", path = "crates/contracts" }
 crypto = { package = "rampsmith-crypto", path = "crates/crypto" }
 db = { package = "rampsmith-db", path = "crates/db" }
 domain = { package = "rampsmith-domain", path = "crates/domain" }
+github = { package = "rampsmith-github", path = "crates/github" }
 graphql_client = { version = "0.16.0", default-features = false }
 hmac = "0.13.0"
 http-body-util = "0.1.5"
