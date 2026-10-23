@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into github_repos\n               (id, tenant_id, installation_row, repo_id, full_name, default_branch, is_private,\n                archived, user_can_push, status)\n             values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, false), 'available')\n             on conflict (installation_row, repo_id) do update\n               set full_name = excluded.full_name,\n                   default_branch = excluded.default_branch,\n                   is_private = excluded.is_private,\n                   archived = excluded.archived,\n                   user_can_push = coalesce($9, github_repos.user_can_push),\n                   status = 'available',\n                   updated_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b3135c4d1b314ef614c83121a3994908683709f1304aa7820e837bc25e129683"
+}

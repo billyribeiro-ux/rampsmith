@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_repos\n            set selected = true, connected_branch = $3, theme_state = 'unchecked',\n                theme_checked_at = null, updated_at = now()\n          where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "372498b41e870d64fd40925d629267462fdbd7b0ec44a06a60b053586b859e1d"
+}

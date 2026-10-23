@@ -379,7 +379,7 @@ pub struct GitHub {
     base_url: String,
     oauth_base_url: String,
     max_response_bytes: usize,
-    credentials: AppCredentials,
+    credentials: Option<AppCredentials>,
     clock: Arc<dyn Clock>,
     tokens: Mutex<HashMap<TokenKey, TokenSlot>>,
 }
@@ -388,7 +388,7 @@ impl fmt::Debug for GitHub {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GitHub")
             .field("base_url", &self.base_url)
-            .field("issuer", self.credentials.issuer())
+            .field("issuer", &self.credentials.as_ref().map(AppCredentials::issuer))
             .finish_non_exhaustive()
     }
 }
@@ -410,6 +410,22 @@ impl GitHub {
     pub fn new(
         config: ClientConfig,
         credentials: AppCredentials,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, GitHubError> {
+        Self::build(config, Some(credentials), clock)
+    }
+
+    /// A client that holds no App private key. It can exchange a user authorization code and
+    /// read what that user may see, and nothing that needs the App's JWT: the `api` uses it, so
+    /// the key stays in `ctl` alone (ADR-291). Calls that need the key fail with
+    /// [`GitHubError::Config`].
+    pub fn without_app(config: ClientConfig, clock: Arc<dyn Clock>) -> Result<Self, GitHubError> {
+        Self::build(config, None, clock)
+    }
+
+    fn build(
+        config: ClientConfig,
+        credentials: Option<AppCredentials>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, GitHubError> {
         let base_url = validate_base_url(&config.base_url)?;
@@ -742,7 +758,11 @@ impl GitHub {
     }
 
     fn app_bearer(&self) -> Result<Zeroizing<String>, GitHubError> {
-        let jwt = self.credentials.jwt(self.clock.now())?;
+        let credentials = self
+            .credentials
+            .as_ref()
+            .ok_or(GitHubError::Config("this client holds no GitHub App key"))?;
+        let jwt = credentials.jwt(self.clock.now())?;
         Ok(Zeroizing::new(format!("Bearer {}", jwt.expose_secret())))
     }
 

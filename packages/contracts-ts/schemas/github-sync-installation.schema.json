@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GithubSyncInstallation",
+  "description": "Payload of `github.sync_installation` jobs, schema `github.sync_installation@1`. Runs in\n`ctl`: reads the installation's state and repositories from the GitHub API (never from a\nwebhook body, integration audit M1) and makes `github_installations` and `github_repos` match.\nQueued when a store links an installation and whenever an event says it changed.",
+  "type": "object",
+  "properties": {
+    "installation_row": {
+      "description": "The `github_installations.id` to refresh.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "installation_row"
+  ]
+}

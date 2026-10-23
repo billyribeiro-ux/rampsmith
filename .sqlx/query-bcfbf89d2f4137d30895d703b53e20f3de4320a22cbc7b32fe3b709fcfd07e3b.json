@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update github_installations\n            set status = $3, repository_selection = $4, account_login = $5, state_read_at = now()\n          where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bcfbf89d2f4137d30895d703b53e20f3de4320a22cbc7b32fe3b709fcfd07e3b"
+}
