@@ -251,10 +251,18 @@ async fn queue_export_email(
         .replace_nanosecond(0)
         .ok()
         .and_then(|at| at.format(&Rfc3339).ok())
-        .ok_or_else(|| failure(false, "time_format", "the deletion time could not be written"))?;
+        .ok_or_else(|| {
+            failure(
+                false,
+                "time_format",
+                "the deletion time could not be written",
+            )
+        })?;
     let message = EmailSend {
         template: EmailTemplate::UninstallExport,
-        recipient: EmailRecipient::ShopOwner { shop_id: shop.as_uuid() },
+        recipient: EmailRecipient::ShopOwner {
+            shop_id: shop.as_uuid(),
+        },
         input: UninstallExportInput {
             store_name: contact.store_name,
             export_url: format!("{origin}/app/log"),

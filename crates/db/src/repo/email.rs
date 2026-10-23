@@ -163,7 +163,14 @@ mod tests {
     #[test]
     fn plausible_addresses_match_the_tables_check() {
         assert!(plausible("owner@shop.example"));
-        for bad in ["", "owner", "@shop.example", "owner@shop", "a@b@c.example", "a b@c.example"] {
+        for bad in [
+            "",
+            "owner",
+            "@shop.example",
+            "owner@shop",
+            "a@b@c.example",
+            "a b@c.example",
+        ] {
             assert!(!plausible(bad), "{bad}");
         }
     }

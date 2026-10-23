@@ -99,9 +99,7 @@ impl Config {
                 })?;
             SocketAddr::from(([0_u16; 8], port))
         };
-        let app_origin = get("APP_ORIGIN")
-            .map(|v| origin(&v))
-            .transpose()?;
+        let app_origin = get("APP_ORIGIN").map(|v| origin(&v)).transpose()?;
         Ok(Self {
             database_url: SecretString::from(database_url),
             db_max_connections,
@@ -198,7 +196,10 @@ mod tests {
     fn the_app_origin_is_an_origin_or_absent() {
         assert_eq!(config(&[]).unwrap().app_origin, None);
         let c = config(&[("APP_ORIGIN", "https://App.Rampsmith.example/")]).unwrap();
-        assert_eq!(c.app_origin.as_deref(), Some("https://app.rampsmith.example"));
+        assert_eq!(
+            c.app_origin.as_deref(),
+            Some("https://app.rampsmith.example")
+        );
         let c = config(&[("APP_ORIGIN", "http://localhost:5173")]).unwrap();
         assert_eq!(c.app_origin.as_deref(), Some("http://localhost:5173"));
         for bad in [
@@ -212,7 +213,10 @@ mod tests {
             assert!(
                 matches!(
                     config(&[("APP_ORIGIN", bad)]),
-                    Err(ConfigError::Invalid { name: "APP_ORIGIN", .. })
+                    Err(ConfigError::Invalid {
+                        name: "APP_ORIGIN",
+                        ..
+                    })
                 ),
                 "{bad}"
             );

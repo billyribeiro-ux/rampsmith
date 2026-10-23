@@ -17,8 +17,8 @@ mod support;
 use db::Db;
 use db::repo::webhooks::{self, NewWebhook, Recorded};
 use db::repo::{
-    app_views, audit, data_fixes, findings, fixes, jobs, occurrences, redact, scan_inputs, scans,
-    shop_billing, shopify, sites, tenants,
+    app_views, audit, data_fixes, email, findings, fixes, jobs, occurrences, redact, scan_inputs,
+    scans, shop_billing, shopify, sites, tenants,
 };
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -1493,4 +1493,350 @@ async fn the_embedded_apps_queries_scope_themselves_without_row_level_security(
     let a = seed(&db, 1).await;
     let b = seed(&db, 2).await;
     assert_app_views_isolate(&db, a, b, None).await;
+}
+
+// --- Email: contacts, suppressions and the sender's ledger (ADR-270 to ADR-272) ----------------
+
+const EMAIL_TABLES: [&str; 3] = ["shop_contacts", "email_suppressions", "email_deliveries"];
+
+/// One row of each email table for the graph's tenant, written through the role that owns the
+/// write in production: `ctl` for the contact, the application for the suppression, a worker for
+/// the delivery record.
+async fn seed_email(opts: &PgPoolOptions, conn: &PgConnectOptions, graph: Graph) {
+    let ctl = Db::from_pool(ctl_pool(opts.clone(), conn.clone()).await);
+    let mut tx = ctl.tenant(graph.tenant).await.unwrap();
+    assert!(
+        email::put_shop_contact(
+            &mut tx,
+            graph.shop,
+            "Owner@Shop.example",
+            "Fixture Store",
+            Some("en")
+        )
+        .await
+        .unwrap()
+    );
+    tx.commit().await.unwrap();
+
+    let app = Db::from_pool(app_pool(opts.clone(), conn.clone()).await);
+    let mut tx = app.tenant(graph.tenant).await.unwrap();
+    email::suppress(
+        &mut tx,
+        "gone@shop.example",
+        email::SuppressionReason::Unsubscribed,
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let worker = worker_pool(opts.clone(), conn.clone()).await;
+    let mut tx = worker.begin().await.unwrap();
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(graph.tenant.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into email_deliveries (tenant_id, message_key, template, state)
+         values ($1, 'uninstall-export:fixture-1', 'uninstall_export', 'sending')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+}
+
+async fn two_tenants_with_email(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) -> (PgPool, Graph, Graph) {
+    let (_, pool, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    seed_email(&opts, &conn, a).await;
+    seed_email(&opts, &conn, b).await;
+    (pool, a, b)
+}
+
+#[sqlx::test]
+async fn each_tenant_sees_exactly_its_own_row_of_every_email_table(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_pool, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    // Workers read all three; the application reads suppressions and deliveries.
+    let worker = worker_pool(opts.clone(), conn.clone()).await;
+    let app = app_pool(opts, conn).await;
+    for (pool, tables) in [
+        (&worker, EMAIL_TABLES.as_slice()),
+        (&app, &["email_suppressions", "email_deliveries"][..]),
+    ] {
+        for me in [a, b] {
+            let mut tx = pool.begin().await.unwrap();
+            sqlx::query("select set_config('app.tenant_id', $1, true)")
+                .bind(me.tenant.to_string())
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            for table in tables {
+                let seen: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                    "select count(*) from {table}"
+                )))
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+                assert_eq!(seen, 1, "{table}: tenant {} saw {seen} rows", me.tenant);
+            }
+            tx.rollback().await.unwrap();
+        }
+    }
+}
+
+#[sqlx::test]
+async fn email_tables_reject_rows_for_another_tenant_and_ignore_edits_of_theirs(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let ctl = ctl_pool(opts.clone(), conn.clone()).await;
+    let worker = worker_pool(opts, conn).await;
+    let b_tenant = b.tenant.as_uuid();
+    // A write for tenant B inside tenant A's transaction is a row-level-security violation.
+    let writes: [(&PgPool, String); 3] = [
+        (
+            &ctl,
+            format!(
+                "insert into shop_contacts (shop_id, tenant_id, email, store_name)
+                 values (gen_random_uuid(), '{b_tenant}', 'x@shop.example', 'X')"
+            ),
+        ),
+        (
+            &worker,
+            format!(
+                "insert into email_suppressions (tenant_id, address_hash, reason)
+                 values ('{b_tenant}', sha256('x'), 'manual')"
+            ),
+        ),
+        (
+            &worker,
+            format!(
+                "insert into email_deliveries (tenant_id, message_key, template, state)
+                 values ('{b_tenant}', 'other-tenant-key-1', 'welcome', 'sending')"
+            ),
+        ),
+    ];
+    for (pool, sql) in writes {
+        let err = as_tenant(pool, a.tenant, sqlx::AssertSqlSafe(sql.clone()))
+            .await
+            .expect_err("tenant A wrote a row for tenant B");
+        assert!(
+            err.to_string().contains("row-level security"),
+            "{sql}: {err}"
+        );
+    }
+    // Updates and deletes of the other tenant's rows touch nothing.
+    for (pool, sql) in [
+        (
+            &ctl,
+            format!("delete from shop_contacts where tenant_id = '{b_tenant}'"),
+        ),
+        (
+            &ctl,
+            format!(
+                "update shop_contacts set store_name = 'Hijacked' where tenant_id = '{b_tenant}'"
+            ),
+        ),
+        (
+            &worker,
+            format!("update email_deliveries set state = 'sent' where tenant_id = '{b_tenant}'"),
+        ),
+        (
+            &worker,
+            format!(
+                "update email_suppressions set reason = 'manual' where tenant_id = '{b_tenant}'"
+            ),
+        ),
+    ] {
+        let changed = as_tenant(pool, a.tenant, sqlx::AssertSqlSafe(sql.clone()))
+            .await
+            .unwrap();
+        assert_eq!(changed, 0, "{sql}");
+    }
+}
+
+/// Only `ctl`'s group writes a shop's contact; the engine, a plain worker member, reads it
+/// (ADR-272). A deletion of suppressions or deliveries is nobody's job but the application's.
+#[sqlx::test]
+async fn only_ctl_writes_contacts_and_workers_cannot_delete_deliveries(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, _) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let worker = worker_pool(opts.clone(), conn.clone()).await;
+    let app = app_pool(opts, conn).await;
+    for (pool, sql) in [
+        (&worker, "update shop_contacts set store_name = 'x'"),
+        (&worker, "delete from shop_contacts"),
+        (&worker, "delete from email_deliveries"),
+        (&worker, "delete from email_suppressions"),
+        (&app, "select count(*) from shop_contacts"),
+        (
+            &app,
+            "insert into email_deliveries (tenant_id, message_key, template, state) values (gen_random_uuid(), 'k', 't', 'sent')",
+        ),
+    ] {
+        let err = as_tenant(pool, a.tenant, sql)
+            .await
+            .expect_err("a role changed what it may not");
+        assert!(
+            err.to_string().contains("permission denied"),
+            "{sql}: {err}"
+        );
+    }
+}
+
+#[sqlx::test]
+async fn a_contact_cannot_point_at_another_tenants_shop_even_for_the_owner(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts, conn).await;
+    let err = sqlx::query(
+        "insert into shop_contacts (shop_id, tenant_id, email, store_name)
+         values ($1, $2, 'x@shop.example', 'X')",
+    )
+    .bind(b.shop.as_uuid())
+    .bind(a.tenant.as_uuid())
+    .execute(&owner)
+    .await
+    .expect_err("a cross-tenant contact was stored");
+    assert!(err.to_string().contains("foreign key"), "{err}");
+}
+
+#[sqlx::test]
+async fn the_email_repository_returns_nothing_across_the_boundary(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let db = Db::from_pool(ctl_pool(opts, conn).await);
+
+    let mut tx = db.tenant(a.tenant).await.unwrap();
+    // Tenant A cannot read, replace or delete tenant B's contact.
+    assert!(
+        email::get_shop_contact(&mut tx, a.shop)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        email::get_shop_contact(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !email::put_shop_contact(&mut tx, b.shop, "evil@shop.example", "Evil", None)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        email::delete_shop_contact(&mut tx, b.shop).await.unwrap(),
+        0
+    );
+    // A's suppression of an address does not suppress it for B, and B's does not leak to A.
+    email::suppress(
+        &mut tx,
+        "only-a@shop.example",
+        email::SuppressionReason::Bounced,
+    )
+    .await
+    .unwrap();
+    assert!(
+        email::is_suppressed(&mut tx, "only-a@shop.example")
+            .await
+            .unwrap()
+    );
+    // The hash ignores case and surrounding white space.
+    assert!(
+        email::is_suppressed(&mut tx, "  Only-A@Shop.example ")
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+
+    let mut tx = db.tenant(b.tenant).await.unwrap();
+    assert!(
+        !email::is_suppressed(&mut tx, "only-a@shop.example")
+            .await
+            .unwrap()
+    );
+    assert!(
+        email::is_suppressed(&mut tx, "gone@shop.example")
+            .await
+            .unwrap()
+    );
+    assert!(
+        email::get_shop_contact(&mut tx, b.shop)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    tx.rollback().await.unwrap();
+}
+
+#[sqlx::test]
+async fn the_suppression_list_keeps_a_salted_hash_never_the_address(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, a, b) = two_tenants_with_email(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts, conn).await;
+    let everything: String =
+        sqlx::query_scalar("select string_agg(t::text, ' ') from email_suppressions t")
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+    assert!(!everything.to_lowercase().contains("gone@shop.example"));
+    // The same address hashes differently for two tenants, so the lists cannot be joined.
+    let hashes: Vec<Vec<u8>> = sqlx::query_scalar(
+        "select address_hash from email_suppressions where tenant_id in ($1, $2) order by tenant_id",
+    )
+    .bind(a.tenant.as_uuid())
+    .bind(b.tenant.as_uuid())
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    assert_eq!(hashes.len(), 2);
+    assert_ne!(hashes[0], hashes[1]);
+    assert!(hashes.iter().all(|h| h.len() == 32));
+}
+
+#[sqlx::test]
+async fn the_delivery_record_holds_no_address_subject_or_body(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let owner = owner_pool(opts, conn).await;
+    let columns: Vec<String> = sqlx::query_scalar(
+        "select column_name::text from information_schema.columns
+          where table_name = 'email_deliveries' order by ordinal_position",
+    )
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    assert_eq!(
+        columns,
+        [
+            "tenant_id",
+            "message_key",
+            "template",
+            "state",
+            "tries",
+            "message_id",
+            "error_code",
+            "created_at",
+            "updated_at"
+        ]
+    );
 }

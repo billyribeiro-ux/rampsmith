@@ -202,7 +202,10 @@ mod tests {
         );
         for (member, value) in [
             ("template", json!("newsletter")),
-            ("recipient", json!({"kind": "address", "value": "a@b.example"})),
+            (
+                "recipient",
+                json!({"kind": "address", "value": "a@b.example"}),
+            ),
             ("recipient", json!({"kind": "shop_owner", "shop_id": "x"})),
             (
                 "recipient",
@@ -222,10 +225,19 @@ mod tests {
 
     #[test]
     fn message_keys_are_checked_like_the_senders_guard() {
-        for ok in ["uninstall-export:0192f3a4", "a.b_c:D-1234", &"k".repeat(200)] {
+        for ok in [
+            "uninstall-export:0192f3a4",
+            "a.b_c:D-1234",
+            &"k".repeat(200),
+        ] {
             assert!(EmailSend::valid_message_key(ok), "{ok}");
         }
-        for bad in ["short", "has space in it", "line\nbreak-key-1234", &"k".repeat(201)] {
+        for bad in [
+            "short",
+            "has space in it",
+            "line\nbreak-key-1234",
+            &"k".repeat(201),
+        ] {
             assert!(!EmailSend::valid_message_key(bad), "{bad:?}");
         }
     }
@@ -257,7 +269,13 @@ mod tests {
     fn every_template_has_a_distinct_snake_case_name() {
         let names: Vec<String> = EmailTemplate::ALL
             .iter()
-            .map(|t| serde_json::to_value(t).unwrap().as_str().unwrap().to_owned())
+            .map(|t| {
+                serde_json::to_value(t)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
             .collect();
         let mut sorted = names.clone();
         sorted.sort_unstable();
