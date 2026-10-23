@@ -7,6 +7,7 @@ pub mod http;
 pub mod keys;
 pub mod report;
 pub mod secret;
+pub mod shops;
 pub mod sigv4;
 pub mod util;
 pub mod vars;

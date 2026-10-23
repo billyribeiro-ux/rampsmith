@@ -70,7 +70,9 @@ descriptions. No theme file is ever written.
 ## Consequences
 
 - The image smoke test passes: unsigned POST gives 401, other paths give 404 on that port.
-- `shop/redact` needs `delete` on `scan_pages` and `ai_calls` for the worker role (migration
-  `20261103000001`).
+- `shop/redact` needs `delete` on `scan_pages` for the worker role (migration `20261103000001`).
+  That migration also granted DELETE on `ai_calls`; ADR-087 took it away again, and
+  `redact_ai_calls()` now deletes the call records for members of `rampsmith_redactor` only
+  (ADR-089).
 - Tests use wiremock with fixtures shaped like the documented responses. Live checks against a
   development store are tracked in `docs/evidence/r1-lane-a.md`.

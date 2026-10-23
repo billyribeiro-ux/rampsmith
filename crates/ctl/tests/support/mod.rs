@@ -14,12 +14,13 @@ use std::time::Duration;
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
-/// The `LOGIN` member of `rampsmith_ctl` (and through it of `rampsmith_worker`) the tests
-/// connect as.
+/// The `LOGIN` member of `rampsmith_worker` and `rampsmith_redactor` the tests connect as: ctl's
+/// production login has exactly those memberships (infra/railway/bootstrap.sql, ADR-089).
 pub const WORKER_LOGIN: &str = "rampsmith_test_ctl_login";
 const PASSWORD: &str = "rampsmith-test-only";
 
-/// Makes sure `WORKER_LOGIN` exists and is a member of `rampsmith_worker`.
+/// Makes sure `WORKER_LOGIN` exists and is a member of `rampsmith_worker` and
+/// `rampsmith_redactor`.
 async fn ensure_worker_login(opts: &PgPoolOptions, conn: &PgConnectOptions) {
     let admin = opts
         .clone()
@@ -30,7 +31,7 @@ async fn ensure_worker_login(opts: &PgPoolOptions, conn: &PgConnectOptions) {
     for attempt in 0..20_u64 {
         let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
             "do $$ begin
-               create role {WORKER_LOGIN} login password '{PASSWORD}' in role rampsmith_ctl;
+               create role {WORKER_LOGIN} login password '{PASSWORD}' in role rampsmith_worker, rampsmith_redactor;
              exception when duplicate_object or unique_violation then null;
              end $$"
         )))
@@ -38,12 +39,13 @@ async fn ensure_worker_login(opts: &PgPoolOptions, conn: &PgConnectOptions) {
         .await;
         // A login left by an earlier run of this suite may predate the group.
         let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
-            "grant rampsmith_ctl to {WORKER_LOGIN}"
+            "grant rampsmith_worker, rampsmith_redactor to {WORKER_LOGIN}"
         )))
         .execute(&admin)
         .await;
         let ready: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             "select coalesce((select pg_has_role(rolname, 'rampsmith_worker', 'usage')
+                                     and pg_has_role(rolname, 'rampsmith_redactor', 'usage')
                                 from pg_roles where rolname = '{WORKER_LOGIN}'), false)"
         )))
         .fetch_one(&admin)

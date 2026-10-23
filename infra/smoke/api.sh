@@ -23,3 +23,5 @@ if docker run --rm --entrypoint /usr/local/bin/ctl "$image" 2> ctl.err; then
   exit 1
 fi
 grep -q 'DATABASE_URL must be set' ctl.err
+# The operator path for a redaction that cannot finish by itself ships in the image (ADR-269).
+docker run --rm --entrypoint /usr/local/bin/rsctl "$image" shops redact --help | grep -q -- '--confirmed-by'

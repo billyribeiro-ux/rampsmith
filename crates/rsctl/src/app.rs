@@ -13,7 +13,7 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
-use crate::cli::{Cli, Command, DoctorArgs, KeysCommand, RingSink, RingSource};
+use crate::cli::{Cli, Command, DoctorArgs, KeysCommand, RingSink, RingSource, ShopsCommand};
 use crate::doctor::{self, Clock, Ctx, Endpoints, Options};
 use crate::keys::{self, Updated};
 use crate::secret::{Redactor, Secret};
@@ -85,6 +85,9 @@ pub async fn run(cli: Cli, runtime: Runtime, io: &mut Io<'_>) -> u8 {
     match cli.command {
         Command::Doctor(args) => doctor_command(&args, runtime, io).await,
         Command::Keys { action } => keys_command(&action, &runtime, io),
+        Command::Shops { action } => match action {
+            ShopsCommand::Redact(args) => crate::shops::redact_command(&args, &runtime, io).await,
+        },
     }
 }
 

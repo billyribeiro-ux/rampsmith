@@ -175,38 +175,55 @@ fn topic_is_well_formed(topic: &str) -> bool {
 
 /// Whether `body` has the shape Shopify documents for `topic`. The topic header is not covered
 /// by the signature, so a signed body captured under one topic could be resent under another:
-/// a body that is not shaped like its topic is refused (lane A audit H1, ADR-085).
+/// a body that is not shaped like its topic is refused (lane A audit H1, ADR-085). Each shape
+/// requires its own fields, denies the keys that mark another topic's payload and tolerates
+/// anything else, because Shopify adds fields to payloads without a version (ADR-269):
 ///
-/// - `shop/redact`: exactly `{shop_id, shop_domain}`;
-/// - `customers/data_request`, `customers/redact`: `shop_id`, `shop_domain` and a `customer`
-///   object;
+/// - `shop/redact`: `shop_id` and `shop_domain`, and none of the customer keys or the shop
+///   object's `myshopify_domain`;
+/// - `customers/data_request`: `shop_id`, `shop_domain`, a `customer` object, a `data_request`
+///   object and an `orders_requested` array, and no `orders_to_redact`;
+/// - `customers/redact`: `shop_id`, `shop_domain`, a `customer` object and an `orders_to_redact`
+///   array, and neither `data_request` nor `orders_requested`;
 /// - `app/uninstalled`, `shop/update`: the shop object, which names `myshopify_domain` (and
 ///   never the compliance payloads' `shop_domain`).
+///
+/// The payloads are those of Shopify's "Privacy law compliance" page and the shop webhook
+/// reference, read on 22 Oct 2026.
 fn body_fits_topic(topic: &str, body: &serde_json::Value) -> bool {
+    use serde_json::Value;
     let Some(map) = body.as_object() else {
         return false;
     };
+    let has = |key: &str, ok: fn(&Value) -> bool| map.get(key).is_some_and(ok);
+    let lacks = |keys: &[&str]| keys.iter().all(|key| !map.contains_key(*key));
+    let compliance_envelope = has("shop_id", Value::is_u64) && has("shop_domain", Value::is_string);
     match topic {
         "shop/redact" => {
-            map.len() == 2
-                && map.get("shop_id").is_some_and(serde_json::Value::is_u64)
-                && map
-                    .get("shop_domain")
-                    .is_some_and(serde_json::Value::is_string)
+            compliance_envelope
+                && lacks(&[
+                    "customer",
+                    "data_request",
+                    "orders_requested",
+                    "orders_to_redact",
+                    "myshopify_domain",
+                ])
         }
-        "customers/data_request" | "customers/redact" => {
-            map.get("shop_id").is_some_and(serde_json::Value::is_u64)
-                && map
-                    .get("shop_domain")
-                    .is_some_and(serde_json::Value::is_string)
-                && map
-                    .get("customer")
-                    .is_some_and(serde_json::Value::is_object)
+        "customers/data_request" => {
+            compliance_envelope
+                && has("customer", Value::is_object)
+                && has("data_request", Value::is_object)
+                && has("orders_requested", Value::is_array)
+                && lacks(&["orders_to_redact", "myshopify_domain"])
+        }
+        "customers/redact" => {
+            compliance_envelope
+                && has("customer", Value::is_object)
+                && has("orders_to_redact", Value::is_array)
+                && lacks(&["data_request", "orders_requested", "myshopify_domain"])
         }
         "app/uninstalled" | "shop/update" => {
-            map.get("myshopify_domain")
-                .is_some_and(serde_json::Value::is_string)
-                && !map.contains_key("shop_domain")
+            has("myshopify_domain", Value::is_string) && !map.contains_key("shop_domain")
         }
         _ => false,
     }
@@ -332,7 +349,9 @@ async fn store_verified(
         return Err(unauthorized());
     }
     if !body_fits_topic(topic, &json) {
-        warn!(
+        // An error, not a warning: a genuine delivery that Shopify shaped differently (a
+        // changed payload) or an attacker's relabelled body. Either needs a person.
+        error!(
             topic,
             reason = "body_not_for_topic",
             "webhook refused: the body is not shaped like its topic"

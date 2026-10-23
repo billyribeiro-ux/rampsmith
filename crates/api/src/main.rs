@@ -85,11 +85,10 @@ async fn serve(config: Config) -> anyhow::Result<()> {
             }
             let stop = stop.clone();
             Some(tokio::spawn(async move {
-                axum::serve(listener, router)
-                    .with_graceful_shutdown(async move {
-                        let _ = stop.clone().wait_for(|stop| *stop).await;
-                    })
-                    .await
+                api::serve::serve(listener, router, async move {
+                    let _ = stop.clone().wait_for(|stop| *stop).await;
+                })
+                .await
             }))
         }
     } else {
@@ -119,8 +118,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         warn!("EMAIL_LINK_KEYS is not set; the unsubscribe and preferences routes answer 503");
     }
     state = with_free_scan(state, config.free_scan)?;
-    axum::serve(listener, api::app(state))
-        .with_graceful_shutdown(shutdown_signal())
+    api::serve::serve(listener, api::app(state), shutdown_signal())
         .await
         .context("server")?;
     let _ = send_stop.send(true);

@@ -39,7 +39,10 @@ deleted a live shop's data (audit H1).
    registry.npmjs.org) proves a token with `{ shop { name } }` and treats only a 401
    `HttpResponseError` as "re-authenticate"; no Shopify package treats a 403 as an uninstall, and a
    403 can mean a missing scope or a frozen shop, so it would let a replayed uninstall end a live
-   shop. A 403 is retried.
+   shop. A 403 is retried: the grant check turns every answer except 401 into a retry whatever
+   `AdminError::is_retryable` says (the first build let a 403, 402 and 423 fail the job for good,
+   which ADR-269 corrected), and a 404, a store Shopify no longer knows, counts as a revoked grant
+   for `shop/redact` only.
 5. The worker compares the body's shop domain with the stored one ignoring ASCII case.
 
 ## Consequences

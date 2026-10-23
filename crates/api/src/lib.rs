@@ -13,6 +13,7 @@ pub mod plan;
 mod r1;
 pub mod rate_limit;
 mod rules;
+pub mod serve;
 pub mod shopify;
 pub mod webhooks;
 

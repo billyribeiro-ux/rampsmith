@@ -1,5 +1,6 @@
 # The control-plane image (PLAN §22): `api` is the entrypoint; `ctl` runs from the same image
-# with `--entrypoint /usr/local/bin/ctl`.
+# with `--entrypoint /usr/local/bin/ctl`. `rsctl` ships in it too, so an operator can run
+# `rsctl shops redact` inside ctl's service, as ctl's own database login (ADR-269).
 # Base images are pinned by digest (PLAN §27); tags are comments for humans and Renovate.
 
 # rust:1.99.1-slim-trixie
@@ -17,7 +18,8 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked -p rampsmith-api --bin api -p rampsmith-ctl --bin ctl \
-    && install -m 0755 target/release/api target/release/ctl /usr/local/bin/
+      -p rampsmith-rsctl --bin rsctl \
+    && install -m 0755 target/release/api target/release/ctl target/release/rsctl /usr/local/bin/
 
 # sqlx-cli for Railway's pre-deploy migration step (ADR-183): the version .mise.toml pins,
 # Postgres and rustls only, built from its own lockfile.
@@ -37,7 +39,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libssl3t64 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin rampsmith
-COPY --from=build /usr/local/bin/api /usr/local/bin/ctl /usr/local/bin/
+COPY --from=build /usr/local/bin/api /usr/local/bin/ctl /usr/local/bin/rsctl /usr/local/bin/
 COPY --from=sqlx /opt/sqlx/bin/sqlx /usr/local/bin/sqlx
 COPY crates/db/migrations /usr/local/share/rampsmith/migrations
 USER 10001:10001

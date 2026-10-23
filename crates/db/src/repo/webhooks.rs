@@ -3,12 +3,14 @@
 
 use domain::ShopId;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{DbError, TenantTx};
 
-/// How long a repeat of the same body, under any topic, counts as a replay (ADR-080, ADR-085).
+/// How long a repeat of the same body counts as a replay (ADR-080, ADR-085): under any
+/// compliance topic, and under the same topic for the rest (ADR-269).
 ///
 /// A captured delivery can come back under a new event id and another topic, because neither
 /// header is covered by the HMAC (integration audit M1, lane A audit H1). Shopify itself
@@ -30,6 +32,32 @@ pub fn replay_window_hours(topic: &str) -> i32 {
     } else {
         REPLAY_WINDOW_HOURS
     }
+}
+
+/// The compliance topics, whose bodies share one replay digest: a signed body captured under
+/// one of them could be resent under another because the topic header is unsigned. Their
+/// shapes differ (ADR-269), so a cross-topic replay is also refused on shape.
+pub const COMPLIANCE_TOPICS: [&str; 3] =
+    ["customers/data_request", "customers/redact", "shop/redact"];
+
+/// The key a body's replay claim is filed under in `webhook_digests` (re-audit L-1).
+///
+/// A compliance topic files its body's own SHA-256, so the same body under any compliance topic
+/// is one claim. Every other topic files a digest keyed on the topic too: `shop/update` and
+/// `app/uninstalled` both carry the shop object, so a `shop/update` seconds before an uninstall
+/// can have an identical body, and sharing the claim made the uninstall look like a replay and
+/// dropped it. Neither value is stored for any other purpose than replay detection.
+#[must_use]
+pub fn replay_key(topic: &str, body_sha256: &[u8; 32]) -> [u8; 32] {
+    if COMPLIANCE_TOPICS.contains(&topic) {
+        return *body_sha256;
+    }
+    let mut hash = Sha256::new();
+    hash.update(b"rampsmith.webhook.replay.v1\0");
+    hash.update(topic.as_bytes());
+    hash.update([0]);
+    hash.update(body_sha256);
+    hash.finalize().into()
 }
 
 /// The shop domain a webhook body names: `shop_domain` in the compliance payloads,
@@ -92,7 +120,7 @@ pub struct WebhookEvent {
 /// `webhook.process` in the same transaction when this returns [`Recorded::Stored`].
 pub async fn record(tx: &mut TenantTx, new: &NewWebhook) -> Result<Recorded, DbError> {
     let tenant = tx.tenant_uuid();
-    let digest = new.body_sha256.as_slice();
+    let claim = replay_key(&new.topic, &new.body_sha256);
     // One statement claims the digest: it inserts, or takes over a digest whose window has
     // passed, and returns nothing when a live claim exists. The primary key serialises two
     // concurrent replays (the second waits for the first to commit, then finds the claim).
@@ -104,7 +132,7 @@ pub async fn record(tx: &mut TenantTx, new: &NewWebhook) -> Result<Recorded, DbE
             where webhook_digests.expires_at <= now()
         returning 1 as "claimed!""#,
         tenant,
-        digest,
+        claim.as_slice(),
         new.topic,
         replay_window_hours(&new.topic),
     )
@@ -125,7 +153,7 @@ pub async fn record(tx: &mut TenantTx, new: &NewWebhook) -> Result<Recorded, DbE
         new.external_id,
         new.topic,
         new.body,
-        digest,
+        new.body_sha256.as_slice(),
     )
     .fetch_optional(tx.conn())
     .await?;

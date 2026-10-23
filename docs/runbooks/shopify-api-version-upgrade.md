@@ -26,7 +26,7 @@
 | Staging end-to-end run on the development store (install, scan, approve, verify, undo) | Specified in PLAN §23; needs LAUNCH.md C rows 1 and 3 |
 | The synthetic install-scan-fix journey (PLAN §21, §24) | **Not built.** The staging end-to-end run is the gate until it is |
 | Code that compares the response header `X-Shopify-API-Version` with the version it requested | **Not built.** Step 5 checks it by hand |
-| The webhook intake and subscriptions | **Not built** (`shopify.app.toml` says subscriptions arrive in R1). The webhook half of the upgrade is only the `api_version` line in that file today |
+| The webhook intake and subscriptions | Built (ADR-080, ADR-088): the webhook half of the upgrade is the `api_version` line in `shopify.app.toml` (and in each `shopify.app.<environment>.toml`), plus the payload parsers in `crates/api/src/webhooks.rs` (`body_fits_topic`) |
 
 ## Quarterly steps
 
@@ -105,7 +105,7 @@ Record in the ticket: versions before and after, the items from step 1 and what 
 
 - **A deprecation or breaking-change notice** (changelog, Dev Dashboard alert, an email to the emergency contact): put the deadline in the ticket, open the same branch, and do steps 1 to 6 for the version that fixes it, even mid-quarter. It is SEV3 until two weeks before the deadline.
 - **Fall-forward observed** (step 5, or a surprising payload): SEV2. The fastest fix is the bump (steps 2 to 6 on an accelerated path, with the end-to-end run as the gate).
-- **A webhook payload changed shape** (once the intake exists): the subscription's `api_version` in `shopify.app.toml` decides which shape arrives; the parsers must accept both during the overlap.
+- **A webhook payload changed shape**: the subscription's `api_version` in `shopify.app.toml` decides which shape arrives; the parsers must accept both during the overlap.
 
 ## Rollback
 
