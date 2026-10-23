@@ -1,5 +1,6 @@
 //! Leadership (PLAN §10): exactly one `ctl` instance runs the lease reaper, partition
-//! maintenance and the sweeps of expired sign-in state, store data and free scans, the one holding a session-level
+//! maintenance, the sweeps of expired sign-in state, store data and free scans, and the weekly
+//! rescans, the one holding a session-level
 //! advisory lock on a dedicated connection.
 //! Losing the connection loses leadership; another instance takes over on its next try.
 
@@ -26,6 +27,8 @@ pub struct Cadence {
     pub sweep_every: Duration,
     /// Between sweeps for webhook events nobody processed (lane A audit M2).
     pub webhook_sweep_every: Duration,
+    /// Between looks for shops due their weekly rescan (ADR-279).
+    pub rescan_every: Duration,
     /// Between attempts to become leader.
     pub retry_every: Duration,
 }
@@ -37,6 +40,7 @@ impl Default for Cadence {
             partitions_every: Duration::from_hours(1),
             sweep_every: Duration::from_mins(10),
             webhook_sweep_every: Duration::from_mins(5),
+            rescan_every: Duration::from_mins(15),
             retry_every: Duration::from_secs(15),
         }
     }
@@ -235,6 +239,7 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                 let mut partitions_due = Instant::now();
                 let mut sweep_due = Instant::now();
                 let mut webhook_sweep_due = Instant::now();
+                let mut rescan_due = Instant::now();
                 loop {
                     tokio::select! {
                         () = &mut shutdown => {
@@ -270,6 +275,14 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                             }
                             Ok(_) => {}
                             Err(error) => warn!(%error, "webhook sweep failed; retrying next tick"),
+                        }
+                    }
+                    if Instant::now() >= rescan_due {
+                        match crate::rescan::start_due(&db).await {
+                            Ok(_) => rescan_due = Instant::now() + cadence.rescan_every,
+                            Err(error) => {
+                                warn!(%error, "weekly rescans failed; retrying next tick");
+                            }
                         }
                     }
                     if Instant::now() >= sweep_due {

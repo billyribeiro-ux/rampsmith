@@ -283,7 +283,7 @@ async fn queue_export_email(
             shop_id: shop.as_uuid(),
         },
         input: UninstallExportInput {
-            store_name: contact.store_name,
+            store_name: contracts::email_store_name(&contact.store_name),
             delete_at,
             locale: contact.locale,
         }
@@ -443,8 +443,16 @@ pub(super) async fn store_contact(
         .iter()
         .find(|l| l.primary)
         .map(|l| l.locale.as_str());
+    let known = contacts::get_shop_contact(tx, shop)
+        .await
+        .map_err(|e| database(&e))?
+        .is_some();
     let stored = contacts::put_shop_contact(tx, shop, address.as_str(), &info.name, locale)
         .await
         .map_err(|e| database(&e))?;
+    if stored && !known {
+        // The first time Rampsmith can write to this owner: say hello (ADR-279).
+        super::email_triggers::queue_welcome(tx, shop, &info.name, locale).await?;
+    }
     Ok(if stored { "stored" } else { "unusable" })
 }

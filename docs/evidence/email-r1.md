@@ -73,3 +73,18 @@ Each finding was checked against `origin/main` before it was fixed.
 Open (LAUNCH.md section E): a real SNS message verifies; the SES mailbox simulator
 (`bounce@simulator.amazonses.com`, `complaint@simulator.amazonses.com`, from memory) produces the two rows;
 the v2 reference for the `configuration-set` resource of `ses:SendEmail` was not read (the SES v1 page was).
+
+## Part 4: the emails the pipeline queues, and the weekly rescan (ADR-279)
+
+| Claim | Evidence |
+| --- | --- |
+| Each trigger queues exactly one `email.send@1`, by reference, in the transaction of the work that caused it | `packages/engine/test/email-triggers.test.ts` against PostgreSQL: the first finished scan queues `first_scan_complete` with the right counts; the same job run twice queues one; a manual rescan, a failed scan and a scan with no checks queue nothing; a later scheduled scan queues `weekly_summary` with new, resolved and open counts and the previous scan's totals; a verified fix and a failed verification queue `fix_verified` with different keys; a repeated verification queues nothing; no contact or an uninstalled shop queues nothing; no payload holds an address |
+| The welcome is queued once per shop | `crates/ctl/tests/email.rs`: the first stored contact queues it with key `welcome:<shop id>` and input `{storeName, locale}`, a second and third contact write queue no second one, a shop with no address is not welcomed, a 200-character store name is cut to 100 |
+| Mail for a shop that has left is dropped, transactional mail is not | `packages/engine/test/email-triggers.test.ts` (`shop_left`), `packages/engine/test/email-send.test.ts` (existing export-after-uninstall test still passes) |
+| The admin deep link has the documented form | `packages/engine/test/app-links.test.ts` (handle validation, domain parsing, per-template member and path). The URL format itself is from memory: LAUNCH.md section E |
+| The leader starts the weekly rescans and nothing else does | `crates/ctl/tests/rescan.rs` (4 tests against PostgreSQL as the worker role): the due rules (setting, 7 days, failed scans retried after a day, verification scans ignored, uninstalled shops), one `scheduled` scan with its `shopify.read_store` job and a `system` audit entry, no second scan while one is under way, no scan on Free or without a plan and the next round starts it after an upgrade, none when the setting is off |
+| Grants and paging of the listing | `crates/db/tests/tenancy.rs` `only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_shop`: PUBLIC and the application role cannot execute the function; both tenants' shops come back, one per page, in id order. No new table, so the row-level-security inventory is unchanged |
+| Gates | `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo sqlx prepare --check`, `cargo-machete`, `vitest` (email, engine), ESLint, Prettier, `tsc`, `claims-lint`, the Railway tests |
+
+Not built, listed in ADR-279: `regression_alert` (no regression detection exists), the other templates with no
+feature behind them, daily-cadence scans, a merchant alert when a scheduled scan fails.

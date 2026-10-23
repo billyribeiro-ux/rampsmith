@@ -12,6 +12,9 @@ export type SuppressionReason = 'unsubscribed' | 'bounced' | 'complained' | 'man
 /** What is recorded when the recipient turned the message's category off. */
 export const OPTED_OUT = 'opted_out';
 
+/** What is recorded when the shop uninstalled before an optional message went out (ADR-279). */
+export const SHOP_LEFT = 'shop_left';
+
 /** Whether a suppression of `reason` stops mail of `category`. */
 export function blocks(reason: SuppressionReason, category: Category): boolean {
   if (reason === 'unsubscribed') {
@@ -29,7 +32,13 @@ export function refusalFor(
   category: Category,
   suppression: SuppressionReason | null,
   optOuts: readonly OptOutCategory[],
-): SuppressionReason | typeof OPTED_OUT | null {
+  shopInstalled = true,
+): SuppressionReason | typeof OPTED_OUT | typeof SHOP_LEFT | null {
+  // A welcome or a scan result queued before an uninstall must not arrive after it. Mail the
+  // product owes a person who has left (the export, the deletion notice) is not optional mail.
+  if (!shopInstalled && (category === 'notification' || category === 'marketing')) {
+    return SHOP_LEFT;
+  }
   if (suppression !== null && blocks(suppression, category)) return suppression;
   if ((category === 'notification' || category === 'marketing') && optOuts.includes(category)) {
     return OPTED_OUT;

@@ -13,7 +13,10 @@ pub mod pipeline;
 pub mod problem;
 mod registry;
 
-pub use email::{EmailRecipient, EmailSend, EmailTemplate, UninstallExportInput};
+pub use email::{
+    EmailRecipient, EmailSend, EmailTemplate, STORE_NAME_MAX, UninstallExportInput, WelcomeInput,
+    email_store_name,
+};
 pub use free_scan::{
     FreeScanExample, FreeScanFailure, FreeScanResult, FreeScanRun, MAX_EXAMPLES,
     MAX_FAILURE_GROUPS, MAX_PAGES, MAX_SNIPPET_CHARS,
