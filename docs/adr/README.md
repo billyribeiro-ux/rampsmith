@@ -134,6 +134,15 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [266](266-storefront-password-reaches-the-engine-sealed-per-scan.md) | A protected store's password reaches the engine sealed for one scan | Accepted |
 | [267](267-free-scanner-anonymous-path.md) | The free scanner scans through the api and the engine, and the limits live in the database | Accepted |
 | [280](280-free-scans-run-only-in-a-sandboxed-chromium.md) | Free scans run only in a Chromium that has its own sandbox | Accepted |
+| [281](281-web-reads-the-visitor-address-from-x-real-ip.md) | The web service reads the visitor's address from `X-Real-IP` | Accepted |
+| [282](282-page-scans-and-jobs-have-deadlines-the-page-cannot-defeat.md) | Page scans and job attempts have deadlines the page cannot defeat | Accepted |
+| [283](283-no-password-copy-outlives-its-scan.md) | No sealed storefront-password copy outlives its scan | Accepted |
+| [284](284-free-scan-limits-count-the-registrable-domain.md) | The free scanner counts the registrable domain and refuses public suffixes | Accepted |
+| [285](285-the-engine-updates-only-the-columns-a-run-sets.md) | The engine may update only the columns a free-scan run sets | Accepted |
+| [286](286-turnstile-action-and-hostname-are-checked.md) | The api checks the Turnstile action and hostname | Accepted |
+| [287](287-visitor-addresses-are-hashed-under-a-key-only-the-api-holds.md) | Visitor addresses are hashed under a key only the api holds | Accepted |
+| [288](288-free-scan-results-are-bounded-and-validated-before-they-are-stored.md) | Free-scan results are bounded and validated before they are stored | Accepted |
+| [289](289-scan-ring-rotation-gives-the-engine-the-new-key-first.md) | Scan ring rotation gives the engine the new key first | Accepted |
 | [268](268-r1-integration-decisions.md) | R1 integration decisions | Accepted |
 | [270](270-ses-adapter-and-sigv4.md) | The Amazon SES adapter, a small SigV4 signer and the error mapping | Accepted |
 | [271](271-email-delivery-ledger.md) | The delivery ledger and retries | Accepted |

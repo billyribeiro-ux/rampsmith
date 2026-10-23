@@ -63,6 +63,13 @@ export interface WorkerOptions {
   readonly workerId: string;
   /** Lease length. Default 30 seconds. */
   readonly leaseMs?: number;
+  /**
+   * The longest one attempt may run (audit M2). When it passes, `signal` aborts, the heartbeat
+   * stops so the lease can expire, and the attempt fails as retryable (`job_deadline_exceeded`)
+   * even if the handler never returns. Unset means no deadline. Handlers still bound their own
+   * work (a page scan has a deadline of its own); this is the backstop.
+   */
+  readonly deadlineMs?: number;
   /** Poll interval besides LISTEN. Default 5 seconds. */
   readonly pollMs?: number;
   /** Jobs run at once. Default 1. */
@@ -71,7 +78,8 @@ export interface WorkerOptions {
   readonly signal: AbortSignal;
   /**
    * Runs one attempt. Side effects must be idempotent: a job can run again after a crash
-   * between its effect and its completion. The signal aborts when the lease is lost.
+   * between its effect and its completion. The signal aborts when the lease is lost or the
+   * deadline passes.
    * Throw `JobFailure` to choose retryable or permanent; anything else is retryable.
    */
   readonly handler: (job: ClaimedJob, signal: AbortSignal) => Promise<void>;
@@ -152,13 +160,37 @@ async function runAttempt(
       resolve('lost');
     });
   });
+  const stop = new AbortController();
+  let deadlineTimer: NodeJS.Timeout | undefined;
+  const overdue =
+    options.deadlineMs === undefined
+      ? new Promise<never>(() => undefined)
+      : new Promise<{ ok: false; error: JobFailure }>((resolve) => {
+          deadlineTimer = setTimeout(() => {
+            stop.abort(new Error('the job deadline passed'));
+            // The heartbeat stops with the attempt, so a handler that never returns cannot
+            // keep the lease alive.
+            clearInterval(beat);
+            resolve({
+              ok: false,
+              error: new JobFailure('retryable', {
+                code: 'job_deadline_exceeded',
+                message: `the attempt did not finish within ${String(options.deadlineMs)} ms`,
+              }),
+            });
+          }, options.deadlineMs);
+        });
+  lost.signal.addEventListener('abort', () => {
+    stop.abort(lost.signal.reason);
+  });
   try {
     const outcome = await Promise.race([
-      options.handler(job, lost.signal).then(
+      options.handler(job, stop.signal).then(
         () => ({ ok: true as const }),
         (error: unknown) => ({ ok: false as const, error }),
       ),
       lostPromise,
+      overdue,
     ]);
     if (outcome === 'lost' || lost.signal.aborted) {
       emit({ type: 'lease_lost', jobId: job.lease.jobId });
@@ -179,6 +211,7 @@ async function runAttempt(
     return leaseLost ? 'lease_lost' : 'record_failed';
   } finally {
     clearInterval(beat);
+    clearTimeout(deadlineTimer);
   }
 }
 

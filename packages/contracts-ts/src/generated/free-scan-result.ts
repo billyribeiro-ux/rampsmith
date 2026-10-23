@@ -18,10 +18,15 @@ export interface FreeScanResult {
   domain: string;
   /**
    * Failures, most numerous first.
+   *
+   * @maxItems 20
    */
   failures: FreeScanFailure[];
   /**
-   * The pages checked: the home page and up to two linked pages.
+   * The pages checked: the home page and up to two linked pages, each at most 2048
+   * characters.
+   *
+   * @maxItems 3
    */
   pages: string[];
   /**
@@ -43,6 +48,8 @@ export interface FreeScanFailure {
   criterion: string;
   /**
    * At most three.
+   *
+   * @maxItems 3
    */
   examples: FreeScanExample[];
   /**

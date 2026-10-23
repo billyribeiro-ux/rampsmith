@@ -265,6 +265,17 @@ class HealthAndCommands(unittest.TestCase):
         self.assertEqual(literal(resources["egress"], "EGRESS_BIND"), "[::]:8888")
         self.assertEqual(literal(resources["web"], "HOST"), "::")
 
+    def test_web_reads_the_visitor_address_from_the_edge_header(self) -> None:
+        # Audit M1 (ADR-281): without ADDRESS_HEADER adapter-node's client address is the
+        # edge's, and every visitor shares one free-scan budget. Railway documents X-Real-IP.
+        resources = full()
+        self.assertEqual(literal(resources["web"], "ADDRESS_HEADER"), "X-Real-IP")
+        # X-Forwarded-For is not documented by Railway, so no depth is configured for it.
+        self.assertNotIn("XFF_DEPTH", variables(resources["web"]))
+        for name in SERVICES - {"web"}:
+            with self.subTest(service=name):
+                self.assertNotIn("ADDRESS_HEADER", variables(resources[name]))
+
     def test_api_migrates_before_it_deploys(self) -> None:
         resources = full()
         commands = resources["api"]["deploy"]["preDeployCommand"]
@@ -335,6 +346,17 @@ class Exposure(unittest.TestCase):
         api = full()["api"]
         self.assertEqual(literal(api, "WEBAUTHN_RP_ID"), "app.rampsmith.example")
         self.assertEqual(literal(api, "WEBAUTHN_RP_ORIGIN"), "https://app.rampsmith.example")
+
+    def test_the_api_accepts_the_challenge_only_from_the_widgets_host(self) -> None:
+        # Audit L3: the api alone verifies the token and checks the hostname Cloudflare reports.
+        full_plan = full()
+        self.assertEqual(
+            literal(full_plan["api"], "TURNSTILE_HOSTNAMES"), "app.rampsmith.example"
+        )
+        self.assertNotIn("TURNSTILE_HOSTNAMES", variables(full_plan["web"]))
+        self.assertEqual(
+            variables(evaluate("staging")["api"])["TURNSTILE_HOSTNAMES"], {"type": "preserve"}
+        )
 
     def test_without_an_app_host_passkey_settings_are_kept(self) -> None:
         api = evaluate("staging")["api"]

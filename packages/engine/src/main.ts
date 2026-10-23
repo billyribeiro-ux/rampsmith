@@ -17,7 +17,7 @@ import { exitWhenBrowserLost } from './lifecycle.ts';
 import { assertWorkerRole } from './role-guard.ts';
 import { ScanKeyRing, storefrontPasswordFromScan } from './scan-secret.ts';
 import { userAgent } from './user-agent.ts';
-import { engineHandlers, queuesFor } from './queues.ts';
+import { deadlineMs, engineHandlers, queuesFor } from './queues.ts';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -123,6 +123,7 @@ async function run(): Promise<void> {
           queue,
           workerId,
           concurrency: 1,
+          deadlineMs: deadlineMs(queue),
           signal: stop.signal,
           handler: handlers[queue],
         }),

@@ -90,6 +90,20 @@ function validatorFor(schema: PayloadSchema): ValidateFunction {
   return compiled;
 }
 
+let resultValidator: ValidateFunction | undefined;
+
+/**
+ * Whether a free-scan result fits the generated schema (audit L5): the engine checks what it is
+ * about to store, so a result the api would refuse to serve is never written.
+ */
+export function isFreeScanResult(value: unknown): boolean {
+  if (resultValidator === undefined) {
+    const url = import.meta.resolve('@rampsmith/contracts-ts/schemas/free-scan-result.schema.json');
+    resultValidator = ajv.compile(JSON.parse(readFileSync(new URL(url), 'utf8')) as object);
+  }
+  return resultValidator(value);
+}
+
 function permanent(code: string, message: string): JobFailure {
   return new JobFailure('permanent', { code, message });
 }

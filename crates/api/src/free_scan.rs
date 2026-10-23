@@ -13,7 +13,8 @@
 //!    per domain per day, and a ceiling on scans in flight, are enforced from the database.
 //! 3. The scan is recorded and enqueued in that transaction, for no tenant.
 //!
-//! The address is never stored: a keyed hash of it (its /64 for IPv6) is, for 24 hours.
+//! The address is never stored: a keyed hash of it (its /64 for IPv6) is, for 24 hours, under a
+//! key derived from the Turnstile secret, which only the api holds (audit L4).
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -40,6 +41,9 @@ use crate::rate_limit::normalise;
 
 /// Scans one address may start per day (PLAN §16).
 const PER_ADDRESS: i64 = 3;
+/// The `action` the free scanner's widget is rendered with and `siteverify` must report
+/// (Cloudflare: letters, digits, `_` and `-`, at most 32). The web form uses the same value.
+pub const TURNSTILE_ACTION: &str = "free_scan";
 /// Scans one domain may have per day (PLAN §16).
 const PER_DOMAIN: i64 = 1;
 /// Free scans that may be queued or running at once, across everyone.
@@ -65,6 +69,10 @@ pub struct FreeScanSettings {
     pub turnstile_secret: SecretString,
     /// Where `siteverify` lives (`TURNSTILE_ORIGIN`).
     pub turnstile_origin: Url,
+    /// The hostnames the widget may be served from (`TURNSTILE_HOSTNAMES`), lowercase. Cloudflare
+    /// reports the hostname the visitor solved the challenge on; one that is not listed is
+    /// refused (audit L3). Empty checks no hostname, which only a development setup should do.
+    pub turnstile_hostnames: Vec<String>,
 }
 
 /// The free scanner's service: authentication, address hashing and the Turnstile check.
@@ -73,6 +81,7 @@ pub struct FreeScans {
     token: SecretString,
     ip_key: [u8; 32],
     turnstile_secret: SecretString,
+    turnstile_hostnames: Vec<String>,
     siteverify: Url,
     http: reqwest::Client,
 }
@@ -98,14 +107,18 @@ impl FreeScans {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| e.without_url().to_string())?;
+        // The key comes from the Turnstile secret, which only the api holds. The web server
+        // holds the service token, so a key derived from the token would let a compromised web
+        // server hash any address it knows and test it against the table (audit L4, ADR-287).
         let ip_key = keyed(
-            settings.service_token.expose_secret().as_bytes(),
-            b"rampsmith/free-scan/address-hash/v1",
+            settings.turnstile_secret.expose_secret().as_bytes(),
+            b"rampsmith/free-scan/address-hash/v2",
         );
         Ok(Self {
             token: settings.service_token,
             ip_key,
             turnstile_secret: settings.turnstile_secret,
+            turnstile_hostnames: settings.turnstile_hostnames,
             siteverify,
             http,
         })
@@ -157,7 +170,7 @@ impl FreeScans {
             Challenge::Unavailable
         })?;
         if payload.get("success").and_then(serde_json::Value::as_bool) == Some(true) {
-            return Ok(());
+            return self.accepts_widget(&payload);
         }
         let codes: Vec<&str> = payload
             .get("error-codes")
@@ -181,6 +194,32 @@ impl FreeScans {
             );
             Err(Challenge::Unavailable)
         }
+    }
+}
+
+impl FreeScans {
+    /// A solved challenge counts only if it came from our widget on our site (audit L3): Cloudflare
+    /// reports the `action` the widget was rendered with and the `hostname` it was served on, and
+    /// a token solved on another site or for another form is not ours. Neither value is logged
+    /// with the token.
+    fn accepts_widget(&self, payload: &serde_json::Value) -> Result<(), Challenge> {
+        let text = |field: &str| payload.get(field).and_then(serde_json::Value::as_str);
+        if text("action") != Some(TURNSTILE_ACTION) {
+            warn!("Turnstile token solved for another action");
+            return Err(Challenge::Invalid);
+        }
+        if !self.turnstile_hostnames.is_empty() {
+            let listed = text("hostname").is_some_and(|host| {
+                self.turnstile_hostnames
+                    .iter()
+                    .any(|allowed| allowed.eq_ignore_ascii_case(host))
+            });
+            if !listed {
+                warn!("Turnstile token solved on a hostname that is not ours");
+                return Err(Challenge::Invalid);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -219,6 +258,8 @@ pub enum UrlRefusal {
     Address,
     /// A name that cannot be on the public internet.
     Private,
+    /// A public suffix itself (`co.uk`, `myshopify.com`): no one site, so nothing to scan.
+    Suffix,
 }
 
 impl UrlRefusal {
@@ -231,6 +272,7 @@ impl UrlRefusal {
             Self::Port => "port",
             Self::Address => "address",
             Self::Private => "private",
+            Self::Suffix => "suffix",
         }
     }
 }
@@ -240,8 +282,11 @@ impl UrlRefusal {
 pub struct PublicSite {
     /// `scheme://host/`.
     pub origin: String,
-    /// The host without a leading `www.`: the key for the per-domain limit and the cache.
+    /// The host without a leading `www.`: the key for the cache and the join of a running scan.
     pub domain: String,
+    /// The registrable domain of `domain` by the Public Suffix List: the key for the per-domain
+    /// daily limit, so subdomains of one shop share a day (audit L1).
+    pub registrable: String,
 }
 
 const RESERVED_SUFFIXES: [&str; 13] = [
@@ -322,9 +367,16 @@ pub fn parse_public_url(input: &str) -> Result<PublicSite, UrlRefusal> {
     if labels.len() < 2 || RESERVED_SUFFIXES.contains(&tld) {
         return Err(UrlRefusal::Private);
     }
+    let domain = host.strip_prefix("www.").unwrap_or(&host).to_owned();
+    // A public suffix (`co.uk`, `github.io`) has no registrable domain: it is not one site, and
+    // it is refused here, before a Turnstile token is spent on it.
+    let Some(registrable) = psl::domain_str(&domain) else {
+        return Err(UrlRefusal::Suffix);
+    };
     Ok(PublicSite {
         origin: format!("{}://{host}/", url.scheme()),
-        domain: host.strip_prefix("www.").unwrap_or(&host).to_owned(),
+        registrable: registrable.to_owned(),
+        domain,
     })
 }
 
@@ -538,6 +590,18 @@ pub(crate) async fn create_free_scan(
         .map_err(|_| invalid("client_ip", "not an address"))?;
     let ip_hash = free.hash_address(address);
 
+    // A complete scan of the domain from the last day answers first, before the address budget
+    // is read and before Cloudflare is called: it runs nothing, so it costs the visitor nothing
+    // and an address that has used its day (or shares one with many others) can still read it.
+    {
+        let mut tx = state.db.public().await?;
+        let cached = free_scans::cached(&mut tx, &site.domain).await?;
+        tx.rollback().await?;
+        if let Some(cached) = cached {
+            return Ok((StatusCode::OK, Json(dto(cached, true))));
+        }
+    }
+
     // The budget is read before the challenge, so an address that has used its day does not
     // spend Cloudflare calls; it is spent only below, under the locks.
     {
@@ -567,7 +631,7 @@ pub(crate) async fn create_free_scan(
     }
 
     let mut tx = state.db.public().await?;
-    free_scans::lock(&mut tx, &ip_hash, &site.domain).await?;
+    free_scans::lock(&mut tx, &ip_hash, &site.registrable).await?;
     // A complete scan of the domain from the last day answers, and costs the visitor nothing.
     if let Some(cached) = free_scans::cached(&mut tx, &site.domain).await? {
         tx.rollback().await?;
@@ -585,7 +649,7 @@ pub(crate) async fn create_free_scan(
             seconds: by_address.frees_in_seconds,
         }));
     }
-    let by_domain = free_scans::used_by_domain(&mut tx, &site.domain).await?;
+    let by_domain = free_scans::used_by_domain(&mut tx, &site.registrable).await?;
     if by_domain.count >= PER_DOMAIN {
         return Err(Refused::Limited(Limited {
             scope: "domain",
@@ -596,7 +660,15 @@ pub(crate) async fn create_free_scan(
         return Err(Refused::Busy);
     }
     let id = Uuid::now_v7();
-    free_scans::create(&mut tx, id, &site.domain, &site.origin, &ip_hash).await?;
+    free_scans::create(
+        &mut tx,
+        id,
+        &site.domain,
+        &site.registrable,
+        &site.origin,
+        &ip_hash,
+    )
+    .await?;
     free_scans::enqueue(&mut tx, id).await?;
     let created = free_scans::get(&mut tx, id).await?;
     tx.commit().await?;
@@ -679,12 +751,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_daily_limit_is_keyed_on_the_registrable_domain() {
+        let cases = [
+            ("shop.com", "shop.com"),
+            ("www.shop.com", "shop.com"),
+            ("a.b.shop.com", "shop.com"),
+            ("shop.co.uk", "shop.co.uk"),
+            ("blog.shop.co.uk", "shop.co.uk"),
+            // A private-section suffix: every `*.myshopify.com` store is its own site.
+            ("store.myshopify.com", "store.myshopify.com"),
+            ("deep.store.myshopify.com", "store.myshopify.com"),
+            ("me.github.io", "me.github.io"),
+        ];
+        for (input, registrable) in cases {
+            assert_eq!(ok(input).registrable, registrable, "{input}");
+        }
+        assert_eq!(ok("blog.shop.co.uk").domain, "blog.shop.co.uk");
+    }
+
+    #[test]
+    fn a_public_suffix_is_refused_before_anything_is_spent() {
+        for input in [
+            "co.uk",
+            "www.co.uk",
+            "https://myshopify.com/",
+            "github.io",
+            "com.au",
+            "blogspot.com",
+        ] {
+            assert_eq!(parse_public_url(input), Err(UrlRefusal::Suffix), "{input}");
+        }
+    }
+
     fn service() -> FreeScans {
         FreeScans::new(FreeScanSettings {
             service_token: SecretString::from("t".repeat(MIN_SERVICE_TOKEN)),
             turnstile_secret: SecretString::from("secret"),
             turnstile_origin: Url::parse("https://challenges.example/")
                 .unwrap_or_else(|e| panic!("{e}")),
+            turnstile_hostnames: Vec::new(),
         })
         .unwrap_or_else(|e| panic!("{e}"))
     }
@@ -705,8 +811,36 @@ mod tests {
             turnstile_secret: SecretString::from("secret"),
             turnstile_origin: Url::parse("https://challenges.example/")
                 .unwrap_or_else(|e| panic!("{e}")),
+            turnstile_hostnames: Vec::new(),
         });
         assert!(refused.is_err(), "a short token was accepted");
+    }
+
+    #[test]
+    fn the_address_hash_key_is_not_derivable_from_the_service_token() {
+        let make = |token: &str, turnstile: &str| {
+            FreeScans::new(FreeScanSettings {
+                service_token: SecretString::from(token.repeat(MIN_SERVICE_TOKEN)),
+                turnstile_secret: SecretString::from(turnstile),
+                turnstile_origin: Url::parse("https://challenges.example/")
+                    .unwrap_or_else(|e| panic!("{e}")),
+                turnstile_hostnames: Vec::new(),
+            })
+            .unwrap_or_else(|e| panic!("{e}"))
+        };
+        let address: IpAddr = "203.0.113.9".parse().unwrap_or_else(|e| panic!("{e:?}"));
+        let api = make("a", "api-only-secret");
+        // Whoever holds the service token (the web server) and not the Turnstile secret gets a
+        // different hash for the same address.
+        assert_ne!(
+            api.hash_address(address),
+            make("a", "another-secret").hash_address(address)
+        );
+        // The hash does not depend on the service token at all, so rotating it keeps the day's counts.
+        assert_eq!(
+            api.hash_address(address),
+            make("b", "api-only-secret").hash_address(address)
+        );
     }
 
     #[test]

@@ -36,10 +36,10 @@ pub struct Used {
     pub frees_in_seconds: i64,
 }
 
-/// Serialises requests for one address and one domain until the transaction ends, so two
-/// concurrent requests cannot both pass a cap that has one place left. Locks are always taken
-/// in this order (address, then domain), so they cannot deadlock.
-pub async fn lock(tx: &mut PublicTx, ip_hash: &[u8], domain: &str) -> Result<(), DbError> {
+/// Serialises requests for one address and one registrable domain until the transaction ends,
+/// so two concurrent requests cannot both pass a cap that has one place left. Locks are always
+/// taken in this order (address, then domain), so they cannot deadlock.
+pub async fn lock(tx: &mut PublicTx, ip_hash: &[u8], registrable: &str) -> Result<(), DbError> {
     sqlx::query!(
         "select pg_advisory_xact_lock(hashtextextended('free_scan.ip:' || encode($1::bytea, 'hex'), 0))",
         ip_hash,
@@ -48,7 +48,7 @@ pub async fn lock(tx: &mut PublicTx, ip_hash: &[u8], domain: &str) -> Result<(),
     .await?;
     sqlx::query!(
         "select pg_advisory_xact_lock(hashtextextended('free_scan.domain:' || $1, 0))",
-        domain,
+        registrable,
     )
     .fetch_one(tx.conn())
     .await?;
@@ -93,15 +93,16 @@ pub async fn used_by_ip(tx: &mut PublicTx, ip_hash: &[u8]) -> Result<Used, DbErr
     })
 }
 
-/// What `domain` has used today.
-pub async fn used_by_domain(tx: &mut PublicTx, domain: &str) -> Result<Used, DbError> {
+/// What a registrable domain (and so every host under it) has used today.
+pub async fn used_by_domain(tx: &mut PublicTx, registrable: &str) -> Result<Used, DbError> {
     let row = sqlx::query!(
         r#"select count(*) as "count!",
                   coalesce(ceil(extract(epoch from (min(created_at) + interval '24 hours' - now()))), 0)::bigint
                     as "frees_in!"
              from free_scans
-            where domain = $1 and status <> 'failed' and created_at > now() - interval '24 hours'"#,
-        domain,
+            where registrable_domain = $1 and status <> 'failed'
+              and created_at > now() - interval '24 hours'"#,
+        registrable,
     )
     .fetch_one(tx.conn())
     .await?;
@@ -147,14 +148,16 @@ pub async fn create(
     tx: &mut PublicTx,
     id: Uuid,
     domain: &str,
+    registrable: &str,
     origin: &str,
     ip_hash: &[u8],
 ) -> Result<(), DbError> {
     sqlx::query!(
-        r#"insert into free_scans (id, domain, origin, ip_hash, status)
-           values ($1, $2, $3, $4, 'queued')"#,
+        r#"insert into free_scans (id, domain, registrable_domain, origin, ip_hash, status)
+           values ($1, $2, $3, $4, $5, 'queued')"#,
         id,
         domain,
+        registrable,
         origin,
         ip_hash,
     )

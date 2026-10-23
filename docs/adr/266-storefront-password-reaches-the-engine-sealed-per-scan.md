@@ -41,7 +41,12 @@ Option 3.
   `crates/crypto/tests/vectors/scan-secret.txt` is opened by both implementations, so the two
   cannot drift.
 - The copy is cleared when the scan finalises, when a verification scan ends, and when a scan
-  fails (`scans::fail`). The 30-day sweep and tenant deletion remove it with the scan.
+  fails (`scans::fail`). **Correction (audit M3 and L9, ADR-283):** the first version of this ADR
+  said that the 30-day `scan_inputs_sweep` and tenant deletion remove it with the scan. They do
+  not: `scan_inputs_sweep()` deletes `scan_inputs` rows only, and a `scans` row is kept after its
+  scan ends. Three terminal paths also left the copy behind (an undo that cancelled a queued
+  verification, an uninstall, and an engine job that died on its last attempt). All are closed
+  and a backstop clears any copy older than an hour: see ADR-283.
 - Without the ring (either side), nothing is sealed and a protected store is reported as blocked,
   as before. A stored password that cannot be opened logs a warning that names the scan and no
   value, and the scan reports the store as blocked. The password, the keys and the sealed bytes
@@ -54,9 +59,13 @@ Option 3.
 - Rotating the scan ring is cheap: copies live for one scan.
 - The founder generates one more secret (`rsctl keys generate` prints the right form; LAUNCH.md
   section C row 12). Live proof of the whole path is LAUNCH.md section E (a real closed store).
-- `ctl`'s master-key re-wrap (ADR-045) covers Shopify tokens only; it does not yet cover
-  `sites.storefront_password_ct`. Until it does, retiring a master key needs the saved passwords
-  re-entered. Recorded as an open item in `docs/evidence/r1-integration.md`.
+- `ctl`'s master-key re-wrap (ADR-045) covers the Shopify tokens **and**
+  `sites.storefront_password_ct` (migration `20261105000003`, `crates/ctl/src/rewrap.rs`,
+  `a_rewrap_pass_also_moves_the_sealed_storefront_passwords`): a master key is removable once
+  `Rewrap::remaining` lists nothing under it. (The first version of this ADR said the password was
+  not covered; that was true before lane A's audit fix L4 and stopped being true on 5 Nov.) The
+  per-scan copies are not re-wrapped: they live for one scan, and rotating the scan ring
+  (`RAMPSMITH_SCAN_SECRET_KEYS`) follows `docs/runbooks/rotate-scan-secret-keys.md`.
 
 ## Rejected alternatives
 

@@ -454,19 +454,43 @@ async fn an_applied_fix_is_undone_when_the_live_value_is_still_the_fixes(
     .await;
     w.admin_operation("RampsmithSetMediaAlt", fixture("file_update_ok"))
         .await;
-    // The verification queued by the apply has not run yet.
+    // The verification queued by the apply has not run yet; its scan holds a sealed copy of the
+    // storefront password (audit M3, ADR-283).
+    let verification = Uuid::now_v7();
+    sqlx::query(
+        "insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version,
+                            storefront_password_ct, storefront_password_key_id)
+         select $1, tenant_id, id, 'verify', 'queued', 'v', '\\x0102', 'scan-1' from sites",
+    )
+    .bind(verification)
+    .execute(&w.owner)
+    .await
+    .unwrap();
     sqlx::query(
         "insert into jobs (id, queue, payload_schema, payload, tenant_id, state, idempotency_key)
-         values ($1, 'verify.scan', 'verify.scan@1', '{}', $2, 'ready', $3)",
+         values ($1, 'verify.scan', 'verify.scan@1', jsonb_build_object('scan_id', $4::uuid), $2, 'ready', $3)",
     )
     .bind(Uuid::now_v7())
     .bind(w.session.tenant.as_uuid())
     .bind(format!("verify.scan:{}", s.fix))
+    .bind(verification)
     .execute(&w.owner)
     .await
     .unwrap();
 
     revert(&w, s.fix).await.unwrap();
+
+    let ended: (String, bool) =
+        sqlx::query_as("select status, storefront_password_ct is null from scans where id = $1")
+            .bind(verification)
+            .fetch_one(&w.owner)
+            .await
+            .unwrap();
+    assert_eq!(
+        ended,
+        ("cancelled".to_owned(), true),
+        "the cancelled verification's scan is ended and its password copy cleared"
+    );
 
     assert_eq!(state(&w, s.fix).await, ("reverted".to_owned(), None));
     assert_eq!(

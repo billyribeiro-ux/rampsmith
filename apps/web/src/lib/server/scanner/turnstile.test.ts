@@ -49,6 +49,24 @@ describe('verifyTurnstile', () => {
     expect(calls[0]?.body.has('remoteip')).toBe(false);
   });
 
+  it('refuses a token solved for another action, or for none (audit L3)', async () => {
+    const verify = (reply: object) =>
+      verifyTurnstile({
+        secret: 's',
+        token: 't',
+        expectedAction: 'free_scan',
+        fetch: fakeFetch(() => json(reply)),
+      });
+    expect(await verify({ success: true, action: 'free_scan' })).toEqual({ ok: true });
+    for (const reply of [
+      { success: true, action: 'login' },
+      { success: true, action: '' },
+      { success: true },
+    ]) {
+      expect(await verify(reply)).toEqual({ ok: false, reason: 'invalid' });
+    }
+  });
+
   it('refuses a missing or oversized token without calling Cloudflare', async () => {
     const calls: Call[] = [];
     const fetchImpl = fakeFetch(() => json({ success: true }), calls);

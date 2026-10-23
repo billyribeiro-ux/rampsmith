@@ -18,25 +18,30 @@
     },
     "domain": {
       "description": "The scanned domain, without a leading `www.`.",
-      "type": "string"
+      "type": "string",
+      "maxLength": 253
     },
     "failures": {
       "description": "Failures, most numerous first.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/FreeScanFailure"
-      }
+      },
+      "maxItems": 20
     },
     "pages": {
-      "description": "The pages checked: the home page and up to two linked pages.",
+      "description": "The pages checked: the home page and up to two linked pages, each at most 2048\ncharacters.",
       "type": "array",
       "items": {
-        "type": "string"
-      }
+        "type": "string",
+        "maxLength": 2048
+      },
+      "maxItems": 3
     },
     "scanned_at": {
       "description": "When the scan finished, RFC 3339.",
-      "type": "string"
+      "type": "string",
+      "maxLength": 40
     }
   },
   "additionalProperties": false,
@@ -55,11 +60,13 @@
       "properties": {
         "page": {
           "description": "The page the element is on.",
-          "type": "string"
+          "type": "string",
+          "maxLength": 2048
         },
         "snippet": {
           "description": "The element's markup, scrubbed and cut to a few hundred characters.",
-          "type": "string"
+          "type": "string",
+          "maxLength": 240
         }
       },
       "additionalProperties": false,
@@ -80,22 +87,26 @@
         },
         "criterion": {
           "description": "The WCAG 2.2 success criterion, such as `1.4.3`.",
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         },
         "examples": {
           "description": "At most three.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/FreeScanExample"
-          }
+          },
+          "maxItems": 3
         },
         "rule_id": {
           "description": "The rule's id, such as `color-contrast`.",
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         },
         "title": {
           "description": "What the failure is, in plain words.",
-          "type": "string"
+          "type": "string",
+          "maxLength": 240
         }
       },
       "additionalProperties": false,
