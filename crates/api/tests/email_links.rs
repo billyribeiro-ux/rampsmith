@@ -318,7 +318,7 @@ async fn a_link_switches_only_what_it_was_made_for_and_records_it(
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(h.opt_outs().await.is_empty());
+    assert_eq!(h.opt_outs().await, Vec::<String>::new());
 
     let (status, _, body) = send(
         api::app(h.state.clone()),
@@ -359,7 +359,7 @@ async fn a_link_switches_only_what_it_was_made_for_and_records_it(
     )
     .await;
     assert_eq!(body["categories"][0]["enabled"], true);
-    assert!(h.opt_outs().await.is_empty());
+    assert_eq!(h.opt_outs().await, Vec::<String>::new());
 }
 
 #[sqlx::test(migrations = "../db/migrations")]
@@ -389,7 +389,7 @@ async fn one_click_unsubscribes_on_a_post_with_the_rfc_8058_body_and_a_get_only_
     // A POST without the RFC 8058 body does nothing either.
     let (status, _, _) = send(h.one_click.clone(), one_click_post(&token, "hello=world")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(h.opt_outs().await.is_empty());
+    assert_eq!(h.opt_outs().await, Vec::<String>::new());
 
     let (status, _, _) = send(
         h.one_click.clone(),
@@ -492,5 +492,5 @@ async fn the_app_home_switch_follows_the_address_the_mail_goes_to(
     let on = json!({"category": "notification", "enabled": true});
     let (_, _, body) = send(api::app(h.state.clone()), session("PUT", Some(&on))).await;
     assert_eq!(body["categories"][0]["enabled"], true);
-    assert!(h.opt_outs().await.is_empty());
+    assert_eq!(h.opt_outs().await, Vec::<String>::new());
 }
