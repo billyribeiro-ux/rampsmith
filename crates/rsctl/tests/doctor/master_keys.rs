@@ -2,7 +2,7 @@
 
 use rsctl::keys;
 
-use crate::support::{Rig, fail, master_ring, now, pass, skip_missing};
+use crate::support::{Rig, fail, master_ring, now, pass, scan_ring, skip_missing};
 
 #[tokio::test]
 async fn a_generated_ring_round_trips() {
@@ -76,4 +76,51 @@ async fn a_duplicate_id_fails() {
 async fn unset_skips_naming_row_12() {
     let rig = Rig::new(&[]).await;
     assert!(skip_missing(&rig.run("master-keys.round-trip").await).contains("C row 12"));
+}
+
+#[tokio::test]
+async fn a_separate_scan_ring_and_a_long_service_token_pass() {
+    let master = master_ring();
+    let scan = scan_ring();
+    let token = "t".repeat(40);
+    let rig = Rig::new(&[
+        ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+        ("RAMPSMITH_SCAN_SECRET_KEYS", scan.as_str()),
+        ("FREE_SCAN_SERVICE_TOKEN", token.as_str()),
+    ])
+    .await;
+    let outcome = rig.run("master-keys.round-trip").await;
+    pass(&outcome);
+}
+
+#[tokio::test]
+async fn a_scan_ring_that_is_malformed_or_shares_a_master_key_fails() {
+    let master = master_ring();
+    let rig = Rig::new(&[
+        ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+        ("RAMPSMITH_SCAN_SECRET_KEYS", "s1:short"),
+    ])
+    .await;
+    let outcome = rig.run("master-keys.round-trip").await;
+    assert!(fail(&outcome).contains("RAMPSMITH_SCAN_SECRET_KEYS does not parse"));
+
+    let rig = Rig::new(&[
+        ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+        ("RAMPSMITH_SCAN_SECRET_KEYS", master.as_str()),
+    ])
+    .await;
+    let outcome = rig.run("master-keys.round-trip").await;
+    assert!(fail(&outcome).contains("shares a key with RAMPSMITH_MASTER_KEYS"));
+}
+
+#[tokio::test]
+async fn a_short_service_token_fails() {
+    let master = master_ring();
+    let rig = Rig::new(&[
+        ("RAMPSMITH_MASTER_KEYS", master.as_str()),
+        ("FREE_SCAN_SERVICE_TOKEN", "too-short"),
+    ])
+    .await;
+    let outcome = rig.run("master-keys.round-trip").await;
+    assert!(fail(&outcome).contains("shorter than 32 characters"));
 }

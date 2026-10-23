@@ -339,8 +339,8 @@ async fn shop_redact_deletes_the_shops_data_and_only_the_shops_data(
         .unwrap();
         assert_eq!(theirs, expected, "{table} lost another tenant's rows");
     }
-    let shop: (String, Vec<String>, Option<String>) = sqlx::query_as(
-        "select status, scopes, primary_domain from shopify_shops where tenant_id = $1",
+    let shop: (String, Vec<String>, Option<String>, Option<String>) = sqlx::query_as(
+        "select status, scopes, primary_domain, name from shopify_shops where tenant_id = $1",
     )
     .bind(w.session.tenant.as_uuid())
     .fetch_one(&w.owner)
@@ -348,6 +348,7 @@ async fn shop_redact_deletes_the_shops_data_and_only_the_shops_data(
     .unwrap();
     assert_eq!(shop.0, "redacted");
     assert!(shop.1.is_empty() && shop.2.is_none());
+    assert!(shop.3.is_none(), "the shop's name goes with the rest");
     let settings: Value = sqlx::query_scalar("select settings from sites where tenant_id = $1")
         .bind(w.session.tenant.as_uuid())
         .fetch_one(&w.owner)
@@ -538,14 +539,16 @@ async fn shop_update_refreshes_the_primary_domain_and_locales(
     w.admin_answers(200, shop_response()).await;
     let event = store(&w, "shop/update", shop_object()).await;
     process(&w, event).await.unwrap();
-    let row: (Option<String>, Vec<String>, bool) =
-        sqlx::query_as("select primary_domain, locales, synced_at is not null from shopify_shops")
-            .fetch_one(&w.owner)
-            .await
-            .unwrap();
+    let row: (Option<String>, Vec<String>, bool, Option<String>) = sqlx::query_as(
+        "select primary_domain, locales, synced_at is not null, name from shopify_shops",
+    )
+    .fetch_one(&w.owner)
+    .await
+    .unwrap();
     assert_eq!(row.0.as_deref(), Some("demo.example"));
     assert_eq!(row.1, ["en", "fr"]);
     assert!(row.2);
+    assert_eq!(row.3.as_deref(), Some("Demo"));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

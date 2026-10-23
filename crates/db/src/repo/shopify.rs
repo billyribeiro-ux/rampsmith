@@ -343,15 +343,21 @@ pub async fn mark_uninstalled(tx: &mut TenantTx, id: ShopId) -> Result<bool, DbE
 pub async fn set_info(
     tx: &mut TenantTx,
     id: ShopId,
+    name: &str,
     primary_domain: Option<&str>,
     locales: &[String],
 ) -> Result<bool, DbError> {
     let tenant = tx.tenant_uuid();
+    // A name the table's check would refuse (empty, or over 255 characters) is stored as none
+    // rather than failing the read of the whole store.
+    let name = Some(name.trim()).filter(|n| (1..=255).contains(&n.chars().count()));
     let done = sqlx::query!(
-        r#"update shopify_shops set primary_domain = $3, locales = $4, synced_at = now()
+        r#"update shopify_shops
+              set name = $3, primary_domain = $4, locales = $5, synced_at = now()
             where tenant_id = $1 and id = $2 and status = 'installed'"#,
         tenant,
         id.as_uuid(),
+        name,
         primary_domain,
         locales,
     )
@@ -363,6 +369,8 @@ pub async fn set_info(
 /// What `shopify.read_store` and `shop/update` last stored about a shop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShopInfo {
+    /// The shop's name, once it has been read.
+    pub name: Option<String>,
     /// The shop's primary domain host, if the shop has one.
     pub primary_domain: Option<String>,
     /// Its locales.
@@ -375,7 +383,7 @@ pub struct ShopInfo {
 pub async fn get_info(tx: &mut TenantTx, id: ShopId) -> Result<Option<ShopInfo>, DbError> {
     let tenant = tx.tenant_uuid();
     let row = sqlx::query!(
-        r#"select primary_domain, locales, synced_at
+        r#"select name, primary_domain, locales, synced_at
              from shopify_shops where tenant_id = $1 and id = $2"#,
         tenant,
         id.as_uuid(),
@@ -383,6 +391,7 @@ pub async fn get_info(tx: &mut TenantTx, id: ShopId) -> Result<Option<ShopInfo>,
     .fetch_optional(tx.conn())
     .await?;
     Ok(row.map(|r| ShopInfo {
+        name: r.name,
         primary_domain: r.primary_domain,
         locales: r.locales,
         synced_at: r.synced_at,

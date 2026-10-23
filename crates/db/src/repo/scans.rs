@@ -177,7 +177,8 @@ pub async fn fail(
     let tenant = tx.tenant_uuid();
     let row = sqlx::query_as!(
         Row,
-        r#"update scans set status = 'failed', finished_at = now(), error_code = $3
+        r#"update scans set status = 'failed', finished_at = now(), error_code = $3,
+                            storefront_password_ct = null, storefront_password_key_id = null
             where tenant_id = $1 and id = $2 and status in ('queued', 'running')
         returning id, site_id, theme_ref, trigger, status, ruleset_version, pages_planned,
                   pages_done, created_at, started_at, finished_at, error_code"#,

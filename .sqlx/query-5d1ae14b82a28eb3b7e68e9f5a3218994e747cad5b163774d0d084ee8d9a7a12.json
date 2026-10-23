@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select storefront_password_ct, storefront_password_key_id\n             from scans where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "storefront_password_ct",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "storefront_password_ct"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "storefront_password_key_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scans",
+            "name": "storefront_password_key_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "5d1ae14b82a28eb3b7e68e9f5a3218994e747cad5b163774d0d084ee8d9a7a12"
+}

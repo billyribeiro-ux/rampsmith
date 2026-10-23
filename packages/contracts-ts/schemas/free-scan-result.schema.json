@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FreeScanResult",
+  "description": "What a free scan found (PLAN §16): checks passed of checks run, and the failures by type.",
+  "type": "object",
+  "properties": {
+    "checks_passed": {
+      "description": "Automated checks that passed.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "checks_run": {
+      "description": "Automated checks that ran.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "domain": {
+      "description": "The scanned domain, without a leading `www.`.",
+      "type": "string"
+    },
+    "failures": {
+      "description": "Failures, most numerous first.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FreeScanFailure"
+      }
+    },
+    "pages": {
+      "description": "The pages checked: the home page and up to two linked pages.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scanned_at": {
+      "description": "When the scan finished, RFC 3339.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "domain",
+    "scanned_at",
+    "pages",
+    "checks_passed",
+    "checks_run",
+    "failures"
+  ],
+  "$defs": {
+    "FreeScanExample": {
+      "description": "One example of a failure: a page and the offending element's markup.",
+      "type": "object",
+      "properties": {
+        "page": {
+          "description": "The page the element is on.",
+          "type": "string"
+        },
+        "snippet": {
+          "description": "The element's markup, scrubbed and cut to a few hundred characters.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "page",
+        "snippet"
+      ]
+    },
+    "FreeScanFailure": {
+      "description": "One kind of failure on the scanned pages, with up to three examples.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "description": "How many elements failed across the scanned pages.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "criterion": {
+          "description": "The WCAG 2.2 success criterion, such as `1.4.3`.",
+          "type": "string"
+        },
+        "examples": {
+          "description": "At most three.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FreeScanExample"
+          }
+        },
+        "rule_id": {
+          "description": "The rule's id, such as `color-contrast`.",
+          "type": "string"
+        },
+        "title": {
+          "description": "What the failure is, in plain words.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "title",
+        "criterion",
+        "count",
+        "examples"
+      ]
+    }
+  }
+}

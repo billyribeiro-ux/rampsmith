@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select free_scan_enqueue($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "free_scan_enqueue",
+        "type_info": "Void",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "471b46992fc91b24de3b0f5c7bc5a31b7ee2f3ec7142b845282645367b7cd2ee"
+}

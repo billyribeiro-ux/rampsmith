@@ -18,6 +18,7 @@ import {
   type Batch,
 } from '../pipeline/snapshot.ts';
 import type { PageType } from '../pipeline/vocab.ts';
+import { RULESET_VERSION } from '../ruleset.ts';
 import { recordPage, violationPrints, withTenant } from '../store.ts';
 import { onSiteUrl, scanThroughEgress, type EngineDeps } from '../worker.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
@@ -296,7 +297,9 @@ export function verifyScanHandler(deps: EngineDeps): JobHandler {
         update scans
            set status = ${verdict.ok || pageResults.every((p) => !p.blocked) ? 'succeeded' : 'partial'},
                finished_at = now(), finalized_at = now(),
-               started_at = coalesce(started_at, now())
+               started_at = coalesce(started_at, now()),
+               ruleset_version = ${RULESET_VERSION},
+               storefront_password_ct = null, storefront_password_key_id = null
          where tenant_id = ${tenantId} and id = ${payload.scan_id}
            and status in ('queued', 'running')`;
     });

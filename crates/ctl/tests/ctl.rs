@@ -467,6 +467,54 @@ async fn a_sweep_removes_only_expired_sign_in_state(opts: PgPoolOptions, conn: P
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_retention_sweep_removes_old_store_data_and_ends_and_deletes_free_scans(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let owner = opts.clone().connect_with(conn.clone()).await.unwrap();
+    let db = Db::from_pool(worker_pool(opts, conn).await);
+    for statement in [
+        "insert into tenants (id, kind) values ('00000000-0000-7000-8000-0000000000a1', 'shopify_store')",
+        "insert into sites (id, tenant_id, platform, base_url)
+         values ('00000000-0000-7000-8000-0000000000a2', '00000000-0000-7000-8000-0000000000a1',
+                 'shopify', 'https://demo.example/')",
+        "insert into scans (id, tenant_id, site_id, trigger, status, ruleset_version, pages_planned)
+         values ('00000000-0000-7000-8000-0000000000a3', '00000000-0000-7000-8000-0000000000a1',
+                 '00000000-0000-7000-8000-0000000000a2', 'manual', 'queued', 'axe-core', 0)",
+        "insert into scan_inputs (id, tenant_id, scan_id, site_id, kind, seq, payload, created_at)
+         values ('00000000-0000-7000-8000-0000000000b1', '00000000-0000-7000-8000-0000000000a1',
+                 '00000000-0000-7000-8000-0000000000a3', '00000000-0000-7000-8000-0000000000a2',
+                 'products', 0, '{}', now() - interval '31 days'),
+                ('00000000-0000-7000-8000-0000000000b2', '00000000-0000-7000-8000-0000000000a1',
+                 '00000000-0000-7000-8000-0000000000a3', '00000000-0000-7000-8000-0000000000a2',
+                 'products', 1, '{}', now() - interval '1 day')",
+        "insert into free_scans (id, domain, origin, ip_hash, status, created_at)
+         values ('00000000-0000-7000-8000-0000000000c1', 'stuck.example.com',
+                 'https://stuck.example.com/', '\\x0101010101010101010101010101010101010101010101010101010101010101',
+                 'running', now() - interval '11 minutes')",
+        "insert into free_scans (id, domain, origin, ip_hash, status, created_at, expires_at)
+         values ('00000000-0000-7000-8000-0000000000c2', 'old.example.com',
+                 'https://old.example.com/', '\\x0202020202020202020202020202020202020202020202020202020202020202',
+                 'queued', now() - interval '25 hours', now() - interval '1 hour')",
+    ] {
+        sqlx::query(statement).execute(&owner).await.unwrap();
+    }
+
+    assert_eq!(leader::sweep_retention(&db).await.unwrap(), (1, 1));
+    assert_eq!(count(&owner, "scan_inputs").await, 1);
+    assert_eq!(count(&owner, "free_scans").await, 1);
+    let status: String = sqlx::query_scalar("select status from free_scans")
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+    assert_eq!(
+        status, "failed",
+        "a scan the engine never finished is ended"
+    );
+    assert_eq!(leader::sweep_retention(&db).await.unwrap(), (0, 0));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn the_leader_sweeps_on_its_own_cadence(opts: PgPoolOptions, conn: PgConnectOptions) {
     let owner = opts.clone().connect_with(conn.clone()).await.unwrap();
     let pool = worker_pool(opts, conn).await;

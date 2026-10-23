@@ -145,8 +145,14 @@ jobs:
         run: infra/restore-drill/in-container.sh rm -rf /scratch/work /scratch/restore-local-work
       - name: Negative cases (the drill must fail on each injected fault)
         run: |
+          # The FAIL lines become annotations, because the job log host is unreachable from
+          # build sessions; the exit status is the script's.
+          set -o pipefail
+          rc=0
           infra/restore-drill/in-container.sh bash infra/restore-drill/tests/negative.sh \
-            --out /scratch/negative
+            --out /scratch/negative | tee "$RUNNER_TEMP/negative.txt" || rc=$?
+          grep -E '^(FAIL|negative)' "$RUNNER_TEMP/negative.txt" | head -20 | sed 's/^/::error title=Negative case::/' || true
+          exit "$rc"
       - name: Summary
         if: always()
         run: |
