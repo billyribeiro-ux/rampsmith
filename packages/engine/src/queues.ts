@@ -5,7 +5,7 @@
  * Every queue is built as of R1. `free_scan.run` serves the marketing site's free scanner for no
  * tenant (ADR-267).
  */
-import { freeScanHandler } from './free-scan.ts';
+import { FREE_SCAN_BUDGET_MS, freeScanHandler } from './free-scan.ts';
 import { altTextHandler } from './jobs/alt-text.ts';
 import { auditDataHandler } from './jobs/audit-data.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
@@ -34,6 +34,22 @@ export type EngineQueue = (typeof ENGINE_QUEUES)[number];
  * serves them.
  */
 const SANDBOX_ONLY_QUEUES: readonly EngineQueue[] = ['free_scan.run'];
+
+/**
+ * The longest one attempt of a queue may run (audit M2). Each is above what the handler bounds
+ * itself to (a page scan's own deadline, the free scan's budget), so the handler's own failure
+ * handling runs first and this is the backstop for a handler that never returns.
+ */
+export function deadlineMs(queue: EngineQueue): number {
+  switch (queue) {
+    case 'free_scan.run':
+      return FREE_SCAN_BUDGET_MS + 30_000;
+    case 'scan.page':
+      return 150_000;
+    default:
+      return 600_000;
+  }
+}
 
 /** The queues an engine whose Chromium has `sandbox` serves. */
 export function queuesFor(sandbox: SandboxMode): readonly EngineQueue[] {

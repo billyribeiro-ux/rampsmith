@@ -285,6 +285,65 @@ describe('the free_scan.run job', () => {
     expect(finished?.finished).toBe(true);
   });
 
+  it('gives each page a deadline inside the job budget and a token that lives 120 seconds (audit M2, L8)', async () => {
+    const id = await ask('https://budget.com/', 'budget.com');
+    const seen: ScanOptions[] = [];
+    const inner = scanned(['https://budget.com/collections/all', 'https://budget.com/pages/about']);
+    let now = 1_000_000;
+    await freeScanHandler({
+      sql,
+      browser: NOT_USED,
+      egress,
+      userAgent: 'RampsmithBot/test',
+      fetchText: allowRobots,
+      budgetMs: 100_000,
+      clock: () => now,
+      scan: (browser, options) => {
+        seen.push(options);
+        // Each page takes 30 seconds of the job's budget.
+        now += 30_000;
+        return inner(browser, options);
+      },
+    })(job(id));
+    // 100 s budget: the home page may take its 45 s cap; after 30 s and 60 s the rest still fits
+    // (70 s and 40 s left) until fewer than 10 s remain.
+    expect(seen.map((s) => s.deadlineMs)).toEqual([45_000, 45_000, 40_000]);
+    for (const options of seen) {
+      const token = options.proxy?.token ?? '';
+      const claims = JSON.parse(
+        Buffer.from(token.split('.')[0] ?? '', 'base64url').toString('utf8'),
+      ) as { exp: number };
+      const ttl = claims.exp - Math.floor(Date.now() / 1000);
+      expect(ttl).toBeGreaterThan(110);
+      expect(ttl).toBeLessThanOrEqual(120);
+    }
+  });
+
+  it('stops starting pages when the job budget is nearly spent, and keeps what it has', async () => {
+    const id = await ask('https://slow.com/', 'slow.com');
+    const seen: ScanOptions[] = [];
+    const inner = scanned(['https://slow.com/collections/all', 'https://slow.com/pages/about']);
+    let now = 0;
+    await freeScanHandler({
+      sql,
+      browser: NOT_USED,
+      egress,
+      userAgent: 'RampsmithBot/test',
+      fetchText: allowRobots,
+      budgetMs: 100_000,
+      clock: () => now,
+      scan: (browser, options) => {
+        seen.push(options);
+        now += 95_000;
+        return inner(browser, options);
+      },
+    })(job(id));
+    expect(seen.length).toBe(1);
+    const stored = await row(id);
+    expect(stored?.status).toBe('complete');
+    expect(stored?.result?.['pages']).toEqual(['https://slow.com/']);
+  });
+
   it('refuses, without loading anything, when robots.txt disallows the agent', async () => {
     const id = await ask('https://closed.com/', 'closed.com');
     let loaded = 0;

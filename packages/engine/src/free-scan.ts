@@ -18,7 +18,7 @@ import type {
 } from '@rampsmith/contracts-ts';
 import type postgres from 'postgres';
 import { fetchTextViaEgress, type TextFetcher, type TextResponse } from './egress-text.ts';
-import { signScanToken } from './egress-token.ts';
+import { PAGE_TOKEN_TTL_SECONDS, signScanToken } from './egress-token.ts';
 import { isLastAttempt, parsePayload, type JobHandler } from './jobs/payload.ts';
 import { robotsAllows } from './robots.ts';
 import { scanPage, type Occurrence, type PageScan } from './scan-page.ts';
@@ -34,6 +34,12 @@ const MAX_SNIPPET = 240;
 const PAGE_BUDGET = 200;
 /** Navigation budget per page. */
 const PAGE_TIMEOUT_MS = 20_000;
+/** Overall deadline of one page scan, whatever the page does (audit M2). */
+const PAGE_DEADLINE_MS = 45_000;
+/** The whole job's budget: robots.txt and every page. A page is not started with less than
+ * {@link MIN_PAGE_MS} of it left. */
+export const FREE_SCAN_BUDGET_MS = 120_000;
+const MIN_PAGE_MS = 10_000;
 
 type Refusal = 'robots' | 'bot-challenge' | 'unreachable';
 
@@ -224,6 +230,10 @@ async function finish(sql: postgres.Sql, id: string, outcome: Outcome | 'failed'
 export interface FreeScanDeps extends EngineDeps {
   /** Test seam: fetches `robots.txt`. Production uses egress. */
   readonly fetchText?: TextFetcher;
+  /** Test seam: the job's overall budget. Default {@link FREE_SCAN_BUDGET_MS}. */
+  readonly budgetMs?: number;
+  /** Test seam: the clock for the budget, in milliseconds. */
+  readonly clock?: () => number;
 }
 
 /**
@@ -276,6 +286,9 @@ async function run(
   id: string,
   row: Row,
 ): Promise<Outcome> {
+  const clock = deps.clock ?? Date.now;
+  const startedAt = clock();
+  const remaining = (): number => (deps.budgetMs ?? FREE_SCAN_BUDGET_MS) - (clock() - startedAt);
   const home = new URL(row.origin);
   const hosts = hostsFor(home.hostname);
   const load = (url: URL): URL => deps.rewriteUrl?.(url) ?? url;
@@ -297,7 +310,7 @@ async function run(
       scan: id,
       hosts,
       budget: deps.budget ?? PAGE_BUDGET,
-      exp: Math.floor(Date.now() / 1000) + 300,
+      exp: Math.floor(Date.now() / 1000) + PAGE_TOKEN_TTL_SECONDS,
     });
     return scan(deps.browser, {
       url: load(url).href,
@@ -307,6 +320,8 @@ async function run(
       states: ['default'],
       deep: false,
       timeoutMs: PAGE_TIMEOUT_MS,
+      // A page ends at its own deadline or when the job's budget does, whichever is first.
+      deadlineMs: Math.max(1, Math.min(PAGE_DEADLINE_MS, remaining())),
       collectLinks,
     });
   };
@@ -329,6 +344,8 @@ async function run(
   }
   for (const target of chooseLinks(base, homeScan.links ?? [])) {
     if (verdict(target) !== 'allowed') continue;
+    // Out of budget: the result covers the pages scanned so far and says which they are.
+    if (remaining() < MIN_PAGE_MS) break;
     try {
       const page = await scanOne(target, false);
       if (page.blocked !== undefined) continue;
