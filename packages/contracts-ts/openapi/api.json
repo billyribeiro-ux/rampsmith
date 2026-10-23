@@ -2127,11 +2127,13 @@
         "properties": {
           "page": {
             "type": "string",
-            "description": "The page the element is on."
+            "description": "The page the element is on.",
+            "maxLength": 2048
           },
           "snippet": {
             "type": "string",
-            "description": "The element's markup, scrubbed and cut to a few hundred characters."
+            "description": "The element's markup, scrubbed and cut to a few hundred characters.",
+            "maxLength": 240
           }
         },
         "additionalProperties": false
@@ -2155,22 +2157,26 @@
           },
           "criterion": {
             "type": "string",
-            "description": "The WCAG 2.2 success criterion, such as `1.4.3`."
+            "description": "The WCAG 2.2 success criterion, such as `1.4.3`.",
+            "maxLength": 120
           },
           "examples": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FreeScanExample"
             },
-            "description": "At most three."
+            "description": "At most three.",
+            "maxItems": 3
           },
           "rule_id": {
             "type": "string",
-            "description": "The rule's id, such as `color-contrast`."
+            "description": "The rule's id, such as `color-contrast`.",
+            "maxLength": 120
           },
           "title": {
             "type": "string",
-            "description": "What the failure is, in plain words."
+            "description": "What the failure is, in plain words.",
+            "maxLength": 240
           }
         },
         "additionalProperties": false
@@ -2201,25 +2207,29 @@
           },
           "domain": {
             "type": "string",
-            "description": "The scanned domain, without a leading `www.`."
+            "description": "The scanned domain, without a leading `www.`.",
+            "maxLength": 253
           },
           "failures": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FreeScanFailure"
             },
-            "description": "Failures, most numerous first."
+            "description": "Failures, most numerous first.",
+            "maxItems": 20
           },
           "pages": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "The pages checked: the home page and up to two linked pages."
+            "description": "The pages checked: the home page and up to two linked pages, each at most 2048\ncharacters.",
+            "maxItems": 3
           },
           "scanned_at": {
             "type": "string",
-            "description": "When the scan finished, RFC 3339."
+            "description": "When the scan finished, RFC 3339.",
+            "maxLength": 40
           }
         },
         "additionalProperties": false

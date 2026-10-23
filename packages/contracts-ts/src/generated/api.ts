@@ -639,7 +639,10 @@ export interface components {
             domain: string;
             /** @description Failures, most numerous first. */
             failures: components["schemas"]["FreeScanFailure"][];
-            /** @description The pages checked: the home page and up to two linked pages. */
+            /**
+             * @description The pages checked: the home page and up to two linked pages, each at most 2048
+             *     characters.
+             */
             pages: string[];
             /** @description When the scan finished, RFC 3339. */
             scanned_at: string;

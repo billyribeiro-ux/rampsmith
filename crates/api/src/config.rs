@@ -441,13 +441,9 @@ mod tests {
             settings.turnstile_hostnames,
             ["rampsmith.com", "www.rampsmith.com"]
         );
-        assert!(
-            with("")
-                .unwrap()
-                .free_scan
-                .unwrap()
-                .turnstile_hostnames
-                .is_empty()
+        assert_eq!(
+            with("").unwrap().free_scan.unwrap().turnstile_hostnames,
+            Vec::<String>::new()
         );
         assert!(matches!(
             with("https://rampsmith.com").unwrap_err(),
