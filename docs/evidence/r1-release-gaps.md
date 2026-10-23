@@ -21,4 +21,11 @@ on main 44ca4a7, `verify api` (ctl), `verify egress`, `verify engine`.
 
 ## CI
 
-(filled in when the pull request is green)
+Pull request [#31](https://github.com/billyribeiro-ux/rampsmith/pull/31), head 2787b61:
+`ci` [39878048418](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39878048418) and
+`release` [39878048592](https://github.com/billyribeiro-ux/rampsmith/actions/runs/39878048592)
+green, with no "integration gap" annotation on any `image <service> (dry run)` job. The engine job
+no longer has a gap path: an engine that exits, logs no sandbox mode, or runs unsandboxed without
+the refusal warning fails the job, on pull requests as on `main`.
+
+The strict run on `main` after the merge is recorded below.
