@@ -61,7 +61,7 @@ export interface Occurrence {
 }
 
 /** The colours and text size axe-core's `color-contrast` check measured. */
-export interface ContrastReading {
+interface ContrastReading {
   readonly foreground: string;
   readonly background: string;
   readonly font_size_px: number;
@@ -196,7 +196,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** axe-core's measure for a `color-contrast` node: `fgColor`, `bgColor`, `fontSize`, weight. */
-export function contrastReading(node: AxeNode): ContrastReading | undefined {
+function contrastReading(node: AxeNode): ContrastReading | undefined {
   const data = node.any?.find((c) => c.id === 'color-contrast')?.data;
   if (!isRecord(data)) return undefined;
   const fg = data['fgColor'];
@@ -228,7 +228,7 @@ function selectorOf(target: unknown): string {
 }
 
 /** An ancestor of a failing element: its tag and attributes, for the source mapper. */
-export interface AncestorNode {
+interface AncestorNode {
   readonly tag: string;
   readonly attributes: Readonly<Record<string, string>>;
 }

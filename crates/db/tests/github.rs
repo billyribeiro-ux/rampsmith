@@ -463,18 +463,10 @@ async fn a_store_has_one_batch_in_flight_and_cannot_touch_another_stores(
     // The other store sees none of it, and cannot move it or use its repository.
     let mut tx = db.tenant(b.tenant).await.unwrap();
     assert!(code_fix::batch(&mut tx, first).await.unwrap().is_none());
-    assert!(
-        code_fix::recent_batches(&mut tx, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        code_fix::batch_files(&mut tx, first)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let recent = code_fix::recent_batches(&mut tx, 10).await.unwrap();
+    assert!(recent.is_empty());
+    let files = code_fix::batch_files(&mut tx, first).await.unwrap();
+    assert!(files.is_empty());
     assert!(
         !code_fix::move_batch(&mut tx, first, "patching", "ready")
             .await
@@ -591,12 +583,10 @@ async fn a_pull_request_is_found_by_repository_id_and_number_inside_its_own_stor
     code_fix::record_pull_request_state(&mut tx, id, "merged", &"c".repeat(40))
         .await
         .unwrap();
-    assert!(
-        code_fix::open_pull_requests(&mut tx, 4_242_000)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let still_open = code_fix::open_pull_requests(&mut tx, 4_242_000)
+        .await
+        .unwrap();
+    assert!(still_open.is_empty());
     let row = code_fix::pull_request(&mut tx, id).await.unwrap().unwrap();
     assert_eq!(
         (row.state.as_str(), row.head_sha),
@@ -619,10 +609,6 @@ async fn a_pull_request_is_found_by_repository_id_and_number_inside_its_own_stor
             .unwrap()
             .is_none()
     );
-    assert!(
-        code_fix::recent_pull_requests(&mut tx, 10)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let recent_prs = code_fix::recent_pull_requests(&mut tx, 10).await.unwrap();
+    assert!(recent_prs.is_empty());
 }
