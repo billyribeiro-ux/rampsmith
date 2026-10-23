@@ -248,6 +248,13 @@ describe('the scan pipeline over the aurora corpus theme', () => {
 });
 
 // LAUNCH.md C rows 1 and 3: a live development store and its Admin API token.
+if (process.env['RAMPSMITH_LIVE_STORE'] === undefined) {
+  const annotation =
+    process.env['GITHUB_ACTIONS'] === 'true' ? '::notice title=Live store scan skipped::' : '';
+  process.stderr.write(
+    `${annotation}live store scan skipped: needs RAMPSMITH_LIVE_STORE (LAUNCH.md section C, rows 1 and 3)\n`,
+  );
+}
 describe.skipIf(process.env['RAMPSMITH_LIVE_STORE'] === undefined)('a live store', () => {
   it('scans a real store end to end', () => {
     expect(process.env['RAMPSMITH_LIVE_STORE']).toBeDefined();

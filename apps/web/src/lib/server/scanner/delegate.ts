@@ -91,7 +91,7 @@ function resultFrom(value: unknown): FreeScanResult | undefined {
   return {
     domain,
     scannedAt: scanned_at,
-    pages: pages as string[],
+    pages,
     checksPassed: checks_passed,
     checksRun: checks_run,
     failures: mapped,

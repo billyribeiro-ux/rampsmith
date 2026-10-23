@@ -109,7 +109,7 @@ export interface PageSummary {
 /** Reduces a page scan to what the result needs from its default state. */
 export function summarise(url: string, scan: PageScan): PageSummary | undefined {
   const state = scan.states.find((s) => s.state === 'default');
-  if (state === undefined || state.result !== 'opened') return undefined;
+  if (state?.result !== 'opened') return undefined;
   return {
     url,
     violations: state.violations,
@@ -121,7 +121,15 @@ export function summarise(url: string, scan: PageScan): PageSummary | undefined 
 function snippetOf(html: string): string {
   // Printable characters only, on one line, cut to the contract's length.
   const clean = html.replaceAll(/[\p{Cc}\s]+/gu, ' ').trim();
-  return [...clean].slice(0, MAX_SNIPPET).join('');
+  // By code point, so that a cut never leaves half of a surrogate pair (jsonb refuses one).
+  let out = '';
+  let count = 0;
+  for (const point of clean) {
+    if (count === MAX_SNIPPET) break;
+    out += point;
+    count += 1;
+  }
+  return out;
 }
 
 /**

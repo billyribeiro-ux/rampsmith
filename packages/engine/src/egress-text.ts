@@ -16,7 +16,7 @@ export interface TextResponse {
   readonly text: string;
 }
 
-export interface TextFetchOptions {
+interface TextFetchOptions {
   readonly proxyUrl: string;
   readonly tokenSecret: string;
   /** For egress logs. */

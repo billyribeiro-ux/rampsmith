@@ -316,7 +316,7 @@ pub fn parse_public_url(input: &str) -> Result<PublicSite, UrlRefusal> {
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     };
-    if !labels.iter().all(|l| label_ok(l)) {
+    if !labels.iter().all(label_ok) {
         return Err(UrlRefusal::Invalid);
     }
     if labels.len() < 2 || RESERVED_SUFFIXES.contains(&tld) {

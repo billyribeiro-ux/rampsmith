@@ -49,3 +49,5 @@ open (`[RATE-LIMIT IP RETENTION]`).
 - A database table for counters: a new tenant-less table and a retention policy for IPs, before
   the privacy draft decides the period.
 - Trusting `X-Forwarded-For` blindly: any client could pick its own address and escape the cap.
+
+> Update (R1 integration): with the api backend the limits and the 24-hour cache live in the database (`free_scans`, keyed hashes of the address), not in the web server's memory; refused scans count, failed ones do not (ADR-265).

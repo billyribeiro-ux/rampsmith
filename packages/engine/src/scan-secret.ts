@@ -122,7 +122,7 @@ export function storefrontPasswordFromScan(
            where tenant_id = ${tenantId} and id = ${scanId} and site_id = ${siteId}
              and status in ('queued', 'running')`,
     );
-    if (row?.ct == null || row.key_id == null) return undefined;
+    if (row?.ct === undefined || row.ct === null || row.key_id === null) return undefined;
     try {
       return ring.open(row.key_id, row.ct, scanSecretContext(scanId));
     } catch {

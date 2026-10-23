@@ -16,7 +16,7 @@ function fnv1a(text: string): string {
 }
 
 /** `a11y-rules <hash>`, from the catalog sorted by rule id. */
-export const RULES_VERSION: string = `a11y-rules ${fnv1a(
+export const RULES_VERSION = `a11y-rules ${fnv1a(
   JSON.stringify(
     Object.values(RULES)
       .map((r) => [r.id, r.audit, r.criteria, r.impact, r.bestPractice])

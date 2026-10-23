@@ -173,4 +173,22 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn the_scan_secret_ring_is_optional_but_never_malformed() {
+        assert!(config(&[]).unwrap().scan_secret_keys.is_none());
+        let ring = config(&[(
+            "RAMPSMITH_SCAN_SECRET_KEYS",
+            "s1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        )])
+        .unwrap();
+        assert_eq!(ring.scan_secret_keys.unwrap().active().as_str(), "s1");
+        assert!(matches!(
+            config(&[("RAMPSMITH_SCAN_SECRET_KEYS", "s1:short")]),
+            Err(ConfigError::Invalid {
+                name: "RAMPSMITH_SCAN_SECRET_KEYS",
+                ..
+            })
+        ));
+    }
 }

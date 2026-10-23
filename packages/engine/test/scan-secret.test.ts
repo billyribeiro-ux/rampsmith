@@ -45,7 +45,7 @@ describe('opening a scan secret', () => {
       ring.open(vector.key_id, sealed, 'scans/storefront_password/elsewhere');
       expect.unreachable();
     } catch (error) {
-      const text = String((error as Error).message);
+      const text = (error as Error).message;
       expect(text).not.toContain(vector.plaintext);
       expect(text).not.toContain(vector.ring.split(':')[1] ?? '?');
     }

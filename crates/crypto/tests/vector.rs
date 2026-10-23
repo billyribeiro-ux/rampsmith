@@ -1,6 +1,14 @@
 //! The sealed vector the TypeScript engine also opens (ADR-264). If this test and
 //! `packages/engine/test/scan-secret.test.ts` ever disagree, the format changed on one side.
 
+// Integration tests are test code: PLAN §8 denies these lints outside tests only.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use crypto::KeyRing;

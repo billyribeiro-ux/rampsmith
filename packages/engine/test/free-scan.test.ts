@@ -119,7 +119,7 @@ describe('the visitor’s result', () => {
     ]);
     expect(alt?.criterion).toBe('1.1.1');
     const contrast = result.failures[1];
-    expect([...(contrast?.examples[0]?.snippet ?? '')].length).toBeLessThanOrEqual(240);
+    expect(Array.from(contrast?.examples[0]?.snippet ?? '').length).toBeLessThanOrEqual(240);
   });
 
   it('does not count a rule that could not decide as passed, and lists at most 20 groups', () => {

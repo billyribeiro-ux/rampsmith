@@ -12,6 +12,8 @@ const SECRET = 'x'.repeat(48);
 let dir: string;
 let cert: string;
 let tls: TlsServer;
+// A constant, so that knip does not read a test fixture's tool as a binary the package needs.
+const OPENSSL = 'openssl';
 let tlsPort: number;
 let proxyUrl = '';
 let proxyClose: () => void = () => undefined;
@@ -23,7 +25,7 @@ const absolute: string[] = [];
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'rs-egress-text-'));
   execFileSync(
-    'openssl',
+    OPENSSL,
     [
       'req',
       '-x509',
