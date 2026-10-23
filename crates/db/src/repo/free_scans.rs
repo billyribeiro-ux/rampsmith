@@ -198,3 +198,13 @@ pub async fn sweep(tx: &mut PublicTx) -> Result<i64, DbError> {
             .await?,
     )
 }
+
+/// Whether an engine whose Chromium has its own sandbox is serving free scans (a heartbeat in
+/// the last 45 seconds, ADR-280). The api checks it before it spends anything on a request.
+pub async fn engine_available(tx: &mut PublicTx) -> Result<bool, DbError> {
+    Ok(
+        sqlx::query_scalar!(r#"select free_scan_engine_available() as "available!""#)
+            .fetch_one(tx.conn())
+            .await?,
+    )
+}

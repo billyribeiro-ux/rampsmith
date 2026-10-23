@@ -172,6 +172,7 @@ describe('the api delegate', () => {
         { kind: 'challenge-unavailable' },
       ],
       [problem(503, []), { kind: 'busy' }],
+      [problem(503, [{ field: 'scanner', message: 'unavailable' }]), { kind: 'not-connected' }],
       [
         problem(429, [{ field: 'limit', message: 'ip' }], { 'retry-after': '3600' }),
         { kind: 'rate-limited', scope: 'ip', retryAfterSeconds: 3600 },

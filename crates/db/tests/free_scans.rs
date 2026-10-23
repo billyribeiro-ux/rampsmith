@@ -323,3 +323,49 @@ async fn the_sweep_ends_stuck_scans_and_deletes_expired_ones(
         .unwrap();
     assert_eq!(left, 0);
 }
+
+/// ADR-280: free scans are accepted only while an engine with a sandboxed Chromium says so.
+#[sqlx::test(migrations = "./migrations")]
+async fn only_a_fresh_heartbeat_from_a_worker_makes_the_scanner_available(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    let db = Db::from_pool(app_pool(opts.clone(), conn.clone()).await);
+    let worker = worker_pool(opts.clone(), conn.clone()).await;
+    let available = |db: &Db| {
+        let db = db.clone();
+        async move {
+            let mut tx = db.public().await.unwrap();
+            let yes = free_scans::engine_available(&mut tx).await.unwrap();
+            tx.rollback().await.unwrap();
+            yes
+        }
+    };
+    assert!(!available(&db).await, "available with no engine");
+
+    let beat = "insert into free_scan_engines (worker_id) values ('engine-1')
+                on conflict (worker_id) do update set beat_at = now()";
+    sqlx::query(beat).execute(&worker).await.unwrap();
+    assert!(available(&db).await, "not available after a beat");
+
+    sqlx::query("update free_scan_engines set beat_at = now() - interval '46 seconds'")
+        .execute(&owner)
+        .await
+        .unwrap();
+    assert!(
+        !available(&db).await,
+        "available 46 seconds after the last beat"
+    );
+
+    // The application role reads the table but cannot forge a beat.
+    let app = app_pool(opts, conn).await;
+    let forged = sqlx::query("update free_scan_engines set beat_at = now()")
+        .execute(&app)
+        .await;
+    assert!(forged.is_err(), "the app role forged a heartbeat");
+    let inserted = sqlx::query("insert into free_scan_engines (worker_id) values ('forged')")
+        .execute(&app)
+        .await;
+    assert!(inserted.is_err(), "the app role inserted a heartbeat");
+}

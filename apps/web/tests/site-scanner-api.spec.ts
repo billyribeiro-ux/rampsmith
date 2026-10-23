@@ -73,6 +73,16 @@ test.describe('the scanner, running through the api', () => {
     await expect(page.getByRole('alert')).toContainText('did not count against your daily scans');
   });
 
+  test('shows the not-connected state when no sandboxed engine serves free scans', async ({
+    page,
+  }) => {
+    await page.goto('/scan');
+    await scan(page, 'no-engine-shop.com');
+    await expect(page.getByRole('status')).toContainText('The scanner is not connected yet');
+    await expect(page.getByRole('status')).toContainText('did not count against your daily scans');
+    await axe(page);
+  });
+
   test('answers a "check again" for a scan that was still running', async ({ page }) => {
     const response = await page.request.post(`${SITE_API}/scan`, {
       headers: { origin: SITE_API, accept: 'text/html', ...PROXY_HEADERS },
