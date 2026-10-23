@@ -211,23 +211,41 @@ pub async fn fail_in_flight(tx: &mut TenantTx, code: &str) -> Result<u64, DbErro
     Ok(done.rows_affected())
 }
 
-/// Cancels the fix's `verify.scan` job if it has not started. An undo calls this in its own
-/// transaction so a verification queued after the apply does not run against a fix that is
+/// Cancels the fix's `verify.scan` job if it has not started, and ends the verification scan it
+/// would have run with its storefront-password copy cleared (audit M3, ADR-283): the scan was
+/// created queued with its copy, and nothing else would ever end it. An undo calls this in its
+/// own transaction so a verification queued after the apply does not run against a fix that is
 /// no longer in the shop (lane A audit L3; the engine also refuses to close findings for a fix
 /// that is not `applied`, which covers a verification already running). Returns how many jobs
 /// it cancelled.
 pub async fn cancel_verification(tx: &mut TenantTx, id: FixId) -> Result<u64, DbError> {
     let tenant = tx.tenant_uuid();
     let key = format!("verify.scan:{id}");
-    let done = sqlx::query!(
+    let cancelled = sqlx::query_scalar!(
         r#"update jobs set state = 'cancelled', finished_at = now()
-            where tenant_id = $1 and idempotency_key = $2 and state = 'ready'"#,
+            where tenant_id = $1 and idempotency_key = $2 and state = 'ready'
+        returning payload ->> 'scan_id' as scan_id"#,
         tenant,
         key,
     )
-    .execute(tx.conn())
+    .fetch_all(tx.conn())
     .await?;
-    Ok(done.rows_affected())
+    for scan in cancelled.iter().flatten() {
+        let Ok(scan) = scan.parse::<Uuid>() else {
+            continue;
+        };
+        sqlx::query!(
+            r#"update scans set status = 'cancelled', finished_at = now(),
+                                error_code = 'verification_cancelled',
+                                storefront_password_ct = null, storefront_password_key_id = null
+                where tenant_id = $1 and id = $2 and status in ('queued', 'running')"#,
+            tenant,
+            scan,
+        )
+        .execute(tx.conn())
+        .await?;
+    }
+    Ok(u64::try_from(cancelled.len()).unwrap_or(u64::MAX))
 }
 
 /// `applied` or `verified` to `reverted`. `false` when it was neither.

@@ -11,6 +11,7 @@ import { auditDataHandler } from './jobs/audit-data.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
 import type { JobHandler } from './jobs/payload.ts';
 import { scanPlanHandler } from './jobs/plan.ts';
+import { endingScanOnFailure } from './jobs/scan-cleanup.ts';
 import { verifyScanHandler } from './jobs/verify.ts';
 import type { SandboxMode } from './browser.ts';
 import { scanPageHandler, type EngineDeps } from './worker.ts';
@@ -54,13 +55,16 @@ export function queuesFor(sandbox: SandboxMode): readonly EngineQueue[] {
 
 /** Each engine queue's handler. */
 export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler> {
+  // A scan that cannot finish ends with its sealed password copy cleared (audit M3, ADR-283).
+  const ending = (handler: JobHandler, onLastAttempt = true): JobHandler =>
+    endingScanOnFailure(deps.sql, handler, { onLastAttempt });
   return {
-    'scan.plan': scanPlanHandler(deps),
-    'scan.page': scanPageHandler(deps),
-    'scan.finalize': scanFinalizeHandler(deps),
-    'audit.data': auditDataHandler(deps),
+    'scan.plan': ending(scanPlanHandler(deps)),
+    'scan.page': ending(scanPageHandler(deps), false),
+    'scan.finalize': ending(scanFinalizeHandler(deps)),
+    'audit.data': ending(auditDataHandler(deps)),
     'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
-    'verify.scan': verifyScanHandler(deps),
+    'verify.scan': ending(verifyScanHandler(deps)),
     'free_scan.run': freeScanHandler(deps),
   };
 }

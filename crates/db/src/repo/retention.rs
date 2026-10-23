@@ -19,3 +19,14 @@ pub async fn scan_inputs(tx: &mut PublicTx) -> Result<i64, DbError> {
 pub async fn free_scans(tx: &mut PublicTx) -> Result<i64, DbError> {
     crate::repo::free_scans::sweep(tx).await
 }
+
+/// Clears sealed storefront-password copies more than an hour old, for every tenant (audit M3,
+/// ADR-283): the backstop for a scan that ended by a path that forgot its copy. Returns how
+/// many it cleared.
+pub async fn scan_passwords(tx: &mut PublicTx) -> Result<i64, DbError> {
+    Ok(
+        sqlx::query_scalar!(r#"select scan_passwords_sweep() as "cleared!""#)
+            .fetch_one(tx.conn())
+            .await?,
+    )
+}
