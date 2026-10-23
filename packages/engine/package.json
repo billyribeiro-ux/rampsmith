@@ -27,6 +27,7 @@
     "@rampsmith/ai": "workspace:*",
     "@rampsmith/contracts-ts": "workspace:*",
     "@rampsmith/email": "workspace:*",
+    "@rampsmith/liquid-patch": "workspace:*",
     "@rampsmith/queue": "workspace:*",
     "@rampsmith/reports": "workspace:*",
     "@rampsmith/telemetry": "workspace:*",

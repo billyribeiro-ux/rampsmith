@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GithubOpenPullRequest",
+  "description": "Payload of `github.open_pr` jobs, schema `github.open_pr@1`. Runs in `ctl`: turns the\nengine's fixes into commits on `rampsmith/fix-<batch>`, opens (or updates) the pull request\nagainst the connected branch, reports the verification check run, and deletes the stored\nfiles. It never merges.",
+  "type": "object",
+  "properties": {
+    "batch_row": {
+      "description": "The `code_fix_batches.id` to open pull requests for.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "batch_row"
+  ]
+}

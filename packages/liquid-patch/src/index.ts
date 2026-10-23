@@ -25,6 +25,18 @@ export {
   type ParsedColor,
   type Rgb,
 } from './color/color.ts';
+export {
+  planBatch,
+  type BatchFinding,
+  type BatchNode,
+  type BatchOptions,
+  type BatchPlan,
+  type BatchStep,
+  type PlannedFix,
+  type SkipCode,
+  type Skipped,
+  type StepFile,
+} from './batch.ts';
 export { unifiedDiff } from './diff.ts';
 export {
   applyEdits,
