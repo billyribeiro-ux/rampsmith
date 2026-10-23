@@ -160,6 +160,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/github/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finishes connecting GitHub. Called by the web server with what GitHub's redirect carried; it
+         *     has no Shopify session, and the one-time state is what binds it to a store.
+         */
+        post: operations["finishGithubConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/code-fixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the "Code fixes" screen shows: the plan's gate, the connected GitHub account and its
+         *     repositories.
+         */
+        get: operations["getCodeFixes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/code-fixes/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts connecting GitHub: stores a one-time state for this store. */
+        post: operations["startGithubConnection"];
+        /**
+         * Disconnects GitHub: ends the link and forgets the repository choice. Pull requests already
+         *     opened stay on GitHub; the App stays installed there until the merchant removes it.
+         */
+        delete: operations["disconnectGithub"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shopify/code-fixes/repository": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Chooses the store's theme repository and the branch connected to the live theme. */
+        put: operations["chooseGithubRepository"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/shopify/evidence/{evidence_id}": {
         parameters: {
             query?: never;
@@ -446,6 +524,50 @@ export interface components {
             /** @description WebAuthn options in their JSON form (`publicKey` and, for sign-in, `mediation`). */
             options: Record<string, never>;
         };
+        /** @description The repository to use for code fixes. */
+        ChooseRepositoryBody: {
+            /** @description The branch Shopify syncs to the live theme. Rampsmith never pushes to it. */
+            connected_branch: string;
+            /** @description A repository's `id` from the screen's state. */
+            repository_id: string;
+        };
+        /** @description The "Code fixes" screen's state. */
+        CodeFixesDto: {
+            connection?: components["schemas"]["GithubConnectionDto"] | null;
+            /** @description Whether the channel is switched on in this deployment (`CODE_FIX_CHANNEL_ENABLED`). */
+            enabled: boolean;
+            /** @description What the plan allows. */
+            plan: components["schemas"]["PlanGateDto"];
+            /** @description Its repositories, chosen one first. */
+            repositories: components["schemas"]["GithubRepositoryDto"][];
+        };
+        /** @description What GitHub's redirect carried, forwarded by the web server. */
+        ConnectionFinishBody: {
+            /** @description The authorization `code` GitHub put on the redirect. */
+            code: string;
+            /** @description The `state` GitHub put on the redirect, when it did. It must equal the cookie's. */
+            echoed_state?: string | null;
+            /**
+             * Format: int64
+             * @description The installation GitHub put on the redirect.
+             */
+            installation_id: number;
+            /** @description The state from the browser's cookie. */
+            state: string;
+        };
+        /** @description The result of connecting. */
+        ConnectionFinishDto: {
+            /** @description Always true; failures are problems. */
+            connected: boolean;
+        };
+        /** @description The one-time state of an install flow. */
+        ConnectionStartDto: {
+            /**
+             * @description A random value, valid for ten minutes and for one callback. The web server puts it in
+             *     the installation URL and in a cookie.
+             */
+            state: string;
+        };
         CoverageDto: {
             /** @description WCAG success criteria the automated checks tested. */
             automated: string[];
@@ -647,6 +769,42 @@ export interface components {
             /** @description When the scan finished, RFC 3339. */
             scanned_at: string;
         };
+        /** @description The GitHub account connected to the store. */
+        GithubConnectionDto: {
+            /** @description The account the App is installed on. */
+            account: string;
+            /** @description `User`, `Organization` or `Enterprise`. */
+            account_type: string;
+            /** @description The GitHub login that connected it. */
+            connected_by?: string | null;
+            /** @description When it was connected. */
+            linked_at: string;
+            /** @description `all` or `selected` repositories. */
+            repository_selection: string;
+            /** @description `active` or `suspended`. */
+            status: string;
+        };
+        /** @description A repository the installation can reach. */
+        GithubRepositoryDto: {
+            /** @description Whether it is archived (read only). */
+            archived: boolean;
+            /** @description Whether the person who connected could push to it. Only such a repository can be chosen. */
+            can_push: boolean;
+            /** @description The branch connected to the live theme, for the chosen repository. */
+            connected_branch?: string | null;
+            /** @description The repository's default branch. */
+            default_branch: string;
+            /** @description `owner/name`. */
+            full_name: string;
+            /** @description Rampsmith's id for it, which the choose-repository call takes. */
+            id: string;
+            /** @description Whether it is the store's theme repository. */
+            selected: boolean;
+            /** @description `unchecked`, `ok`, `not_a_theme` or `unreachable`. */
+            theme_state: string;
+            /** @description `private` or `public`. */
+            visibility: string;
+        };
         /** @description The process is up. */
         Health: {
             /** @description Always `ok`. */
@@ -684,6 +842,13 @@ export interface components {
             /** @description Open findings by impact; best practices are not counted. */
             open_by_impact: components["schemas"]["ImpactCountsDto"];
             shop: components["schemas"]["ShopDto"];
+        };
+        /** @description Whether the plan includes pull requests. */
+        PlanGateDto: {
+            /** @description `allowed`, `locked` or `unavailable`. */
+            gate: string;
+            /** @description The lowest plan that includes pull requests, when locked. */
+            unlocked_by?: string | null;
         };
         /**
          * @description An RFC 9457 `application/problem+json` body with Rampsmith's extension members.
@@ -1186,6 +1351,249 @@ export interface operations {
             };
             /** @description No such scan, or it expired */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    finishGithubConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionFinishBody"];
+            };
+        };
+        responses: {
+            /** @description The installation is linked to the store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionFinishDto"];
+                };
+            };
+            /** @description The state or the code is not valid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The GitHub user cannot reach this installation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The channel is not switched on */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The installation or the store is already linked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description GitHub did not answer */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCodeFixes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The screen's state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeFixesDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startGithubConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The state to carry through GitHub's installation page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionStartDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan does not include pull requests, or no signed-in staff member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The channel is not switched on */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    disconnectGithub: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The screen's state after disconnecting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeFixesDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The channel is not switched on */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    chooseGithubRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChooseRepositoryBody"];
+            };
+        };
+        responses: {
+            /** @description The screen's state after the choice */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeFixesDto"];
+                };
+            };
+            /** @description Missing or invalid session token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The plan does not include pull requests, or the person who connected could not push to that repository */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such repository, or the channel is not switched on */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The branch name is not valid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

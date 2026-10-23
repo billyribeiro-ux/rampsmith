@@ -635,7 +635,6 @@ async fn only_webhook_paths_exist_on_this_listener(opts: PgPoolOptions, conn: Pg
         "/v1/shopify/session",
         "/v1/shopify/overview",
         "/webhooks",
-        "/webhooks/github",
         "/webhooks/stripe",
         "/webhooks/shopify/extra",
     ] {
@@ -649,6 +648,12 @@ async fn only_webhook_paths_exist_on_this_listener(opts: PgPoolOptions, conn: Pg
             assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
         }
     }
+    // GitHub's path exists (ADR-292): a GET is a 404, and a POST with the channel off is
+    // acknowledged and dropped (ADR-290). Both are covered in `github_webhook.rs`.
+    let github_get = Request::get("/webhooks/github")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(send(&f.router, github_get).await.0, StatusCode::NOT_FOUND);
     // Only POST is served on the Shopify path; a GET is a 404 like everything else.
     let get = Request::get("/webhooks/shopify")
         .body(Body::empty())

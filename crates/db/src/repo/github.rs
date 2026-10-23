@@ -38,6 +38,48 @@ pub struct InstallationRow {
     pub state_read_at: Option<OffsetDateTime>,
 }
 
+/// Whether a repository is private.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    /// Visible only to those it is shared with.
+    Private,
+    /// Visible to everyone.
+    Public,
+}
+
+impl Visibility {
+    /// Whether this is [`Visibility::Private`].
+    #[must_use]
+    pub const fn is_private(self) -> bool {
+        matches!(self, Self::Private)
+    }
+}
+
+/// Builds a [`RepoRow`] from the anonymous record of a `select` over the repository columns.
+macro_rules! repo_row {
+    ($r:expr) => {{
+        let r = $r;
+        RepoRow {
+            id: r.id,
+            repo_id: r.repo_id,
+            full_name: r.full_name,
+            default_branch: r.default_branch,
+            visibility: if r.is_private {
+                Visibility::Private
+            } else {
+                Visibility::Public
+            },
+            archived: r.archived,
+            user_can_push: r.user_can_push,
+            status: r.status,
+            selected: r.selected,
+            connected_branch: r.connected_branch,
+            theme_state: r.theme_state,
+            theme_checked_at: r.theme_checked_at,
+        }
+    }};
+}
+
 /// A repository an installation can reach.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoRow {
@@ -50,7 +92,7 @@ pub struct RepoRow {
     /// The default branch.
     pub default_branch: String,
     /// Whether it is private.
-    pub is_private: bool,
+    pub visibility: Visibility,
     /// Whether it is archived.
     pub archived: bool,
     /// Whether the installer could push to it when they connected.
@@ -61,7 +103,7 @@ pub struct RepoRow {
     pub selected: bool,
     /// The branch connected to the live theme.
     pub connected_branch: Option<String>,
-    /// `unchecked`, `ok` or `not_a_theme`.
+    /// `unchecked`, `ok`, `not_a_theme` or `unreachable`.
     pub theme_state: String,
     /// When the theme structure was last checked.
     pub theme_checked_at: Option<OffsetDateTime>,
@@ -279,12 +321,14 @@ pub async fn unlink_installation(tx: &mut TenantTx, id: Uuid) -> Result<(), DbEr
 }
 
 /// Makes the installation's repositories match `repos` (what GitHub lists): new ones are added,
-/// known ones refreshed, and any not listed become `removed` and lose the theme selection.
-/// Returns how many repositories are available afterwards.
+/// known ones refreshed, and, when `remove_missing` is set, any not listed become `removed` and
+/// lose the theme selection. A listing that was cut short must not remove anything. Returns how
+/// many repositories were listed.
 pub async fn sync_repos(
     tx: &mut TenantTx,
     installation_row: Uuid,
     repos: &[RepoUpsert],
+    remove_missing: bool,
 ) -> Result<usize, DbError> {
     let tenant = tx.tenant_uuid();
     for repo in repos {
@@ -314,6 +358,9 @@ pub async fn sync_repos(
         .execute(tx.conn())
         .await?;
     }
+    if !remove_missing {
+        return Ok(repos.len());
+    }
     let listed: Vec<i64> = repos.iter().map(|r| r.repo_id).collect();
     sqlx::query!(
         "update github_repos
@@ -332,8 +379,7 @@ pub async fn sync_repos(
 /// The installation's repositories, by name.
 pub async fn repos_of(tx: &mut TenantTx, installation_row: Uuid) -> Result<Vec<RepoRow>, DbError> {
     let tenant = tx.tenant_uuid();
-    Ok(sqlx::query_as!(
-        RepoRow,
+    Ok(sqlx::query!(
         "select id, repo_id, full_name, default_branch, is_private, archived, user_can_push,
                 status, selected, connected_branch, theme_state, theme_checked_at
            from github_repos
@@ -343,14 +389,16 @@ pub async fn repos_of(tx: &mut TenantTx, installation_row: Uuid) -> Result<Vec<R
         installation_row
     )
     .fetch_all(tx.conn())
-    .await?)
+    .await?
+    .into_iter()
+    .map(|r| repo_row!(r))
+    .collect())
 }
 
 /// One repository by row id.
 pub async fn repo(tx: &mut TenantTx, id: Uuid) -> Result<Option<RepoRow>, DbError> {
     let tenant = tx.tenant_uuid();
-    Ok(sqlx::query_as!(
-        RepoRow,
+    Ok(sqlx::query!(
         "select id, repo_id, full_name, default_branch, is_private, archived, user_can_push,
                 status, selected, connected_branch, theme_state, theme_checked_at
            from github_repos where tenant_id = $1 and id = $2",
@@ -358,7 +406,8 @@ pub async fn repo(tx: &mut TenantTx, id: Uuid) -> Result<Option<RepoRow>, DbErro
         id
     )
     .fetch_optional(tx.conn())
-    .await?)
+    .await?
+    .map(|r| repo_row!(r)))
 }
 
 /// One repository by GitHub's id (audit L8: events and pull requests are matched on it).
@@ -367,8 +416,7 @@ pub async fn repo_by_github_id(
     repo_id: i64,
 ) -> Result<Option<RepoRow>, DbError> {
     let tenant = tx.tenant_uuid();
-    Ok(sqlx::query_as!(
-        RepoRow,
+    Ok(sqlx::query!(
         "select id, repo_id, full_name, default_branch, is_private, archived, user_can_push,
                 status, selected, connected_branch, theme_state, theme_checked_at
            from github_repos
@@ -377,21 +425,22 @@ pub async fn repo_by_github_id(
         repo_id
     )
     .fetch_optional(tx.conn())
-    .await?)
+    .await?
+    .map(|r| repo_row!(r)))
 }
 
 /// The store's theme repository, if one is chosen.
 pub async fn selected_repo(tx: &mut TenantTx) -> Result<Option<RepoRow>, DbError> {
     let tenant = tx.tenant_uuid();
-    Ok(sqlx::query_as!(
-        RepoRow,
+    Ok(sqlx::query!(
         "select id, repo_id, full_name, default_branch, is_private, archived, user_can_push,
                 status, selected, connected_branch, theme_state, theme_checked_at
            from github_repos where tenant_id = $1 and selected",
         tenant
     )
     .fetch_optional(tx.conn())
-    .await?)
+    .await?
+    .map(|r| repo_row!(r)))
 }
 
 /// Why a repository could not be chosen.

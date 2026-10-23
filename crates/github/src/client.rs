@@ -388,7 +388,10 @@ impl fmt::Debug for GitHub {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GitHub")
             .field("base_url", &self.base_url)
-            .field("issuer", &self.credentials.as_ref().map(AppCredentials::issuer))
+            .field(
+                "issuer",
+                &self.credentials.as_ref().map(AppCredentials::issuer),
+            )
             .finish_non_exhaustive()
     }
 }

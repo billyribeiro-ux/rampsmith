@@ -100,7 +100,10 @@ mod tests {
     #[test]
     fn schemas_name_their_queue() {
         for (queue, schema) in [
-            (GithubSyncInstallation::QUEUE, GithubSyncInstallation::SCHEMA),
+            (
+                GithubSyncInstallation::QUEUE,
+                GithubSyncInstallation::SCHEMA,
+            ),
             (GithubProcessEvent::QUEUE, GithubProcessEvent::SCHEMA),
             (GithubCheckRepository::QUEUE, GithubCheckRepository::SCHEMA),
         ] {

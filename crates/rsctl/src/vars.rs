@@ -33,6 +33,7 @@ pub enum Var {
     GithubAppClientId,
     GithubAppPrivateKey,
     GithubAppWebhookSecret,
+    GithubAppClientSecret,
     // Row 5: Anthropic.
     AnthropicApiKey,
     // Row 6: Cloudflare R2 and Turnstile.
@@ -93,6 +94,7 @@ impl Var {
         Self::GithubAppClientId,
         Self::GithubAppPrivateKey,
         Self::GithubAppWebhookSecret,
+        Self::GithubAppClientSecret,
         Self::AnthropicApiKey,
         Self::R2AccountId,
         Self::R2AccessKeyId,
@@ -145,6 +147,7 @@ impl Var {
             Self::GithubAppClientId => "GITHUB_APP_CLIENT_ID",
             Self::GithubAppPrivateKey => "GITHUB_APP_PRIVATE_KEY",
             Self::GithubAppWebhookSecret => "GITHUB_APP_WEBHOOK_SECRET",
+            Self::GithubAppClientSecret => "GITHUB_APP_CLIENT_SECRET",
             Self::AnthropicApiKey => "ANTHROPIC_API_KEY",
             Self::R2AccountId => "R2_ACCOUNT_ID",
             Self::R2AccessKeyId => "R2_ACCESS_KEY_ID",
@@ -196,7 +199,8 @@ impl Var {
             Self::GithubAppId
             | Self::GithubAppClientId
             | Self::GithubAppPrivateKey
-            | Self::GithubAppWebhookSecret => 4,
+            | Self::GithubAppWebhookSecret
+            | Self::GithubAppClientSecret => 4,
             Self::AnthropicApiKey => 5,
             Self::R2AccountId
             | Self::R2AccessKeyId
@@ -241,6 +245,7 @@ impl Var {
                 | Self::ShopifyDevStoreBPassword
                 | Self::GithubAppPrivateKey
                 | Self::GithubAppWebhookSecret
+                | Self::GithubAppClientSecret
                 | Self::AnthropicApiKey
                 | Self::R2AccessKeyId
                 | Self::R2SecretAccessKey

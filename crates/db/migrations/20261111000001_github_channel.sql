@@ -77,7 +77,7 @@ create table github_repos (
   selected boolean not null default false,
   -- The branch Shopify syncs to the live theme.
   connected_branch text check (char_length(connected_branch) between 1 and 200),
-  theme_state text not null default 'unchecked' check (theme_state in ('unchecked', 'ok', 'not_a_theme')),
+  theme_state text not null default 'unchecked' check (theme_state in ('unchecked', 'ok', 'not_a_theme', 'unreachable')),
   theme_checked_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

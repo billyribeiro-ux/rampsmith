@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
         .block_on(run(config))
 }
 
-async fn run(config: Config) -> anyhow::Result<()> {
+async fn run(mut config: Config) -> anyhow::Result<()> {
     // The deploy health check (ADR-264) is answered from the first moment, before the database
     // role check, which can wait for the database; it stops with everything else.
     let health = ctl::health::bind(config.health_bind)
@@ -75,7 +75,8 @@ async fn run(config: Config) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Shopify token client: {e}"))?,
     );
     let refresh = TokenRefresh::new(db.clone(), auth.clone());
-    let handlers = job_handlers(&config, &db, auth)?;
+    let mut handlers = job_handlers(&config, &db, auth)?;
+    handlers = with_github_channel(handlers, &mut config)?;
 
     let until_stopped = |mut rx: watch::Receiver<bool>| async move {
         let _ = rx.wait_for(|stop| *stop).await;
@@ -97,7 +98,7 @@ async fn run(config: Config) -> anyhow::Result<()> {
         },
         until_stopped(stopped.clone()),
     ))];
-    for name in jobs::QUEUES {
+    for name in handlers.queues() {
         let mut worker = WorkerConfig::new(name, config.worker_id.clone());
         worker.concurrency = 2;
         let handlers = handlers.clone();
@@ -170,4 +171,21 @@ fn job_handlers(
         )),
         None => handlers,
     })
+}
+
+/// Gives the handlers a GitHub client when the channel is on. The parsed App key moves into the
+/// client; the config keeps no copy (audit L9).
+fn with_github_channel(handlers: jobs::Jobs, config: &mut Config) -> anyhow::Result<jobs::Jobs> {
+    let Some(credentials) = config.github.take() else {
+        info!("CODE_FIX_CHANNEL_ENABLED is off; the GitHub pull-request channel is closed");
+        return Ok(handlers);
+    };
+    let client = github::GitHub::new(
+        github::ClientConfig::default(),
+        credentials,
+        std::sync::Arc::new(github::SystemClock),
+    )
+    .map_err(|e| anyhow::anyhow!("GitHub client: {e}"))?;
+    info!("the GitHub pull-request channel is on");
+    Ok(handlers.with_github(client))
 }

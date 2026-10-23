@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod config;
 pub mod free_scan;
+pub mod github_channel;
 mod health;
 pub mod plan;
 mod r1;
@@ -33,6 +34,7 @@ pub struct AppState {
     keys: Option<crypto::KeyRing>,
     partner: Option<plan::PartnerPlans>,
     free_scans: Option<free_scan::FreeScans>,
+    github: Option<std::sync::Arc<github_channel::GithubChannel>>,
     start_limiter: rate_limit::StartLimiter,
 }
 
@@ -48,6 +50,7 @@ impl AppState {
             keys: None,
             partner: None,
             free_scans: None,
+            github: None,
             start_limiter: rate_limit::StartLimiter::default(),
         }
     }
@@ -86,6 +89,14 @@ impl AppState {
     #[must_use]
     pub fn with_free_scans(mut self, free_scans: free_scan::FreeScans) -> Self {
         self.free_scans = Some(free_scans);
+        self
+    }
+
+    /// Switches the GitHub pull-request channel on (ADR-290). Without it the channel's routes
+    /// answer 404.
+    #[must_use]
+    pub fn with_github(mut self, channel: github_channel::GithubChannel) -> Self {
+        self.github = Some(std::sync::Arc::new(channel));
         self
     }
 
@@ -129,6 +140,7 @@ impl AppState {
         (name = "shopify", description = "The embedded Shopify app's session"),
         (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
         (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-267)"),
+        (name = "code-fixes", description = "The GitHub pull-request channel: connecting GitHub, choosing the theme repository (ADR-290)"),
         (name = "app", description = "The embedded app's scans, findings, fixes, evidence, settings and statement")
     )
 )]
@@ -189,6 +201,13 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(r1::get_evidence))
         .routes(routes!(r1::get_settings, r1::update_settings))
         .routes(routes!(r1::get_statement, r1::save_statement))
+        .routes(routes!(github_channel::get_code_fixes))
+        .routes(routes!(
+            github_channel::create_connection,
+            github_channel::delete_connection
+        ))
+        .routes(routes!(github_channel::choose_repository))
+        .routes(routes!(github_channel::finish_connection))
 }
 
 /// The OpenAPI document, generated from the handlers.

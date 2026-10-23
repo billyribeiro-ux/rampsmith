@@ -73,10 +73,12 @@ async fn serve(config: Config) -> anyhow::Result<()> {
                 .await
                 .with_context(|| format!("bind {address}"))?;
             info!(%address, "webhook listener ready");
-            let router = webhooks::router(WebhookState::new(
-                db.clone(),
-                config.shopify_client_secret.clone(),
-            ));
+            let mut webhook_state =
+                WebhookState::new(db.clone(), config.shopify_client_secret.clone());
+            if let Some(github) = &config.github {
+                webhook_state = webhook_state.with_github(github_verifier(github)?);
+            }
+            let router = webhooks::router(webhook_state);
             let stop = stop.clone();
             Some(tokio::spawn(async move {
                 api::serve::serve(listener, router, async move {
@@ -107,6 +109,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         );
     }
     state = with_free_scan(state, config.free_scan)?;
+    state = with_github_channel(state, config.github.as_ref())?;
     api::serve::serve(listener, api::app(state), shutdown_signal())
         .await
         .context("server")?;
@@ -156,4 +159,37 @@ fn with_free_scan(
         api::free_scan::FreeScans::new(settings)
             .map_err(|e| anyhow::anyhow!("free scanner: {e}"))?,
     ))
+}
+
+/// Opens the GitHub channel on the state when it is switched on.
+fn with_github_channel(
+    state: AppState,
+    settings: Option<&api::config::GithubSettings>,
+) -> anyhow::Result<AppState> {
+    let Some(github) = settings else {
+        info!("CODE_FIX_CHANNEL_ENABLED is off; the GitHub pull-request channel is closed");
+        return Ok(state);
+    };
+    Ok(state.with_github(
+        api::github_channel::GithubChannel::new(github, github::ClientConfig::default())
+            .map_err(|e| anyhow::anyhow!("GitHub client: {e}"))?,
+    ))
+}
+
+/// The webhook signature verifier, holding the previous secret too during a rotation.
+fn github_verifier(
+    settings: &api::config::GithubSettings,
+) -> anyhow::Result<github::WebhookVerifier> {
+    let mut verifier = github::WebhookVerifier::new(secrecy::SecretString::from(
+        settings.webhook_secret.expose_secret().to_owned(),
+    ))
+    .map_err(|e| anyhow::anyhow!("GitHub webhook secret: {e}"))?;
+    if let Some(previous) = &settings.webhook_secret_previous {
+        verifier = verifier
+            .with_previous(secrecy::SecretString::from(
+                previous.expose_secret().to_owned(),
+            ))
+            .map_err(|e| anyhow::anyhow!("GitHub previous webhook secret: {e}"))?;
+    }
+    Ok(verifier)
 }

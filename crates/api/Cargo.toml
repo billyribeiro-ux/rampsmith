@@ -27,11 +27,13 @@ contracts.workspace = true
 crypto.workspace = true
 db.workspace = true
 domain.workspace = true
+github.workspace = true
 hmac.workspace = true
 hyper-util = { workspace = true, features = ["server-auto", "server-graceful", "service", "tokio"] }
 http-kit.workspace = true
 identity.workspace = true
 queue.workspace = true
+rand.workspace = true
 reqwest.workspace = true
 secrecy = { workspace = true, features = ["serde"] }
 serde.workspace = true

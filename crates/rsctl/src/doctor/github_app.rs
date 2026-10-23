@@ -26,6 +26,7 @@ pub(super) const READS: &[Var] = &[
     Var::GithubAppClientId,
     Var::GithubAppPrivateKey,
     Var::GithubAppWebhookSecret,
+    Var::GithubAppClientSecret,
 ];
 
 /// The REST API version header. The OpenAPI description for 2026-03-10 is what the fields
@@ -133,7 +134,7 @@ async fn probe(ctx: &Ctx) -> Step<Outcome> {
         .as_deref()
         .map_or_else(String::new, |slug| format!(" (`{}`)", safe_token(slug)));
     Ok(Outcome::pass(format!(
-        "the JWT reaches GET /app as app {}{slug}; the webhook secret is set but GitHub offers no way to read it back",
+        "the JWT reaches GET /app as app {}{slug}; the webhook secret and the client secret are set, but GitHub offers no way to read either back",
         app.id
     )))
 }

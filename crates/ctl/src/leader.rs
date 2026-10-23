@@ -177,6 +177,43 @@ pub async fn sweep_webhooks(pool: &PgPool) -> Result<WebhookSweep, sqlx::Error> 
     Ok(found)
 }
 
+/// What [`sweep_github_events`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GithubSweep {
+    /// Deliveries given a new `github.process_event` job.
+    pub requeued: u64,
+    /// Deliveries still unprocessed after 24 hours or more.
+    pub stuck: u64,
+}
+
+/// Brings back stored GitHub deliveries whose job died or vanished, deletes old processed ones
+/// and spent install states, and raises the alert when any delivery has waited 24 hours
+/// (ADR-292). The `github_event_stuck` field on the error log is what a log rule pages on.
+pub async fn sweep_github_events(pool: &PgPool) -> Result<GithubSweep, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"select requeued as "requeued!", stuck_24h as "stuck!" from github_events_sweep()"#
+    )
+    .fetch_one(pool)
+    .await?;
+    let found = GithubSweep {
+        requeued: u64::try_from(row.requeued).unwrap_or(0),
+        stuck: u64::try_from(row.stuck).unwrap_or(0),
+    };
+    if found.requeued > 0 {
+        warn!(
+            requeued = found.requeued,
+            "re-enqueued unprocessed GitHub events"
+        );
+    }
+    if found.stuck > 0 {
+        error!(
+            github_event_stuck = found.stuck,
+            "GitHub events have been unprocessed for over 24 hours"
+        );
+    }
+    Ok(found)
+}
+
 /// Competes for leadership and, while leader, performs its duties, until `shutdown`.
 pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = ()>) {
     tokio::pin!(shutdown);
@@ -219,10 +256,15 @@ pub async fn run(pool: PgPool, cadence: Cadence, shutdown: impl Future<Output = 
                         Err(error) => warn!(%error, "leader duties failed; retrying next tick"),
                     }
                     if Instant::now() >= webhook_sweep_due {
+                        let github = sweep_github_events(&pool).await;
+                        if let Err(error) = &github {
+                            warn!(%error, "GitHub event sweep failed; retrying next tick");
+                        }
                         match sweep_webhooks(&pool).await {
-                            Ok(_) => {
+                            Ok(_) if github.is_ok() => {
                                 webhook_sweep_due = Instant::now() + cadence.webhook_sweep_every;
                             }
+                            Ok(_) => {}
                             Err(error) => warn!(%error, "webhook sweep failed; retrying next tick"),
                         }
                     }
