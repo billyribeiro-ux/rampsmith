@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update jobs set payload = '{}'::jsonb where tenant_id = $1 and payload <> '{}'::jsonb",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "af3371f18fcc329deea5f13859e65b4c8b024616595537bde3b910be30c13ff8"
+}

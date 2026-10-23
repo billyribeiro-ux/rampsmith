@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update shopify_shops\n              set status = 'redacted', scopes = '{}', primary_domain = null, locales = '{}',\n                  shop_gid = null, synced_at = null, uninstalled_at = coalesce(uninstalled_at, now())\n            where tenant_id = $1 and id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3138469b12be55898696b3c0bedaa481359115cbc2c47b848f51b93490baca5d"
+}
