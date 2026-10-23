@@ -226,7 +226,7 @@ async fn uninstalled(
     let ended = end_installation(&mut tx, shop).await?;
     // Queued in the same transaction as the uninstall: both happen or neither does. The jobs
     // that `end_installation` cancelled are the ones that were already waiting; this one is new.
-    let export = queue_export_email(jobs, &mut tx, event_id, shop, ended.changed).await?;
+    let export = queue_export_email(&mut tx, event_id, shop, ended.changed).await?;
     record(
         &mut tx,
         event_id,
@@ -251,7 +251,6 @@ const EXPORT_WINDOW: Duration = Duration::hours(48);
 /// `export_email`: `queued`, or why not. Nothing here fails the uninstall: an email that cannot
 /// be queued is a gap to read in the audit log, not a reason to keep a shop installed.
 async fn queue_export_email(
-    jobs: &Jobs,
     tx: &mut db::TenantTx,
     event_id: Uuid,
     shop: ShopId,
@@ -261,9 +260,6 @@ async fn queue_export_email(
     if !changed {
         return Ok("not_queued_already_uninstalled");
     }
-    let Some(origin) = jobs.app_origin.as_deref() else {
-        return Ok("not_queued_no_app_origin");
-    };
     let Some(contact) = contacts::get_shop_contact(tx, shop)
         .await
         .map_err(|e| database(&e))?
@@ -288,7 +284,6 @@ async fn queue_export_email(
         },
         input: UninstallExportInput {
             store_name: contact.store_name,
-            export_url: format!("{origin}/app/log"),
             delete_at,
             locale: contact.locale,
         }

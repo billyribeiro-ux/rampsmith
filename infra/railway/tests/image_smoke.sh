@@ -4,7 +4,7 @@
 # commands (read from railway.py), same port and health check, a real PostgreSQL 18.6 with the
 # logins from bootstrap.sql, and throwaway credentials.
 #
-# Usage: image_smoke.sh <web|api|ctl|engine|egress|backup> <image>
+# Usage: image_smoke.sh <web|api|ctl|engine|mailer|egress|backup> <image>
 # Env:   PGHOST, PGPORT, PGUSER, PGPASSWORD for a disposable superuser connection (api, ctl,
 #        engine); sqlx on PATH; STRICT=1 on main, where an integration gap fails instead of
 #        warning (a gap is something the image's owner still has to add, listed in
@@ -68,7 +68,7 @@ echo "runs as $user"
 database_url() { echo "postgresql://$1:$2@${PGHOST:-127.0.0.1}:${PGPORT:-5432}/$db"; }
 db=""
 case "$service" in
-  api | ctl | engine)
+  api | ctl | engine | mailer)
     db="smoke_${service}_$RANDOM"
     psql -X -q -v ON_ERROR_STOP=1 -d postgres -c "create database $db"
     export RAMPSMITH_DB_PASSWORD_MIGRATOR RAMPSMITH_DB_PASSWORD_API RAMPSMITH_DB_PASSWORD_CTL \
@@ -108,6 +108,9 @@ esac
       echo "DATABASE_URL=$(database_url rampsmith_engine "$RAMPSMITH_DB_PASSWORD_ENGINE")"
       echo "EGRESS_PROXY_URL=http://127.0.0.1:9"
       echo "EGRESS_TOKEN_SECRET=$(hex)"
+      ;;
+    mailer)
+      echo "DATABASE_URL=$(database_url rampsmith_engine "$RAMPSMITH_DB_PASSWORD_ENGINE")"
       ;;
     egress)
       echo "EGRESS_BIND=[::]:$port"
@@ -198,6 +201,19 @@ if [ "$service" = engine ]; then
       fail "the engine runs Chromium without its sandbox and did not say the host refused it"
   fi
   echo "the engine started with Chromium sandbox=$mode"
+fi
+
+if [ "$service" = mailer ]; then
+  # The mailer holds the SES keys, so it must be the program that never opens a page (ADR-276):
+  # it says so, and no Chromium process exists in the container.
+  logs=$(docker logs "$container" 2>&1)
+  grep -q '^mailer: serving email.send (no browser in this process)$' <<<"$logs" ||
+    fail "the mailer did not say it is serving email.send"
+  if docker exec "$container" sh -c 'ls /proc/[0-9]*/comm 2>/dev/null | xargs cat 2>/dev/null' |
+    grep -qi 'chrom'; then
+    fail "a Chromium process runs in the mailer container"
+  fi
+  echo "the mailer serves email.send and runs no browser"
 fi
 
 if [ "$service" = api ]; then

@@ -32,3 +32,28 @@ bounces, triggers and the audit fixes follow in their own sections as they merge
   refuses `rfc-editor.org`, `ietf.org`, `support.google.com`, `senders.yahooinc.com`); the requirements used
   are the ones ADR-191 quoted from them. DKIM coverage of `List-Unsubscribe` and `List-Unsubscribe-Post`
   stays a live check (LAUNCH.md section E).
+
+## Part 2: security audit of PR #37 (2 medium, 6 low)
+
+Each finding was checked against `origin/main` before it was fixed.
+
+| Finding | What was true on main | Fix | Evidence |
+| --- | --- | --- | --- |
+| M1 SES keys beside Chromium | `railway.py` gave `_engine` the `SES_*` variables, `queues.ts` served `email.send` on every engine, `browser.ts` launched Chromium with no `env` | A `mailer` Railway service from the engine image (`packages/engine/src/mailer.ts`) serves only `email.send`; the engine no longer serves it or holds any email variable; Chromium gets a minimal explicit environment (ADR-276) | `packages/engine/test/mailer-isolation.test.ts` (import graph reaches no browser code, no browser dependency), `browser.test.ts` (env allowlist, a real launch with it), `infra/railway/tests` (103 passed: start command, shared image, SES only on the mailer, the engine holds no email variable, the mailer holds no egress, Claude, R2 or scan-secret variable), `infra/railway/tests/image_smoke.sh` and the deploy and release workflows start and check it; threat model TB9 and ADR-182 corrected |
+| M2 export link cannot work | `{APP_ORIGIN}/app/log` needs an App Bridge session | The record is attached as a CSV (ADR-277); PLAN §19 corrected; LAUNCH.md E row replaced by a live check that opens the CSV | `packages/engine/test/email-send.test.ts` (4 new: attached and holds only the tenant's fixes, header-only file, unwritable row fails for good with nothing sent, no other mail carries a file), `packages/email/test/sender.test.ts` (attachment guard), `ses.test.ts` (the `Attachments` shape; the fake SES checks the service model's limits and enums), the three `uninstall_export` snapshots |
+| L1 second `app/uninstalled` cancels the mail | `cancel_pending` cancelled every ready job but one queue | It spares `email.send` too | `crates/ctl/tests/email.rs` `a_replayed_uninstall_queues_nothing_more` now asserts the job is still `ready`; `crates/db/tests/tenancy.rs` `cancelling_pending_jobs_spares_the_email_queue` |
+| L2 duplicate sends | Two attempts at one key could both reach SES while one was in flight or after a lease was lost | The ledger claims a row only when no live attempt holds it (60 s, or a recorded retry), and the handler checks its lease before the SES call | `packages/engine/test/email-send.test.ts` `two attempts at one message (audit L2)` (3 tests); ADR-271 and threat model C8 corrected |
+| L3 `plausible` looser than the CHECK | `owner@.com` passed `plausible`, failed the insert, and broke the store read | `plausible` follows `isEmailAddress` | `crates/db/src/repo/email.rs` unit test (11 bad shapes), `crates/ctl/tests/email.rs` (`owner@.com` is "unusable") |
+| L4 `Shop.email` shares a query | A field problem would fail the whole shop read | `RampsmithShopOwner` is its own query; its failure is "none reported" | `crates/shopify-admin/tests/admin.rs` `a_failed_read_of_the_owner_address_leaves_the_shop_read_with_no_address`; the throttle tests now expect two requests per `shop()` |
+| L5 no inventory or retention | `shop_contacts`, `email_deliveries` and the suppression lists were not in PLAN §19 | Rows added; `shop/redact` deletes the deliveries; `email_records_sweep()` runs in the leader; the hash is called pseudonymous | `crates/db/tests/tenancy.rs` `redaction_deletes_the_shops_delivery_records_and_contact_and_no_one_elses`, `the_email_sweep_removes_old_deliveries_and_contacts_of_long_gone_shops_only` |
+| L6 api could select `shop_contacts` | Migration 20261106000001 granted it | Migration 20261109000010 revokes it; the switch reads a hash through a tenant-scoped security definer function; the restore drill accepts `denied` for that one table | `tenancy.rs` `only_ctl_writes_contacts_and_workers_cannot_delete_deliveries` (the app role now gets permission denied on a select), `crates/api/tests/email_links.rs` (the switch still works) |
+| Notes | The botocore script was promised in a test comment; `ShopInfo.email` was serialisable | Script and its output are in `docs/evidence/email-sender.md`; `#[serde(skip_serializing)]` | `admin.rs` asserts the serialised shop holds no address |
+
+### Environment notes
+
+- `infra/restore-drill/verify.sh` was edited and `tests/negative.sh` and `tests/fake-in-container.sh` were
+  not changed; the full drill needs PostgreSQL binaries and a container this environment lacks, so the
+  `denied` branch is exercised by `crates/db/tests/tenancy.rs` and the live restore (a LAUNCH.md section
+  E item that already exists).
+- The egress proxy test `spans_and_logs_never_contain_the_merchants_host` is flaky on a loaded machine
+  and was not touched.

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select email_records_sweep() as \"swept!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "swept!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "45a8c535e837e4f872422db5d8d35730f56b102c2a6b1c2a076df566830467ae"
+}

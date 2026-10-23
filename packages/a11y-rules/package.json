@@ -8,7 +8,8 @@
     "node": ">=26.12.0 <27"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./rules": "./src/rules.ts"
   },
   "scripts": {
     "test": "vitest run",

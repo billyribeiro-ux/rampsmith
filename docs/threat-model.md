@@ -107,7 +107,7 @@ flowchart LR
   engine -->|"TB5: worker role, tenant per job"| pg
   ctl -->|"TB9: Admin API writes, token refresh"| shopify
   ctl -->|"TB9: branches, pull requests"| github
-  ctl -->|"TB9: email"| ses
+  mailer -->|"TB9: email"| ses
   engine -->|"TB6: all browser traffic"| egress
   egress -->|"TB6: public addresses only"| storefronts
   engine -->|"TB7: images and product text only"| anthropic
@@ -129,7 +129,7 @@ flowchart LR
 | TB6 | `engine` to the internet | `egress` resolves DNS and refuses non-public addresses |
 | TB7 | `engine` to Anthropic | Minimal data; no tools; schema-validated output; human approval |
 | TB8 | Services to R2 | Scoped API tokens; tenant-prefixed keys; short signed URLs |
-| TB9 | `ctl` to Shopify, GitHub, SES | Encrypted tokens; least-privilege scopes; idempotent writes |
+| TB9 | `ctl` to Shopify and GitHub; `mailer` to SES (ADR-276) | Encrypted tokens; least-privilege scopes; idempotent writes |
 | TB10 | Services and CI to vendors | Pinned actions and images; secrets only in GitHub and Railway |
 | TB11 | Operator to production | `rsctl` with audit; break-glass database access |
 | TB12 | Shopper to `web` through the app proxy | Shopify's app proxy signature; rate limits; minimal fields |
@@ -183,7 +183,7 @@ E elevation of privilege.
 | C5 | I | Token decrypted into logs | Per-row data keys, AES-256-GCM, master key only in the environment, `secrecy` wrappers (§14, §18) | planned (R0 step 7) |
 | C6 | D | Shop loses access because a refresh was missed | Refresh within 10 minutes of expiry; at least weekly job per shop; alert on any refresh failure (§14, §21) | planned (R0 step 7) |
 | C7 | E | Two schedulers run at once | Leadership through `pg_try_advisory_lock` on a dedicated connection (§10) | planned (R1) |
-| C8 | I | Email sent to the wrong recipient twice | Idempotency key per email (§10) | planned (R1) |
+| C8 | I | Email sent to the wrong recipient twice | Idempotency key per email (§10); a delivery ledger that also claims a row only when no live attempt holds it, and a lease check before the SES call (ADR-271, ADR-276) | built (`packages/engine/src/email/ledger.ts`) |
 
 ### engine (TypeScript workers: Chromium, axe-core, Claude)
 

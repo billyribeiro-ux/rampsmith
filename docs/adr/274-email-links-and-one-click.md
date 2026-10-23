@@ -46,7 +46,7 @@ receive it. Separately, a page with `Referrer-Policy: no-referrer` makes browser
 5. **Privacy of the pages.** `/email/*` responses are `Cache-Control: private, no-store`, `X-Robots-Tag:
    noindex, nofollow`, `Referrer-Policy: same-origin`, so the token does not leave the origin.
 6. **Settings.** `EMAIL_ONE_CLICK_ORIGIN` (the webhook host, set by `railway.py`) is used by the
-   engine; without `EMAIL_LINK_KEYS` the send job waits and retries with `email_not_configured`
+   mailer (ADR-276; the engine image, without a browser); without `EMAIL_LINK_KEYS` the send job waits and retries with `email_not_configured`
    rather than send mail without a working unsubscribe.
 
 ## Consequences

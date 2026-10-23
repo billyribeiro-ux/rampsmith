@@ -94,9 +94,46 @@ export interface BrowserOptions {
   readonly chromiumSandbox?: boolean;
 }
 
+/**
+ * The environment variables a Chromium process may inherit: what it needs to find its libraries,
+ * fonts, locale and time zone, and nothing else. The engine's own environment holds the database
+ * login, the egress secret, the Claude key and the evidence keys, and a renderer that is
+ * exploited from a stranger's page can read its parent's environment (audit M1, ADR-276).
+ */
+export const BROWSER_ENV_ALLOWLIST: readonly string[] = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LANG',
+  'LANGUAGE',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
+  'TMPDIR',
+  'DISPLAY',
+  'LD_LIBRARY_PATH',
+  'FONTCONFIG_PATH',
+  'FONTCONFIG_FILE',
+  'XDG_CACHE_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_RUNTIME_DIR',
+];
+
+/** `env` reduced to {@link BROWSER_ENV_ALLOWLIST}: the whole environment of every Chromium. */
+export function browserEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const kept: Record<string, string> = {};
+  for (const name of BROWSER_ENV_ALLOWLIST) {
+    const value = env[name];
+    if (value !== undefined) kept[name] = value;
+  }
+  return kept;
+}
+
 /** The launch settings of every browser the engine starts. */
 export function launchOptions(options: BrowserOptions = {}): LaunchOptions {
   return {
+    env: browserEnv(),
     chromiumSandbox: options.chromiumSandbox ?? true,
     args: [WEBRTC_POLICY_ARG],
     // The proxy itself is set per context (with the scan token); this only fixes loopback.

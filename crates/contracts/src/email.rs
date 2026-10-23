@@ -156,9 +156,8 @@ impl EmailSend {
 pub struct UninstallExportInput {
     /// The store's name, as the shop reported it.
     pub store_name: String,
-    /// The remediation log page in the app.
-    pub export_url: String,
-    /// When the data is deleted and the link stops working (RFC 3339, UTC).
+    /// When the data is deleted (RFC 3339, UTC). The remediation record travels as an attachment
+    /// the mailer builds (ADR-277), not as a link.
     pub delete_at: String,
     /// The recipient's language, a BCP 47 tag; English when absent or unsupported.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -190,7 +189,7 @@ mod tests {
         let wire = json!({
             "template": "uninstall_export",
             "recipient": {"kind": "shop_owner", "shop_id": id(3)},
-            "input": {"storeName": "Example", "exportUrl": "https://app.example/app/log"},
+            "input": {"storeName": "Example"},
             "message_key": "uninstall-export:0192f3a4"
         });
         let parsed: EmailSend = serde_json::from_value(wire.clone()).unwrap();
@@ -246,7 +245,6 @@ mod tests {
     fn the_uninstall_export_input_has_the_templates_member_names() {
         let input = UninstallExportInput {
             store_name: "Example Outfitters".to_owned(),
-            export_url: "https://app.rampsmith.example/app/log".to_owned(),
             delete_at: "2026-10-24T18:30:00Z".to_owned(),
             locale: None,
         };
@@ -254,7 +252,6 @@ mod tests {
             Value::Object(input.clone().into_map()),
             json!({
                 "storeName": "Example Outfitters",
-                "exportUrl": "https://app.rampsmith.example/app/log",
                 "deleteAt": "2026-10-24T18:30:00Z"
             })
         );
