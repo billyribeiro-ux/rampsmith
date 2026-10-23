@@ -35,9 +35,9 @@ pub async fn put(tx: &mut TenantTx, shop: ShopId, state: &StoredBilling) -> Resu
               trial_ends_at, cycle_start, cycle_end, scheduled_plan, scheduled_interval,
               unrecognized_handle, usage_anchor, last_confirmed_at, last_attempt_at,
               consecutive_failures, effective_plan, ai_budget_max_micro_usd,
-              alt_text_draft_limit, alt_text_draft_lifetime, regression_alerts, updated_at)
+              alt_text_draft_limit, alt_text_draft_lifetime, regression_alerts, render_cadence, updated_at)
            values ($2, $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                   $17, $18, $19, $20, $21, now())
+                   $17, $18, $19, $20, $21, $22, now())
            on conflict (shop_id) do update set
               standing = excluded.standing, plan = excluded.plan,
               plan_interval = excluded.plan_interval,
@@ -55,6 +55,7 @@ pub async fn put(tx: &mut TenantTx, shop: ShopId, state: &StoredBilling) -> Resu
               alt_text_draft_limit = excluded.alt_text_draft_limit,
               alt_text_draft_lifetime = excluded.alt_text_draft_lifetime,
               regression_alerts = excluded.regression_alerts,
+              render_cadence = excluded.render_cadence,
               updated_at = now()"#,
         tenant,
         shop.as_uuid(),
@@ -77,6 +78,7 @@ pub async fn put(tx: &mut TenantTx, shop: ShopId, state: &StoredBilling) -> Resu
         limits.alt_text_draft_limit,
         limits.alt_text_draft_lifetime,
         limits.regression_alerts,
+        limits.render_cadence.as_str(),
     )
     .execute(tx.conn())
     .await?;

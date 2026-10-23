@@ -76,6 +76,16 @@ pub(crate) fn not_found() -> ApiError {
     ApiError::new(ProblemCode::NotFound)
 }
 
+/// How long a plan's scheduled rescans wait between scans (ADR-312).
+fn cadence_days(cadence: billing::entitlements::ScanCadence) -> Duration {
+    use billing::entitlements::ScanCadence;
+    match cadence {
+        ScanCadence::Daily => Duration::days(1),
+        ScanCadence::Weekly => Duration::days(7),
+        ScanCadence::Monthly => Duration::days(30),
+    }
+}
+
 pub(crate) fn uuid_of(text: &str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(text).map_err(|_| not_found())
 }
@@ -408,7 +418,7 @@ pub(crate) async fn get_overview(
     let next_scan_at = latest
         .as_ref()
         .filter(|_| values.weekly_rescan)
-        .map(|scan| ts(scan.created_at + Duration::days(7)));
+        .map(|scan| ts(scan.created_at + cadence_days(view.entitlements.render_cadence())));
     Ok(Json(OverviewDto {
         shop: ShopDto {
             domain: session.shop.as_str().to_owned(),
@@ -1551,13 +1561,7 @@ pub(crate) async fn update_settings(
     let view = plan_view(&mut tx, session.shop_id, OffsetDateTime::now_utc()).await?;
     let mut patch = validated_patch(&body, ceiling_of(&view.entitlements))?;
     if let Some(weekly) = body.weekly_rescan {
-        if weekly
-            && view.entitlements.render_cadence() == billing::entitlements::ScanCadence::Monthly
-        {
-            return Err(
-                ApiError::new(ProblemCode::Forbidden).detail("Weekly rescans need a higher plan.")
-            );
-        }
+        // Every plan has scheduled rescans, at its own cadence (ADR-312).
         patch.insert("weekly_rescan".to_owned(), json!(weekly));
     }
     match &body.storefront_password {

@@ -79,7 +79,14 @@
     if (res.data !== undefined) load(res.data);
   });
 
-  const cadenceLocked = $derived(res.data?.entitlements.scan_cadence === 'monthly');
+  const cadence = $derived(res.data?.entitlements.scan_cadence ?? 'monthly');
+  const cadenceHint = $derived(
+    cadence === 'daily'
+      ? m.app_settings_weekly_hint_daily()
+      : cadence === 'weekly'
+        ? m.app_settings_weekly_hint_weekly()
+        : m.app_settings_weekly_hint_monthly(),
+  );
   const budgetMax = $derived((res.data?.ai_budget_max_micro_usd ?? 0) / 1_000_000);
   const plansUrl = $derived(planPageUrl(app.shop));
   const embedUrl = $derived(embedActivationUrl(app.shop, SHOPIFY_API_KEY));
@@ -107,7 +114,7 @@
     return {
       errors,
       update: {
-        ...(cadenceLocked ? {} : { weekly_rescan: weekly }),
+        weekly_rescan: weekly,
         notification_email: email.trim() === '' ? null : email.trim(),
         alt_text_max_characters: chars,
         ai_budget_micro_usd: Math.round(dollars * 1_000_000),
@@ -179,18 +186,17 @@
           <s-switch
             label={m.app_settings_weekly()}
             checked={weekly}
-            disabled={cadenceLocked}
-            details={cadenceLocked ? undefined : m.app_settings_weekly_hint()}
+            details={cadenceHint}
             onchange={(e: Event) => {
               weekly = checkedOf(e);
             }}
           ></s-switch>
-          {#if cadenceLocked}
+          {#if cadence !== 'daily'}
             <s-stack direction="inline" gap="small" alignItems="center">
               <s-badge tone="info">
-                {m.app_gate_requires({ plan: planLabel('starter') })}
+                {m.app_gate_requires({ plan: planLabel('growth') })}
               </s-badge>
-              <s-text>{m.app_settings_weekly_locked()}</s-text>
+              <s-text>{m.app_settings_daily_locked()}</s-text>
               {#if plansUrl !== undefined}
                 <s-link href={plansUrl} target="_top">{m.app_plan_compare()}</s-link>
               {/if}

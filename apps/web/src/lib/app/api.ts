@@ -204,7 +204,11 @@ export function createHttpApi(source: SessionTokenSource, fetchImpl: Fetch = fet
       json<AgencyCodePreview>(`${BASE}/agency-links/preview`, write('POST', { code })),
     approveAgencyLink: (code) => json<AgencyLink>(`${BASE}/agency-links`, write('POST', { code })),
     revokeAgencyLink: async (id) => {
-      await send(`${BASE}/agency-links/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await send(`${BASE}/agency-links/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        // SvelteKit's origin check treats a body-less write without a content type as a form post.
+        headers: { 'content-type': 'application/json' },
+      });
     },
     settings: () => json<Settings>(`${BASE}/settings`),
     updateSettings: (update) => json<Settings>(`${BASE}/settings`, write('PUT', update)),

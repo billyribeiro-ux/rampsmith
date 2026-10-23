@@ -295,14 +295,14 @@ test.describe('settings', () => {
     await open(page, 'default', '/app/settings', 'Settings');
     const save = page.getByRole('button', { name: 'Save' });
     await expect(save).toBeDisabled();
-    await page.getByRole('switch', { name: 'Rescan every week' }).check();
+    await page.getByRole('switch', { name: 'Scheduled rescans' }).check();
     await page.getByRole('textbox', { name: 'Notification email' }).fill('team@demo-store.example');
     await page.getByRole('spinbutton', { name: 'Longest alt text (characters)' }).fill('120');
     await page.getByRole('spinbutton', { name: /AI budget/ }).fill('8');
     await save.click();
     await expect(page.locator('.live')).toHaveText('Settings saved.');
     await page.reload();
-    await expect(page.getByRole('switch', { name: 'Rescan every week' })).toBeChecked();
+    await expect(page.getByRole('switch', { name: 'Scheduled rescans' })).toBeChecked();
     await expect(page.getByRole('textbox', { name: 'Notification email' })).toHaveValue(
       'team@demo-store.example',
     );
@@ -350,12 +350,17 @@ test.describe('settings', () => {
     await expect(page.locator('.live')).toHaveText('Email preference saved.');
   });
 
-  test('on the Free plan the weekly rescan is shown, labelled and disabled', async ({ page }) => {
+  test('on the Free plan the rescans run monthly and daily ones name the Growth plan', async ({
+    page,
+  }) => {
     await open(page, 'free', '/app/settings', 'Settings');
-    const weekly = page.getByRole('switch', { name: 'Rescan every week' });
-    await expect(weekly).toBeDisabled();
-    await expect(page.getByText('Weekly rescans are part of paid plans.')).toBeVisible();
-    await expect(page.getByText('Needs the Starter plan').first()).toBeVisible();
+    const weekly = page.getByRole('switch', { name: 'Scheduled rescans' });
+    await expect(weekly).toBeEnabled();
+    await expect(page.getByText('once a month')).toBeVisible();
+    await expect(
+      page.getByText('Daily rescans and regression alerts are part of the Growth plan.'),
+    ).toBeVisible();
+    await expect(page.getByText('Needs the Growth plan').first()).toBeVisible();
     const plan = section(page, 'Plan');
     await expect(plan).toContainText('Your plan: Free');
     await expect(plan.getByRole('list', { name: 'Features' }).getByRole('listitem')).toHaveCount(9);
@@ -392,4 +397,49 @@ test('every request to the api carries the session token and none goes unauthent
   const seen = await requestsSeen();
   expect(seen.length).toBeGreaterThan(3);
   expect(seen.every((r) => r.authorization === 'Bearer good')).toBe(true);
+});
+
+test.describe('agency access', () => {
+  test('lists the agencies that can see the store and lets the merchant revoke one', async ({
+    page,
+  }) => {
+    await open(page, 'agency', '/app/agency', 'Agency access');
+    const row = page.getByRole('row').filter({ hasText: 'Northwind Digital' });
+    await expect(row).toHaveCount(1);
+    await row.getByRole('button', { name: /Revoke access/ }).click();
+    await expect(page.locator('.live')).toHaveText('Access revoked for Northwind Digital.');
+    await expect(page.getByText('No agency can see this store.')).toBeVisible();
+    await expect(page.getByRole('table')).toHaveCount(0);
+  });
+
+  test('shows who is asking before the merchant approves a code', async ({ page }) => {
+    await open(page, 'default', '/app/agency', 'Agency access');
+    await expect(page.getByText('No agency can see this store.')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Link code' }).fill('ABCDE-12345');
+    await page.getByRole('button', { name: 'Check code' }).click();
+    await expect(page.locator('s-banner')).toContainText(
+      'Northwind Digital asks to follow this store',
+    );
+    await page.getByRole('button', { name: 'Approve access' }).click();
+    await expect(page.locator('.live')).toHaveText(
+      "Northwind Digital can now see this store's summary.",
+    );
+    await expect(page.getByRole('row').filter({ hasText: 'Northwind Digital' })).toHaveCount(1);
+  });
+
+  test('a wrong code is refused, and too many wrong codes are stopped', async ({ page }) => {
+    await open(page, 'default', '/app/agency', 'Agency access');
+    const field = page.getByRole('textbox', { name: 'Link code' });
+    const check = page.getByRole('button', { name: 'Check code' });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await field.fill('ZZZZZ-ZZZZZ');
+      await check.click();
+      await expect(page.locator('s-banner')).toContainText(
+        'This code is not valid, or it has expired.',
+      );
+    }
+    await field.fill('ABCDE-12345');
+    await check.click();
+    await expect(page.locator('s-banner')).toContainText('Too many codes were not valid.');
+  });
 });

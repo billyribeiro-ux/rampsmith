@@ -1634,7 +1634,12 @@ async fn settings_have_defaults_and_validate_what_changes(
             Some(json!({"weekly_rescan": true})),
         )
         .await;
-    assert_eq!(weekly.status, StatusCode::FORBIDDEN, "Free scans monthly");
+    assert_eq!(
+        weekly.status,
+        StatusCode::OK,
+        "every plan has scheduled rescans at its own cadence: {}",
+        weekly.body
+    );
     let unknown = h
         .call(
             "PUT",

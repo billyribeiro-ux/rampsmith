@@ -1,3 +1,4 @@
+import postgres from 'postgres';
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { parsePolicy, pinnedPolicy, watchPolicyViolations } from './csp.ts';
@@ -191,3 +192,88 @@ test('a dismissed passkey prompt leaves the user on the page with a message', as
   await expect(page).toHaveURL(/\/dashboard\/sign-in$/);
   await axe(page);
 });
+
+test('an agency creates an organization and a link code, and follows a store that approved', async ({
+  page,
+}) => {
+  await platformAuthenticator(page);
+  const stamp = Date.now().toString();
+  await page.goto('/dashboard/register');
+  await page.getByLabel('Email address').fill(`agency+${stamp}@example.com`);
+  await page.getByLabel('Your name').fill('Agnes');
+  await page.getByRole('button', { name: 'Create account with a passkey' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // Reachable from the dashboard, with the keyboard.
+  await page.getByRole('link', { name: 'Agency stores' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/dashboard\/agency$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agency stores');
+  await expect(page.getByText('No store has approved a link yet.')).toBeVisible();
+  await axe(page);
+
+  await page.getByLabel('Organization name').fill(`Northwind ${stamp}`);
+  await page.getByRole('button', { name: 'Create organization' }).click();
+  const make = page.getByRole('button', { name: `Create a link code for Northwind ${stamp}` });
+  await expect(make).toBeVisible();
+  await make.focus();
+  await page.keyboard.press('Enter');
+  const code = page.locator('output');
+  await expect(code).toHaveText(/^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$/);
+  await expect(page.getByText('It cannot be shown again.')).toBeVisible();
+  await axe(page);
+
+  // The merchant's approval happens in the embedded app (covered by the api and App Home tests);
+  // here the grant is written as the owner so the overview and the unlink can be exercised.
+  const url = process.env['DATABASE_URL'];
+  if (url === undefined || url === '') throw new Error('DATABASE_URL is required');
+  const sql = postgres(url, { database: 'rampsmith_e2e', max: 1, onnotice: () => undefined });
+  try {
+    const [org] = await sql<{ id: string }[]>`
+      select id from organizations where name = ${`Northwind ${stamp}`}`;
+    const domain = `agency-${stamp}.myshopify.com`;
+    const [tenant] = await sql<{ id: string }[]>`
+      insert into tenants (id, kind) values (gen_random_uuid(), 'shopify_store') returning id`;
+    const [site] = await sql<{ id: string }[]>`
+      insert into sites (id, tenant_id, platform, base_url)
+      values (gen_random_uuid(), ${tenant?.id ?? ''}, 'shopify', ${`https://${domain}`})
+      returning id`;
+    const [shop] = await sql<{ id: string }[]>`
+      insert into shopify_shops (id, tenant_id, site_id, shop_domain, scopes, api_version, status,
+                                 installed_at)
+      values (gen_random_uuid(), ${tenant?.id ?? ''}, ${site?.id ?? ''}, ${domain}, '{}',
+              '2026-10', 'installed', now())
+      returning id`;
+    await sql`
+      insert into store_links (id, tenant_id, shop_id, organization_id)
+      values (gen_random_uuid(), ${tenant?.id ?? ''}, ${shop?.id ?? ''}, ${org?.id ?? ''})`;
+  } finally {
+    await sql.end();
+  }
+  await page.reload();
+  const row = page.getByRole('row').filter({ hasText: `agency-${stamp}.myshopify.com` });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Not scanned yet');
+  await axe(page);
+
+  // Stopping to follow takes effect at once.
+  const stop = row.getByRole('button', { name: `Stop following agency-${stamp}.myshopify.com` });
+  await stop.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('No store has approved a link yet.')).toBeVisible();
+  const [left] = await postgresCount(url, stamp);
+  expect(left).toBe(0);
+});
+
+/** Live links for the store the test linked: zero once the agency ended the link. */
+async function postgresCount(url: string, stamp: string): Promise<[number]> {
+  const sql = postgres(url, { database: 'rampsmith_e2e', max: 1, onnotice: () => undefined });
+  try {
+    const [row] = await sql<{ n: string }[]>`
+      select count(*) as n from store_links l join shopify_shops s on s.id = l.shop_id
+       where s.shop_domain = ${`agency-${stamp}.myshopify.com`} and l.revoked_at is null`;
+    return [Number(row?.n ?? '-1')];
+  } finally {
+    await sql.end();
+  }
+}

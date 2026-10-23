@@ -55,6 +55,12 @@ const SCREENS: readonly Screen[] = [
     scenarios: ['default', 'free', 'regressed', 'error'],
   },
   {
+    name: 'agency access',
+    path: '/app/agency',
+    heading: 'Agency access',
+    scenarios: ['default', 'agency', 'error'],
+  },
+  {
     name: 'remediation log',
     path: '/app/log',
     heading: 'Remediation log',

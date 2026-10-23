@@ -154,7 +154,10 @@
           </s-button>
         </s-stack>
       {:else}
-        <s-banner tone="warning" heading={m.app_agency_confirm_heading({ name: preview.organization_name })}>
+        <s-banner
+          tone="warning"
+          heading={m.app_agency_confirm_heading({ name: preview.organization_name })}
+        >
           <s-paragraph>
             {m.app_agency_confirm_body({ name: preview.organization_name })}
           </s-paragraph>

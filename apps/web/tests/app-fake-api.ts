@@ -567,7 +567,7 @@ function route(method: string, url: URL, body: Record<string, unknown>): Reply {
   }
   if (method === 'POST' && (path === 'agency-links' || path === 'agency-links/preview')) {
     if (state.badCodes >= 5) return problem(429, 'rate_limited', 'Too many codes were not valid');
-    const typed = String(body['code'] ?? '')
+    const typed = (typeof body['code'] === 'string' ? body['code'] : '')
       .replace(/[\s-]/gu, '')
       .toUpperCase();
     if (typed !== 'ABCDE12345') {

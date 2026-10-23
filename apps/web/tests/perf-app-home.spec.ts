@@ -189,9 +189,9 @@ const SCREENS: Screen[] = [
     scenario: 'default',
     path: '/app/settings',
     heading: 'Settings',
-    ready: (p) => expect(p.getByRole('switch', { name: 'Rescan every week' })).toBeVisible(),
+    ready: (p) => expect(p.getByRole('switch', { name: 'Scheduled rescans' })).toBeVisible(),
     interact: async (p) => {
-      await p.getByRole('switch', { name: 'Rescan every week' }).check();
+      await p.getByRole('switch', { name: 'Scheduled rescans' }).check();
       await p.getByRole('textbox', { name: 'Notification email' }).click();
       await p.keyboard.press('Control+A');
       await type(p, 'team@demo-store.example');
