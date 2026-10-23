@@ -50,7 +50,7 @@ const MAX_WAIT: Duration = Duration::from_secs(2);
 /// One Partner API call may take this long.
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// One shop may start at most [`SHOP_CALLS`] calls in any window of this length.
-const SHOP_WINDOW: Duration = Duration::from_secs(60);
+const SHOP_WINDOW: Duration = Duration::from_mins(1);
 /// The calls one shop may start per [`SHOP_WINDOW`]: with 180 pacer slots a minute, no shop can
 /// hold more than a fiftieth of them.
 const SHOP_CALLS: usize = 3;
@@ -362,7 +362,7 @@ mod tests {
         tokio::time::advance(Duration::from_secs(61)).await;
         assert!(share.take(looping), "the window moves on");
         assert_eq!(
-            share.calls.lock().map(|c| c.len()).unwrap_or(0),
+            share.calls.lock().map_or(0, |c| c.len()),
             1,
             "the idle neighbour was forgotten"
         );

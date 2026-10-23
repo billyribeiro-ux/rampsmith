@@ -62,20 +62,28 @@ struct Answer {
 }
 
 fn id_token(domain: &str, sub: &str) -> String {
+    id_token_for(domain, Some(sub))
+}
+
+/// An ID token; `sub` is absent for a session that is not a signed-in staff member.
+fn id_token_for(domain: &str, sub: Option<&str>) -> String {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let mut claims = json!({
+        "iss": format!("https://{domain}/admin"),
+        "dest": format!("https://{domain}"),
+        "aud": CLIENT_ID,
+        "exp": now + 60,
+        "nbf": now - 1,
+        "iat": now - 1,
+        "jti": "j",
+        "sid": "s"
+    });
+    if let Some(sub) = sub {
+        claims["sub"] = json!(sub);
+    }
     encode(
         &Header::new(Algorithm::HS256),
-        &json!({
-            "iss": format!("https://{domain}/admin"),
-            "dest": format!("https://{domain}"),
-            "aud": CLIENT_ID,
-            "sub": sub,
-            "exp": now + 60,
-            "nbf": now - 1,
-            "iat": now - 1,
-            "jti": "j",
-            "sid": "s"
-        }),
+        &claims,
         &EncodingKey::from_secret(SECRET.as_bytes()),
     )
     .unwrap()
@@ -151,9 +159,20 @@ async fn harness(
 
 impl Harness {
     async fn call(&self, verb: &str, uri: &str, body: Option<Value>) -> Answer {
+        self.call_as(Some(STAFF), verb, uri, body).await
+    }
+
+    /// Like `call`, with the session of `sub`, or one with no staff member at all.
+    async fn call_as(
+        &self,
+        sub: Option<&str>,
+        verb: &str,
+        uri: &str,
+        body: Option<Value>,
+    ) -> Answer {
         let mut request = Request::builder().method(verb).uri(uri).header(
             header::AUTHORIZATION,
-            format!("Bearer {}", id_token(SHOP, STAFF)),
+            format!("Bearer {}", id_token_for(SHOP, sub)),
         );
         let body = match body {
             Some(value) => {
@@ -1093,7 +1112,11 @@ async fn approving_records_the_staff_member_and_queues_the_apply_in_the_same_ste
             .fetch_one(&h.owner)
             .await
             .unwrap();
-    assert_eq!(by_ref.as_deref(), Some(STAFF));
+    assert_eq!(
+        by_ref.as_deref(),
+        Some(format!("shopify:{STAFF}").as_str()),
+        "one actor format: shopify:<sub>"
+    );
     assert!(by_user.is_none());
     let (queue, payload): (String, Value) = sqlx::query_as(
         "select queue, payload from jobs where tenant_id = $1 and queue = 'shopify.apply_data_fix'",
@@ -1112,7 +1135,7 @@ async fn approving_records_the_staff_member_and_queues_the_apply_in_the_same_ste
     .fetch_one(&h.owner)
     .await
     .unwrap();
-    assert_eq!(audit, ("user".to_owned(), Some(STAFF.to_owned())));
+    assert_eq!(audit, ("user".to_owned(), Some(format!("shopify:{STAFF}"))));
 
     let again = h
         .call("POST", &format!("/v1/shopify/fixes/{fix}/approve"), None)
@@ -1260,7 +1283,7 @@ async fn an_approval_waits_for_the_site_lock(opts: PgPoolOptions, conn: PgConnec
                 .status
         })
     };
-    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    tokio::time::sleep(Duration::from_millis(700)).await;
     assert!(
         !approving.is_finished(),
         "the approval did not wait for the site lock"
@@ -1344,6 +1367,29 @@ async fn undo_queues_one_revert_for_an_applied_fix(opts: PgPoolOptions, conn: Pg
         .await;
     let applied = h.fix(finding, "applied", "A blue shoe", true).await;
     let waiting = h.fix(finding, "proposed", "Not yet", true).await;
+
+    // A session with no staff member cannot undo (audit L10): nothing is queued.
+    let anonymous = h
+        .call_as(
+            None,
+            "POST",
+            &format!("/v1/shopify/fixes/{applied}/undo"),
+            None,
+        )
+        .await;
+    assert_eq!(
+        anonymous.status,
+        StatusCode::FORBIDDEN,
+        "{}",
+        anonymous.body
+    );
+    assert_eq!(
+        h.count(
+            "select count(*) from jobs where tenant_id = $1 and queue = 'shopify.revert_data_fix'"
+        )
+        .await,
+        0
+    );
 
     let queued = h
         .call("POST", &format!("/v1/shopify/fixes/{applied}/undo"), None)

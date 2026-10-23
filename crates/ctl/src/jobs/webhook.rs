@@ -205,7 +205,9 @@ async fn uninstalled(
         "shopify.app_uninstalled",
         shop,
         json!({"changed": ended.changed, "jobs_cancelled": ended.cancelled,
-               "fixes_failed": ended.fixes_failed}),
+               "fixes_failed": ended.fixes_failed,
+               // No mail transport or send job exists yet (audit L8, ADR-087).
+               "export_email": "not_queued_no_sender"}),
     )
     .await?;
     tx.commit().await.map_err(|e| database(&e))?;

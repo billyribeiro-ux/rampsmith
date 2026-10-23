@@ -150,6 +150,17 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    tx.commit().await.unwrap();
+}
+
+/// One `shop_billing` row for the graph's shop (audit L6).
+async fn seed_billing(pool: &PgPool, graph: Graph) {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(graph.tenant.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     sqlx::query(
         "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'no_active_plan')",
     )
@@ -170,6 +181,8 @@ async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool
     seed_jobs(&db, &owner, [a, b]).await;
     seed_r1(&pool, a).await;
     seed_r1(&pool, b).await;
+    seed_billing(&pool, a).await;
+    seed_billing(&pool, b).await;
     (db, pool, a, b)
 }
 

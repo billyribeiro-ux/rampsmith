@@ -36,6 +36,12 @@ async fn ensure_worker_login(opts: &PgPoolOptions, conn: &PgConnectOptions) {
         )))
         .execute(&admin)
         .await;
+        // A login left by an earlier run of this suite may predate the group.
+        let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "grant rampsmith_ctl to {WORKER_LOGIN}"
+        )))
+        .execute(&admin)
+        .await;
         let ready: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             "select coalesce((select pg_has_role(rolname, 'rampsmith_worker', 'usage')
                                 from pg_roles where rolname = '{WORKER_LOGIN}'), false)"

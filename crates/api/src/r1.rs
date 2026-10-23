@@ -114,6 +114,15 @@ fn staff(session: &shopify_auth::ShopSession) -> Result<&str, ApiError> {
     })
 }
 
+/// The audit actor for a signed-in staff member: the one format `shopify:<sub>`, the same the
+/// install writes (lane A audit L10, ADR-087).
+fn actor_id(session: &shopify_auth::ShopSession) -> Option<String> {
+    session
+        .user_id
+        .as_deref()
+        .map(|sub| format!("shopify:{sub}"))
+}
+
 // ---------------------------------------------------------------------------------------------
 // Entitlements and settings
 
@@ -483,7 +492,7 @@ pub(crate) async fn start_scan(
         &mut tx,
         &audit::NewEntry {
             actor_kind: ActorKind::User,
-            actor_id: session.user_id.clone(),
+            actor_id: actor_id(&session),
             action: "scan.started".to_owned(),
             subject_type: "scan".to_owned(),
             subject_id: scan.id.as_uuid(),
@@ -1156,7 +1165,7 @@ pub(crate) async fn approve_fix(
     Query(query): Query<ApproveQuery>,
 ) -> Result<Json<FixDto>, ApiError> {
     let id = uuid_of(&fix_id)?;
-    let approver = staff(&session)?.to_owned();
+    let approver = format!("shopify:{}", staff(&session)?);
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
     let fix = app_views::fix(&mut tx, site, id)
@@ -1251,7 +1260,7 @@ pub(crate) async fn reject_fix(
         &mut tx,
         &audit::NewEntry {
             actor_kind: ActorKind::User,
-            actor_id: session.user_id.clone(),
+            actor_id: actor_id(&session),
             action: "fix.rejected".to_owned(),
             subject_type: "fix".to_owned(),
             subject_id: id,
@@ -1289,6 +1298,8 @@ pub(crate) async fn undo_fix(
     Path(fix_id): Path<String>,
 ) -> Result<(StatusCode, Json<FixDto>), ApiError> {
     let id = uuid_of(&fix_id)?;
+    // An undo writes to the merchant's store: it names who asked, or it is refused.
+    let requested_by = format!("shopify:{}", staff(&session)?);
     let mut tx = state.db.tenant(session.tenant).await?;
     let site = site_of(&mut tx, session.shop_id).await?;
     let fix = app_views::fix(&mut tx, site, id)
@@ -1323,7 +1334,7 @@ pub(crate) async fn undo_fix(
         &mut tx,
         &audit::NewEntry {
             actor_kind: ActorKind::User,
-            actor_id: session.user_id.clone(),
+            actor_id: Some(requested_by),
             action: "fix.undo_requested".to_owned(),
             subject_type: "fix".to_owned(),
             subject_id: id,
@@ -1567,7 +1578,7 @@ pub(crate) async fn update_settings(
             &mut tx,
             &audit::NewEntry {
                 actor_kind: ActorKind::User,
-                actor_id: session.user_id.clone(),
+                actor_id: actor_id(&session),
                 action: "settings.updated".to_owned(),
                 subject_type: "site".to_owned(),
                 subject_id: site.as_uuid(),
