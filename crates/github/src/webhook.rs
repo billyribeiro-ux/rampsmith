@@ -123,6 +123,53 @@ pub enum Event {
     },
 }
 
+impl Event {
+    /// Parses a payload by its `X-GitHub-Event` name. [`WebhookVerifier::verify_and_parse`] calls
+    /// this after the signature passes; the pipeline calls it again on the stored copy of a
+    /// verified body, because events are processed from what was stored (PLAN §18).
+    pub fn parse(name: &str, body: &[u8]) -> Result<Self, WebhookError> {
+        Ok(match name {
+            "installation" => Self::Installation(parse(body)?),
+            "installation_repositories" => Self::InstallationRepositories(parse(body)?),
+            "pull_request" => Self::PullRequest(parse(body)?),
+            "push" => Self::Push(parse(body)?),
+            other => Self::Other {
+                name: other.to_owned(),
+            },
+        })
+    }
+
+    /// The installation the event belongs to, when the payload names one.
+    #[must_use]
+    pub fn installation_id(&self) -> Option<InstallationId> {
+        match self {
+            Self::Installation(e) => Some(e.installation.id),
+            Self::InstallationRepositories(e) => Some(e.installation.id),
+            Self::PullRequest(e) => e.installation.map(|i| i.id),
+            Self::Push(e) => e.installation.map(|i| i.id),
+            Self::Other { .. } => None,
+        }
+    }
+
+    /// The repository the event happened in, for the events that name one.
+    #[must_use]
+    pub fn repository_id(&self) -> Option<RepositoryId> {
+        match self {
+            Self::PullRequest(e) => Some(e.repository.id),
+            Self::Push(e) => Some(e.repository.id),
+            _ => None,
+        }
+    }
+}
+
+/// Whether `value` has the shape of an `X-Hub-Signature-256` header: `sha256=` and 64 hex
+/// digits. A listener checks this before it reads a body, so a request without a plausible
+/// signature costs nothing.
+#[must_use]
+pub fn signature_header_is_well_formed(value: &[u8]) -> bool {
+    decode_signature(value).is_some()
+}
+
 /// The installation a payload belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct InstallationRef {
@@ -484,15 +531,7 @@ impl WebhookVerifier {
                 return Err(WebhookError::UnsupportedContentType);
             }
         }
-        let event = match name {
-            "installation" => Event::Installation(parse(body)?),
-            "installation_repositories" => Event::InstallationRepositories(parse(body)?),
-            "pull_request" => Event::PullRequest(parse(body)?),
-            "push" => Event::Push(parse(body)?),
-            other => Event::Other {
-                name: other.to_owned(),
-            },
-        };
+        let event = Event::parse(name, body)?;
         Ok(Delivery {
             id: DeliveryId(id.to_owned()),
             event,

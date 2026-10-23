@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select requeued as \"requeued!\", stuck_24h as \"stuck!\" from github_events_sweep()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "requeued!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "stuck!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "2419131cfe8c887c38e6f0686fbd4b561a0c6c54afc796ea3e77f14addfb1895"
+}

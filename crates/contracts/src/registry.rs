@@ -4,6 +4,7 @@ use schemars::{Schema, schema_for};
 
 use crate::email::EmailSend;
 use crate::free_scan::{FreeScanResult, FreeScanRun};
+use crate::github::{GithubCheckRepository, GithubProcessEvent, GithubSyncInstallation};
 use crate::job::{JobError, ShopifyTokenRefresh};
 use crate::pipeline::{
     AiAltText, AuditData, ScanFinalize, ScanPageV2, ScanPlan, ShopifyApplyDataFix,
@@ -43,6 +44,18 @@ pub fn schemas() -> Vec<NamedSchema> {
         NamedSchema {
             name: "free-scan-run",
             schema: schema_for!(FreeScanRun),
+        },
+        NamedSchema {
+            name: "github-check-repository",
+            schema: schema_for!(GithubCheckRepository),
+        },
+        NamedSchema {
+            name: "github-process-event",
+            schema: schema_for!(GithubProcessEvent),
+        },
+        NamedSchema {
+            name: "github-sync-installation",
+            schema: schema_for!(GithubSyncInstallation),
         },
         NamedSchema {
             name: "job-error",

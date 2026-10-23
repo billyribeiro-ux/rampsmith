@@ -214,6 +214,12 @@ class Inputs:
                 )
             self.images[name] = value
         self.app_host = host(environ, "RAMPSMITH_APP_HOST")
+        # The GitHub pull-request channel's switch (ADR-290): `false` unless the deploy says
+        # `true`, so a deploy that does not mention it can never switch the channel on.
+        flag = environ.get("RAMPSMITH_CODE_FIX_CHANNEL", "false").strip() or "false"
+        if flag not in ("true", "false"):
+            raise ValueError("RAMPSMITH_CODE_FIX_CHANNEL must be true or false")
+        self.code_fix_channel = flag
         # The api's public webhook listener, which also serves the one-click unsubscribe route.
         self.webhook_host = host(environ, "RAMPSMITH_WEBHOOK_HOST")
 
@@ -331,6 +337,8 @@ def _web(env: str, inputs: Inputs) -> Any:
         # the scan. This service holds the widget's public key and the secret it presents to the
         # api, and no Turnstile secret (ADR-267).
         "FREE_SCANNER_BACKEND": "api",
+        # The App's URL name, to send a merchant to GitHub's installation page (ADR-291). Public.
+        "GITHUB_APP_SLUG": shared("GITHUB_APP_SLUG"),
         "FREE_SCAN_SERVICE_TOKEN": shared("FREE_SCAN_SERVICE_TOKEN"),
         # Behind Railway's edge every request arrives from the edge's own address, so without
         # these the free scanner's per-address budget is one budget for everyone and Turnstile's
@@ -375,6 +383,11 @@ def _api(env: str, inputs: Inputs) -> Any:
         "GITHUB_APP_ID": shared("GITHUB_APP_ID"),
         "GITHUB_APP_CLIENT_ID": shared("GITHUB_APP_CLIENT_ID"),
         "GITHUB_APP_WEBHOOK_SECRET": shared("GITHUB_APP_WEBHOOK_SECRET"),
+        # Exchanges the installer's authorization code when a merchant connects GitHub (ADR-291).
+        # The api alone holds it; the App's private key stays in ctl.
+        "GITHUB_APP_CLIENT_SECRET": shared("GITHUB_APP_CLIENT_SECRET"),
+        # Off in the App Store build (ADR-290).
+        "CODE_FIX_CHANNEL_ENABLED": inputs.code_fix_channel,
         # Checks the signed links in email (ADR-274); the engine, which mints them, holds the
         # same ring, and nothing else does.
         "EMAIL_LINK_KEYS": shared("EMAIL_LINK_KEYS"),
@@ -411,6 +424,7 @@ def _ctl(env: str, inputs: Inputs) -> Any:
         "GITHUB_APP_ID": shared("GITHUB_APP_ID"),
         "GITHUB_APP_CLIENT_ID": shared("GITHUB_APP_CLIENT_ID"),
         "GITHUB_APP_PRIVATE_KEY": shared("GITHUB_APP_PRIVATE_KEY"),
+        "CODE_FIX_CHANNEL_ENABLED": inputs.code_fix_channel,
         # Where the app's links point (the uninstall export email); the mailer reads it too.
         "APP_ORIGIN": f"https://{inputs.app_host}" if inputs.app_host else preserve_existing(),
         **R2_EVIDENCE,

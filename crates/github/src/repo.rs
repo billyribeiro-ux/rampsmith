@@ -96,6 +96,59 @@ pub struct PullRequest {
     pub head_sha: Sha,
 }
 
+/// A pull request's current state, read back from the API. Webhook events only announce that
+/// something changed; this is what the pipeline records (integration audit M1), and its
+/// `base_repository` is what a stored pull request is matched on (audit L8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullState {
+    /// The global id.
+    pub id: u64,
+    /// The number within the repository.
+    pub number: u64,
+    /// Whether it is open.
+    pub open: bool,
+    /// Whether it was merged.
+    pub merged: bool,
+    /// The head branch.
+    pub head_ref: String,
+    /// The head commit.
+    pub head_sha: Sha,
+    /// The base branch.
+    pub base_ref: String,
+    /// The id of the repository the pull request targets.
+    pub base_repository: crate::types::RepositoryId,
+}
+
+#[derive(Deserialize)]
+struct PullDetail {
+    id: u64,
+    number: u64,
+    state: String,
+    #[serde(default)]
+    merged: bool,
+    head: PullDetailRef,
+    base: PullDetailBase,
+}
+
+#[derive(Deserialize)]
+struct PullDetailRef {
+    #[serde(rename = "ref")]
+    reference: String,
+    sha: Sha,
+}
+
+#[derive(Deserialize)]
+struct PullDetailBase {
+    #[serde(rename = "ref")]
+    reference: String,
+    repo: PullDetailRepo,
+}
+
+#[derive(Deserialize)]
+struct PullDetailRepo {
+    id: crate::types::RepositoryId,
+}
+
 #[derive(Deserialize)]
 struct ShaOnly {
     sha: Sha,
@@ -404,12 +457,15 @@ impl Repository<'_> {
     }
 
     /// Points a `rampsmith/` branch at `sha`: creates it when absent, leaves it when already
-    /// there, and otherwise moves it, forcing only for [`RefUpdate::Rederive`].
+    /// there, and otherwise moves it. A move is a fast-forward, or for
+    /// [`RefUpdate::Rederive`] a forced replacement that happens only while the branch still
+    /// points at the commit Rampsmith last pushed (`expected_head`); otherwise it fails with
+    /// [`GitHubError::BranchMoved`] and leaves the branch alone (audit L3).
     pub async fn set_branch(
         &self,
         branch: &WritableBranch,
         sha: &Sha,
-        update: RefUpdate,
+        update: &RefUpdate,
     ) -> Result<(), GitHubError> {
         match self.branch_head(branch.as_branch()).await? {
             None => {
@@ -422,7 +478,12 @@ impl Repository<'_> {
                 self.github.send(request).await?;
             }
             Some(current) if current == *sha => {}
-            Some(_) => {
+            Some(current) => {
+                if let RefUpdate::Rederive { expected_head } = update
+                    && current != *expected_head
+                {
+                    return Err(GitHubError::BranchMoved);
+                }
                 let request = self
                     .request(
                         Op::UpdateRef,
@@ -445,7 +506,7 @@ impl Repository<'_> {
         &self,
         plan: &PullRequestPlan,
         base: &Sha,
-        update: RefUpdate,
+        update: &RefUpdate,
     ) -> Result<Sha, GitHubError> {
         let mut tree = self.commit_tree(base).await?;
         let mut parent = base.clone();
@@ -506,6 +567,28 @@ impl Repository<'_> {
             .await?
             .decode::<PullResponse>()?
             .into())
+    }
+
+    /// `GET /repos/{owner}/{repo}/pulls/{number}`, or `None` when it does not exist.
+    pub async fn pull_request(&self, number: u64) -> Result<Option<PullState>, GitHubError> {
+        let request = self.request(Op::GetPull, Method::GET, &format!("/pulls/{number}"));
+        match self.github.send(request).await {
+            Ok(response) => {
+                let p: PullDetail = response.decode()?;
+                Ok(Some(PullState {
+                    id: p.id,
+                    number: p.number,
+                    open: p.state == "open",
+                    merged: p.merged,
+                    head_ref: p.head.reference,
+                    head_sha: p.head.sha,
+                    base_ref: p.base.reference,
+                    base_repository: p.base.repo.id,
+                }))
+            }
+            Err(GitHubError::NotFound) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     /// Creates the verification check run.

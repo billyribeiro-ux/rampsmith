@@ -84,4 +84,31 @@ select md5(:'label' || ':job:' || g)::uuid, 'scan.page', 'scan.page@1',
        jsonb_build_object('page', g), :'tenant', 'ready'
 from generate_series(1, 25) as g;
 
+-- The GitHub channel (ADR-290 to ADR-294): an installation, its repository, a pull request and an
+-- event, so a restored database proves these tables came back with their keys intact.
+insert into github_installations (id, tenant_id, site_id, installation_id, account_login,
+                                  account_type, repository_selection, status)
+values (md5(:'label' || ':gh:install')::uuid, :'tenant', md5(:'label' || ':site')::uuid,
+        1 + abs(hashtext(:'label')), 'seeded-owner', 'User', 'selected', 'active');
+
+insert into github_repos (id, tenant_id, installation_row, repo_id, full_name, default_branch,
+                          user_can_push, selected, connected_branch)
+values (md5(:'label' || ':gh:repo')::uuid, :'tenant', md5(:'label' || ':gh:install')::uuid,
+        1 + abs(hashtext(:'label')), 'seeded-owner/theme', 'main', true, true, 'main');
+
+insert into github_pull_requests (id, tenant_id, repo_row, repo_id, number, batch_id, head_branch,
+                                  base_branch, head_sha, pushed_sha, state, html_url, fix_count,
+                                  files, changed_lines)
+values (md5(:'label' || ':gh:pr')::uuid, :'tenant', md5(:'label' || ':gh:repo')::uuid,
+        1 + abs(hashtext(:'label')), 1, 'seeded-batch', 'rampsmith/fix-seeded-batch', 'main',
+        repeat('a', 40), repeat('a', 40), 'open', 'https://github.com/seeded-owner/theme/pull/1',
+        1, 1, 2);
+
+insert into github_pr_fixes (pull_request_id, fix_id, tenant_id)
+values (md5(:'label' || ':gh:pr')::uuid, md5(:'label' || ':fix:1')::uuid, :'tenant');
+
+insert into github_events (id, tenant_id, delivery_id, event, installation_id, body, body_sha256)
+values (md5(:'label' || ':gh:event')::uuid, :'tenant', 'seeded-delivery', 'pull_request',
+        1 + abs(hashtext(:'label')), '{}', sha256(convert_to(:'label', 'UTF8')));
+
 commit;

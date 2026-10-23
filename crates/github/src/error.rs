@@ -185,6 +185,10 @@ pub enum GitHubError {
     /// The repository is not a Shopify theme.
     #[error(transparent)]
     Structure(#[from] StructureError),
+    /// A re-derive found the fix branch somewhere other than Rampsmith's last push, so someone
+    /// else has committed to it and nothing was overwritten (integration audit L3).
+    #[error("the fix branch has commits Rampsmith did not push; it was left as it is")]
+    BranchMoved,
 }
 
 impl GitHubError {
