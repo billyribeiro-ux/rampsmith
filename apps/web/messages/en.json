@@ -549,5 +549,9 @@
   "app_settings_email_notifications_hint": "Scan results, fixes waiting for approval, and weekly summaries. Emails about your account and your data are always sent.",
   "app_settings_email_no_address": "No email address is on file for this store yet, so Rampsmith has nothing to send. Add a notification email above or wait for the next sync with Shopify.",
   "app_settings_email_saved": "Email preference saved.",
-  "app_settings_email_failed": "The email preference could not be saved."
+  "app_settings_email_failed": "The email preference could not be saved.",
+  "app_setup_heading": "Online store",
+  "app_setup_body": "Rampsmith adds one optional link to your storefront footer, to your accessibility statement, and a form for shoppers to report a barrier. It is off until you turn it on, and it does not change your theme's files.",
+  "app_setup_steps": "In the theme editor, open App embeds and switch on Accessibility statement, then save.",
+  "app_setup_link": "Open the theme editor"
 }

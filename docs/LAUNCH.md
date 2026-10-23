@@ -23,8 +23,10 @@ release" wording anywhere else: the target is the full product through R2 (PLAN 
 - [ ] Privacy policy, terms of service and Data Processing Addendum as drafts marked
       "attorney review required" (PLAN §25). Never published without founder approval.
 - [ ] Accessibility statement for rampsmith itself.
-- [ ] App Store listing package: copy that passes `claims-lint`, screenshots captured from the
-      running app, a demo screencast script, and reviewer test instructions.
+- [x] App Store listing package: copy that passes `claims-lint`, screenshots captured from the
+      running app, a demo screencast script, and reviewer test instructions. Done in `listing/`
+      (ADR-301, 23 Oct 2026); the icon, the feature image and the retake of the screenshots on
+      the real admin are founder-side rows in section E.
 - [ ] `rsctl doctor`: validates every founder input against the live service and prints PASS or
       FAIL per input (for example: the Anthropic key lists models; the R2 keys write and read an
       object; the GitHub App JWT reaches `GET /app`; Stripe test keys retrieve the account).
@@ -120,4 +122,9 @@ A check that needs an input from C counts toward A or B only when all three hold
 | At least 80% of alt-text drafts approved unedited (R1 lane C, PLAN §5) | 1, 3, 5 | `edited` is carried on every fix (ADR-093) and the log exports it | Approved without `edited` divided by approved, over the same stores' drafts, is at least 0.8 |
 | App Bridge save bar (`shopify.saveBar`) appears on edit and Save and Discard act on the form (R1 lane C) | 1, 3 | The page's own Save and Discard buttons, tested | By hand on the development store in the embedded admin |
 | The managed pricing page link opens the plan page for the store in the admin (R1 lane C) | 1, 3 | The link's address is asserted | By hand on the development store with the app listed |
+| App Home Core Web Vitals in the real admin: Shopify measures LCP, CLS and INP at the 75th percentile of page loads over 28 days, with at least 100 calls each, through App Bridge's Web Vitals collection (Built for Shopify criteria 2.1.1 to 2.1.3: 2.5 s, 0.1, 200 ms; ADR-300) | 1, 3 | `apps/web/tests/perf-app-home.spec.ts` (project `app-perf`, in the `e2e` job): every screen on a mobile profile against the typed fake api, failing above LCP 2.0 s, CLS 0.05, INP 150 ms and 150 KB of JavaScript; results in `docs/evidence/r2-performance.md` | After at least 100 loads of each screen on the development store, read the app's performance figures in the Partner Dashboard (Dev Dashboard) and record them under `docs/evidence/`; all three must be inside Shopify's thresholds |
+| Storefront Lighthouse impact of the app embed under 10 points (Shopify checklist 4.A, 4.B) | 1, 3 | `packages/theme-app-ext-test/test/budgets.test.ts` and `browser-layout.test.ts` (4.7 KB script, under 2 KB CSS, no layout shift) | Lighthouse on the demo store's Home, Product and Collection pages with the embed off and on, five runs averaged; the difference is under 10 points (weighted 17%, 40%, 43%) |
+| Review screencast and reviewer steps run on a development store with the real admin | 1, 3 | The same scenes pass against the typed fake api: `app-screens.spec.ts`, `app-keyboard.spec.ts`, `app-journey.spec.ts`, `app-review.spec.ts` | Follow `listing/shopify-app-store/reviewer-instructions.md` step by step, record `listing/shopify-app-store/screencast-script.md` (English captions), and fix any step that differs |
+| Listing screenshots on the real admin, app icon and feature image | 1, 13 | `listing/screenshots/` (six PNGs at 1600 x 900 from the Polaris shim; `src/lib/app/listing.test.ts`) | `pnpm --filter @rampsmith/web run listing:screenshots` retakes the shim set; retake the six on the development store with Shopify's Polaris (same size, same alt text), add the 1200 x 1200 icon and the 1600 x 900 feature image once the brand mark and trademark are cleared |
+| Scope trim before submission (requirement 3.2): only `write_files` is used by a shipped screen; `write_products`, `write_content` and `write_online_store_navigation` serve R2 fixes that are not in the build | 1, 13 | `infra/railway/tests/test_shopify_app_config.py` pins PLAN §14's ten scopes | If description and page fixes are not in the build at submission, remove the three scopes from `shopify.app.toml` and the test's list in one change, `shopify app deploy`, and say so in the reviewer notes |
 | Shopify App Review | 1, 13 | The PLAN §14 App Review checklist passes | The founder submits the app for review |

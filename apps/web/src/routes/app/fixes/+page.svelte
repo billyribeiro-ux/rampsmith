@@ -148,75 +148,79 @@
 </svelte:head>
 
 <s-page heading={m.app_fixes_page_heading()}>
-  <s-section heading={m.app_queue_heading()}>
-    {#if queue.status === 'loading'}
-      <Loading />
-    {:else if queue.status === 'error'}
-      <ErrorBlock error={queue.error} retry={() => queue.refresh()} />
-    {:else}
-      <p tabindex="-1" bind:this={emptyQueue} class="status">
-        {queued.length === 0 ? m.app_queue_empty() : m.app_queue_count({ count: queued.length })}
-      </p>
-      {#each queued as fix (fix.id)}
-        <FixCard
-          {fix}
-          mode="queue"
-          busy={busy[fix.id] === true}
-          error={errors[fix.id] ?? ''}
-          {maxCharacters}
-          onapprove={(confirmed: boolean) => void decide(fix, 'approve', confirmed)}
-          onreject={() => void decide(fix, 'reject')}
-          onundo={() => undefined}
-          onsave={(alt: string) => save(fix, alt)}
-        />
-      {/each}
-    {/if}
-  </s-section>
-
-  <s-section heading={m.app_applied_heading()}>
-    {#if applied.status === 'loading'}
-      <Loading />
-    {:else if applied.status === 'error'}
-      <ErrorBlock error={applied.error} retry={() => applied.refresh()} />
-    {:else}
-      <p tabindex="-1" bind:this={emptyApplied} class="status">
-        {done.length === 0 ? m.app_applied_empty() : m.app_applied_count({ count: done.length })}
-      </p>
-      {#each done as fix (fix.id)}
-        <FixCard
-          {fix}
-          mode="applied"
-          busy={busy[fix.id] === true}
-          error={errors[fix.id] ?? ''}
-          {maxCharacters}
-          onapprove={() => undefined}
-          onreject={() => undefined}
-          onundo={() => void undo(fix)}
-          onsave={() => Promise.resolve(false)}
-        />
-      {/each}
-    {/if}
-  </s-section>
-
-  {#if rewrites !== undefined || pullRequests !== undefined}
-    <s-section heading={m.app_more_heading()}>
-      <s-stack gap="base">
-        {#if rewrites !== undefined}
-          <LockedFeature
-            gate={rewrites}
-            name={m.app_feature_rewrites()}
-            description={m.app_feature_rewrites_body()}
+  <!--
+    Both lists load together and appear together: a section that arrives alone pushes the one
+    below it down, which Core Web Vitals count as layout shift (ADR-300).
+  -->
+  {#if queue.status === 'loading' || applied.status === 'loading'}
+    <s-section><Loading /></s-section>
+  {:else}
+    <s-section heading={m.app_queue_heading()}>
+      {#if queue.status === 'error'}
+        <ErrorBlock error={queue.error} retry={() => queue.refresh()} />
+      {:else}
+        <p tabindex="-1" bind:this={emptyQueue} class="status">
+          {queued.length === 0 ? m.app_queue_empty() : m.app_queue_count({ count: queued.length })}
+        </p>
+        {#each queued as fix (fix.id)}
+          <FixCard
+            {fix}
+            mode="queue"
+            busy={busy[fix.id] === true}
+            error={errors[fix.id] ?? ''}
+            {maxCharacters}
+            onapprove={(confirmed: boolean) => void decide(fix, 'approve', confirmed)}
+            onreject={() => void decide(fix, 'reject')}
+            onundo={() => undefined}
+            onsave={(alt: string) => save(fix, alt)}
           />
-        {/if}
-        {#if pullRequests !== undefined}
-          <LockedFeature
-            gate={pullRequests}
-            name={m.app_feature_prs()}
-            description={m.app_feature_prs_body()}
-          />
-        {/if}
-      </s-stack>
+        {/each}
+      {/if}
     </s-section>
+
+    <s-section heading={m.app_applied_heading()}>
+      {#if applied.status === 'error'}
+        <ErrorBlock error={applied.error} retry={() => applied.refresh()} />
+      {:else}
+        <p tabindex="-1" bind:this={emptyApplied} class="status">
+          {done.length === 0 ? m.app_applied_empty() : m.app_applied_count({ count: done.length })}
+        </p>
+        {#each done as fix (fix.id)}
+          <FixCard
+            {fix}
+            mode="applied"
+            busy={busy[fix.id] === true}
+            error={errors[fix.id] ?? ''}
+            {maxCharacters}
+            onapprove={() => undefined}
+            onreject={() => undefined}
+            onundo={() => void undo(fix)}
+            onsave={() => Promise.resolve(false)}
+          />
+        {/each}
+      {/if}
+    </s-section>
+
+    {#if rewrites !== undefined || pullRequests !== undefined}
+      <s-section heading={m.app_more_heading()}>
+        <s-stack gap="base">
+          {#if rewrites !== undefined}
+            <LockedFeature
+              gate={rewrites}
+              name={m.app_feature_rewrites()}
+              description={m.app_feature_rewrites_body()}
+            />
+          {/if}
+          {#if pullRequests !== undefined}
+            <LockedFeature
+              gate={pullRequests}
+              name={m.app_feature_prs()}
+              description={m.app_feature_prs_body()}
+            />
+          {/if}
+        </s-stack>
+      </s-section>
+    {/if}
   {/if}
 </s-page>
 
