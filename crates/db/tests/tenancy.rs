@@ -23,7 +23,9 @@ use db::repo::{
 use domain::{FindingStatus, TenantId, UserId};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Row};
-use support::{Graph, app_pool, assert_empty, owner_pool, sealed_tokens, seed, worker_pool};
+use support::{
+    Graph, app_pool, assert_empty, ctl_pool, owner_pool, sealed_tokens, seed, worker_pool,
+};
 
 /// One job for each tenant, enqueued through the repository, and one system job with no tenant,
 /// which only workers may see (`jobs` is a tenant table with per-role policies, ADR-003).
@@ -151,6 +153,25 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     tx.commit().await.unwrap();
 }
 
+/// One `shop_billing` row for the graph's shop (audit L6).
+async fn seed_billing(pool: &PgPool, graph: Graph) {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(graph.tenant.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing) values ($1, $2, 'no_active_plan')",
+    )
+    .bind(graph.shop.as_uuid())
+    .bind(graph.tenant.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+}
+
 async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool, Graph, Graph) {
     let owner = owner_pool(opts.clone(), conn.clone()).await;
     let pool = app_pool(opts, conn).await;
@@ -160,6 +181,8 @@ async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool
     seed_jobs(&db, &owner, [a, b]).await;
     seed_r1(&pool, a).await;
     seed_r1(&pool, b).await;
+    seed_billing(&pool, a).await;
+    seed_billing(&pool, b).await;
     (db, pool, a, b)
 }
 
@@ -414,7 +437,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 21] = [
+const TENANT_TABLES: [&str; 22] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -437,10 +460,11 @@ const TENANT_TABLES: [&str; 21] = [
     "ai_reservations",
     "webhook_events",
     "webhook_digests",
+    "shop_billing",
 ];
 
 /// The tables ADR-037 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 9] = [
+const R1_TABLES: [&str; 10] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -450,6 +474,7 @@ const R1_TABLES: [&str; 9] = [
     "ai_reservations",
     "webhook_events",
     "webhook_digests",
+    "shop_billing",
 ];
 
 #[sqlx::test]
@@ -665,6 +690,65 @@ async fn row_level_security_blocks_updates_and_deletes_of_other_tenants_rows(
 }
 
 // --- Layer 3: composite tenant foreign keys, checked even for the owner --------------------
+
+/// Only `ctl`'s group may delete call records, and only for the tenant the transaction is
+/// scoped to (audit L7): the engine's login is a plain worker member.
+#[sqlx::test]
+async fn only_the_ctl_role_can_delete_ai_calls_and_only_for_its_own_tenant(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
+    let owner = owner_pool(opts.clone(), conn.clone()).await;
+    let workers = worker_pool(opts.clone(), conn.clone()).await;
+    for statement in ["delete from ai_calls", "select redact_ai_calls()"] {
+        let mut tx = workers.begin().await.unwrap();
+        sqlx::query("select set_config('app.tenant_id', $1, true)")
+            .bind(a.tenant.to_string())
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let err = sqlx::query(statement)
+            .execute(&mut *tx)
+            .await
+            .expect_err("the worker role deleted call records");
+        assert!(err.to_string().contains("permission denied"), "{err}");
+    }
+    let ctl = ctl_pool(opts, conn).await;
+    let mut tx = ctl.begin().await.unwrap();
+    assert!(
+        sqlx::query("select redact_ai_calls()")
+            .execute(&mut *tx)
+            .await
+            .is_err(),
+        "no tenant scope must be refused"
+    );
+    drop(tx);
+    let mut tx = ctl.begin().await.unwrap();
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(a.tenant.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let removed: i64 = sqlx::query_scalar("select redact_ai_calls()")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(removed, 1);
+    let left = |tenant: TenantId| {
+        let owner = owner.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>("select count(*) from ai_calls where tenant_id = $1")
+                .bind(tenant.as_uuid())
+                .fetch_one(&owner)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(left(a.tenant).await, 0);
+    assert_eq!(left(b.tenant).await, 1);
+}
 
 #[sqlx::test]
 async fn composite_foreign_keys_reject_cross_tenant_references_even_for_the_owner(
@@ -1108,7 +1192,7 @@ async fn redaction_and_job_cancellation_never_touch_another_tenant(
     conn: PgConnectOptions,
 ) {
     let (_, _, a, b) = two_tenants(opts.clone(), conn.clone()).await;
-    let workers = worker_pool(opts.clone(), conn.clone()).await;
+    let workers = ctl_pool(opts.clone(), conn.clone()).await;
     let db = Db::from_pool(workers.clone());
     let owner = owner_pool(opts, conn).await;
     let count = |sql: &'static str, tenant: TenantId| {
@@ -1150,6 +1234,16 @@ async fn redaction_and_job_cancellation_never_touch_another_tenant(
     );
 
     // Redacting A's own shop empties A and leaves B whole.
+    sqlx::query("update shopify_shops set shop_gid = 'gid://shopify/Shop/1' where tenant_id = $1")
+        .bind(a.tenant.as_uuid())
+        .execute(&owner)
+        .await
+        .unwrap();
+    sqlx::query("update jobs set payload = '{\"note\": \"store content\"}' where tenant_id = $1")
+        .bind(a.tenant.as_uuid())
+        .execute(&owner)
+        .await
+        .unwrap();
     let mut tx = db.tenant(a.tenant).await.unwrap();
     let removed = redact::shop(&mut tx, a.shop).await.unwrap().unwrap();
     tx.commit().await.unwrap();
@@ -1168,6 +1262,23 @@ async fn redaction_and_job_cancellation_never_touch_another_tenant(
         assert_eq!(count(sql, a.tenant).await, 0, "{table} kept A's rows");
         assert!(count(sql, b.tenant).await >= 1, "{table} lost B's rows");
     }
+    // Job payloads and the shop's global id go too (audit L7).
+    assert_eq!(
+        count(
+            "select count(*) from jobs where tenant_id = $1 and payload <> '{}'::jsonb",
+            a.tenant
+        )
+        .await,
+        0
+    );
+    assert_eq!(
+        count(
+            "select count(*) from shopify_shops where tenant_id = $1 and shop_gid is not null",
+            a.tenant
+        )
+        .await,
+        0
+    );
     // The second run removes nothing.
     let mut tx = db.tenant(a.tenant).await.unwrap();
     let again = redact::shop(&mut tx, a.shop).await.unwrap().unwrap();

@@ -8,6 +8,12 @@
 //!   answer, through `billing::reconcile`.
 //! - **Per-shop decision.** `billing::sweep::on_app_load` says whether the stored state is
 //!   fresh enough (5 minutes) or a boundary passed; a shop that needs no check costs nothing.
+//! - **A plan checked recently is not asked again.** A "no plan" answer is cached for two
+//!   minutes and a `plan_handle` redirect (which no route reads today) could only check sooner,
+//!   never more often than every 15 seconds, so one shop reloading in a loop cannot spend the
+//!   organization's budget (lane A audit M3, ADR-087).
+//! - **A share per shop.** One shop gets at most 3 calls a minute, whatever its stored state
+//!   says; the rest of the pacer belongs to the other shops.
 //! - **Single flight.** One call per shop at a time; a second app load meanwhile uses the
 //!   stored plan.
 //! - **Global pacing.** Calls are spaced at least 334 ms apart across all shops (3 a second),
@@ -15,19 +21,21 @@
 //! - **Failures back off** through the stored `consecutive_failures` and `last_attempt_at`
 //!   (`billing::sweep::retry_delay`), and the stored plan stays in force meanwhile.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use billing::entitlements::Entitlements;
 use billing::partner_api::{
     ACCESS_TOKEN_HEADER, PartnerApiClient, PartnerCredentials, PartnerRequest, PartnerResponse,
     PartnerTransport, TransportError,
 };
 use billing::reconcile::{ApiAnswer, RedirectParam, reconcile};
-use billing::stored::{state_of, stored_of};
+use billing::stored::{entitlements_of, state_of, stored_of};
 use billing::sweep::{Decision, on_app_load};
 use billing::{AppGid, ShopGid};
-use db::repo::{audit, shop_billing, shopify as shops};
+use db::TenantTx;
+use db::repo::{app_views, audit, shop_billing, shopify as shops};
 use db::{Db, DbError};
 use domain::{ActorKind, ShopId, TenantId};
 use secrecy::ExposeSecret;
@@ -41,6 +49,11 @@ const SPACING: Duration = Duration::from_millis(334);
 const MAX_WAIT: Duration = Duration::from_secs(2);
 /// One Partner API call may take this long.
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+/// One shop may start at most [`SHOP_CALLS`] calls in any window of this length.
+const SHOP_WINDOW: Duration = Duration::from_mins(1);
+/// The calls one shop may start per [`SHOP_WINDOW`]: with 180 pacer slots a minute, no shop can
+/// hold more than a fiftieth of them.
+const SHOP_CALLS: usize = 3;
 
 /// Sends Partner API requests over HTTPS. Tests may point it at another host.
 #[derive(Debug, Clone)]
@@ -76,6 +89,40 @@ impl PartnerTransport for HttpTransport {
     }
 }
 
+/// Caps each shop's share of the pacer.
+#[derive(Debug, Default)]
+struct ShopShare {
+    calls: Mutex<HashMap<ShopId, VecDeque<Instant>>>,
+}
+
+impl ShopShare {
+    /// Records a call for `shop` and returns `true`, or returns `false` when the shop already
+    /// started [`SHOP_CALLS`] within [`SHOP_WINDOW`].
+    fn take(&self, shop: ShopId) -> bool {
+        let Ok(mut calls) = self.calls.lock() else {
+            return false;
+        };
+        let now = Instant::now();
+        // Forget shops whose calls have all aged out, so the map stays as small as the number
+        // of shops active in the last minute.
+        calls.retain(|_, started| {
+            while started
+                .front()
+                .is_some_and(|at| now.duration_since(*at) >= SHOP_WINDOW)
+            {
+                started.pop_front();
+            }
+            !started.is_empty()
+        });
+        let started = calls.entry(shop).or_default();
+        if started.len() >= SHOP_CALLS {
+            return false;
+        }
+        started.push_back(now);
+        true
+    }
+}
+
 /// Spaces calls across all shops.
 #[derive(Debug)]
 struct Pacer {
@@ -104,6 +151,7 @@ impl Pacer {
 struct Inner {
     client: PartnerApiClient<HttpTransport>,
     pacer: Pacer,
+    share: ShopShare,
     in_flight: Mutex<HashSet<ShopId>>,
 }
 
@@ -132,24 +180,33 @@ impl PartnerPlans {
     /// A client for `app` using `credentials`. `base` replaces the Partner API's scheme, host
     /// and port, for tests.
     ///
-    /// # Panics
+    /// The client follows no redirect, speaks HTTPS only (unless `base` points a test at a
+    /// plain-HTTP host) and carries a timeout. Building it can fail, and then the app must not
+    /// start with a default client that has none of those (lane A audit L9).
     ///
-    /// Never in practice: building the HTTP client with a timeout cannot fail.
-    #[must_use]
-    pub fn new(credentials: PartnerCredentials, app: AppGid, base: Option<url::Url>) -> Self {
+    /// # Errors
+    ///
+    /// When the HTTP client cannot be built (for example no usable TLS backend).
+    pub fn new(
+        credentials: PartnerCredentials,
+        app: AppGid,
+        base: Option<url::Url>,
+    ) -> Result<Self, reqwest::Error> {
         let http = reqwest::Client::builder()
             .timeout(CALL_TIMEOUT)
-            .build()
-            .unwrap_or_default();
-        Self {
+            .redirect(reqwest::redirect::Policy::none())
+            .https_only(base.is_none())
+            .build()?;
+        Ok(Self {
             inner: Arc::new(Inner {
                 client: PartnerApiClient::new(HttpTransport { http, base }, credentials, app),
                 pacer: Pacer {
                     next: tokio::sync::Mutex::new(Instant::now()),
                 },
+                share: ShopShare::default(),
                 in_flight: Mutex::new(HashSet::new()),
             }),
-        }
+        })
     }
 
     /// The shop's active subscription, straight from the Partner API (no pacing, no storage).
@@ -204,6 +261,10 @@ impl PartnerPlans {
         let Some(_flight) = self.enter(shop) else {
             return Ok(());
         };
+        if !self.inner.share.take(shop) {
+            tracing::warn!("plan check skipped: the shop used its share of Partner API calls");
+            return Ok(());
+        }
         if !self.inner.pacer.slot().await {
             tracing::warn!("plan check skipped: the Partner API pacing queue is full");
             return Ok(());
@@ -221,6 +282,13 @@ impl PartnerPlans {
             now,
         );
         shop_billing::put(&mut tx, shop, &stored_of(&outcome.state)).await?;
+        // A plan that changed takes the merchant's own AI budget down to the new ceiling in the
+        // same transaction, so a downgrade cannot leave a budget the new plan never granted
+        // (lane A audit M4, ADR-087). A raise leaves the merchant's choice alone.
+        let (before, after) = (entitlements_of(&latest), entitlements_of(&outcome.state));
+        if before.plan() != after.plan() {
+            lower_ai_budget(&mut tx, shop, &after).await?;
+        }
         for event in &outcome.events {
             audit::append(
                 &mut tx,
@@ -239,6 +307,29 @@ impl PartnerPlans {
     }
 }
 
+/// Lowers the site's stored AI budget to `granted`'s ceiling when it is above it.
+async fn lower_ai_budget(
+    tx: &mut TenantTx,
+    shop: ShopId,
+    granted: &Entitlements,
+) -> Result<(), DbError> {
+    let Some(site) = app_views::site_of_shop(tx, shop).await? else {
+        return Ok(());
+    };
+    let ceiling = i64::try_from(granted.ai_budget_micro_usd()).unwrap_or(i64::MAX);
+    let stored = app_views::settings(tx, site)
+        .await?
+        .and_then(|(document, _)| {
+            document
+                .get("ai_budget_micro_usd")
+                .and_then(serde_json::Value::as_i64)
+        });
+    if stored.is_some_and(|budget| budget > ceiling) {
+        app_views::merge_settings(tx, site, &json!({"ai_budget_micro_usd": ceiling})).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -248,7 +339,7 @@ mod tests {
     use super::*;
 
     fn plans() -> PartnerPlans {
-        PartnerPlans::new(
+        let built = PartnerPlans::new(
             PartnerCredentials {
                 organization: billing::PartnerOrganizationId::parse("1")
                     .unwrap_or_else(|_| unreachable!("1 is an organization id")),
@@ -256,7 +347,25 @@ mod tests {
             },
             AppGid::parse("gid://shopify/App/1").unwrap_or_else(|_| unreachable!("an app gid")),
             None,
-        )
+        );
+        built.unwrap_or_else(|_| unreachable!("the client builds"))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn one_shop_gets_three_calls_a_minute_and_the_others_are_unaffected() {
+        let share = ShopShare::default();
+        let looping = ShopId::new();
+        let neighbour = ShopId::new();
+        let granted = (0..1000).filter(|_| share.take(looping)).count();
+        assert_eq!(granted, 3, "a looping shop is held to its share");
+        assert!(share.take(neighbour), "another shop still gets its calls");
+        tokio::time::advance(Duration::from_secs(61)).await;
+        assert!(share.take(looping), "the window moves on");
+        assert_eq!(
+            share.calls.lock().map_or(0, |c| c.len()),
+            1,
+            "the idle neighbour was forgotten"
+        );
     }
 
     #[test]

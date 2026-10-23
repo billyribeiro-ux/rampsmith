@@ -248,8 +248,16 @@ export function verifyScanHandler(deps: EngineDeps): JobHandler {
       fresh: freshData + freshRender,
     });
     await withTenant(deps.sql, tenantId, async (tx) => {
+      // A verification only counts while the fix is still in the shop. An undo that committed
+      // while the pages were being scanned (or one that commits right after this check, which
+      // waits for this row lock) must not find its reopened findings closed again (lane A
+      // audit L3). The scan itself is still finished below.
+      const [current] = await tx<{ status: string }[]>`
+        select status from fixes
+         where tenant_id = ${tenantId} and id = ${payload.fix_id} for update`;
+      const inShop = current?.status === 'applied' || current?.status === 'verified';
       let afterId: string | null = null;
-      if (afterCrop !== undefined && verdict.ok) {
+      if (inShop && afterCrop !== undefined && verdict.ok) {
         const [first] = loaded.findings;
         afterId = uuidv7();
         await tx`
@@ -257,19 +265,20 @@ export function verifyScanHandler(deps: EngineDeps): JobHandler {
           values (${afterId}, ${tenantId}, ${payload.scan_id}, ${first?.id ?? null}, 'image/png',
                   ${afterCrop})`;
       }
-      if (gone.size > 0) {
+      if (inShop && gone.size > 0) {
         await tx`
           update findings set status = 'fixed'
            where tenant_id = ${tenantId} and id in ${tx([...gone])}
              and status in ('open', 'needs_review')`;
       }
       const stillOpen = loaded.findings.filter((f) => !gone.has(f.id)).map((f) => f.id);
-      if (stillOpen.length > 0 && !verdict.ok) {
+      if (inShop && stillOpen.length > 0 && !verdict.ok) {
         await tx`
           update findings set status = 'open'
            where tenant_id = ${tenantId} and id in ${tx(stillOpen)} and status = 'fixed'`;
       }
-      await tx`
+      if (inShop) {
+        await tx`
         update fixes
            set verified_scan = ${payload.scan_id},
                before_evidence_id = coalesce(before_evidence_id, (
@@ -282,6 +291,7 @@ export function verifyScanHandler(deps: EngineDeps): JobHandler {
                status = case when ${verdict.ok} and status = 'applied' then 'verified' else status end,
                error_code = ${verdict.ok ? null : verdict.code}
          where tenant_id = ${tenantId} and id = ${payload.fix_id}`;
+      }
       await tx`
         update scans
            set status = ${verdict.ok || pageResults.every((p) => !p.blocked) ? 'succeeded' : 'partial'},

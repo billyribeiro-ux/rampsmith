@@ -15,7 +15,8 @@ mod tx;
 pub use error::DbError;
 pub use roles::{RoleError, RoleViolation, RuntimeRole};
 pub use tx::{
-    Db, IdentityTx, KeyCount, RewrapCandidate, SHOP_LOCK_TIMEOUT, ShopLock, ShopRef, TenantTx,
+    Db, IdentityTx, KeyCount, PasswordCandidate, RewrapCandidate, SHOP_LOCK_TIMEOUT, ShopLock,
+    ShopRef, TenantTx,
 };
 
 /// The workspace migrations, embedded at compile time. Deploys run them before traffic

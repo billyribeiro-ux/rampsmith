@@ -91,6 +91,9 @@ async fn revert(
         let reopened = data_fixes::reopen_findings(&mut tx, fix)
             .await
             .map_err(|e| database(&e))?;
+        let verification_cancelled = data_fixes::cancel_verification(&mut tx, fix)
+            .await
+            .map_err(|e| database(&e))?;
         audit::append(
             &mut tx,
             &audit::NewEntry {
@@ -103,6 +106,7 @@ async fn revert(
                     "resource": plan.target.gid(),
                     "field": field.as_str(),
                     "findings_reopened": reopened,
+                    "verification_cancelled": verification_cancelled,
                     "already_restored": restored,
                 }),
             },

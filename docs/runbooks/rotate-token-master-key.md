@@ -14,7 +14,7 @@
 | --- | --- |
 | `rsctl keys generate \| rotate \| drop \| ids`, `rsctl doctor --row 12` | Built on `ws/rsctl`. Until that branch is on `main`, build it from the production commit's tree plus that branch: `cargo build --release -p rampsmith-rsctl`, binary `target/release/rsctl` |
 | `docs/runbooks/sql/master-key-usage.sql` | Built and tested |
-| A job that re-wraps stored values with `KeyRing::rewrap` | **Not built** (`crates/crypto` has the function; nothing calls it). Old keys therefore stay in the ring until the report in step 8 says nothing uses them |
+| A job that re-wraps stored values with `KeyRing::rewrap` | Built in `crates/ctl/src/rewrap.rs` (`Rewrap::run`). It re-wraps `shopify_tokens` and, since the lane A audit (L4), `sites.storefront_password_ct`, each with a compare-and-swap. `Rewrap::remaining` counts both, so a key is removable only when neither table holds it. The operator command `rsctl keys rewrap` that calls it is not built: until it is, old keys stay in the ring until the report in step 8 says nothing uses them |
 | A staging mode that adds the new key last | **Not built** in `rsctl keys rotate` (it always puts the new key first). Step 5 explains the short window this leaves |
 | A job that forces every shop's tokens to refresh | **Not built**. The weekly keep-alive does it for every installed shop |
 

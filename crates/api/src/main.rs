@@ -95,14 +95,17 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         .with_shopify(shopify)
         .with_identity(identity);
     if let Some(partner) = config.partner {
-        state = state.with_partner(api::plan::PartnerPlans::new(
-            billing::partner_api::PartnerCredentials {
-                organization: partner.organization,
-                access_token: partner.token,
-            },
-            partner.app,
-            None,
-        ));
+        state = state.with_partner(
+            api::plan::PartnerPlans::new(
+                billing::partner_api::PartnerCredentials {
+                    organization: partner.organization,
+                    access_token: partner.token,
+                },
+                partner.app,
+                None,
+            )
+            .context("the Partner API client could not be built")?,
+        );
     }
     axum::serve(listener, api::app(state))
         .with_graceful_shutdown(shutdown_signal())

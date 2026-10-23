@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select tenant_id as \"tenant_id!\", site_id as \"site_id!\"\n                 from site_passwords_to_rewrap($1, $2, $3)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tenant_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "site_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "6807bc545dd46401d5e8b61525a4708870024e8626ffc98d14242a34495be3c0"
+}

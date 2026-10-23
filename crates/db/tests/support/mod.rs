@@ -40,6 +40,19 @@ pub async fn worker_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool 
     .expect("connect as rampsmith_worker")
 }
 
+/// A pool connected as `rampsmith_ctl`: a worker that may also run the redaction function.
+pub async fn ctl_pool(opts: PgPoolOptions, conn: PgConnectOptions) -> PgPool {
+    opts.after_connect(|c, _| {
+        Box::pin(async move {
+            c.execute("set role rampsmith_ctl").await?;
+            Ok(())
+        })
+    })
+    .connect_with(conn)
+    .await
+    .expect("connect as rampsmith_ctl")
+}
+
 /// Password of the throw-away `LOGIN` roles the tests create. They exist only on the test
 /// cluster, and every test removes the ones it made.
 pub const TEST_ROLE_PASSWORD: &str = "rampsmith-test-only";

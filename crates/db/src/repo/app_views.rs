@@ -95,6 +95,21 @@ pub async fn has_live_scan(
     .await?)
 }
 
+/// How many scans the merchant started by hand in the last 24 hours. Scans that failed to
+/// start count too: the limit is on presses of the button, not on finished work.
+pub async fn manual_scans_today(tx: &mut TenantTx, site: SiteId) -> Result<i64, DbError> {
+    let tenant = tx.tenant_uuid();
+    Ok(sqlx::query_scalar!(
+        r#"select count(*) as "n!" from scans
+            where tenant_id = $1 and site_id = $2 and trigger = 'manual'
+              and created_at > now() - interval '24 hours'"#,
+        tenant,
+        site.as_uuid(),
+    )
+    .fetch_one(tx.conn())
+    .await?)
+}
+
 /// Counts for the overview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Counts {
@@ -660,6 +675,49 @@ pub async fn merge_settings(
         tenant,
         site.as_uuid(),
         patch,
+    )
+    .execute(tx.conn())
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// The sealed storefront password and the id of the key that wraps it.
+pub async fn storefront_password(
+    tx: &mut TenantTx,
+    site: SiteId,
+) -> Result<Option<(Vec<u8>, String)>, DbError> {
+    let tenant = tx.tenant_uuid();
+    let row = sqlx::query!(
+        r#"select storefront_password_ct, storefront_password_key_id
+             from sites where tenant_id = $1 and id = $2"#,
+        tenant,
+        site.as_uuid(),
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    Ok(row.and_then(|r| r.storefront_password_ct.zip(r.storefront_password_key_id)))
+}
+
+/// Swaps the wrapping of the sealed storefront password, only if the row still holds exactly
+/// what `read` was (the same compare-and-swap as a token re-wrap: a merchant who saved a new
+/// password meanwhile wins). Returns whether it swapped.
+pub async fn replace_password_wrapping(
+    tx: &mut TenantTx,
+    site: SiteId,
+    read: (&[u8], &str),
+    sealed: (&[u8], &str),
+) -> Result<bool, DbError> {
+    let tenant = tx.tenant_uuid();
+    let done = sqlx::query!(
+        r#"update sites set storefront_password_ct = $5, storefront_password_key_id = $6
+            where tenant_id = $1 and id = $2
+              and storefront_password_ct = $3 and storefront_password_key_id = $4"#,
+        tenant,
+        site.as_uuid(),
+        read.0,
+        read.1,
+        sealed.0,
+        sealed.1,
     )
     .execute(tx.conn())
     .await?;
