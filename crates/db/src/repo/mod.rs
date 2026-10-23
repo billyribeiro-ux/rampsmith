@@ -7,6 +7,7 @@
 pub mod app_views;
 pub mod audit;
 pub mod data_fixes;
+pub mod email;
 pub mod findings;
 pub mod fixes;
 pub mod free_scans;

@@ -110,7 +110,7 @@ SECRET_USERS = {
     "TURNSTILE_SECRET_KEY": {"api"},
     "FREE_SCAN_SERVICE_TOKEN": {"web", "api"},
     "RAMPSMITH_SCAN_SECRET_KEYS": {"ctl", "engine"},
-    "SES_SECRET_ACCESS_KEY": {"ctl"},
+    "SES_SECRET_ACCESS_KEY": {"engine"},
     "RAMPSMITH_MASTER_KEYS": {"api", "ctl"},
     "GRAFANA_CLOUD_OTLP_TOKEN": {"collector"},
     "R2_LOGS_SECRET_ACCESS_KEY": {"collector"},

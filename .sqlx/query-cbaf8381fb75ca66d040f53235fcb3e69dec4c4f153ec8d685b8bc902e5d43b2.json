@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from shop_contacts where tenant_id = $1 and shop_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cbaf8381fb75ca66d040f53235fcb3e69dec4c4f153ec8d685b8bc902e5d43b2"
+}

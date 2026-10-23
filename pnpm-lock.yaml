@@ -418,6 +418,9 @@ importers:
       '@rampsmith/contracts-ts':
         specifier: workspace:*
         version: link:../contracts-ts
+      '@rampsmith/email':
+        specifier: workspace:*
+        version: link:../email
       '@rampsmith/queue':
         specifier: workspace:*
         version: link:../queue

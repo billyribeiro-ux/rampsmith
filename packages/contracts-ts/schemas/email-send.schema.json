@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmailSend",
+  "description": "Payload of `email.send` jobs, schema `email.send@1`. Runs in the engine, which holds the SES\ncredentials and no Shopify token.",
+  "type": "object",
+  "properties": {
+    "input": {
+      "description": "The template's input, as `packages/email` defines it (camelCase members). Validated by the\nengine, which fails the job permanently when it does not fit; it holds the data the email\nshows, so it is cleared with the rest of the job's payload on `shop/redact`.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "message_key": {
+      "description": "Identifies the logical message: the same key is never sent twice. 8 to 200 characters of\n`A-Z a-z 0-9 . _ : -`; build it from what causes the email, such as\n`uninstall-export:<webhook event id>`.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{8,200}$"
+    },
+    "recipient": {
+      "description": "Whom to send it to.",
+      "$ref": "#/$defs/EmailRecipient"
+    },
+    "template": {
+      "description": "Which email to render.",
+      "oneOf": [
+        {
+          "description": "A one-time sign-in link.",
+          "type": "string",
+          "const": "sign_in_link"
+        },
+        {
+          "description": "Confirm an email address.",
+          "type": "string",
+          "const": "email_verification"
+        },
+        {
+          "description": "The founder's delivery check.",
+          "type": "string",
+          "const": "delivery_test"
+        },
+        {
+          "description": "Confirm a free-scanner request.",
+          "type": "string",
+          "const": "scanner_confirm"
+        },
+        {
+          "description": "The free scanner's report.",
+          "type": "string",
+          "const": "scanner_report"
+        },
+        {
+          "description": "After install.",
+          "type": "string",
+          "const": "welcome"
+        },
+        {
+          "description": "The first scan finished.",
+          "type": "string",
+          "const": "first_scan_complete"
+        },
+        {
+          "description": "The weekly summary.",
+          "type": "string",
+          "const": "weekly_summary"
+        },
+        {
+          "description": "New failures appeared.",
+          "type": "string",
+          "const": "regression_alert"
+        },
+        {
+          "description": "A shopper's barrier report arrived.",
+          "type": "string",
+          "const": "barrier_report_received"
+        },
+        {
+          "description": "A fix was approved.",
+          "type": "string",
+          "const": "fix_approved"
+        },
+        {
+          "description": "A fix was verified.",
+          "type": "string",
+          "const": "fix_verified"
+        },
+        {
+          "description": "The plan changed.",
+          "type": "string",
+          "const": "plan_changed"
+        },
+        {
+          "description": "A plan limit was reached.",
+          "type": "string",
+          "const": "usage_limit"
+        },
+        {
+          "description": "An agency invitation.",
+          "type": "string",
+          "const": "agency_invitation"
+        },
+        {
+          "description": "A store-link code.",
+          "type": "string",
+          "const": "store_link_code"
+        },
+        {
+          "description": "A store was linked.",
+          "type": "string",
+          "const": "store_linked"
+        },
+        {
+          "description": "Data was deleted.",
+          "type": "string",
+          "const": "data_deletion"
+        },
+        {
+          "description": "The link to export the remediation record after an uninstall (PLAN §19).",
+          "type": "string",
+          "const": "uninstall_export"
+        },
+        {
+          "description": "A confirmed security incident.",
+          "type": "string",
+          "const": "incident_notice"
+        },
+        {
+          "description": "A subprocessor change.",
+          "type": "string",
+          "const": "subprocessor_change"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "template",
+    "recipient",
+    "input",
+    "message_key"
+  ],
+  "$defs": {
+    "EmailRecipient": {
+      "description": "Where the address comes from. The engine resolves it inside the job's tenant transaction, so\na reference to another tenant's row finds nothing and the job fails for good.",
+      "oneOf": [
+        {
+          "description": "The owner's address that `shopify.read_store` and `shop/update` read from the shop\n(`shop_contacts`, ADR-272).",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "shop_owner"
+            },
+            "shop_id": {
+              "description": "The `shopify_shops.id`.",
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "shop_id"
+          ]
+        }
+      ]
+    }
+  }
+}
