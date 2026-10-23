@@ -8,6 +8,7 @@
 import { FREE_SCAN_BUDGET_MS, freeScanHandler } from './free-scan.ts';
 import { altTextHandler } from './jobs/alt-text.ts';
 import { auditDataHandler } from './jobs/audit-data.ts';
+import { codeFixPatchHandler } from './jobs/code-fix.ts';
 import { scanFinalizeHandler } from './jobs/finalize.ts';
 import type { JobHandler } from './jobs/payload.ts';
 import { scanPlanHandler } from './jobs/plan.ts';
@@ -22,6 +23,7 @@ export const ENGINE_QUEUES = [
   'scan.finalize',
   'audit.data',
   'ai.alt_text',
+  'code_fix.patch',
   'verify.scan',
   'free_scan.run',
 ] as const;
@@ -68,6 +70,7 @@ export function engineHandlers(deps: EngineDeps): Record<EngineQueue, JobHandler
     'scan.finalize': ending(scanFinalizeHandler(deps)),
     'audit.data': ending(auditDataHandler(deps)),
     'ai.alt_text': altTextHandler({ sql: deps.sql, egress: deps.egress }),
+    'code_fix.patch': codeFixPatchHandler({ sql: deps.sql }),
     'verify.scan': ending(verifyScanHandler(deps)),
     'free_scan.run': freeScanHandler(deps),
   };

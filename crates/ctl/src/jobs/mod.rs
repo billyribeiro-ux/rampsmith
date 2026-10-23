@@ -8,8 +8,9 @@
 use std::sync::Arc;
 
 use contracts::{
-    GithubCheckRepository, GithubProcessEvent, GithubSyncInstallation, JobError,
-    ShopifyApplyDataFix, ShopifyReadStore, ShopifyRevertDataFix, WebhookProcess,
+    GithubCheckRepository, GithubOpenPullRequest, GithubPlanBatch, GithubProcessEvent,
+    GithubSyncInstallation, GithubSyncPullRequest, JobError, ShopifyApplyDataFix, ShopifyReadStore,
+    ShopifyRevertDataFix, WebhookProcess,
 };
 use db::Db;
 use queue::{ClaimedJob, Failure};
@@ -17,6 +18,7 @@ use shopify_admin::AdminFactory;
 use shopify_auth::{RefreshError, ShopifyAuth};
 
 pub mod apply_data_fix;
+pub mod code_fix;
 pub(crate) mod data_fix;
 pub(crate) mod email_triggers;
 pub mod github;
@@ -44,6 +46,8 @@ pub struct Jobs {
     /// The GitHub client, holding the App's private key, while the pull-request channel is on
     /// (`CODE_FIX_CHANNEL_ENABLED`, ADR-290).
     github: Option<Arc<::github::GitHub>>,
+    /// The app's public origin, for the evidence links in pull requests (`APP_ORIGIN`).
+    app_origin: Option<String>,
 }
 
 impl Jobs {
@@ -56,6 +60,7 @@ impl Jobs {
             admin,
             scan_secrets: None,
             github: None,
+            app_origin: None,
         }
     }
 
@@ -63,6 +68,13 @@ impl Jobs {
     #[must_use]
     pub fn with_github(mut self, client: ::github::GitHub) -> Self {
         self.github = Some(Arc::new(client));
+        self
+    }
+
+    /// Sets the app's public origin, which the evidence links in pull requests start with.
+    #[must_use]
+    pub fn with_app_origin(mut self, origin: impl Into<String>) -> Self {
+        self.app_origin = Some(origin.into());
         self
     }
 
@@ -95,6 +107,9 @@ impl Jobs {
             GithubSyncInstallation::QUEUE => github::sync_installation(self, job).await,
             GithubProcessEvent::QUEUE => github::process_event(self, job).await,
             GithubCheckRepository::QUEUE => github::check_repository(self, job).await,
+            GithubPlanBatch::QUEUE => code_fix::plan_batch(self, job).await,
+            GithubOpenPullRequest::QUEUE => code_fix::open_pr(self, job).await,
+            GithubSyncPullRequest::QUEUE => code_fix::sync_pr(self, job).await,
             other => Err(Failure::Permanent(JobError {
                 code: "queue_unknown".to_owned(),
                 message: format!("ctl does not serve {other}"),

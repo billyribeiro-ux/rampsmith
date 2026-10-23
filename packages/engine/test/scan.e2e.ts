@@ -48,6 +48,13 @@ const defaultState = (scan: PageScan) => {
 };
 
 describe('scanPage', () => {
+  it('keeps the section and ancestors of an element inside a form with a field named id', async () => {
+    const scan = await scanPage(browser, { url: `${site.origin}/product-form`, userAgent: UA });
+    const button = defaultState(scan).violations.find((v) => v.ruleId === 'button-name');
+    expect(button?.section).toBe('shopify-section-template--1234__main');
+    expect(button?.ancestors?.map((a) => a.tag)).toEqual(['form', 'div']);
+  });
+
   it('finds the known failures, with criteria, section and scrubbed excerpts', async () => {
     const scan = await scanPage(browser, { url: `${site.origin}/`, userAgent: UA });
     expect(scan.blocked).toBeUndefined();
@@ -59,6 +66,17 @@ describe('scanPage', () => {
     expect(image?.criteria).toContain('1.1.1');
     expect(image?.impact).toBe('critical');
     expect(image?.section).toBe('shopify-section-template--1234__main');
+    // What the code-fix channel needs to find the source again (ADR-296): the ancestors up to
+    // the section wrapper, nearest first, and for contrast what axe-core measured.
+    expect(image?.ancestors?.at(-1)).toMatchObject({
+      tag: 'div',
+      attributes: { id: 'shopify-section-template--1234__main' },
+    });
+    expect(image?.ancestors?.length).toBeLessThanOrEqual(16);
+    const contrast = violations.find((v) => v.ruleId === 'color-contrast');
+    expect(String(contrast?.evidence?.foreground)).toMatch(/^#[0-9a-f]{6}$/u);
+    expect(String(contrast?.evidence?.background)).toMatch(/^#[0-9a-f]{6}$/u);
+    expect(contrast?.evidence?.font_size_px).toBeGreaterThan(0);
     for (const v of [...violations, ...incomplete]) {
       expect(v.html).not.toContain('shopper@example.com');
       expect(v.html.length).toBeLessThanOrEqual(512);

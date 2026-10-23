@@ -161,8 +161,11 @@ async fn clear_github(tx: &mut TenantTx, tenant: uuid::Uuid) -> Result<u64, DbEr
     let mut removed = 0;
     // Children before parents: the foreign keys are composite and unconditional.
     for statement in [
+        "delete from code_fix_files where tenant_id = $1",
+        "delete from code_fix_batch_fixes where tenant_id = $1",
         "delete from github_pr_fixes where tenant_id = $1",
         "delete from github_pull_requests where tenant_id = $1",
+        "delete from code_fix_batches where tenant_id = $1",
         "delete from github_events where tenant_id = $1",
         "delete from github_repos where tenant_id = $1",
         "delete from github_installations where tenant_id = $1",

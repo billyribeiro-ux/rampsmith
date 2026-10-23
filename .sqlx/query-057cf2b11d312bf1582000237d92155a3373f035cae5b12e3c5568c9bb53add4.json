@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update code_fix_batches set status = $4, updated_at = now()\n          where tenant_id = $1 and id = $2 and status = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "057cf2b11d312bf1582000237d92155a3373f035cae5b12e3c5568c9bb53add4"
+}

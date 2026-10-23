@@ -148,6 +148,11 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [292](292-github-webhook-intake.md) | GitHub deliveries are stored once, and state is read from the API | Accepted |
 | [293](293-github-tables-and-lifecycle.md) | The GitHub tables, their isolation and their lifecycle | Accepted |
 | [294](294-github-client-hardening.md) | The GitHub client's guards for the audit findings | Accepted |
+| [295](295-recipes-core-and-every.md) | Core recipes for every plan with the channel, every recipe on the higher plan | Accepted |
+| [296](296-code-fix-batch-flow.md) | A batch moves through fixed states, split between ctl and the engine | Accepted |
+| [297](297-scanner-captures-section-ancestors-evidence.md) | The scanner records where an element sits, so a patch can find its source | Accepted |
+| [298](298-theme-file-retention-and-read-set.md) | Which theme files are read, and how long they are kept | Accepted |
+| [299](299-pull-request-resume-and-matching.md) | Resuming a batch, and matching a pull request to its row | Accepted |
 | [300](300-app-home-performance-budgets-in-ci.md) | App Home Core Web Vitals budgets are measured in CI on a throttled mobile profile | Accepted |
 | [301](301-listing-package-for-the-app-store-build.md) | The App Store listing package describes the App Store build | Accepted |
 | [302](302-app-review-checklist-method.md) | How the App Review checklist is checked, and the setup deep link | Accepted |
