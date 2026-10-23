@@ -126,6 +126,31 @@ const SCREENS: Screen[] = [
     },
   },
   {
+    name: 'overview, with a regression',
+    scenario: 'regressed',
+    path: '/app',
+    heading: 'Overview',
+    ready: (p) =>
+      expect(p.getByText('New issues found by the latest scheduled scan')).toBeVisible(),
+    interact: async (p) => {
+      await p.getByRole('link', { name: 'View regressions' }).click();
+      await expect(p.getByRole('heading', { level: 1, name: 'Regressions' })).toBeVisible();
+      await p.getByRole('button', { name: 'Dismiss from overview' }).click();
+      await expect(p.locator('.live')).toContainText('Dismissed');
+    },
+  },
+  {
+    name: 'regressions',
+    scenario: 'regressed',
+    path: '/app/regressions',
+    heading: 'Regressions',
+    ready: (p) => expect(p.getByRole('table')).toBeVisible(),
+    interact: async (p) => {
+      await p.getByRole('table').getByRole('link').first().click();
+      await expect(p).toHaveURL(/\/app\/findings\//u);
+    },
+  },
+  {
     name: 'remediation log',
     scenario: 'default',
     path: '/app/log',
@@ -164,9 +189,9 @@ const SCREENS: Screen[] = [
     scenario: 'default',
     path: '/app/settings',
     heading: 'Settings',
-    ready: (p) => expect(p.getByRole('switch', { name: 'Rescan every week' })).toBeVisible(),
+    ready: (p) => expect(p.getByRole('switch', { name: 'Scheduled rescans' })).toBeVisible(),
     interact: async (p) => {
-      await p.getByRole('switch', { name: 'Rescan every week' }).check();
+      await p.getByRole('switch', { name: 'Scheduled rescans' }).check();
       await p.getByRole('textbox', { name: 'Notification email' }).click();
       await p.keyboard.press('Control+A');
       await type(p, 'team@demo-store.example');

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select tenant_id as \"tenant_id!\", site_id as \"site_id!\", shop_id as \"shop_id!\"\n             from due_weekly_rescans($1, $2)",
+  "query": "select tenant_id as \"tenant_id!\", site_id as \"site_id!\", shop_id as \"shop_id!\"\n             from due_scheduled_rescans($1, $2)",
   "describe": {
     "columns": [
       {
@@ -24,7 +24,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
+        "Int4",
         "Int4"
       ]
     },
@@ -34,5 +34,5 @@
       null
     ]
   },
-  "hash": "a0eb74687f863ea1a81d1a0eb62270fbb374c85d08edb2d4a2babb5c63b42067"
+  "hash": "fc8e2d59656402b4c831a4e54b079fbd0b740357dd2126d412b342d28cb8643f"
 }

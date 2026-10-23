@@ -22,7 +22,7 @@ const SCREENS: readonly Screen[] = [
     name: 'overview',
     path: '/app',
     heading: 'Overview',
-    scenarios: ['default', 'free', 'fresh', 'empty', 'error'],
+    scenarios: ['default', 'free', 'fresh', 'empty', 'error', 'regressed'],
   },
   {
     name: 'issue list',
@@ -47,6 +47,18 @@ const SCREENS: readonly Screen[] = [
     path: '/app/fixes',
     heading: 'Review fixes',
     scenarios: ['default', 'free', 'fresh', 'error'],
+  },
+  {
+    name: 'regressions',
+    path: '/app/regressions',
+    heading: 'Regressions',
+    scenarios: ['default', 'free', 'regressed', 'error'],
+  },
+  {
+    name: 'agency access',
+    path: '/app/agency',
+    heading: 'Agency access',
+    scenarios: ['default', 'agency', 'error'],
   },
   {
     name: 'remediation log',

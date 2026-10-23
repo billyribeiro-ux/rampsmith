@@ -15,6 +15,7 @@ import { enqueue } from '@rampsmith/queue';
 import axe from 'axe-core';
 import { RULES } from '@rampsmith/a11y-rules';
 import type postgres from 'postgres';
+import { markAlert, type RegressionRecord } from '../pipeline/regressions.ts';
 
 type Tx = postgres.TransactionSql;
 
@@ -112,6 +113,18 @@ async function proposedFixes(tx: Tx, tenantId: string, siteId: string): Promise<
   return row?.n ?? 0;
 }
 
+const DAY_MS = 24 * 3_600_000;
+
+/** How long the site's plan waits between scheduled scans (ADR-312); Free's when nothing is stored. */
+async function intervalMs(tx: Tx, tenantId: string, siteId: string): Promise<number> {
+  const [row] = await tx<{ render_cadence: string }[]>`
+    select b.render_cadence from shopify_shops sh
+      join shop_billing b on b.shop_id = sh.id and b.tenant_id = sh.tenant_id
+     where sh.tenant_id = ${tenantId} and sh.site_id = ${siteId}`;
+  if (row?.render_cadence === 'daily') return DAY_MS;
+  return (row?.render_cadence === 'weekly' ? 7 : 30) * DAY_MS;
+}
+
 function iso(date: Date): string {
   return date.toISOString().replace(/\.\d+Z$/u, 'Z');
 }
@@ -188,7 +201,9 @@ export async function queueScanEmails(
       resolvedIssues: ctx.resolved,
       openIssues: await openImpacts(tx, ctx.tenantId, ctx.siteId),
       fixesAwaitingApproval: await proposedFixes(tx, ctx.tenantId, ctx.siteId),
-      nextScanAt: iso(new Date(ctx.now.getTime() + 7 * 24 * 3_600_000)),
+      nextScanAt: iso(
+        new Date(ctx.now.getTime() + (await intervalMs(tx, ctx.tenantId, ctx.siteId))),
+      ),
     },
     `weekly-summary:${ctx.scanId}`,
   );
@@ -238,4 +253,67 @@ export async function queueFixVerified(
     // The verdict is in the key: a fix that failed and later passed is two different facts.
     `fix-${ctx.verified ? 'verified' : 'unverified'}:${ctx.fixId}`,
   );
+}
+
+/** How many issues the email lists; the rest are counted. The template allows ten. */
+const ALERT_ITEMS = 10;
+
+/**
+ * After a scheduled scan's regression was recorded (ADR-310): one `regression_alert` email when
+ * the plan includes regression alerts (`shop_billing.regression_alerts`, written from
+ * `billing::entitlements`) and the shop has a contact. What became of the alert is stored on the
+ * record (`queued`, `plan`, `no_contact`), so the app and a support question can tell. Whether
+ * the merchant wants the mail is the mailer's decision (suppression, opt-out; ADR-275). Nothing
+ * is queued when nothing regressed. The message key is the scan's, so a retried job queues one.
+ */
+export async function queueRegressionAlert(
+  tx: Tx,
+  ctx: {
+    readonly tenantId: string;
+    readonly siteId: string;
+    readonly scanId: string;
+    readonly record: RegressionRecord;
+    readonly now: Date;
+  },
+): Promise<'queued' | 'plan' | 'no_contact' | null> {
+  const total = ctx.record.newCount + ctx.record.reappearedCount;
+  if (total < 1) return null;
+  const [plan] = await tx<{ regression_alerts: boolean }[]>`
+    select b.regression_alerts from shopify_shops sh
+      join shop_billing b on b.shop_id = sh.id and b.tenant_id = sh.tenant_id
+     where sh.tenant_id = ${ctx.tenantId} and sh.site_id = ${ctx.siteId}`;
+  if (plan?.regression_alerts !== true) {
+    await markAlert(tx, ctx.tenantId, ctx.record.id, 'plan');
+    return 'plan';
+  }
+  const contact = await contactOfSite(tx, ctx.tenantId, ctx.siteId);
+  if (contact === undefined) {
+    await markAlert(tx, ctx.tenantId, ctx.record.id, 'no_contact');
+    return 'no_contact';
+  }
+  const listed = ctx.record.items
+    .flatMap((item) => {
+      const [criterion] = item.criteria;
+      return criterion === undefined
+        ? []
+        : [{ title: ruleTitle(item.ruleId), criterion, impact: item.impact }];
+    })
+    .slice(0, ALERT_ITEMS);
+  if (listed.length === 0) return null;
+  await queueEmail(
+    tx,
+    ctx.tenantId,
+    contact,
+    'regression_alert',
+    {
+      storeName: contact.storeName,
+      detectedAt: iso(ctx.now),
+      issues: listed,
+      moreIssues: Math.max(0, total - listed.length),
+      cause: 'unknown',
+    },
+    `regression-alert:${ctx.scanId}`,
+  );
+  await markAlert(tx, ctx.tenantId, ctx.record.id, 'queued');
+  return 'queued';
 }

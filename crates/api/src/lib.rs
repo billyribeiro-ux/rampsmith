@@ -4,6 +4,7 @@
 //! route is declared with `#[utoipa::path]` and registered through `OpenApiRouter`, so the
 //! OpenAPI document and the router cannot disagree (ADR-009, ADR-020).
 
+mod agency;
 pub mod auth;
 pub mod config;
 pub mod email_link;
@@ -13,6 +14,7 @@ mod health;
 pub mod plan;
 mod r1;
 pub mod rate_limit;
+mod regressions;
 mod rules;
 pub mod serve;
 pub mod ses_events;
@@ -155,6 +157,7 @@ impl AppState {
         (name = "operations", description = "Liveness and readiness for the platform"),
         (name = "shopify", description = "The embedded Shopify app's session"),
         (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
+        (name = "agency", description = "Agency accounts and the store links merchants approve"),
         (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-267)"),
         (name = "code-fixes", description = "The GitHub pull-request channel: connecting GitHub, choosing the theme repository (ADR-290)"),
         (name = "email", description = "The pages behind the unsubscribe and preferences links in email (ADR-274)"),
@@ -218,6 +221,21 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(r1::get_evidence))
         .routes(routes!(r1::get_settings, r1::update_settings))
         .routes(routes!(r1::get_statement, r1::save_statement))
+        .routes(routes!(regressions::list_regressions))
+        .routes(routes!(regressions::dismiss_regression))
+        .routes(routes!(
+            agency::list_organizations,
+            agency::create_organization
+        ))
+        .routes(routes!(agency::create_link_code))
+        .routes(routes!(agency::list_linked_stores))
+        .routes(routes!(agency::unlink_store))
+        .routes(routes!(
+            agency::list_agency_links,
+            agency::approve_agency_link
+        ))
+        .routes(routes!(agency::preview_agency_link))
+        .routes(routes!(agency::revoke_agency_link))
         .routes(routes!(github_channel::get_code_fixes))
         .routes(routes!(
             github_channel::create_connection,

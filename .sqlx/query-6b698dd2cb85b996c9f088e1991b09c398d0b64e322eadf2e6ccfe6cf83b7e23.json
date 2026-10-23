@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into agency_link_codes (id, organization_id, code_hash, created_by, expires_at)\n         values ($1, $2, $3, $4, $5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6b698dd2cb85b996c9f088e1991b09c398d0b64e322eadf2e6ccfe6cf83b7e23"
+}

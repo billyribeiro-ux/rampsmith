@@ -16,6 +16,12 @@ describe('resolve', () => {
     ['POST', `fixes/${ID}/approve`],
     ['POST', `fixes/${ID}/reject`],
     ['POST', `fixes/${ID}/undo`],
+    ['GET', 'regressions'],
+    ['POST', `regressions/${ID}/dismiss`],
+    ['GET', 'agency-links'],
+    ['POST', 'agency-links'],
+    ['POST', 'agency-links/preview'],
+    ['DELETE', `agency-links/${ID}`],
     ['GET', `evidence/${ID}`],
     ['GET', 'settings'],
     ['PUT', 'settings'],
@@ -45,6 +51,8 @@ describe('resolve', () => {
     expect(resolve('DELETE', 'settings', q())).toEqual({ ok: false, status: 405 });
     expect(resolve('GET', `fixes/${ID}/approve`, q())).toEqual({ ok: false, status: 405 });
     expect(resolve('POST', 'overview', q())).toEqual({ ok: false, status: 405 });
+    expect(resolve('GET', `agency-links/${ID}`, q())).toEqual({ ok: false, status: 405 });
+    expect(resolve('DELETE', 'agency-links', q())).toEqual({ ok: false, status: 405 });
   });
 
   it('passes only the query parameters an operation lists, and only safe values', () => {

@@ -53,8 +53,10 @@
     { path: '/app', label: m.app_nav_overview(), home: true },
     { path: '/app/findings', label: m.app_nav_findings(), home: false },
     { path: '/app/fixes', label: m.app_nav_fixes(), home: false },
+    { path: '/app/regressions', label: m.app_nav_regressions(), home: false },
     { path: '/app/log', label: m.app_nav_log(), home: false },
     { path: '/app/statement', label: m.app_nav_statement(), home: false },
+    { path: '/app/agency', label: m.app_nav_agency(), home: false },
     { path: '/app/settings', label: m.app_nav_settings(), home: false },
   ]);
 </script>

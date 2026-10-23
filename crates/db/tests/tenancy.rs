@@ -147,6 +147,52 @@ async fn seed_r1(pool: &PgPool, graph: Graph) {
     tx.commit().await.unwrap();
 }
 
+/// One regression record (ADR-310). The engine writes them, as a worker; the app role only reads
+/// and dismisses, so the fixture is written as the owner.
+async fn seed_regressions(owner: &PgPool, graph: Graph) {
+    sqlx::query(
+        "insert into regressions (id, tenant_id, site_id, scan_id, new_count, reappeared_count,
+                                  findings_seen, alert_state)
+         values (gen_random_uuid(), $1, $2, $3, 1, 0, 1, 'queued')",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.site.as_uuid())
+    .bind(graph.scan.as_uuid())
+    .execute(owner)
+    .await
+    .unwrap();
+}
+
+/// One live agency link on the graph's shop (ADR-313), with its own organization and member. The
+/// organization tables hold no tenant column, so the owner writes them.
+async fn seed_store_links(owner: &PgPool, graph: Graph) {
+    let user = uuid::Uuid::now_v7();
+    let org = uuid::Uuid::now_v7();
+    let email = format!("agency-{user}@example.com");
+    sqlx::query("insert into users (id, email, display_name) values ($1, $2, 'Agency')")
+        .bind(user)
+        .bind(email)
+        .execute(owner)
+        .await
+        .unwrap();
+    sqlx::query("insert into organizations (id, name, created_by) values ($1, 'Agency', $2)")
+        .bind(org)
+        .bind(user)
+        .execute(owner)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into store_links (id, tenant_id, shop_id, organization_id)
+         values (gen_random_uuid(), $1, $2, $3)",
+    )
+    .bind(graph.tenant.as_uuid())
+    .bind(graph.shop.as_uuid())
+    .bind(org)
+    .execute(owner)
+    .await
+    .unwrap();
+}
+
 /// One row of each GitHub channel table (ADR-290 to ADR-294).
 async fn seed_github(tx: &mut sqlx::PgConnection, graph: &Graph) {
     let install = uuid::Uuid::now_v7();
@@ -264,6 +310,10 @@ async fn two_tenants(opts: PgPoolOptions, conn: PgConnectOptions) -> (Db, PgPool
     seed_jobs(&db, &owner, [a, b]).await;
     seed_r1(&pool, a).await;
     seed_r1(&pool, b).await;
+    seed_regressions(&owner, a).await;
+    seed_regressions(&owner, b).await;
+    seed_store_links(&owner, a).await;
+    seed_store_links(&owner, b).await;
     (db, pool, a, b)
 }
 
@@ -518,7 +568,7 @@ async fn writes_cannot_point_at_another_tenants_rows(opts: PgPoolOptions, conn: 
 
 // --- Layer 2: row-level security, bypassing the repositories -----------------------------
 
-const TENANT_TABLES: [&str; 29] = [
+const TENANT_TABLES: [&str; 31] = [
     "tenants",
     "sites",
     "shopify_shops",
@@ -552,10 +602,14 @@ const TENANT_TABLES: [&str; 29] = [
     "github_pull_requests",
     "github_pr_fixes",
     "github_events",
+    // Regression records of scheduled scans (ADR-310).
+    "regressions",
+    // An agency's access granted by a merchant (ADR-313).
+    "store_links",
 ];
 
 /// The tables ADR-037 and ADR-084 added, which `seed_r1` fills with one row per tenant.
-const R1_TABLES: [&str; 17] = [
+const R1_TABLES: [&str; 19] = [
     "scan_inputs",
     "evidence",
     "data_fix_snapshots",
@@ -573,6 +627,8 @@ const R1_TABLES: [&str; 17] = [
     "github_pull_requests",
     "github_pr_fixes",
     "github_events",
+    "regressions",
+    "store_links",
 ];
 
 #[sqlx::test]
@@ -2292,10 +2348,10 @@ async fn an_opt_out_is_idempotent_per_category_and_can_be_taken_back(
     tx.commit().await.unwrap();
 }
 
-// --- The weekly rescan listing (ADR-279) ---------------------------------------------
+// --- The scheduled rescan listing (ADR-279, ADR-312) ---------------------------------
 
 #[sqlx::test]
-async fn only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_shop(
+async fn only_the_worker_may_list_the_shops_due_a_rescan_and_every_tenant_gets_a_turn(
     opts: PgPoolOptions,
     conn: PgConnectOptions,
 ) {
@@ -2312,34 +2368,38 @@ async fn only_the_worker_may_list_the_shops_due_a_weekly_rescan_and_it_pages_by_
         .await
         .unwrap();
 
-    let (public, worker, app): (bool, bool, bool) = sqlx::query_as(
-        "select has_function_privilege('public', 'due_weekly_rescans(uuid, int)', 'execute'),
-                has_function_privilege('rampsmith_worker', 'due_weekly_rescans(uuid, int)', 'execute'),
-                has_function_privilege('rampsmith_app', 'due_weekly_rescans(uuid, int)', 'execute')",
-    )
-    .fetch_one(&owner)
-    .await
-    .unwrap();
-    assert_eq!((public, worker, app), (false, true, false));
-
-    // Both tenants' shops come back, a page at a time, in the order of their ids.
-    let db = Db::from_pool(worker_pool(opts, conn).await);
-    let mut seen = Vec::new();
-    let mut after = None;
-    loop {
-        let mut tx = db.public().await.unwrap();
-        let page = db::repo::rescans::due(&mut tx, after, 1).await.unwrap();
-        tx.commit().await.unwrap();
-        let Some(last) = page.last() else { break };
-        after = Some(last.shop);
-        seen.extend(page);
+    for function in [
+        "due_weekly_rescans(uuid, int)",
+        "due_scheduled_rescans(int, int, uuid)",
+    ] {
+        let (public, worker, app): (bool, bool, bool) =
+            sqlx::query_as(sqlx::AssertSqlSafe(format!(
+                "select has_function_privilege('public', '{function}', 'execute'),
+                    has_function_privilege('rampsmith_worker', '{function}', 'execute'),
+                    has_function_privilege('rampsmith_app', '{function}', 'execute')"
+            )))
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+        assert_eq!((public, worker, app), (false, true, false), "{function}");
     }
+
+    // Both tenants' shops come back, and with room for one each a round names both tenants.
+    let db = Db::from_pool(worker_pool(opts.clone(), conn.clone()).await);
+    let mut tx = db.public().await.unwrap();
+    let found = db::repo::rescans::due(&mut tx, 10, 1).await.unwrap();
+    tx.commit().await.unwrap();
+    let mut seen: Vec<_> = found.iter().map(|due| (due.tenant, due.shop)).collect();
+    seen.sort_by_key(|(_, shop)| shop.as_uuid());
     let mut expected = vec![(a.tenant, a.shop), (b.tenant, b.shop)];
     expected.sort_by_key(|(_, shop)| shop.as_uuid());
-    assert_eq!(
-        seen.iter()
-            .map(|due| (due.tenant, due.shop))
-            .collect::<Vec<_>>(),
-        expected
+    assert_eq!(seen, expected);
+
+    // The app role cannot call either function.
+    let app = Db::from_pool(app_pool(opts, conn).await);
+    let mut tx = app.public().await.unwrap();
+    assert!(
+        db::repo::rescans::due(&mut tx, 10, 1).await.is_err(),
+        "the app role listed the shops due a rescan"
     );
 }

@@ -116,6 +116,19 @@
     </s-section>
   {:else if overview.data !== undefined}
     {@const data = overview.data}
+    {#if data.regression_banner !== null}
+      <s-banner tone="warning" heading={m.app_regression_banner_heading()}>
+        <s-paragraph>
+          {m.app_regression_banner_body({
+            added: formatNumber(data.regression_banner.new_count),
+            returned: formatNumber(data.regression_banner.reappeared_count),
+          })}
+          <a class="app-link" href={resolve('/app/regressions')}>
+            {m.app_regression_banner_view()}
+          </a>
+        </s-paragraph>
+      </s-banner>
+    {/if}
     {#if scan === null}
       <s-section>
         <s-empty-state heading={m.app_overview_empty_heading()}>

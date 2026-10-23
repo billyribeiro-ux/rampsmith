@@ -15,7 +15,8 @@ import { rank, type Impact, type Rankable } from '../pipeline/rank.ts';
 import { PAGE_TYPES, type PageType } from '../pipeline/vocab.ts';
 import { scrubUrl } from '../scrub.ts';
 import { criteriaFromTags } from '../wcag.ts';
-import { queueScanEmails } from '../email/triggers.ts';
+import { queueRegressionAlert, queueScanEmails } from '../email/triggers.ts';
+import { recordRegression } from '../pipeline/regressions.ts';
 import { withTenant } from '../store.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
@@ -267,6 +268,24 @@ export function scanFinalizeHandler(deps: FinalizeDeps): JobHandler {
         resolved,
         now: new Date(),
       });
+      // A scheduled scan is compared with the one before it (ADR-310); a regression on a plan
+      // with alerts is emailed. Same transaction: a retried finalize records and queues once.
+      const regression = await recordRegression(tx, {
+        tenantId,
+        siteId: payload.site_id,
+        scanId: payload.scan_id,
+        trigger: scan.trigger,
+        status,
+      });
+      if (regression !== null) {
+        await queueRegressionAlert(tx, {
+          tenantId,
+          siteId: payload.site_id,
+          scanId: payload.scan_id,
+          record: regression,
+          now: new Date(),
+        });
+      }
     });
   };
 }

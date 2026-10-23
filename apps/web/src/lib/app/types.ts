@@ -82,6 +82,63 @@ export interface Overview {
   readonly fixes_applied: number;
   /** The first applied fix, for the install-to-first-fix measure. */
   readonly first_fix_at: string | null;
+  /**
+   * The newest scheduled scan that found new or returning failures, until it is dismissed or a
+   * week passes; `null` on a plan without regression alerts (ADR-311).
+   */
+  readonly regression_banner: Regression | null;
+}
+
+/** One finding on a regression record. */
+export interface RegressionItem {
+  readonly finding_id: string;
+  readonly rule_id: string;
+  readonly title: string;
+  readonly impact: Impact;
+  readonly criteria: readonly string[];
+  readonly kind: 'new' | 'reappeared';
+}
+
+/** A scheduled scan compared with the scan before it (ADR-310). */
+export interface Regression {
+  readonly id: string;
+  readonly scan_id: string;
+  readonly previous_scan_id: string | null;
+  readonly new_count: number;
+  readonly reappeared_count: number;
+  readonly findings_seen: number;
+  readonly previous_findings_seen: number | null;
+  /** Checks passed over checks run, a percentage between 0 and 100. */
+  readonly pass_rate: number | null;
+  readonly previous_pass_rate: number | null;
+  /** The most severe findings; the counts are the totals. */
+  readonly items: readonly RegressionItem[];
+  readonly detected_at: string;
+  readonly dismissed: boolean;
+}
+
+export interface RegressionList {
+  readonly gate: 'allowed' | 'locked';
+  /** The lowest plan that unlocks regression alerts, when locked. */
+  readonly unlocked_by: PlanHandle | null;
+  readonly items: readonly Regression[];
+}
+
+/** An agency that can see this store, as its merchant approved (ADR-313). */
+export interface AgencyLink {
+  readonly id: string;
+  readonly organization_name: string;
+  readonly granted_at: string;
+}
+
+export interface AgencyLinkList {
+  readonly links: readonly AgencyLink[];
+}
+
+/** Who a link code belongs to, shown before the merchant approves. */
+export interface AgencyCodePreview {
+  readonly organization_name: string;
+  readonly expires_at: string;
 }
 
 export type FindingStatus = 'open' | 'fixed' | 'needs_review' | 'accepted_risk' | 'false_positive';

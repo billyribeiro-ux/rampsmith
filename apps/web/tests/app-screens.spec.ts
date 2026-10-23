@@ -85,6 +85,59 @@ test.describe('overview', () => {
   });
 });
 
+test.describe('regressions', () => {
+  test('the overview banner and the list show what the scheduled scan found', async ({ page }) => {
+    await open(page, 'regressed', '/app', 'Overview');
+    const banner = page.locator('s-banner[tone=warning]');
+    await expect(banner).toContainText('New issues found by the latest scheduled scan');
+    await expect(banner).toContainText('New issues: 1. Issues that came back: 1.');
+    await banner.getByRole('link', { name: 'View regressions' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Regressions' })).toBeVisible();
+    const record = page.locator('s-section').filter({ hasText: 'Scan of' }).first();
+    await expect(record).toContainText('Checks passed: 90.8% (was 94.2%).');
+    const rows = record.getByRole('row');
+    await expect(rows.filter({ hasText: 'New' })).toHaveCount(1);
+    await expect(rows.filter({ hasText: 'Came back' })).toHaveCount(1);
+    await expect(record.getByRole('row').nth(1).getByRole('link')).toBeVisible();
+  });
+
+  test('dismissing hides the banner and keeps the record', async ({ page }) => {
+    await open(page, 'regressed', '/app/regressions', 'Regressions');
+    await page.getByRole('button', { name: 'Dismiss from overview' }).click();
+    await expect(page.locator('.live')).toHaveText('Dismissed. The record stays on this page.');
+    await expect(page.getByRole('button', { name: 'Dismiss from overview' })).toHaveCount(0);
+    await expect(page.getByRole('table')).toHaveCount(1);
+    // The scenario is not reset: the overview now shows no banner, the list still has the record.
+    await page.goto(`/app?${SHOP}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    await expect(section(page, 'Latest scan')).toContainText('Finished');
+    await expect(page.locator('s-banner')).toHaveCount(0);
+  });
+
+  test('a plan without regression alerts sees the screen locked, naming the plan', async ({
+    page,
+  }) => {
+    for (const scenario of ['free', 'starter'] as const) {
+      await open(page, scenario, '/app/regressions', 'Regressions');
+      await expect(
+        page.getByRole('heading', { name: 'Regression alerts are part of a higher plan' }),
+      ).toBeVisible();
+      await expect(page.locator('s-badge')).toContainText('Needs the Growth plan');
+      await expect(page.getByRole('table')).toHaveCount(0);
+    }
+  });
+
+  test('a plan with alerts and no regressions says so', async ({ page }) => {
+    await open(page, 'default', '/app/regressions', 'Regressions');
+    await expect(page.getByRole('heading', { name: 'No regressions found' })).toBeVisible();
+  });
+
+  test('the overview of a plan without alerts shows no banner', async ({ page }) => {
+    await open(page, 'free', '/app', 'Overview');
+    await expect(page.locator('s-banner')).toHaveCount(0);
+  });
+});
+
 test.describe('issues', () => {
   test('lists the ranked issues with their criteria and whether they have a fix', async ({
     page,
@@ -242,14 +295,14 @@ test.describe('settings', () => {
     await open(page, 'default', '/app/settings', 'Settings');
     const save = page.getByRole('button', { name: 'Save' });
     await expect(save).toBeDisabled();
-    await page.getByRole('switch', { name: 'Rescan every week' }).check();
+    await page.getByRole('switch', { name: 'Scheduled rescans' }).check();
     await page.getByRole('textbox', { name: 'Notification email' }).fill('team@demo-store.example');
     await page.getByRole('spinbutton', { name: 'Longest alt text (characters)' }).fill('120');
     await page.getByRole('spinbutton', { name: /AI budget/ }).fill('8');
     await save.click();
     await expect(page.locator('.live')).toHaveText('Settings saved.');
     await page.reload();
-    await expect(page.getByRole('switch', { name: 'Rescan every week' })).toBeChecked();
+    await expect(page.getByRole('switch', { name: 'Scheduled rescans' })).toBeChecked();
     await expect(page.getByRole('textbox', { name: 'Notification email' })).toHaveValue(
       'team@demo-store.example',
     );
@@ -297,12 +350,17 @@ test.describe('settings', () => {
     await expect(page.locator('.live')).toHaveText('Email preference saved.');
   });
 
-  test('on the Free plan the weekly rescan is shown, labelled and disabled', async ({ page }) => {
+  test('on the Free plan the rescans run monthly and daily ones name the Growth plan', async ({
+    page,
+  }) => {
     await open(page, 'free', '/app/settings', 'Settings');
-    const weekly = page.getByRole('switch', { name: 'Rescan every week' });
-    await expect(weekly).toBeDisabled();
-    await expect(page.getByText('Weekly rescans are part of paid plans.')).toBeVisible();
-    await expect(page.getByText('Needs the Starter plan').first()).toBeVisible();
+    const weekly = page.getByRole('switch', { name: 'Scheduled rescans' });
+    await expect(weekly).toBeEnabled();
+    await expect(page.getByText('once a month')).toBeVisible();
+    await expect(
+      page.getByText('Daily rescans and regression alerts are part of the Growth plan.'),
+    ).toBeVisible();
+    await expect(page.getByText('Needs the Growth plan').first()).toBeVisible();
     const plan = section(page, 'Plan');
     await expect(plan).toContainText('Your plan: Free');
     await expect(plan.getByRole('list', { name: 'Features' }).getByRole('listitem')).toHaveCount(9);
@@ -339,4 +397,49 @@ test('every request to the api carries the session token and none goes unauthent
   const seen = await requestsSeen();
   expect(seen.length).toBeGreaterThan(3);
   expect(seen.every((r) => r.authorization === 'Bearer good')).toBe(true);
+});
+
+test.describe('agency access', () => {
+  test('lists the agencies that can see the store and lets the merchant revoke one', async ({
+    page,
+  }) => {
+    await open(page, 'agency', '/app/agency', 'Agency access');
+    const row = page.getByRole('row').filter({ hasText: 'Northwind Digital' });
+    await expect(row).toHaveCount(1);
+    await row.getByRole('button', { name: /Revoke access/ }).click();
+    await expect(page.locator('.live')).toHaveText('Access revoked for Northwind Digital.');
+    await expect(page.getByText('No agency can see this store.')).toBeVisible();
+    await expect(page.getByRole('table')).toHaveCount(0);
+  });
+
+  test('shows who is asking before the merchant approves a code', async ({ page }) => {
+    await open(page, 'default', '/app/agency', 'Agency access');
+    await expect(page.getByText('No agency can see this store.')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Link code' }).fill('ABCDE-12345');
+    await page.getByRole('button', { name: 'Check code' }).click();
+    await expect(page.locator('s-banner')).toContainText(
+      'Northwind Digital asks to follow this store',
+    );
+    await page.getByRole('button', { name: 'Approve access' }).click();
+    await expect(page.locator('.live')).toHaveText(
+      "Northwind Digital can now see this store's summary.",
+    );
+    await expect(page.getByRole('row').filter({ hasText: 'Northwind Digital' })).toHaveCount(1);
+  });
+
+  test('a wrong code is refused, and too many wrong codes are stopped', async ({ page }) => {
+    await open(page, 'default', '/app/agency', 'Agency access');
+    const field = page.getByRole('textbox', { name: 'Link code' });
+    const check = page.getByRole('button', { name: 'Check code' });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await field.fill('ZZZZZ-ZZZZZ');
+      await check.click();
+      await expect(page.locator('s-banner')).toContainText(
+        'This code is not valid, or it has expired.',
+      );
+    }
+    await field.fill('ABCDE-12345');
+    await check.click();
+    await expect(page.locator('s-banner')).toContainText('Too many codes were not valid.');
+  });
 });

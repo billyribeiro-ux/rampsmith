@@ -173,7 +173,7 @@ test('the email switch works with the keyboard alone', async ({ page }) => {
 
 test('the settings form works with the keyboard alone', async ({ page }) => {
   await open(page, 'default', '/app/settings', 'Settings');
-  const weekly = page.getByRole('switch', { name: 'Rescan every week' });
+  const weekly = page.getByRole('switch', { name: 'Scheduled rescans' });
   await weekly.focus();
   await page.keyboard.press('Space');
   await expect(weekly).toBeChecked();
@@ -183,4 +183,35 @@ test('the settings form works with the keyboard alone', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(live(page)).toHaveText('Settings saved.');
   await expect(save).toBeDisabled();
+});
+
+test('dismiss a regression with the keyboard and hear the result', async ({ page }) => {
+  await open(page, 'regressed', '/app/regressions', 'Regressions');
+  const dismiss = page.getByRole('button', { name: 'Dismiss from overview' });
+  await dismiss.focus();
+  await page.keyboard.press('Enter');
+  await expect(live(page)).toHaveText('Dismissed. The record stays on this page.');
+  await expect(dismiss).toHaveCount(0);
+});
+
+test('approve and revoke an agency link with the keyboard and hear each result', async ({
+  page,
+}) => {
+  await open(page, 'default', '/app/agency', 'Agency access');
+  const code = page.getByRole('textbox', { name: 'Link code' });
+  await code.focus();
+  await page.keyboard.type('abcde-12345');
+  const check = page.getByRole('button', { name: 'Check code' });
+  await check.focus();
+  await page.keyboard.press('Enter');
+  const approve = page.getByRole('button', { name: 'Approve access' });
+  await expect(approve).toBeVisible();
+  await approve.focus();
+  await page.keyboard.press('Enter');
+  await expect(live(page)).toHaveText("Northwind Digital can now see this store's summary.");
+  const revoke = page.getByRole('button', { name: /Revoke access/ });
+  await revoke.focus();
+  await page.keyboard.press('Enter');
+  await expect(live(page)).toHaveText('Access revoked for Northwind Digital.');
+  await expect(page.getByText('No agency can see this store.')).toBeVisible();
 });

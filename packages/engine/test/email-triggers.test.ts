@@ -318,6 +318,9 @@ describe('the weekly rescan', () => {
     });
     expect(summary?.payload.input['previousChecks']).toBeDefined();
     expect(summary?.payload.input['nextScanAt']).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:]+Z$/u);
+    // No plan is stored, so the next scan is Free's, a month on (ADR-312).
+    const next = Date.parse(String(summary?.payload.input['nextScanAt']));
+    expect(Math.round((next - Date.now()) / 86_400_000)).toBe(30);
 
     await scanFinalizeHandler({ sql })(
       input('scan.finalize@1', { scan_id: weekly, site_id: s.siteId }, s.tenantId),
@@ -330,6 +333,117 @@ describe('the weekly rescan', () => {
     expect(ses.requests.length - before).toBe(1);
     const text = ses.requests[before]?.body.Content.Simple.Body.Text?.Data ?? '';
     expect(text).toContain('/apps/rampsmith');
+  });
+});
+
+describe('a regression after a scheduled rescan', () => {
+  async function plan(s: Store, name: 'starter' | 'growth'): Promise<void> {
+    await db.owner`
+      insert into shop_billing (shop_id, tenant_id, standing, plan, plan_interval, effective_plan,
+                                regression_alerts, render_cadence)
+      values (${s.shopId}, ${s.tenantId}, 'paid', ${name}, 'monthly', ${name},
+              ${name === 'growth'}, ${name === 'growth' ? 'daily' : 'weekly'})`;
+  }
+
+  /** A clean first scan, then a scheduled one that finds the missing alt text. */
+  async function regress(s: Store): Promise<string> {
+    await runScan(s, s.scanId, FIXED);
+    const scheduled = await newScan(s, 'scheduled');
+    await runScan(s, scheduled, PRODUCTS);
+    return scheduled;
+  }
+
+  const alerts = async (s: Store) =>
+    (await emailJobs(s)).filter((j) => j.payload.template === 'regression_alert');
+
+  it('emails a Growth shop once, with the issues and a link to the regressions page', async () => {
+    const s = await store();
+    await plan(s, 'growth');
+    const scheduled = await regress(s);
+    const [alert] = await alerts(s);
+    expect(alert?.payload.message_key).toBe(`regression-alert:${scheduled}`);
+    expect(alert?.payload.input).toMatchObject({
+      storeName: 'Trigger Outfitters',
+      cause: 'unknown',
+      moreIssues: 0,
+    });
+    const issues = alert?.payload.input['issues'] as { criterion: string; impact: string }[];
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.every((i) => /^\d\.\d\.\d+$/u.test(i.criterion))).toBe(true);
+    expect(JSON.stringify(alert)).not.toContain(OWNER);
+    const [record] = await db.owner<{ alert_state: string; new_count: number }[]>`
+      select alert_state, new_count from regressions where scan_id = ${scheduled}`;
+    expect(record?.alert_state).toBe('queued');
+    expect(record?.new_count).toBeGreaterThan(0);
+
+    // A retried finalize records and queues nothing more.
+    await scanFinalizeHandler({ sql })(
+      input('scan.finalize@1', { scan_id: scheduled, site_id: s.siteId }, s.tenantId),
+    );
+    expect(await alerts(s)).toHaveLength(1);
+
+    const before = ses.requests.length;
+    if (alert === undefined) throw new Error('no alert');
+    await deliver(s, alert);
+    expect(ses.requests.length - before).toBe(1);
+    const text = ses.requests[before]?.body.Content.Simple.Body.Text?.Data ?? '';
+    expect(text).toContain('/apps/rampsmith/regressions');
+  });
+
+  it('sends nothing on a plan without regression alerts, and says why on the record', async () => {
+    const s = await store();
+    await plan(s, 'starter');
+    const scheduled = await regress(s);
+    expect(await alerts(s)).toEqual([]);
+    const [record] = await db.owner<{ alert_state: string; new_count: number }[]>`
+      select alert_state, new_count from regressions where scan_id = ${scheduled}`;
+    expect(record).toMatchObject({ alert_state: 'plan' });
+    expect(record?.new_count).toBeGreaterThan(0);
+  });
+
+  it('sends nothing when there is no contact, and a manual rescan is not compared', async () => {
+    const s = await store(false);
+    await plan(s, 'growth');
+    const scheduled = await regress(s);
+    expect(await alerts(s)).toEqual([]);
+    const [record] = await db.owner<{ alert_state: string }[]>`
+      select alert_state from regressions where scan_id = ${scheduled}`;
+    expect(record?.alert_state).toBe('no_contact');
+
+    const manual = await newScan(s, 'manual');
+    await runScan(s, manual, PRODUCTS);
+    const rows = await db.owner`select 1 from regressions where scan_id = ${manual}`;
+    expect(rows.length, 'a manual scan has no regression record').toBe(0);
+  });
+
+  it('is held back by an opt-out or a suppressed address, like every notification', async () => {
+    const s = await store();
+    await plan(s, 'growth');
+    await regress(s);
+    const [alert] = await alerts(s);
+    if (alert === undefined) throw new Error('no alert');
+    await db.owner`
+      insert into email_opt_outs (tenant_id, address_hash, category)
+      values (${s.tenantId}, email_address_hash(${s.tenantId}::uuid, ${OWNER}), 'notification')`;
+    const before = ses.requests.length;
+    await deliver(s, alert);
+    expect(ses.requests.length - before).toBe(0);
+    const [row] = await db.owner<{ state: string }[]>`
+      select state from email_deliveries
+       where tenant_id = ${s.tenantId} and message_key = ${alert.payload.message_key}`;
+    expect(row?.state).toBe('suppressed');
+  });
+
+  it('queues no alert when nothing regressed', async () => {
+    const s = await store();
+    await plan(s, 'growth');
+    await runScan(s, s.scanId, FIXED);
+    const scheduled = await newScan(s, 'scheduled');
+    await runScan(s, scheduled, FIXED);
+    expect(await alerts(s)).toEqual([]);
+    const [record] = await db.owner<{ alert_state: string; new_count: number }[]>`
+      select alert_state, new_count from regressions where scan_id = ${scheduled}`;
+    expect(record).toEqual({ alert_state: 'not_applicable', new_count: 0 });
   });
 });
 

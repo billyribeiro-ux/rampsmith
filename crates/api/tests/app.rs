@@ -40,6 +40,7 @@ const CLIENT_ID: &str = "0123456789abcdef0123456789abcdef";
 const SECRET: &str = "shpss_api_test";
 const SHOP: &str = "demo-store.myshopify.com";
 const STAFF: &str = "42";
+const ORIGIN: &str = "https://app.rampsmith.test";
 const PRODUCT: &str = "gid://shopify/Product/100";
 const IMAGE: &str = "gid://shopify/MediaImage/200";
 const KEYS: &str = "k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
@@ -121,7 +122,9 @@ async fn harness(
         )
         .unwrap(),
     );
-    let mut state = AppState::new(db).with_shopify(auth);
+    let identity =
+        identity::Identity::new(db.clone(), "app.rampsmith.test", ORIGIN, "Rampsmith").unwrap();
+    let mut state = AppState::new(db).with_shopify(auth).with_identity(identity);
     if keys {
         state = state.with_keys(KeyRing::parse(KEYS).unwrap());
     }
@@ -170,9 +173,21 @@ impl Harness {
         uri: &str,
         body: Option<Value>,
     ) -> Answer {
+        self.call_for(SHOP, sub, verb, uri, body).await
+    }
+
+    /// Like `call_as`, signed for another shop's domain.
+    async fn call_for(
+        &self,
+        domain: &str,
+        sub: Option<&str>,
+        verb: &str,
+        uri: &str,
+        body: Option<Value>,
+    ) -> Answer {
         let mut request = Request::builder().method(verb).uri(uri).header(
             header::AUTHORIZATION,
-            format!("Bearer {}", id_token_for(SHOP, sub)),
+            format!("Bearer {}", id_token_for(domain, sub)),
         );
         let body = match body {
             Some(value) => {
@@ -1619,7 +1634,12 @@ async fn settings_have_defaults_and_validate_what_changes(
             Some(json!({"weekly_rescan": true})),
         )
         .await;
-    assert_eq!(weekly.status, StatusCode::FORBIDDEN, "Free scans monthly");
+    assert_eq!(
+        weekly.status,
+        StatusCode::OK,
+        "every plan has scheduled rescans at its own cadence: {}",
+        weekly.body
+    );
     let unknown = h
         .call(
             "PUT",
@@ -2212,4 +2232,730 @@ async fn a_flagged_draft_is_approved_only_with_an_explicit_confirmation(
         )
         .await;
     assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+}
+
+// --- Regressions (ADR-310, ADR-311) ----------------------------------------------------
+
+async fn set_plan(h: &Harness, plan: &str) {
+    sqlx::query(
+        "insert into shop_billing (shop_id, tenant_id, standing, plan, plan_interval,
+                                   last_confirmed_at)
+         values ($1, $2, 'paid', $3, 'monthly', now())
+         on conflict (shop_id) do update set plan = excluded.plan, standing = 'paid'",
+    )
+    .bind(h.shop)
+    .bind(h.tenant)
+    .bind(plan)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+}
+
+/// A regression record for `scan`, with one listed finding.
+async fn regression(h: &Harness, scan: Uuid, finding: Uuid, days_ago: i32) -> Uuid {
+    sqlx::query_scalar(
+        "insert into regressions (id, tenant_id, site_id, scan_id, new_count, reappeared_count,
+                                  findings_seen, pass_rate, previous_pass_rate, items,
+                                  alert_state, detected_at)
+         values (gen_random_uuid(), $1, $2, $3, 1, 0, 4, 90.5, 93.25,
+                 jsonb_build_array(jsonb_build_object('finding_id', $4::text,
+                     'rule_id', 'rs-media-alt-empty', 'impact', 'critical',
+                     'criteria', jsonb_build_array('1.1.1'), 'kind', 'new')),
+                 'queued', now() - make_interval(days => $5))
+         returning id",
+    )
+    .bind(h.tenant)
+    .bind(h.site)
+    .bind(scan)
+    .bind(finding)
+    .bind(days_ago)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn a_growth_shop_sees_its_regressions_in_a_list_and_a_banner_until_it_dismisses_it(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    set_plan(&h, "growth").await;
+    let first = h.scan("succeeded", "scheduled", 120, None).await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            Some(8.0),
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    let _ = first;
+    let record = regression(&h, scan, finding, 0).await;
+
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+    assert_eq!(list.body["gate"], "allowed");
+    assert_eq!(list.body["unlocked_by"], Value::Null);
+    let item = &list.body["items"][0];
+    assert_eq!(item["id"], record.to_string());
+    assert_eq!(item["new_count"], 1);
+    assert_eq!(item["pass_rate"], 90.5);
+    assert_eq!(item["previous_pass_rate"], 93.25);
+    assert_eq!(item["items"][0]["finding_id"], finding.to_string());
+    assert_eq!(item["items"][0]["kind"], "new");
+    // The sentence comes from the catalog, not from the stored row.
+    assert!(item["items"][0]["title"].as_str().unwrap().len() > 10);
+
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(overview.body["regression_banner"]["id"], record.to_string());
+
+    let dismissed = h
+        .call(
+            "POST",
+            &format!("/v1/shopify/regressions/{record}/dismiss"),
+            None,
+        )
+        .await;
+    assert_eq!(dismissed.status, StatusCode::NO_CONTENT);
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(overview.body["regression_banner"], Value::Null);
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.body["items"][0]["dismissed"], true, "the record stays");
+    let audited: i64 = sqlx::query_scalar(
+        "select count(*) from audit_log where tenant_id = $1 and action = 'regression.dismissed'",
+    )
+    .bind(h.tenant)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap();
+    assert_eq!(audited, 1);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_banner_ends_after_a_week(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = plain(opts, conn).await;
+    set_plan(&h, "pro").await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            None,
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    regression(&h, scan, finding, 9).await;
+    let overview = h.get("/v1/shopify/overview").await;
+    assert_eq!(overview.body["regression_banner"], Value::Null);
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.body["items"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn plans_without_regression_alerts_see_nothing_and_are_told_which_plan_unlocks_them(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    let finding = h
+        .finding(
+            scan,
+            "rs-media-alt-empty",
+            "critical",
+            "open",
+            "data",
+            None,
+            false,
+            &["1.1.1"],
+        )
+        .await;
+    regression(&h, scan, finding, 0).await;
+    // Free (no plan row) and Starter are both locked, and both are told Growth unlocks it.
+    for plan in [None, Some("starter")] {
+        if let Some(plan) = plan {
+            set_plan(&h, plan).await;
+        }
+        let list = h.get("/v1/shopify/regressions").await;
+        assert_eq!(list.status, StatusCode::OK);
+        assert_eq!(list.body["gate"], "locked", "{plan:?}");
+        assert_eq!(list.body["unlocked_by"], "growth", "{plan:?}");
+        assert_eq!(list.body["items"], json!([]), "{plan:?}");
+        let overview = h.get("/v1/shopify/overview").await;
+        assert_eq!(overview.body["regression_banner"], Value::Null, "{plan:?}");
+    }
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn another_shops_regression_is_not_found_and_stays_undismissed(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    set_plan(&h, "growth").await;
+    let (their_scan, their_finding, _) = other_shop(&h).await;
+    let their_tenant: Uuid = sqlx::query_scalar("select tenant_id from scans where id = $1")
+        .bind(their_scan)
+        .fetch_one(&h.owner)
+        .await
+        .unwrap();
+    let their_site: Uuid = sqlx::query_scalar("select site_id from scans where id = $1")
+        .bind(their_scan)
+        .fetch_one(&h.owner)
+        .await
+        .unwrap();
+    let theirs: Uuid = sqlx::query_scalar(
+        "insert into regressions (id, tenant_id, site_id, scan_id, new_count, reappeared_count,
+                                  findings_seen, items, alert_state)
+         values (gen_random_uuid(), $1, $2, $3, 1, 0, 1,
+                 jsonb_build_array(jsonb_build_object('finding_id', $4::text, 'rule_id', 'x',
+                    'impact', 'minor', 'criteria', jsonb_build_array('1.1.1'), 'kind', 'new')),
+                 'queued') returning id",
+    )
+    .bind(their_tenant)
+    .bind(their_site)
+    .bind(their_scan)
+    .bind(their_finding)
+    .fetch_one(&h.owner)
+    .await
+    .unwrap();
+    let list = h.get("/v1/shopify/regressions").await;
+    assert_eq!(list.body["items"], json!([]), "nothing of theirs is listed");
+    let refused = h
+        .call(
+            "POST",
+            &format!("/v1/shopify/regressions/{theirs}/dismiss"),
+            None,
+        )
+        .await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    let bad = h
+        .call("POST", "/v1/shopify/regressions/not-an-id/dismiss", None)
+        .await;
+    assert_eq!(bad.status, StatusCode::NOT_FOUND);
+    let untouched: Option<time::OffsetDateTime> =
+        sqlx::query_scalar("select dismissed_at from regressions where id = $1")
+            .bind(theirs)
+            .fetch_one(&h.owner)
+            .await
+            .unwrap();
+    assert!(untouched.is_none());
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn regression_operations_need_a_session(opts: PgPoolOptions, conn: PgConnectOptions) {
+    let h = plain(opts, conn).await;
+    for (verb, uri) in [
+        ("GET", "/v1/shopify/regressions".to_owned()),
+        (
+            "POST",
+            format!("/v1/shopify/regressions/{}/dismiss", Uuid::nil()),
+        ),
+    ] {
+        let res = api::app(h.state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(verb)
+                    .uri(&uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{verb} {uri}");
+    }
+}
+
+// --- Agency links (ADR-313, ADR-314) ---------------------------------------------------
+
+const OTHER_SHOP: &str = "second-store.myshopify.com";
+
+/// A signed-in dashboard user with a live session token.
+async fn dashboard_user(h: &Harness, name: &str) -> String {
+    let id = Uuid::now_v7();
+    let token = format!("test-session-{id}");
+    sqlx::query("insert into users (id, email, display_name) values ($1, $2, $3)")
+        .bind(id)
+        .bind(format!("{name}-{id}@example.com"))
+        .bind(name)
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    sqlx::query(
+        "insert into web_sessions (token_hash, user_id, idle_expires_at, absolute_expires_at)
+         values (sha256(convert_to($1, 'UTF8')), $2, now() + interval '7 days',
+                 now() + interval '30 days')",
+    )
+    .bind(&token)
+    .bind(id)
+    .execute(&h.owner)
+    .await
+    .unwrap();
+    token
+}
+
+/// A dashboard call with `Authorization: Session <token>`.
+async fn dash(
+    h: &Harness,
+    token: Option<&str>,
+    verb: &str,
+    uri: &str,
+    body: Option<Value>,
+) -> Answer {
+    let mut request = Request::builder().method(verb).uri(uri);
+    if let Some(token) = token {
+        request = request.header(header::AUTHORIZATION, format!("Session {token}"));
+    }
+    let body = match body {
+        Some(value) => {
+            request = request.header(header::CONTENT_TYPE, "application/json");
+            Body::from(value.to_string())
+        }
+        None => Body::empty(),
+    };
+    let res = api::app(h.state.clone())
+        .oneshot(request.body(body).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes().to_vec();
+    Answer {
+        status,
+        content_type: String::new(),
+        headers,
+        body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        bytes,
+    }
+}
+
+/// Installs a second shop by opening its first session.
+async fn second_shop(h: &Harness) {
+    let res = h
+        .call_for(OTHER_SHOP, Some(STAFF), "POST", "/v1/shopify/session", None)
+        .await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+}
+
+/// An organization of the user's, and a fresh code for it.
+async fn org_and_code(h: &Harness, token: &str, name: &str) -> (String, String) {
+    let org = dash(
+        h,
+        Some(token),
+        "POST",
+        "/v1/agency/organizations",
+        Some(json!({"name": name})),
+    )
+    .await;
+    assert_eq!(org.status, StatusCode::CREATED, "{}", org.body);
+    let id = org.body["id"].as_str().unwrap().to_owned();
+    let code = dash(
+        h,
+        Some(token),
+        "POST",
+        &format!("/v1/agency/organizations/{id}/link-codes"),
+        None,
+    )
+    .await;
+    assert_eq!(code.status, StatusCode::CREATED, "{}", code.body);
+    (id, code.body["code"].as_str().unwrap().to_owned())
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn an_agency_links_a_store_the_merchant_approves_and_loses_it_when_the_merchant_revokes(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    let scan = h.scan("succeeded", "scheduled", 60, None).await;
+    h.finding(
+        scan,
+        "rs-media-alt-empty",
+        "critical",
+        "open",
+        "data",
+        Some(8.0),
+        false,
+        &["1.1.1"],
+    )
+    .await;
+    let ada = dashboard_user(&h, "ada").await;
+    let (_org, code) = org_and_code(&h, &ada, "Ada Agency").await;
+
+    // Nothing is linked by a code alone.
+    let before = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(before.status, StatusCode::OK);
+    assert_eq!(before.body["stores"].as_array().unwrap().len(), 0);
+
+    // The merchant sees who is asking, then approves; the code may be typed in lower case.
+    let typed = code.to_lowercase();
+    let preview = h
+        .call(
+            "POST",
+            "/v1/shopify/agency-links/preview",
+            Some(json!({"code": typed})),
+        )
+        .await;
+    assert_eq!(preview.status, StatusCode::OK, "{}", preview.body);
+    assert_eq!(preview.body["organization_name"], "Ada Agency");
+    let approved = h
+        .call(
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": code})),
+        )
+        .await;
+    assert_eq!(approved.status, StatusCode::CREATED, "{}", approved.body);
+    let link = approved.body["id"].as_str().unwrap().to_owned();
+    let listed = h.get("/v1/shopify/agency-links").await;
+    assert_eq!(listed.body["links"][0]["organization_name"], "Ada Agency");
+
+    // The agency's overview now shows counts, no finding content.
+    let after = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    let store = &after.body["stores"][0];
+    assert_eq!(store["shop_domain"], SHOP, "{}", after.body);
+    assert_eq!(store["open_findings"], 1);
+    assert_eq!(store["open_serious"], 1);
+    assert_eq!(store["pass_rate"], 83.3);
+    assert!(
+        !after.body.to_string().contains("rs-media-alt-empty"),
+        "the overview carried finding content"
+    );
+
+    // Revoke from App Home: the very next read lacks the store.
+    let revoked = h
+        .call("DELETE", &format!("/v1/shopify/agency-links/{link}"), None)
+        .await;
+    assert_eq!(revoked.status, StatusCode::NO_CONTENT);
+    let gone = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(
+        gone.body["stores"].as_array().unwrap().len(),
+        0,
+        "a revoked store still showed"
+    );
+    let again = h
+        .call("DELETE", &format!("/v1/shopify/agency-links/{link}"), None)
+        .await;
+    assert_eq!(again.status, StatusCode::NOT_FOUND);
+
+    // The decisions are in the audit log, with no names in them.
+    let actions: Vec<String> = sqlx::query_scalar(
+        "select action from audit_log where action like 'agency.%' order by at, id",
+    )
+    .fetch_all(&h.owner)
+    .await
+    .unwrap();
+    assert_eq!(actions, ["agency.link_approved", "agency.link_revoked"]);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn an_agency_never_sees_a_store_that_did_not_grant_a_link_or_another_agencys_link(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    second_shop(&h).await;
+    let (ada, eve) = (
+        dashboard_user(&h, "ada").await,
+        dashboard_user(&h, "eve").await,
+    );
+    let (ada_org, code) = org_and_code(&h, &ada, "Ada Agency").await;
+    let (_eve_org, _eve_code) = org_and_code(&h, &eve, "Eve Agency").await;
+
+    // Only the first shop approves Ada's code.
+    let approved = h
+        .call(
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": code})),
+        )
+        .await;
+    assert_eq!(approved.status, StatusCode::CREATED);
+    let link = approved.body["id"].as_str().unwrap().to_owned();
+
+    let ada_view = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    let domains: Vec<&str> = ada_view.body["stores"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["shop_domain"].as_str().unwrap())
+        .collect();
+    assert_eq!(domains, [SHOP], "the unlinked second store appeared");
+
+    // Eve is in another organization: she sees nothing, cannot end Ada's link, and cannot make
+    // codes for Ada's organization.
+    let eve_view = dash(&h, Some(&eve), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(eve_view.body["stores"].as_array().unwrap().len(), 0);
+    let ended = dash(
+        &h,
+        Some(&eve),
+        "DELETE",
+        &format!("/v1/agency/links/{link}"),
+        None,
+    )
+    .await;
+    assert_eq!(ended.status, StatusCode::NOT_FOUND);
+    let minted = dash(
+        &h,
+        Some(&eve),
+        "POST",
+        &format!("/v1/agency/organizations/{ada_org}/link-codes"),
+        None,
+    )
+    .await;
+    assert_eq!(minted.status, StatusCode::NOT_FOUND);
+    let still = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(still.body["stores"].as_array().unwrap().len(), 1);
+
+    // The second shop cannot see or revoke the first shop's link.
+    let theirs = h
+        .call_for(
+            OTHER_SHOP,
+            Some(STAFF),
+            "GET",
+            "/v1/shopify/agency-links",
+            None,
+        )
+        .await;
+    assert_eq!(theirs.body["links"].as_array().unwrap().len(), 0);
+    let stolen = h
+        .call_for(
+            OTHER_SHOP,
+            Some(STAFF),
+            "DELETE",
+            &format!("/v1/shopify/agency-links/{link}"),
+            None,
+        )
+        .await;
+    assert_eq!(stolen.status, StatusCode::NOT_FOUND);
+    let still = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(still.body["stores"].as_array().unwrap().len(), 1);
+
+    // The agency ends it from its side: the merchant's list empties as well.
+    let ended = dash(
+        &h,
+        Some(&ada),
+        "DELETE",
+        &format!("/v1/agency/links/{link}"),
+        None,
+    )
+    .await;
+    assert_eq!(ended.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        h.get("/v1/shopify/agency-links").await.body["links"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    let none = dash(&h, Some(&ada), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(none.body["stores"].as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn codes_are_single_use_expire_and_a_shop_that_guesses_is_stopped(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    second_shop(&h).await;
+    let ada = dashboard_user(&h, "ada").await;
+    let (_org, code) = org_and_code(&h, &ada, "Ada Agency").await;
+
+    let first = h
+        .call(
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": code})),
+        )
+        .await;
+    assert_eq!(first.status, StatusCode::CREATED);
+    let reused = h
+        .call_for(
+            OTHER_SHOP,
+            Some(STAFF),
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": code})),
+        )
+        .await;
+    assert_eq!(
+        reused.status,
+        StatusCode::NOT_FOUND,
+        "a used code linked a second shop"
+    );
+
+    // An expired code.
+    sqlx::query("update agency_link_codes set expires_at = now() - interval '1 minute'")
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let fresh = dash(&h, Some(&ada), "GET", "/v1/agency/organizations", None).await;
+    let org = fresh.body["organizations"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let stale = dash(
+        &h,
+        Some(&ada),
+        "POST",
+        &format!("/v1/agency/organizations/{org}/link-codes"),
+        None,
+    )
+    .await;
+    let stale_code = stale.body["code"].as_str().unwrap().to_owned();
+    sqlx::query("update agency_link_codes set expires_at = now() - interval '1 minute'")
+        .execute(&h.owner)
+        .await
+        .unwrap();
+    let expired = h
+        .call_for(
+            OTHER_SHOP,
+            Some(STAFF),
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": stale_code})),
+        )
+        .await;
+    assert_eq!(
+        expired.status,
+        StatusCode::NOT_FOUND,
+        "an expired code linked"
+    );
+
+    // Wrong guesses are counted per shop; past the limit even a valid code is refused.
+    let (_, good) = {
+        let minted = dash(
+            &h,
+            Some(&ada),
+            "POST",
+            &format!("/v1/agency/organizations/{org}/link-codes"),
+            None,
+        )
+        .await;
+        (
+            org.clone(),
+            minted.body["code"].as_str().unwrap().to_owned(),
+        )
+    };
+    // The reused and the expired code above were two; three more make five.
+    for _ in 0..3 {
+        let wrong = h
+            .call_for(
+                OTHER_SHOP,
+                Some(STAFF),
+                "POST",
+                "/v1/shopify/agency-links",
+                Some(json!({"code": "ZZZZZ-ZZZZZ"})),
+            )
+            .await;
+        assert_eq!(wrong.status, StatusCode::NOT_FOUND);
+    }
+    let blocked = h
+        .call_for(
+            OTHER_SHOP,
+            Some(STAFF),
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": good})),
+        )
+        .await;
+    assert_eq!(
+        blocked.status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "{}",
+        blocked.body
+    );
+    let preview = h
+        .call_for(
+            OTHER_SHOP,
+            Some(STAFF),
+            "POST",
+            "/v1/shopify/agency-links/preview",
+            Some(json!({"code": good})),
+        )
+        .await;
+    assert_eq!(preview.status, StatusCode::TOO_MANY_REQUESTS);
+    // The other shop's counter is its own.
+    let shop_one = h
+        .call(
+            "POST",
+            "/v1/shopify/agency-links",
+            Some(json!({"code": good})),
+        )
+        .await;
+    assert_eq!(shop_one.status, StatusCode::CREATED, "{}", shop_one.body);
+
+    // A code that cannot be one is just as unwelcome.
+    let junk = h
+        .call(
+            "POST",
+            "/v1/shopify/agency-links/preview",
+            Some(json!({"code": "hello"})),
+        )
+        .await;
+    assert_eq!(junk.status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test(migrations = "../db/migrations")]
+async fn the_agency_routes_need_the_right_kind_of_session(
+    opts: PgPoolOptions,
+    conn: PgConnectOptions,
+) {
+    let h = plain(opts, conn).await;
+    for (verb, uri) in [
+        ("GET", "/v1/agency/organizations"),
+        ("POST", "/v1/agency/organizations"),
+        ("GET", "/v1/agency/stores"),
+        (
+            "POST",
+            "/v1/agency/organizations/00000000-0000-0000-0000-000000000001/link-codes",
+        ),
+        (
+            "DELETE",
+            "/v1/agency/links/00000000-0000-0000-0000-000000000001",
+        ),
+    ] {
+        let answer = dash(&h, None, verb, uri, Some(json!({"name": "x"}))).await;
+        assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{verb} {uri}");
+    }
+    // A Shopify session is not a dashboard session, and the other way round.
+    let token = id_token(SHOP, STAFF);
+    let wrong = dash(&h, Some(&token), "GET", "/v1/agency/stores", None).await;
+    assert_eq!(wrong.status, StatusCode::UNAUTHORIZED);
+    let ada = dashboard_user(&h, "ada").await;
+    let wrong = dash(&h, Some(&ada), "GET", "/v1/shopify/agency-links", None).await;
+    assert_eq!(wrong.status, StatusCode::UNAUTHORIZED);
+    for (verb, uri) in [
+        ("GET", "/v1/shopify/agency-links"),
+        ("POST", "/v1/shopify/agency-links"),
+        ("POST", "/v1/shopify/agency-links/preview"),
+        (
+            "DELETE",
+            "/v1/shopify/agency-links/00000000-0000-0000-0000-000000000001",
+        ),
+    ] {
+        let res = api::app(h.state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(verb)
+                    .uri(uri)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{verb} {uri}");
+    }
 }

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update store_links set revoked_at = now(), revoked_by = 'merchant'\n          where tenant_id = $1 and shop_id = $2 and id = $3 and revoked_at is null",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8353187e8bc0b2854b5ff6561ad9c26df43b9475eaa751314ac75543df7025cd"
+}

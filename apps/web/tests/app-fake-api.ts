@@ -10,6 +10,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import process from 'node:process';
 import type {
+  AgencyLink,
   AltTextChange,
   Entitlements,
   FeatureGate,
@@ -21,6 +22,8 @@ import type {
   Impact,
   Overview,
   PlanHandle,
+  Regression,
+  RegressionList,
   ScanSummary,
   Settings,
   StatementContent,
@@ -29,7 +32,8 @@ import type {
 
 const port = Number(process.env['FAKE_API_PORT'] ?? '3984');
 
-export type ScenarioName = 'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error' | 'flagged';
+export type ScenarioName =
+  'default' | 'free' | 'starter' | 'fresh' | 'empty' | 'error' | 'flagged' | 'regressed' | 'agency';
 
 interface Product {
   readonly title: string;
@@ -169,6 +173,10 @@ interface Scenario {
   statement: StatementState;
   failing: boolean;
   firstFixAt: string | null;
+  regressions: Regression[];
+  agencyLinks: AgencyLink[];
+  /** Wrong link codes tried; the api refuses more after five. */
+  badCodes: number;
   seq: number;
 }
 
@@ -361,6 +369,12 @@ function scenario(name: ScenarioName): Scenario {
     statement: { draft: null, versions: [] },
     failing: name === 'error',
     firstFixAt: null,
+    regressions: [],
+    agencyLinks:
+      name === 'agency'
+        ? [{ id: uuid(950), organization_name: 'Northwind Digital', granted_at: iso(30) }]
+        : [],
+    badCodes: 0,
     seq: 100,
   };
   if (
@@ -368,11 +382,41 @@ function scenario(name: ScenarioName): Scenario {
     name === 'free' ||
     name === 'starter' ||
     name === 'error' ||
-    name === 'flagged'
+    name === 'flagged' ||
+    name === 'regressed' ||
+    name === 'agency'
   ) {
     s.scan = scan(2, 'succeeded', 6);
     populate(s, 'history');
     s.firstFixAt = iso(21);
+    if (name === 'regressed') {
+      // The latest scan was a scheduled one: one new issue and one that came back.
+      s.scan = { ...s.scan, trigger: 'scheduled' };
+      const picks = [...s.findings.values()].slice(0, 2).map(summaryOf);
+      s.regressions = [
+        {
+          id: uuid(900),
+          scan_id: s.scan.id,
+          previous_scan_id: uuid(1),
+          new_count: 1,
+          reappeared_count: 1,
+          findings_seen: 7,
+          previous_findings_seen: 6,
+          pass_rate: 90.8,
+          previous_pass_rate: 94.2,
+          items: picks.map((f, i) => ({
+            finding_id: f.id,
+            rule_id: f.rule_id,
+            title: f.title,
+            impact: f.impact,
+            criteria: f.criteria,
+            kind: i === 0 ? 'new' : 'reappeared',
+          })),
+          detected_at: iso(6),
+          dismissed: false,
+        },
+      ];
+    }
     if (name === 'flagged') {
       // The brass lamp's draft was flagged by the engine (security audit M1): both flags.
       const lamp = [...s.fixes.values()].find((f) => f.product_title === 'Brass desk lamp');
@@ -486,6 +530,20 @@ function overview(): Overview {
     fixes_awaiting_approval: fixes.filter((f) => f.status === 'proposed').length,
     fixes_applied: fixes.filter((f) => f.status === 'applied' || f.status === 'verified').length,
     first_fix_at: state.firstFixAt,
+    regression_banner:
+      state.settings.entitlements.plan === 'free' || state.settings.entitlements.plan === 'starter'
+        ? null
+        : (state.regressions.find((r) => !r.dismissed) ?? null),
+  };
+}
+
+function regressionList(): RegressionList {
+  const plan = state.settings.entitlements.plan;
+  const locked = plan === 'free' || plan === 'starter';
+  return {
+    gate: locked ? 'locked' : 'allowed',
+    unlocked_by: locked ? 'growth' : null,
+    items: locked ? [] : state.regressions,
   };
 }
 
@@ -496,6 +554,45 @@ function route(method: string, url: URL, body: Record<string, unknown>): Reply {
   if (method === 'GET' && path === 'overview') {
     tick();
     return { status: 200, body: overview() };
+  }
+  if (method === 'GET' && path === 'regressions') return { status: 200, body: regressionList() };
+  if (method === 'POST' && /^regressions\/[^/]+\/dismiss$/u.test(path)) {
+    const found = state.regressions.find((r) => r.id === id);
+    if (found === undefined) return problem(404, 'not_found', 'Not found');
+    state.regressions = state.regressions.map((r) => (r.id === id ? { ...r, dismissed: true } : r));
+    return { status: 204 };
+  }
+  if (method === 'GET' && path === 'agency-links') {
+    return { status: 200, body: { links: state.agencyLinks } };
+  }
+  if (method === 'POST' && (path === 'agency-links' || path === 'agency-links/preview')) {
+    if (state.badCodes >= 5) return problem(429, 'rate_limited', 'Too many codes were not valid');
+    const typed = (typeof body['code'] === 'string' ? body['code'] : '')
+      .replace(/[\s-]/gu, '')
+      .toUpperCase();
+    if (typed !== 'ABCDE12345') {
+      state.badCodes += 1;
+      return problem(404, 'not_found', 'Not found');
+    }
+    if (path === 'agency-links/preview') {
+      return {
+        status: 200,
+        body: { organization_name: 'Northwind Digital', expires_at: iso(-60 * 23) },
+      };
+    }
+    const link: AgencyLink = {
+      id: uuid(951 + state.agencyLinks.length),
+      organization_name: 'Northwind Digital',
+      granted_at: iso(0),
+    };
+    state.agencyLinks = [...state.agencyLinks, link];
+    return { status: 201, body: link };
+  }
+  if (method === 'DELETE' && path.startsWith('agency-links/')) {
+    const found = state.agencyLinks.find((l) => l.id === id);
+    if (found === undefined) return problem(404, 'not_found', 'Not found');
+    state.agencyLinks = state.agencyLinks.filter((l) => l.id !== id);
+    return { status: 204 };
   }
   if (method === 'POST' && path === 'scans') {
     if (state.scan?.status === 'queued' || state.scan?.status === 'running')

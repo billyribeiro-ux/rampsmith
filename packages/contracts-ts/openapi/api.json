@@ -61,6 +61,249 @@
         }
       }
     },
+    "/v1/agency/links/{link_id}": {
+      "delete": {
+        "tags": [
+          "agency"
+        ],
+        "summary": "Ends a link from the agency's side.",
+        "operationId": "unlinkStore",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "description": "The link's identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The link ended"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such live link in one of the user's organizations",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      }
+    },
+    "/v1/agency/organizations": {
+      "get": {
+        "tags": [
+          "agency"
+        ],
+        "summary": "Lists the signed-in user's organizations.",
+        "operationId": "listOrganizations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "agency"
+        ],
+        "summary": "Creates an organization with the signed-in user as its owner.",
+        "operationId": "createOrganization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOrganization"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user already has the most organizations allowed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      }
+    },
+    "/v1/agency/organizations/{organization_id}/link-codes": {
+      "post": {
+        "tags": [
+          "agency"
+        ],
+        "summary": "Makes a code a merchant can use to link a store to this organization.",
+        "operationId": "createLinkCode",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "description": "The organization's identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkCodeDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such organization, or the user is not a member",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The organization already holds the most live codes",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      }
+    },
+    "/v1/agency/stores": {
+      "get": {
+        "tags": [
+          "agency"
+        ],
+        "summary": "The cross-store overview: only stores whose merchant approved a link, and only until it is revoked.",
+        "operationId": "listLinkedStores",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedStoresDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "dashboard_session": []
+          }
+        ]
+      }
+    },
     "/v1/auth/register/finish": {
       "post": {
         "tags": [
@@ -574,6 +817,215 @@
             }
           }
         }
+      }
+    },
+    "/v1/shopify/agency-links": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Lists the agencies that can see this store.",
+        "operationId": "listAgencyLinks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopLinksDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Approves the link: from now on the organization sees this store's scores and findings counts.",
+        "operationId": "approveAgencyLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopLinkDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The code is not valid, is used or has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes were not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/agency-links/preview": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Shows which organization a code belongs to, before the merchant approves it.",
+        "operationId": "previewAgencyLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodePreviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The code is not valid, is used or has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes were not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/agency-links/{link_id}": {
+      "delete": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Revokes a link: the organization stops seeing this store at once.",
+        "operationId": "revokeAgencyLink",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "description": "The link's identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The link is revoked"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such live link on this store",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
       }
     },
     "/v1/shopify/code-fixes": {
@@ -1569,6 +2021,92 @@
         ]
       }
     },
+    "/v1/shopify/regressions": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The scheduled scans that found new or returning failures.",
+        "operationId": "listRegressions",
+        "responses": {
+          "200": {
+            "description": "The regressions, or the plan that unlocks them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegressionListDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/regressions/{regression_id}/dismiss": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Hides the overview banner for a record.",
+        "operationId": "dismissRegression",
+        "parameters": [
+          {
+            "name": "regression_id",
+            "in": "path",
+            "description": "The record's identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The banner is hidden"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such record",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
     "/v1/shopify/scans": {
       "post": {
         "tags": [
@@ -2094,6 +2632,34 @@
               "$ref": "#/components/schemas/GithubRepositoryDto"
             },
             "description": "Its repositories, chosen one first."
+          }
+        }
+      },
+      "CodePreviewDto": {
+        "type": "object",
+        "description": "Who asked to link.",
+        "required": [
+          "organization_name",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string"
+          },
+          "organization_name": {
+            "type": "string"
+          }
+        }
+      },
+      "CodeRequest": {
+        "type": "object",
+        "description": "A link code a merchant typed.",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
           }
         }
       },
@@ -3077,6 +3643,23 @@
         },
         "additionalProperties": false
       },
+      "LinkCodeDto": {
+        "type": "object",
+        "description": "A link code, shown once.",
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "`XXXXX-XXXXX`. The merchant types it into the app; it is not stored and cannot be shown again."
+          },
+          "expires_at": {
+            "type": "string"
+          }
+        }
+      },
       "LinkRequest": {
         "type": "object",
         "required": [
@@ -3089,6 +3672,121 @@
           }
         },
         "additionalProperties": false
+      },
+      "LinkedStoreDto": {
+        "type": "object",
+        "description": "One linked store in the overview.",
+        "required": [
+          "link_id",
+          "organization_id",
+          "organization_name",
+          "shop_domain",
+          "granted_at",
+          "open_findings",
+          "open_serious"
+        ],
+        "properties": {
+          "granted_at": {
+            "type": "string"
+          },
+          "link_id": {
+            "type": "string"
+          },
+          "open_findings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "open_serious": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, serious or critical."
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "organization_name": {
+            "type": "string"
+          },
+          "pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Checks passed over checks run in the latest finished scan, as a percentage."
+          },
+          "regression_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "regression_new": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "New findings in the latest regression of the last 30 days that the merchant has not dismissed."
+          },
+          "regression_reappeared": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "scan_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scan_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The latest scan's status, when the store has been scanned."
+          },
+          "scan_trigger": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What started it: `manual`, `scheduled` or `webhook`."
+          },
+          "shop_domain": {
+            "type": "string"
+          }
+        }
+      },
+      "LinkedStoresDto": {
+        "type": "object",
+        "description": "The stores that granted a link to one of the user's organizations.",
+        "required": [
+          "stores"
+        ],
+        "properties": {
+          "stores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedStoreDto"
+            }
+          }
+        }
+      },
+      "NewOrganization": {
+        "type": "object",
+        "description": "What to call a new organization.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
       },
       "OccurrenceDto": {
         "type": "object",
@@ -3112,6 +3810,42 @@
           "target": {
             "type": "string",
             "description": "A scrubbed CSS selector."
+          }
+        }
+      },
+      "OrganizationDto": {
+        "type": "object",
+        "description": "An organization the signed-in user belongs to.",
+        "required": [
+          "id",
+          "name",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "description": "`owner` or `member`."
+          }
+        }
+      },
+      "OrganizationsDto": {
+        "type": "object",
+        "description": "The user's organizations.",
+        "required": [
+          "organizations"
+        ],
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationDto"
+            }
           }
         }
       },
@@ -3163,6 +3897,17 @@
           "open_by_impact": {
             "$ref": "#/components/schemas/ImpactCountsDto",
             "description": "Open findings by impact; best practices are not counted."
+          },
+          "regression_banner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RegressionDto",
+                "description": "The newest scheduled scan that found new or returning failures, until the merchant\ndismisses it or a week passes; null on a plan without regression alerts (ADR-311)."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "shop": {
             "$ref": "#/components/schemas/ShopDto"
@@ -3307,6 +4052,153 @@
           }
         },
         "additionalProperties": false
+      },
+      "RegressionDto": {
+        "type": "object",
+        "description": "A scheduled scan compared with the one before it.",
+        "required": [
+          "id",
+          "scan_id",
+          "new_count",
+          "reappeared_count",
+          "findings_seen",
+          "items",
+          "detected_at",
+          "dismissed"
+        ],
+        "properties": {
+          "detected_at": {
+            "type": "string"
+          },
+          "dismissed": {
+            "type": "boolean"
+          },
+          "findings_seen": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Findings this scan recorded (best practices left out)."
+          },
+          "id": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegressionItemDto"
+            },
+            "description": "The most severe findings; the counts above are the totals."
+          },
+          "new_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Open findings never seen before this scan."
+          },
+          "pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Checks passed over checks run, as a percentage."
+          },
+          "previous_findings_seen": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "previous_pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "previous_scan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reappeared_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Findings seen earlier, absent from the previous scan, open again."
+          },
+          "scan_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RegressionItemDto": {
+        "type": "object",
+        "description": "One finding on a regression record.",
+        "required": [
+          "finding_id",
+          "rule_id",
+          "title",
+          "impact",
+          "criteria",
+          "kind"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "WCAG success criteria."
+          },
+          "finding_id": {
+            "type": "string",
+            "description": "The finding's id; its page is `/app/findings/<id>`."
+          },
+          "impact": {
+            "type": "string",
+            "description": "`minor`, `moderate`, `serious` or `critical`."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`new` or `reappeared`."
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "The rule that failed."
+          },
+          "title": {
+            "type": "string",
+            "description": "One plain-language sentence naming the problem."
+          }
+        }
+      },
+      "RegressionListDto": {
+        "type": "object",
+        "description": "The regressions list and whether the plan includes it.",
+        "required": [
+          "gate",
+          "items"
+        ],
+        "properties": {
+          "gate": {
+            "type": "string",
+            "description": "`allowed`, or `locked` when the plan has no regression alerts."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegressionDto"
+            },
+            "description": "Records that found something, newest first; empty when locked."
+          },
+          "unlocked_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The lowest plan that unlocks regression alerts, when locked."
+          }
+        }
       },
       "ScanSummaryDto": {
         "type": "object",
@@ -3524,6 +4416,41 @@
           }
         }
       },
+      "ShopLinkDto": {
+        "type": "object",
+        "description": "A live link on the shop.",
+        "required": [
+          "id",
+          "organization_name",
+          "granted_at"
+        ],
+        "properties": {
+          "granted_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "organization_name": {
+            "type": "string"
+          }
+        }
+      },
+      "ShopLinksDto": {
+        "type": "object",
+        "description": "The shop's live agency links.",
+        "required": [
+          "links"
+        ],
+        "properties": {
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShopLinkDto"
+            }
+          }
+        }
+      },
       "StartedScanDto": {
         "type": "object",
         "required": [
@@ -3730,6 +4657,10 @@
     {
       "name": "auth",
       "description": "Standalone dashboard sign-in with passkeys"
+    },
+    {
+      "name": "agency",
+      "description": "Agency accounts and the store links merchants approve"
     },
     {
       "name": "free-scanner",

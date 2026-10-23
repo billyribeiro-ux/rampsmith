@@ -5,7 +5,7 @@
 
 use time::OffsetDateTime;
 
-use crate::entitlements::{DraftAllowance, Entitlements, entitlements};
+use crate::entitlements::{DraftAllowance, Entitlements, Feature, ScanCadence, entitlements};
 use crate::partner_api::BillingCycle;
 use crate::plan::{BillingInterval, Plan};
 use crate::reconcile::{BillingState, FreeSource, PaidPlan, ScheduledChange, Standing};
@@ -169,6 +169,11 @@ pub struct StoredLimits {
     pub alt_text_draft_limit: i32,
     /// Whether that allowance is granted once for the shop's lifetime (Free) rather than monthly.
     pub alt_text_draft_lifetime: bool,
+    /// Whether the plan includes regression alerts (ADR-310).
+    pub regression_alerts: bool,
+    /// How often the scheduler rescans the shop: Free monthly, Starter weekly, Growth and Pro
+    /// daily (ADR-312).
+    pub render_cadence: ScanCadence,
 }
 
 /// The limits that apply to a shop in `state`.
@@ -184,6 +189,8 @@ pub fn limits_of(state: &BillingState) -> StoredLimits {
         ai_budget_max_micro_usd: i64::try_from(granted.ai_budget_micro_usd()).unwrap_or(i64::MAX),
         alt_text_draft_limit: i32::try_from(limit).unwrap_or(i32::MAX),
         alt_text_draft_lifetime: lifetime,
+        regression_alerts: granted.allows(Feature::RegressionAlerts),
+        render_cadence: granted.render_cadence(),
     }
 }
 
@@ -207,6 +214,12 @@ mod tests {
         };
         let free = limits_of(&BillingState::new());
         assert_eq!(free.plan, Plan::Free, "an unconfirmed shop is on Free");
+        assert!(!free.regression_alerts, "Free has no regression alerts");
+        assert_eq!(
+            free.render_cadence,
+            ScanCadence::Monthly,
+            "Free scans monthly"
+        );
         assert_eq!(
             (
                 free.ai_budget_max_micro_usd,
@@ -226,6 +239,11 @@ mod tests {
             assert_eq!(limits.ai_budget_max_micro_usd, budget);
             assert_eq!(limits.alt_text_draft_limit, drafts);
             assert!(!limits.alt_text_draft_lifetime, "{plan:?} renews monthly");
+            assert_eq!(
+                limits.regression_alerts,
+                plan != Plan::Starter,
+                "{plan:?}: regression alerts start at Growth"
+            );
         }
     }
 
