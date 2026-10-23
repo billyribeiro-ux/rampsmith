@@ -149,6 +149,14 @@ recorded as an ADR and the plan is corrected in the same pull request.
 | [293](293-github-tables-and-lifecycle.md) | The GitHub tables, their isolation and their lifecycle | Accepted |
 | [294](294-github-client-hardening.md) | The GitHub client's guards for the audit findings | Accepted |
 | [268](268-r1-integration-decisions.md) | R1 integration decisions | Accepted |
+| [270](270-ses-adapter-and-sigv4.md) | The Amazon SES adapter, a small SigV4 signer and the error mapping | Accepted |
+| [271](271-email-delivery-ledger.md) | The delivery ledger and retries | Accepted |
+| [272](272-email-send-contract-and-shop-contact.md) | `email.send@1`, recipient references and the shop contact | Accepted |
+| [273](273-email-suppression-and-engine-settings.md) | Suppression semantics and the engine's email settings | Accepted |
+| [274](274-email-links-and-one-click.md) | Signed email links, and where RFC 8058 one-click lands | Accepted |
+| [275](275-email-preferences-and-categories.md) | Email preferences, categories and which mail can be switched off | Accepted |
+| [276](276-mailer-service.md) | A mailer service separate from the browser engine | Accepted |
+| [277](277-uninstall-export-attachment-and-email-data-lifecycle.md) | The uninstall record travels as an attachment, and how long email data lives | Accepted |
 | [040](040-runtime-database-roles.md) | Runtime database roles and the startup guard | Accepted |
 | [041](041-per-shop-token-lock.md) | The per-shop token lock holds one connection and waits a bounded time | Accepted |
 | [042](042-passkey-start-limits-and-sweep.md) | Rate limits on the passkey start endpoints, and the sweep of expired sign-in state | Accepted |

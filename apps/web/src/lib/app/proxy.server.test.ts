@@ -19,6 +19,8 @@ describe('resolve', () => {
     ['GET', `evidence/${ID}`],
     ['GET', 'settings'],
     ['PUT', 'settings'],
+    ['GET', 'email-preferences'],
+    ['PUT', 'email-preferences'],
     ['GET', 'statement'],
     ['PUT', 'statement'],
   ])('lets %s %s through', (method, path) => {

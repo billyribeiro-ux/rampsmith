@@ -41,6 +41,9 @@ pub struct Config {
     /// ADR-290). `None` while the flag is off, which is the App Store build's setting: the
     /// channel's routes answer 404 and `/webhooks/github` acknowledges and drops deliveries.
     pub github: Option<GithubSettings>,
+    /// The keys of the links in email and the app's origin (`EMAIL_LINK_KEYS`, `APP_ORIGIN`;
+    /// ADR-274). Both or neither: without them the unsubscribe and preferences routes answer 503.
+    pub email_links: Option<crate::email_link::EmailLinks>,
     /// The WebAuthn relying-party id, a registrable domain (`WEBAUTHN_RP_ID`, ADR-024).
     pub webauthn_rp_id: String,
     /// The dashboard's origin (`WEBAUTHN_RP_ORIGIN`), such as `https://app.rampsmith.com`.
@@ -171,10 +174,12 @@ impl Config {
         let partner = partner_config(&get)?;
         let free_scan = free_scan_config(&get)?;
         let github = github_config(&get)?;
+        let email_links = email_links_config(&get)?;
         Ok(Self {
             github,
             partner,
             free_scan,
+            email_links,
             webauthn_rp_id: rp_id,
             webauthn_rp_origin,
             shopify_client_id: shopify_client_id.trim().to_owned(),
@@ -318,6 +323,44 @@ fn free_scan_config(
     }))
 }
 
+/// The email links' settings: the key ring and the app's origin, both or neither.
+fn email_links_config(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<crate::email_link::EmailLinks>, ConfigError> {
+    let keys = get("EMAIL_LINK_KEYS");
+    let origin = get("APP_ORIGIN");
+    if keys.is_none() && origin.is_none() {
+        return Ok(None);
+    }
+    let keys = keys.ok_or(ConfigError::Missing("EMAIL_LINK_KEYS"))?;
+    let origin = origin.ok_or(ConfigError::Missing("APP_ORIGIN"))?;
+    let keys = crate::email_link::LinkKeys::parse(&keys).map_err(|e| ConfigError::Invalid {
+        name: "EMAIL_LINK_KEYS",
+        reason: e.to_string(),
+    })?;
+    let url = Url::parse(origin.trim())
+        .ok()
+        .filter(|u| {
+            u.host().is_some()
+                && u.path() == "/"
+                && u.query().is_none()
+                && u.fragment().is_none()
+                && u.username().is_empty()
+                && u.password().is_none()
+                && (u.scheme() == "https"
+                    || (u.scheme() == "http"
+                        && matches!(u.host_str(), Some("localhost" | "127.0.0.1"))))
+        })
+        .ok_or(ConfigError::Invalid {
+            name: "APP_ORIGIN",
+            reason: "must be an https origin such as https://app.rampsmith.com".to_owned(),
+        })?;
+    Ok(Some(crate::email_link::EmailLinks::new(
+        keys,
+        &url.origin().ascii_serialization(),
+    )))
+}
+
 /// A dotted name of lowercase letters, digits and hyphens, as WebAuthn relying-party ids and
 /// the hosts of `https` origins are written.
 fn is_host_name(name: &str) -> bool {
@@ -441,6 +484,61 @@ mod tests {
         assert!(!debug.contains("hunter2"));
         assert!(!debug.contains("hunter3"));
         assert!(!debug.contains(KEY));
+    }
+
+    #[test]
+    fn the_email_links_need_their_keys_and_the_app_origin_or_neither() {
+        let base = ("DATABASE_URL", "postgres://app@db/rampsmith");
+        assert!(config(&[base]).unwrap().email_links.is_none());
+        let key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+        let ring = format!("k1:{key}");
+        assert_eq!(
+            config(&[base, ("EMAIL_LINK_KEYS", &ring)]).unwrap_err(),
+            ConfigError::Missing("APP_ORIGIN")
+        );
+        assert_eq!(
+            config(&[base, ("APP_ORIGIN", "https://app.rampsmith.test")]).unwrap_err(),
+            ConfigError::Missing("EMAIL_LINK_KEYS")
+        );
+        let ok = config(&[
+            base,
+            ("EMAIL_LINK_KEYS", &ring),
+            ("APP_ORIGIN", "https://app.rampsmith.test/"),
+        ])
+        .unwrap();
+        let links = ok.email_links.unwrap();
+        assert!(!format!("{links:?}").contains(key));
+        for bad in [
+            "ftp://x.test",
+            "https://app.rampsmith.test/path",
+            "http://app.rampsmith.test",
+            "https://u:p@app.rampsmith.test",
+        ] {
+            assert!(
+                matches!(
+                    config(&[base, ("EMAIL_LINK_KEYS", &ring), ("APP_ORIGIN", bad)]).unwrap_err(),
+                    ConfigError::Invalid {
+                        name: "APP_ORIGIN",
+                        ..
+                    }
+                ),
+                "{bad}"
+            );
+        }
+        let short = config(&[
+            base,
+            ("EMAIL_LINK_KEYS", "k1:AAAA"),
+            ("APP_ORIGIN", "https://a.test"),
+        ])
+        .unwrap_err();
+        assert!(matches!(
+            short,
+            ConfigError::Invalid {
+                name: "EMAIL_LINK_KEYS",
+                ..
+            }
+        ));
+        assert!(!short.to_string().contains("AAAA"));
     }
 
     #[test]

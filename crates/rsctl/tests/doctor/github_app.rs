@@ -84,7 +84,10 @@ fn env(pem: &str) -> Vec<(&'static str, String)> {
         ("GITHUB_APP_CLIENT_ID", CLIENT_ID.to_owned()),
         ("GITHUB_APP_PRIVATE_KEY", pem.to_owned()),
         ("GITHUB_APP_WEBHOOK_SECRET", WEBHOOK.to_owned()),
-        ("GITHUB_APP_CLIENT_SECRET", "github-client-secret-marker".to_owned()),
+        (
+            "GITHUB_APP_CLIENT_SECRET",
+            "github-client-secret-marker".to_owned(),
+        ),
     ]
 }
 

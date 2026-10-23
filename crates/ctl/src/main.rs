@@ -162,8 +162,7 @@ fn job_handlers(
             Duration::from_secs(20),
         )
         .map_err(|e| anyhow::anyhow!("Admin API client: {e}"))?,
-    )
-    .with_app_origin(config.app_origin.clone());
+    );
     Ok(match config.scan_secret_keys.clone() {
         Some(scan) => handlers.with_scan_secrets(jobs::scan_secret::ScanSecrets::new(
             config.master_keys.clone(),

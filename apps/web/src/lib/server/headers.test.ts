@@ -66,4 +66,19 @@ describe('securityHeaders', () => {
     expect(secure.get('strict-transport-security')).toContain('max-age=31536000');
     expect(apply('http://127.0.0.1:3000/').get('strict-transport-security')).toBeNull();
   });
+
+  it('sends no referrer to other sites from the pages behind email links, whose address is a secret', () => {
+    for (const href of [
+      'https://web.example/email/unsubscribe',
+      'https://web.example/email/preferences',
+    ]) {
+      expect(apply(href).get('referrer-policy'), href).toBe('same-origin');
+    }
+    const page = apply('https://web.example/email/preferences');
+    expect(page.get('cache-control')).toBe('private, no-store');
+    expect(page.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(apply('https://web.example/emails').get('referrer-policy')).toBe(
+      'strict-origin-when-cross-origin',
+    );
+  });
 });

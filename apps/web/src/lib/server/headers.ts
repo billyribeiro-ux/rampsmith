@@ -8,6 +8,12 @@ import { frameAncestors } from '../shopify/frame.ts';
 
 const EMBEDDED = /^\/app(\/|$)/;
 const DASHBOARD = /^\/dashboard(\/|$)/;
+/**
+ * The pages behind email links: their address is a secret (ADR-274), so no other site may see it
+ * in a Referer. `same-origin` and not `no-referrer`: with `no-referrer` a browser sends
+ * `Origin: null` on a form post, which SvelteKit's CSRF check rightly refuses.
+ */
+const EMAIL_LINK = /^\/email(\/|$)/;
 
 export function securityHeaders(url: URL, headers: Headers): void {
   const framing = EMBEDDED.test(url.pathname) ? frameAncestors(url) : "frame-ancestors 'none'";
@@ -17,8 +23,17 @@ export function securityHeaders(url: URL, headers: Headers): void {
     csp === null || csp === '' ? framing : `${csp}; ${framing}`,
   );
   headers.set('x-content-type-options', 'nosniff');
-  headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+  headers.set(
+    'referrer-policy',
+    EMAIL_LINK.test(url.pathname) ? 'same-origin' : 'strict-origin-when-cross-origin',
+  );
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  if (EMAIL_LINK.test(url.pathname)) {
+    // Not cached and not indexed. Set here and not with `setHeaders`: a load and an action both
+    // setting a header on one request is an error in SvelteKit.
+    headers.set('cache-control', 'private, no-store');
+    headers.set('x-robots-tag', 'noindex, nofollow');
+  }
   if (DASHBOARD.test(url.pathname)) {
     // Dashboard pages hold the signed-in user's name and email, and what they show depends on
     // the session cookie. No shared cache may store them, and the browser must not keep them for

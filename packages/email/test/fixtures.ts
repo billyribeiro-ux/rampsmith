@@ -322,7 +322,6 @@ export const FIXTURES: Fixtures = {
       'default',
       {
         storeName: store,
-        exportUrl: `${APP}/export/TESTONLYexport0055`,
         deleteAt: '2026-10-19T10:00:00Z',
       },
     ],

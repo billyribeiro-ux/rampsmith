@@ -253,6 +253,21 @@ async fn bad_inputs_fail_before_any_request() {
 }
 
 #[tokio::test]
+async fn a_postal_address_that_is_set_must_be_usable_before_any_request() {
+    for postal in ["One line only, Springfield"] {
+        let mut env = all("hello@example.com");
+        env.push(("EMAIL_POSTAL_ADDRESS", postal));
+        let rig = Rig::new(&env).await;
+        let outcome = rig.run("ses.identity").await;
+        assert!(
+            fail(&outcome).contains("EMAIL_POSTAL_ADDRESS"),
+            "{outcome:?}"
+        );
+        assert!(rig.server.received_requests().await.unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
 async fn partial_inputs_and_unset() {
     let rig = Rig::new(&[("SES_REGION", REGION), ("EMAIL_FROM", "hello@example.com")]).await;
     let outcome = rig.run("ses.identity").await;

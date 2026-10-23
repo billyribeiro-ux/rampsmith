@@ -39,9 +39,6 @@ pub struct Jobs {
     db: Db,
     auth: ShopifyAuth,
     admin: AdminFactory,
-    /// The app's public origin (`APP_ORIGIN`), which the links in emails point at. Without it no
-    /// email that carries a link is queued (ADR-272).
-    app_origin: Option<String>,
     scan_secrets: Option<scan_secret::ScanSecrets>,
     /// The GitHub client, holding the App's private key, while the pull-request channel is on
     /// (`CODE_FIX_CHANNEL_ENABLED`, ADR-290).
@@ -57,7 +54,6 @@ impl Jobs {
             auth,
             admin,
             scan_secrets: None,
-            app_origin: None,
             github: None,
         }
     }
@@ -77,14 +73,6 @@ impl Jobs {
             queues.extend(github::QUEUES);
         }
         queues
-    }
-
-    /// Gives the handlers the app's origin, such as `https://app.rampsmith.com`, for the links
-    /// in the emails they queue.
-    #[must_use]
-    pub fn with_app_origin(mut self, origin: Option<String>) -> Self {
-        self.app_origin = origin;
-        self
     }
 
     /// Lets scans of a password-protected store reach the engine (ADR-266). Without it the

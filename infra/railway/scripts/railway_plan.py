@@ -35,10 +35,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-IMAGE_SERVICES = ("web", "api", "ctl", "engine", "egress", "backup")
+IMAGE_SERVICES = ("web", "api", "ctl", "engine", "mailer", "egress", "backup")
+# Services that run another service's image, with another start command.
+SHARED_IMAGE = {"ctl": "api", "mailer": "engine"}
 REGISTRY = "ghcr.io/billyribeiro-ux"
 REPOSITORIES = {
-    name: f"{REGISTRY}/rampsmith-{'api' if name == 'ctl' else name}" for name in IMAGE_SERVICES
+    name: f"{REGISTRY}/rampsmith-{SHARED_IMAGE.get(name, name)}" for name in IMAGE_SERVICES
 }
 _DIGEST_REF = re.compile(r"^(?P<repository>[a-z0-9][a-z0-9./_-]*)@sha256:[0-9a-f]{64}$")
 # The kinds a deploy may apply: CLI 5.70.0's diff emits only these and resource.delete and

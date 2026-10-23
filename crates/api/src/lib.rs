@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod email_link;
 pub mod free_scan;
 pub mod github_channel;
 mod health;
@@ -35,6 +36,7 @@ pub struct AppState {
     partner: Option<plan::PartnerPlans>,
     free_scans: Option<free_scan::FreeScans>,
     github: Option<std::sync::Arc<github_channel::GithubChannel>>,
+    email_links: Option<email_link::EmailLinks>,
     start_limiter: rate_limit::StartLimiter,
 }
 
@@ -51,6 +53,7 @@ impl AppState {
             partner: None,
             free_scans: None,
             github: None,
+            email_links: None,
             start_limiter: rate_limit::StartLimiter::default(),
         }
     }
@@ -100,6 +103,18 @@ impl AppState {
         self
     }
 
+    /// Enables the pages behind email links (ADR-274). Without it their routes answer 503.
+    #[must_use]
+    pub fn with_email_links(mut self, links: email_link::EmailLinks) -> Self {
+        self.email_links = Some(links);
+        self
+    }
+
+    /// The email link keys, when configured.
+    pub(crate) const fn email_links(&self) -> Option<&email_link::EmailLinks> {
+        self.email_links.as_ref()
+    }
+
     /// The free scanner, when configured.
     pub(crate) const fn free_scans(&self) -> Option<&free_scan::FreeScans> {
         self.free_scans.as_ref()
@@ -141,6 +156,7 @@ impl AppState {
         (name = "auth", description = "Standalone dashboard sign-in with passkeys"),
         (name = "free-scanner", description = "The marketing site's anonymous single-page scan (ADR-267)"),
         (name = "code-fixes", description = "The GitHub pull-request channel: connecting GitHub, choosing the theme repository (ADR-290)"),
+        (name = "email", description = "The pages behind the unsubscribe and preferences links in email (ADR-274)"),
         (name = "app", description = "The embedded app's scans, findings, fixes, evidence, settings and statement")
     )
 )]
@@ -208,6 +224,12 @@ fn routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(github_channel::choose_repository))
         .routes(routes!(github_channel::finish_connection))
+        .routes(routes!(email_link::inspect_link))
+        .routes(routes!(email_link::change_link))
+        .routes(routes!(
+            email_link::get_email_preferences,
+            email_link::update_email_preferences
+        ))
 }
 
 /// The OpenAPI document, generated from the handlers.

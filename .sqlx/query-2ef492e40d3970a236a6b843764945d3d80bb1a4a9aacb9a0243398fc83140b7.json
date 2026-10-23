@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select category from email_opt_outs where tenant_id = $1 and address_hash = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "email_opt_outs",
+            "name": "category"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2ef492e40d3970a236a6b843764945d3d80bb1a4a9aacb9a0243398fc83140b7"
+}

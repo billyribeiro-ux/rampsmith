@@ -280,6 +280,98 @@
         }
       }
     },
+    "/v1/email/links/inspect": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Reads an email link: what it is for and where each category it covers stands.",
+        "operationId": "inspectEmailLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The link, or why it is not usable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailLinkDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Email links are not configured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/email/links/preference": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Switches one category on or off for the address the link was made for.",
+        "operationId": "changeEmailLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The link after the change, or why it is not usable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailLinkDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The link does not cover that category",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Email links are not configured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/free-scans": {
       "post": {
         "tags": [
@@ -680,6 +772,106 @@
           },
           "422": {
             "description": "The branch name is not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      }
+    },
+    "/v1/shopify/email-preferences": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The shop's email preferences.",
+        "operationId": "getEmailPreferences",
+        "responses": {
+          "200": {
+            "description": "The preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailPreferencesDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "shopify_session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Switches a category of the shop's notification mail on or off.",
+        "operationId": "updateEmailPreferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailPreferencesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The preferences after the change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailPreferencesDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No address is on file for the shop yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Not a category a merchant can change",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2060,6 +2252,91 @@
         },
         "additionalProperties": false
       },
+      "EmailCategoryDto": {
+        "type": "object",
+        "description": "One category and whether its mail is on.",
+        "required": [
+          "category",
+          "enabled"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "`notification` or `marketing`."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the address receives this category."
+          }
+        }
+      },
+      "EmailLinkDto": {
+        "type": "object",
+        "description": "What a link allows and where each category stands.",
+        "required": [
+          "status",
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmailCategoryDto"
+            },
+            "description": "The categories this link may change; empty unless `ok`."
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`unsubscribe` or `preferences`; null unless `ok`."
+          },
+          "status": {
+            "type": "string",
+            "description": "`ok`, `expired` (past its 180 days) or `invalid` (not one of ours)."
+          }
+        }
+      },
+      "EmailPreferencesDto": {
+        "type": "object",
+        "description": "Where the shop's notification mail stands.",
+        "required": [
+          "address_known",
+          "categories"
+        ],
+        "properties": {
+          "address_known": {
+            "type": "boolean",
+            "description": "Whether an address is on file for the shop. Without one nothing is sent."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmailCategoryDto"
+            },
+            "description": "The categories the merchant can switch, with their state."
+          }
+        }
+      },
+      "EmailPreferencesUpdate": {
+        "type": "object",
+        "required": [
+          "category",
+          "enabled"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "`notification`."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "`false` switches the category off."
+          }
+        },
+        "additionalProperties": false
+      },
       "EntitlementsDto": {
         "type": "object",
         "required": [
@@ -2777,6 +3054,42 @@
           }
         }
       },
+      "LinkChange": {
+        "type": "object",
+        "required": [
+          "token",
+          "category",
+          "enabled"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "`notification` or `marketing`."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "`false` switches the category off, `true` back on."
+          },
+          "token": {
+            "type": "string",
+            "description": "The `t` of the link."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LinkRequest": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The `t` of the link."
+          }
+        },
+        "additionalProperties": false
+      },
       "OccurrenceDto": {
         "type": "object",
         "required": [
@@ -3425,6 +3738,10 @@
     {
       "name": "code-fixes",
       "description": "The GitHub pull-request channel: connecting GitHub, choosing the theme repository (ADR-290)"
+    },
+    {
+      "name": "email",
+      "description": "The pages behind the unsubscribe and preferences links in email (ADR-274)"
     },
     {
       "name": "app",

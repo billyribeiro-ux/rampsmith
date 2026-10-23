@@ -50,6 +50,20 @@ may_write() {
 
 fault=${FAKE_AWS_FAULT:-}
 fault_key=${FAKE_AWS_FAULT_KEY:-*}
+# Writes $1 to stdout with byte 101 flipped (XOR 0xFF), never replaced by a fixed value: an
+# encrypted archive has a 1 in 256 chance of already holding any fixed byte there, which made the
+# "corrupted read-back" case flaky.
+corrupt() {
+  local original flipped octal
+  original=$(dd if="$1" bs=1 skip=100 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
+  [ -n "$original" ] || fail "corrupt: $1 is shorter than 101 bytes"
+  flipped=$((original ^ 255))
+  octal=$(printf '%03o' "$flipped")
+  head -c 100 "$1"
+  printf '%b' "\\0${octal}"
+  tail -c +102 "$1"
+}
+
 faulty() {
   # faulty KIND KEY: succeeds when the fault applies to this call.
   # shellcheck disable=SC2254
@@ -81,7 +95,7 @@ case "$cmd $sub" in
         [ -f "$file" ] || fail "NoSuchKey: $key"
         if [ "$dst" = "-" ]; then
           if faulty get-corrupt "$key"; then
-            { head -c 100 "$file"; printf 'X'; tail -c +102 "$file"; }
+            corrupt "$file"
           else
             cat "$file"
           fi
@@ -99,7 +113,7 @@ case "$cmd $sub" in
         if faulty put-truncate "$key"; then
           head -c 10 "$src" >"$file"
         elif faulty put-corrupt "$key"; then
-          { head -c 100 "$src"; printf 'X'; tail -c +102 "$src"; } >"$file"
+          corrupt "$src" >"$file"
         else
           cp "$src" "$file"
         fi

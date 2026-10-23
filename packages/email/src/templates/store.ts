@@ -69,7 +69,11 @@ export const welcome = defineTemplate({
         automatedChecksNote(t),
       ],
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });
@@ -115,7 +119,11 @@ export const firstScanComplete = defineTemplate({
         automatedChecksNote(t),
       ],
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });
@@ -177,7 +185,11 @@ export const weeklySummary = defineTemplate({
         automatedChecksNote(t),
       ],
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });
@@ -240,7 +252,11 @@ export const regressionAlert = defineTemplate({
       title: t.text('regression_title'),
       blocks,
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });
@@ -270,7 +286,11 @@ export const barrierReportReceived = defineTemplate({
         action(t, t.text('barrier_button'), input.reportsUrl, false),
       ],
       reason: msg(t, 'common_reason_store', { store }),
-      subscription: { unsubscribe: input.unsubscribeUrl, preferences: input.preferencesUrl },
+      subscription: {
+        unsubscribe: input.unsubscribeUrl,
+        preferences: input.preferencesUrl,
+        oneClick: input.oneClickUrl,
+      },
     };
   },
 });

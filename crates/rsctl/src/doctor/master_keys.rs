@@ -16,6 +16,7 @@ pub(super) const READS: &[Var] = &[
     Var::RampsmithMasterKeys,
     Var::RampsmithScanSecretKeys,
     Var::FreeScanServiceToken,
+    Var::EmailLinkKeys,
 ];
 
 const PLAINTEXT: &[u8] = b"rsctl doctor round trip";
@@ -118,6 +119,33 @@ fn scan_inputs_problem(ctx: &Ctx, master_spec: &str) -> Option<String> {
         {
             return Some(
                 "RAMPSMITH_SCAN_SECRET_KEYS shares a key with RAMPSMITH_MASTER_KEYS; the engine holds the scan ring and must never hold a master key (ADR-266): generate a separate ring".to_owned(),
+            );
+        }
+    }
+    if let Ok(found) = ctx.vars.gather(12, &[Var::EmailLinkKeys]) {
+        let spec = found.text(Var::EmailLinkKeys);
+        if let Err(e) = KeyRing::parse(spec) {
+            return Some(format!(
+                "EMAIL_LINK_KEYS does not parse: {e} (expected id:base64key[,id:base64key...], newest first; make one with `rsctl keys generate`)"
+            ));
+        }
+        let scan_spec = ctx
+            .vars
+            .gather(12, &[Var::RampsmithScanSecretKeys])
+            .map(|found| found.text(Var::RampsmithScanSecretKeys).to_owned())
+            .unwrap_or_default();
+        let others: Vec<&str> = master_spec
+            .split(',')
+            .chain(scan_spec.split(','))
+            .map(str::trim)
+            .collect();
+        if spec
+            .split(',')
+            .map(str::trim)
+            .any(|entry| others.contains(&entry))
+        {
+            return Some(
+                "EMAIL_LINK_KEYS shares a key with another ring; the unsubscribe-link key signs only that (ADR-274): generate a separate ring".to_owned(),
             );
         }
     }

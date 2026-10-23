@@ -12,6 +12,48 @@ Branch `r1-email`. ADRs 270 to 273.
   come from that run. The fake SES in `packages/email/src/testing/fake-ses.ts` recomputes the
   signature itself, so a signer change that drifts fails `ses.test.ts`.
 
+## The botocore cross-check of the signer
+
+`packages/email/test/sigv4.test.ts` pins two signatures computed by botocore 1.43.118's `SigV4Auth`.
+This is the script that produced them; re-run on 23 Oct 2026 in a fresh virtual environment it printed
+`053b4915...69a1` without a session token and `8fdb50c7...6678` with `SESSIONTOKEN`, which are the
+values the test file holds.
+
+```python
+"""Recomputes the two SES SigV4 signatures in packages/email/test/sigv4.test.ts with botocore.
+
+Run: python -I -m venv v && v/bin/pip install botocore==1.43.118 && v/bin/python sigv4_check.py
+Expected output: the two Signature= values the test file pins.
+"""
+from datetime import datetime, timezone
+from unittest import mock
+
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials
+
+BODY = '{"Content":{"Simple":{"Body":{"Text":{"Data":"hi"}},"Subject":{"Data":"s"}}}}'
+WHEN = datetime(2015, 8, 30, 12, 36, 0, tzinfo=timezone.utc)
+SECRET = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+
+
+def signature(token):
+    request = AWSRequest(
+        method="POST",
+        url="https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails",
+        data=BODY,
+        headers={"Content-Type": "application/json"},
+    )
+    signer = SigV4Auth(Credentials("AKIDEXAMPLE", SECRET, token), "ses", "eu-west-1")
+    with mock.patch("botocore.auth.get_current_datetime", return_value=WHEN):
+        signer.add_auth(request)
+    return request.headers["Authorization"].split("Signature=")[1]
+
+
+print("without a session token:", signature(None))
+print("with SESSIONTOKEN      :", signature("SESSIONTOKEN"))
+```
+
 ## API facts and sources
 
 - SES v2 `SendEmail`: botocore `service-2.json` (raw.githubusercontent.com) and the AWS API reference

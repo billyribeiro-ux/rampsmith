@@ -103,6 +103,26 @@ describe('the SES request', () => {
     ]);
   });
 
+  it('sends an attachment as base64 in Message.Attachments, with the shape the service model gives', async () => {
+    const before = ses.requests.length;
+    const refusedBefore = ses.rejected.length;
+    const data = new TextEncoder().encode('Fix,Finding\r\nf1,"alt, text"\r\n');
+    await createSesSender(config()).send({
+      ...message('email.send:attachment-0000001'),
+      attachments: [{ fileName: 'record.csv', contentType: 'text/csv', data }],
+    });
+    const attachments = ses.requests[before]?.body.Content.Simple.Attachments;
+    expect(attachments).toHaveLength(1);
+    expect(attachments?.[0]).toEqual({
+      FileName: 'record.csv',
+      ContentType: 'text/csv',
+      ContentDisposition: 'ATTACHMENT',
+      ContentTransferEncoding: 'BASE64',
+      RawContent: Buffer.from(data).toString('base64'),
+    });
+    expect(ses.rejected).toHaveLength(refusedBefore);
+  });
+
   it('sends no header for an email that has none', async () => {
     const before = ses.requests.length;
     await createSesSender(config()).send(message('email.send:no-headers-0000001'));

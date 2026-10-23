@@ -10,7 +10,9 @@
 import { JobFailure, retryDelayMs } from '@rampsmith/queue';
 import {
   categoryOf,
+  type EmailSender,
   guardSender,
+  isSubscribedCategory,
   InputError,
   isEmailKind,
   SendFailure,
@@ -18,10 +20,12 @@ import {
   withLedger,
 } from '@rampsmith/email';
 import type postgres from 'postgres';
+import { RecordUnavailableError, remediationRecord } from '../email/export.ts';
 import { PgLedger } from '../email/ledger.ts';
 import { resolveRecipient } from '../email/recipient.ts';
 import type { EmailRuntime } from '../email/runtime.ts';
-import { blocks } from '../email/suppression.ts';
+import { subscriptionLinks } from '../email/links.ts';
+import { refusalFor } from '../email/suppression.ts';
 import { parsePayload, requireTenant, type JobHandler } from './payload.ts';
 
 export interface EmailDeps {
@@ -45,7 +49,7 @@ function permanent(code: string, message: string): JobFailure {
 
 export function emailSendHandler(deps: EmailDeps): JobHandler {
   const random = deps.random ?? Math.random;
-  return async (job) => {
+  return async (job, signal) => {
     const payload = parsePayload(job, 'email.send@1');
     const tenantId = requireTenant(job);
     const kind = payload.template;
@@ -62,20 +66,48 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
       });
     }
 
+    const category = categoryOf(kind);
+    const subscribed = isSubscribedCategory(category);
+    if (subscribed && runtime.links === undefined) {
+      // The links of a notification need the key ring and the webhook origin (ADR-274).
+      throw new JobFailure('retryable', {
+        code: 'email_not_configured',
+        message: runtime.problems.join('; '),
+      });
+    }
+
     try {
-      const recipient = await resolveRecipient(deps.sql, tenantId, payload.recipient);
+      const recipient = await resolveRecipient(deps.sql, tenantId, payload.recipient, category);
       if (recipient === undefined) {
         throw permanent('recipient_missing', 'the recipient does not exist for this tenant');
       }
       const ledger = new PgLedger(deps.sql, tenantId, kind);
-      if (recipient.suppression !== null && blocks(recipient.suppression, categoryOf(kind))) {
-        await ledger.suppressed(payload.message_key, recipient.suppression);
+      const refusal = refusalFor(category, recipient.suppression, recipient.optOuts);
+      if (refusal !== null) {
+        await ledger.suppressed(payload.message_key, refusal);
         return;
       }
 
+      // Notification and marketing mail carries the recipient's own signed links; whatever the
+      // queued input said about them is replaced (ADR-274).
+      const input =
+        subscribed &&
+        runtime.links !== undefined &&
+        (category === 'notification' || category === 'marketing')
+          ? {
+              ...payload.input,
+              ...subscriptionLinks(runtime.links, {
+                tenantId,
+                shopId: recipient.shopId,
+                addressHash: recipient.addressHash,
+                category,
+              }),
+            }
+          : payload.input;
+
       let email;
       try {
-        email = runtime.renderer.renderUnknown(kind, payload.input);
+        email = runtime.renderer.renderUnknown(kind, input);
       } catch (error) {
         if (error instanceof InputError) {
           // The path names the field; the reason says what is wrong with it. Neither holds the value.
@@ -87,11 +119,31 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
         throw error;
       }
 
-      const sender = guardSender(withLedger(runtime.transport, ledger));
+      // The uninstall mail carries the remediation record as a CSV file (ADR-277).
+      const attachments =
+        kind === 'uninstall_export'
+          ? [await remediationRecord(deps.sql, tenantId, recipient.shopId, new Date())]
+          : undefined;
+
+      // A job whose lease was lost belongs to another attempt now. Checking after the claim, and
+      // failing as a retry, leaves the ledger saying so and SES uncalled (audit L2).
+      const transport = runtime.transport;
+      const leased: EmailSender = {
+        send(message) {
+          if (signal?.aborted === true) {
+            return Promise.reject(
+              new SendFailure('defer', 'lease_lost', 'the job lost its lease before the send'),
+            );
+          }
+          return transport.send(message);
+        },
+      };
+      const sender = guardSender(withLedger(leased, ledger));
       await sender.send({
         to: recipient.address,
         idempotencyKey: payload.message_key,
         email,
+        ...(attachments === undefined ? {} : { attachments }),
       });
     } catch (error) {
       throw failureFor(error, random);
@@ -102,6 +154,9 @@ export function emailSendHandler(deps: EmailDeps): JobHandler {
 /** The job failure for whatever went wrong, without the cause's message when it is not ours. */
 function failureFor(error: unknown, random: () => number): JobFailure {
   if (error instanceof JobFailure) return error;
+  if (error instanceof RecordUnavailableError) {
+    return permanent(error.code, error.message);
+  }
   if (error instanceof SendRefusedError) {
     return permanent('send_refused', error.message);
   }

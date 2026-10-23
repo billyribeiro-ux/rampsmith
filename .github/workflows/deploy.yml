@@ -354,7 +354,7 @@ jobs:
           railway --version
           jq -n --arg web "$WEB_IMAGE" --arg api "$API_IMAGE" --arg engine "$ENGINE_IMAGE" \
             --arg egress "$EGRESS_IMAGE" --arg backup "$BACKUP_IMAGE" \
-            '{web: $web, api: $api, ctl: $api, engine: $engine, egress: $egress, backup: $backup}' > new.json
+            '{web: $web, api: $api, ctl: $api, engine: $engine, mailer: $engine, egress: $egress, backup: $backup}' > new.json
           # --environment must match the project token's environment, so a token stored in
           # the wrong GitHub environment fails here instead of deploying to the wrong place.
           # No --confirm-destructive: a plan that removes anything stops for a human. The plan
@@ -399,6 +399,7 @@ jobs:
           wait_for ctl "$API_IMAGE" "$started"
           wait_for egress "$EGRESS_IMAGE" "$started"
           wait_for engine "$ENGINE_IMAGE" "$started"
+          wait_for mailer "$ENGINE_IMAGE" "$started"
           wait_for web "$WEB_IMAGE" "$started"
           # The backup is a cron service (ADR-251): it runs at 02:17 UTC and exits, so Railway may
           # never report a SUCCESS deployment of its image until the first run. A miss here is
@@ -409,7 +410,7 @@ jobs:
           collector=$(python3 -c 'import importlib.util as u, sys; s = u.spec_from_file_location("r", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.COLLECTOR_IMAGE)' "$file")
           wait_for collector "$collector" "$started"
           rm -f ./*.plan ./*.json
-          echo "| Railway deploy | api, then ctl, egress, engine, web and collector run this release; the backup cron service holds its image |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Railway deploy | api, then ctl, egress, engine, mailer, web and collector run this release; the backup cron service holds its image |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Public exposure is exactly the listed domains (ADR-182)
         if: steps.inputs.outputs.railway == 'true'
