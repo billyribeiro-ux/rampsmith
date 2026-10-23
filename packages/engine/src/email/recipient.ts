@@ -20,6 +20,8 @@ export interface ResolvedRecipient {
   readonly addressHash: Uint8Array;
   /** The store the mail is about. */
   readonly shopId: string;
+  /** Its permanent `*.myshopify.com` host, which the links into the admin are built from. */
+  readonly shopDomain: string;
   /** Why the tenant's suppression list holds this address, when it does. */
   readonly suppression: SuppressionReason | null;
   /** The categories this address has switched off. */
@@ -35,8 +37,8 @@ export async function resolveRecipient(
 ): Promise<ResolvedRecipient | undefined> {
   return withTenant(sql, tenantId, async (tx) => {
     // The tenant filter repeats what row-level security enforces: two layers (ADR-006).
-    const [contact] = await tx<{ owner: string; notify: string | null }[]>`
-      select c.email as owner, nullif(btrim(st.settings ->> 'notification_email'), '') as notify
+    const [contact] = await tx<{ owner: string; notify: string | null; domain: string }[]>`
+      select c.email as owner, sh.shop_domain as domain, nullif(btrim(st.settings ->> 'notification_email'), '') as notify
         from shop_contacts c
         join shopify_shops sh on sh.id = c.shop_id and sh.tenant_id = c.tenant_id
         join sites st on st.id = sh.site_id and st.tenant_id = sh.tenant_id
@@ -65,6 +67,7 @@ export async function resolveRecipient(
       address,
       addressHash: Uint8Array.from(row.hash),
       shopId: recipient.shop_id,
+      shopDomain: contact.domain,
       suppression: row.reason,
       optOuts: row.opt_outs,
     };
